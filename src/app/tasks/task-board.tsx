@@ -1,0 +1,197 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import { toast } from "sonner";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { Badge } from "@/components/ui/badge";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { formatDueDisplay } from "@/lib/formatDate";
+import { priorityVariant } from "@/lib/priority";
+import AttachmentLink from "@/components/attachment-link";
+import CreateTaskDialog from "./create-task-dialog";
+import CreateRecurringDialog from "./create-recurring-dialog";
+import CompleteTaskDialog from "./complete-task-dialog";
+import type { TaskRecord, UserOption } from "./types";
+
+function completionText(task: TaskRecord): string {
+  const date = formatDueDisplay(task.Due_Date);
+  return task.Task_Type === "Recurring" ? `${date} (${task.Recurrence_Frequency})` : date;
+}
+
+function statusBadge(task: TaskRecord) {
+  if (task.Status === "Pending" && task.Due_Date && new Date() > new Date(task.Due_Date)) {
+    return { label: "Overdue", variant: "destructive" as const };
+  }
+  if (task.Status === "Done on Time") return { label: task.Status, variant: "default" as const };
+  if (task.Status === "Delay Done") return { label: task.Status, variant: "outline" as const };
+  return { label: task.Status, variant: "secondary" as const };
+}
+
+export default function TaskBoard({ currentUserId }: { currentUserId: string }) {
+  const [myTasks, setMyTasks] = useState<TaskRecord[]>([]);
+  const [delegatedTasks, setDelegatedTasks] = useState<TaskRecord[]>([]);
+  const [canDelegate, setCanDelegate] = useState(false);
+  const [userMap, setUserMap] = useState<Record<string, string>>({});
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    Promise.all([
+      fetch("/api/tasks").then((res) => res.json()),
+      fetch("/api/users/directory").then((res) => res.json()),
+    ])
+      .then(([tasksData, usersData]: [
+        { myTasks: TaskRecord[]; delegatedTasks: TaskRecord[]; canDelegate: boolean },
+        { users: UserOption[] },
+      ]) => {
+        setMyTasks(tasksData.myTasks ?? []);
+        setDelegatedTasks(tasksData.delegatedTasks ?? []);
+        setCanDelegate(tasksData.canDelegate ?? false);
+
+        const map: Record<string, string> = {};
+        for (const u of usersData.users ?? []) map[u.userId] = u.fullName;
+        setUserMap(map);
+      })
+      .catch(() => toast.error("Tasks load nahi ho paye."))
+      .finally(() => setLoading(false));
+  }, []);
+
+  function handleCreated(task: TaskRecord) {
+    setDelegatedTasks((prev) => [...prev, task]);
+    if (task.Assigned_To === currentUserId) {
+      setMyTasks((prev) => [...prev, task]);
+    }
+  }
+
+  function handleCompleted(updated: TaskRecord) {
+    setMyTasks((prev) => prev.map((t) => (t.Task_ID === updated.Task_ID ? updated : t)));
+    setDelegatedTasks((prev) => prev.map((t) => (t.Task_ID === updated.Task_ID ? updated : t)));
+  }
+
+  if (loading) {
+    return <p className="text-muted-foreground">Loading...</p>;
+  }
+
+  const myTasksTable = (
+    <div className="rounded-lg border">
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>Title</TableHead>
+            <TableHead>Priority</TableHead>
+            <TableHead>Completion</TableHead>
+            <TableHead>Attachment</TableHead>
+            <TableHead>Status</TableHead>
+            <TableHead className="text-right">Actions</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {myTasks.length === 0 && (
+            <TableRow>
+              <TableCell colSpan={6} className="text-center text-muted-foreground">
+                Koi task assign nahi hua.
+              </TableCell>
+            </TableRow>
+          )}
+          {myTasks.map((task) => {
+            const badge = statusBadge(task);
+            return (
+              <TableRow key={task.Task_ID}>
+                <TableCell className="font-medium">{task.Title}</TableCell>
+                <TableCell>
+                  <Badge variant={priorityVariant(task.Priority)}>{task.Priority || "—"}</Badge>
+                </TableCell>
+                <TableCell>{completionText(task)}</TableCell>
+                <TableCell>
+                  <AttachmentLink url={task.Attachment_URL} />
+                </TableCell>
+                <TableCell>
+                  <Badge variant={badge.variant}>{badge.label}</Badge>
+                </TableCell>
+                <TableCell className="text-right">
+                  {task.Status === "Pending" && (
+                    <CompleteTaskDialog task={task} onCompleted={handleCompleted} />
+                  )}
+                </TableCell>
+              </TableRow>
+            );
+          })}
+        </TableBody>
+      </Table>
+    </div>
+  );
+
+  if (!canDelegate) {
+    return myTasksTable;
+  }
+
+  return (
+    <Tabs defaultValue="my-tasks">
+      <div className="flex items-center justify-between">
+        <TabsList>
+          <TabsTrigger value="my-tasks">My Tasks</TabsTrigger>
+          <TabsTrigger value="delegated">Delegated by Me</TabsTrigger>
+        </TabsList>
+        <div className="flex gap-2">
+          <CreateRecurringDialog onCreated={() => toast.success("Ab is rule ke occurrences roz apne-aap generate hongi.")} />
+          <CreateTaskDialog onCreated={handleCreated} />
+        </div>
+      </div>
+
+      <TabsContent value="my-tasks" className="mt-4">
+        {myTasksTable}
+      </TabsContent>
+
+      <TabsContent value="delegated" className="mt-4">
+        <div className="rounded-lg border">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Title</TableHead>
+                <TableHead>Assigned To</TableHead>
+                <TableHead>Priority</TableHead>
+                <TableHead>Completion</TableHead>
+                <TableHead>Attachment</TableHead>
+                <TableHead>Status</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {delegatedTasks.length === 0 && (
+                <TableRow>
+                  <TableCell colSpan={6} className="text-center text-muted-foreground">
+                    Aapne abhi tak koi task assign nahi kiya.
+                  </TableCell>
+                </TableRow>
+              )}
+              {delegatedTasks.map((task) => {
+                const badge = statusBadge(task);
+                return (
+                  <TableRow key={task.Task_ID}>
+                    <TableCell className="font-medium">{task.Title}</TableCell>
+                    <TableCell>{userMap[task.Assigned_To] ?? task.Assigned_To}</TableCell>
+                    <TableCell>
+                      <Badge variant={priorityVariant(task.Priority)}>{task.Priority || "—"}</Badge>
+                    </TableCell>
+                    <TableCell>{completionText(task)}</TableCell>
+                    <TableCell>
+                      <AttachmentLink url={task.Attachment_URL} />
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant={badge.variant}>{badge.label}</Badge>
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
+            </TableBody>
+          </Table>
+        </div>
+      </TabsContent>
+    </Tabs>
+  );
+}
