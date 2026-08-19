@@ -21,9 +21,13 @@ Multi-tenant SaaS ERP with Google Sheets as the database and Google Drive as fil
 
 **Live** at https://pro-erp-chi.vercel.app (Vercel, `Mking697/Pro-ERP` → auto-deploys on push to `main`). Production smoke test passed 2026-08-19: logins for three users across two orgs, all six pages, real task/user data, tenant isolation, module-access denials, and cron auth. `GET /api/health` reports the live commit and which env vars are set.
 
+**WhatsApp (ChatXFlow) verified end-to-end 2026-08-19**, on localhost and production: test message, pending-task reminders, task-completion confirmation, and the `CRON_SECRET` all-orgs path. ChatXFlow accepts phone numbers both with and without a leading `+`, so the `+91…` form stored in the Users tab works. In the all-orgs cron run one organization failing (no Tasks sheet connected) did not stop the others — per-org isolation in `forEachActiveOrganization` confirmed against live sends.
+
 **Not done yet / next up:**
-- ChatXFlow has never been called with a real token — WhatsApp send is the one integration still unproven.
-- Drive file upload not exercised yet (folder is connected and reachable, but no file has been uploaded through `/api/drive/upload`).
+- 🔴 **Drive file upload is blocked by a Google platform limit.** A service account has **zero Drive storage quota**, so uploading a binary file into a folder in someone's *personal* My Drive fails with 403 "Service Accounts do not have storage quota" — even though the folder is shared and `canAddChildren` is true. Confirmed against the live folder 2026-08-19. This breaks task attachments, completion proofs, and inward attachments for every organization.
+  - The fix an organization can apply themselves: put the attachments folder in a **Shared Drive** (needs Google Workspace) and give the service account Content Manager access — files there are owned by the drive, not the uploader.
+  - Alternatives if orgs are on free Gmail: OAuth delegation per org, or store attachments outside Drive (Vercel Blob / R2 / S3), which gives up the "files live in your own Drive" property.
+  - `/api/drive/upload` now names this cause in its error instead of a bare "upload nahi ho payi".
 - **Sheets API quota is the platform's scaling ceiling** — every tenant shares one service account, so one Google Cloud project's per-minute limit is split across all organizations. Mitigated (batch reads, retry/backoff, per-org caches, sequential cron) but not removed; measure it before onboarding many paying orgs.
 - No platform-admin UI — organizations can only be paused/inspected by editing the registry sheet by hand.
 - No billing — every org is created on the `Free` plan and nothing enforces plan limits.

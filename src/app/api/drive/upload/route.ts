@@ -64,7 +64,28 @@ export async function POST(request: Request) {
       buffer,
     });
     return NextResponse.json({ url });
-  } catch {
-    return NextResponse.json({ error: "File upload nahi ho payi." }, { status: 500 });
+  } catch (error) {
+    const reason =
+      (error as { errors?: { message?: string }[] })?.errors?.[0]?.message ??
+      (error as Error)?.message ??
+      "";
+
+    // Google's own wording here is unhelpful to an admin, and this is the one failure
+    // an organization can actually fix themselves, so name the cause and the remedy.
+    if (reason.includes("storage quota")) {
+      return NextResponse.json(
+        {
+          error:
+            "Ye folder ek personal Google Drive me hai, aur service account personal Drive me file nahi rakh sakta (Google ki limitation). Folder ko ek Shared Drive me banayein aur wahan service account ko Content Manager access dein.",
+        },
+        { status: 400 }
+      );
+    }
+
+    console.error("[drive/upload] failed:", reason || error);
+    return NextResponse.json(
+      { error: reason ? `File upload nahi ho payi: ${reason}` : "File upload nahi ho payi." },
+      { status: 500 }
+    );
   }
 }
