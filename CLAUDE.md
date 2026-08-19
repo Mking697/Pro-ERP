@@ -14,6 +14,8 @@ Multi-tenant SaaS ERP with Google Sheets as the database and Google Drive as fil
 - **Module 5 — WhatsApp (ChatXFlow)**: token/phone/base-URL configured from Settings, completion-confirmation + pending-reminder automations, daily Vercel Cron (`vercel.json`).
 - **Module 6 — Inward FMS & IQC**: inward entry form (`/inward`), IQC quality-check modal, routing to Failure Log / IMS Inward sheets on save.
 - **Recurring Task Engine**: `Recurring_Tasks` + `Holiday_List` sheets, daily cron (`src/lib/recurringGenerator.ts`) generates dated occurrences per rule (D/W/15D/M/Q/Y), holiday-aware for every frequency, month-end-safe.
+- **Module 9 — Guidebook** (`/guide`, `src/lib/guide.ts`): the in-app manual, written as data. Every section declares its audience (`everyone` / `admin` / `platform` / a module grant) and `guideFor()` filters to the viewer — a doer never scrolls past sheet-connection steps, an Admin gets the full setup walkthrough. Add content by editing `GUIDE`, not by writing a page.
+- **Module 8 — Recurring rule pause, quality records, platform console**: recurring rules can be paused/resumed from `/tasks` → Recurring Rules (only `Active` rules generate); Failure Log and IMS Inward are readable at `/inward`; `/platform` lists every organization and can suspend one.
 - **Module 8 — Per-user module access**: `Module_Access` column on the Users tab + `src/lib/moduleAccess.ts`. Role stays the privilege level (only Admin manages users/connections); grants decide which modules a person works in. An Admin ticks boxes per user; the grants are baked into the JWT at login so `requireModule()` costs no sheet read. Admins hold every grant implicitly.
 - **Module 7 — Multi-tenancy (SaaS)**: self-serve org signup (`/signup`) + onboarding wizard (`/onboarding`). Each organization owns its own System spreadsheet; a platform registry sheet (`PLATFORM_SHEET_ID`) maps orgs and routes login by email. Every sheet read/write, cache entry, and cron run is scoped to one tenant.
 
@@ -30,16 +32,15 @@ Multi-tenant SaaS ERP with Google Sheets as the database and Google Drive as fil
   - Connecting a Drive folder runs a real upload-and-delete probe (`verifyDriveFolderWritable`), so an org learns at setup that a personal-Drive folder will not work — not later, when a user tries to attach a file.
   - **Verified on production 2026-08-19**: an org with a personal-Drive folder fell through to blob without losing the file, an org with no Drive folder went straight to blob, and both uploaded files fetched back as the exact bytes. Blob store `pro-erp-attachments` (Public, region bom1) is connected to the project; `GET /api/health` reports `blobStorage`.
 - **Sheets API quota is the platform's scaling ceiling** — every tenant shares one service account, so one Google Cloud project's per-minute limit is split across all organizations. Mitigated (batch reads, retry/backoff, per-org caches, sequential cron) but not removed; measure it before onboarding many paying orgs.
-- No platform-admin UI — organizations can only be paused/inspected by editing the registry sheet by hand.
 - No billing — every org is created on the `Free` plan and nothing enforces plan limits.
-- No UI to pause/deactivate a recurring rule yet — manual `Status` edit in the `Recurring_Tasks` sheet only (see README).
-- No in-app view of the Failure Log / IMS Inward sheets — data lands there correctly, nothing reads it back yet.
 - Drive uploads capped at 4MB (Vercel Hobby body-size limit) — fine for images/PDF/Excel, not large video.
 
 ## Working notes for future sessions
 
 - All Google API calls happen only inside `src/app/api/**` route handlers and server components — never in client components; the service account key must never reach the browser.
 - Every business sheet (Tasks, Inward & IQC FMS, Failure Log, IMS Inward, Recurring Tasks, Holiday List) is its own separate Google Spreadsheet, connected per organization by pasting its URL in `/admin/settings` — not a hardcoded env var. The only env-configured spreadsheet is the platform registry, via `PLATFORM_SHEET_ID`; each organization's own System spreadsheet (`Users` + `Settings` tabs) is recorded in that registry at signup.
+- **Platform-operator access is `PLATFORM_ADMIN_EMAILS`, never a role or a sheet column.** An organization Admin already reaches code that writes to the registry, so a stored flag could be granted to oneself. `/platform` returns 404 (not 403) to everyone else, so its existence is not advertised. An empty list grants nobody.
+- Suspending an organization takes effect on its next request — `tenantFromOrgId` refuses a non-Active org — and deletes nothing.
 - **Tenant isolation rules** — the three that matter, because breaking any one leaks customer data:
   1. `src/lib/googleSheets.ts` holds raw primitives that always require an explicit spreadsheet ID. `src/lib/tenantSheets.ts` wraps them and resolves the current org. Never add a "default spreadsheet" fallback to the raw layer.
   2. `getTenant()` (`src/lib/tenant.ts`) throws when it cannot resolve an org — an explicit `runWithTenant()` context wins, otherwise the session cookie decides. It must never guess.

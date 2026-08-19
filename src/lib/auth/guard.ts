@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { verifySession, SESSION_COOKIE, type SessionPayload } from "@/lib/auth/session";
 import { getModuleAccessDefinition, type ModuleAccessKey } from "@/lib/moduleAccess";
+import { isPlatformAdmin } from "@/lib/platform/admin";
 
 type GuardResult =
   | { ok: true; session: SessionPayload }
@@ -58,6 +59,26 @@ export async function requireModule(key: ModuleAccessKey): Promise<GuardResult> 
         },
         { status: 403 }
       ),
+    };
+  }
+
+  return guard;
+}
+
+/**
+ * For platform-operator routes that span every organization.
+ *
+ * Deliberately not derived from Role: an organization's Admin is an admin *of that
+ * organization*, and must never be able to see or change another customer's data.
+ */
+export async function requirePlatformAdmin(): Promise<GuardResult> {
+  const guard = await requireSession();
+  if (!guard.ok) return guard;
+
+  if (!isPlatformAdmin(guard.session.email)) {
+    return {
+      ok: false,
+      response: NextResponse.json({ error: "Not found." }, { status: 404 }),
     };
   }
 

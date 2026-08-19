@@ -17,6 +17,7 @@ import { priorityVariant } from "@/lib/priority";
 import AttachmentLink from "@/components/attachment-link";
 import CreateTaskDialog from "./create-task-dialog";
 import CreateRecurringDialog from "./create-recurring-dialog";
+import RecurringRules from "./recurring-rules";
 import CompleteTaskDialog from "./complete-task-dialog";
 import type { TaskRecord, UserOption } from "./types";
 
@@ -39,6 +40,8 @@ export default function TaskBoard({ currentUserId }: { currentUserId: string }) 
   const [delegatedTasks, setDelegatedTasks] = useState<TaskRecord[]>([]);
   const [canDelegate, setCanDelegate] = useState(false);
   const [canAssignRecurring, setCanAssignRecurring] = useState(false);
+  // Bumped after a rule is created so the rules tab refetches.
+  const [rulesVersion, setRulesVersion] = useState(0);
   const [userMap, setUserMap] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
 
@@ -146,10 +149,16 @@ export default function TaskBoard({ currentUserId }: { currentUserId: string }) 
         <TabsList>
           <TabsTrigger value="my-tasks">My Tasks</TabsTrigger>
           <TabsTrigger value="delegated">Delegated by Me</TabsTrigger>
+          {canAssignRecurring && (
+            <TabsTrigger value="recurring">Recurring Rules</TabsTrigger>
+          )}
         </TabsList>
         <div className="flex gap-2">
           {canAssignRecurring && (
-            <CreateRecurringDialog onCreated={() => toast.success("Ab is rule ke occurrences roz apne-aap generate hongi.")} />
+            <CreateRecurringDialog onCreated={() => {
+                setRulesVersion((v) => v + 1);
+                toast.success("Ab is rule ke occurrences roz apne-aap generate hongi.");
+              }} />
           )}
           {canDelegate && <CreateTaskDialog onCreated={handleCreated} />}
         </div>
@@ -203,6 +212,11 @@ export default function TaskBoard({ currentUserId }: { currentUserId: string }) 
           </Table>
         </div>
       </TabsContent>
+      {canAssignRecurring && (
+        <TabsContent value="recurring" className="mt-4">
+          <RecurringRules refreshKey={rulesVersion} />
+        </TabsContent>
+      )}
     </Tabs>
   );
 }

@@ -28,7 +28,7 @@ export interface InwardRecord {
   Fail_Reason: string;
 }
 
-interface FailureLogRecord {
+export interface FailureLogRecord {
   Log_ID: string;
   Linked_Entry_ID: string;
   Timestamp: string;
@@ -41,7 +41,7 @@ interface FailureLogRecord {
   Verified_By: string;
 }
 
-interface ImsInwardRecord {
+export interface ImsInwardRecord {
   Record_ID: string;
   Linked_Entry_ID: string;
   Timestamp: string;
@@ -54,6 +54,18 @@ interface ImsInwardRecord {
 
 export async function listInwardEntries(): Promise<InwardRecord[]> {
   return getModuleRows<InwardRecord>(MODULE_KEY);
+}
+
+/** Rejected quantities routed here by submitQualityCheck, newest first. */
+export async function listFailureLog(): Promise<FailureLogRecord[]> {
+  const rows = await getModuleRows<FailureLogRecord>(FAILURE_LOG_KEY);
+  return rows.reverse();
+}
+
+/** Accepted quantities routed here by submitQualityCheck, newest first. */
+export async function listImsInward(): Promise<ImsInwardRecord[]> {
+  const rows = await getModuleRows<ImsInwardRecord>(IMS_INWARD_KEY);
+  return rows.reverse();
 }
 
 interface CreateInwardInput {

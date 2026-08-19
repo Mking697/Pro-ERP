@@ -4,6 +4,7 @@ import type { SessionPayload } from "@/lib/auth/session";
 import { Badge } from "@/components/ui/badge";
 import NavLinks, { type NavItem } from "@/components/nav-links";
 import LogoutButton from "@/app/dashboard/logout-button";
+import { isPlatformAdmin } from "@/lib/platform/admin";
 
 /**
  * The frame every signed-in page sits inside.
@@ -42,6 +43,14 @@ export default async function AppShell({
     items.push({ href: "/admin/users", label: "Users" });
     items.push({ href: "/admin/settings", label: "Settings" });
   }
+
+  // Platform operator only — not an organization Admin.
+  if (isPlatformAdmin(session.email)) {
+    items.push({ href: "/platform", label: "Platform" });
+  }
+
+  // Last, so it never pushes day-to-day work off a narrow screen.
+  items.push({ href: "/guide", label: "Guide" });
 
   return (
     <div className="flex min-h-dvh flex-col bg-muted/30">

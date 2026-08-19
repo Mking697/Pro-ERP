@@ -149,6 +149,22 @@ export default async function DashboardPage() {
 
             <Card>
               <CardHeader>
+                <CardTitle>Kaise use karein</CardTitle>
+              </CardHeader>
+              <CardContent className="flex flex-wrap items-center justify-between gap-3">
+                <p className="text-sm text-muted-foreground">
+                  Guidebook me sirf wahi steps hain jo aapke access se jude hain.
+                </p>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  render={<Link href="/guide">Guidebook kholein</Link>}
+                />
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
                 <CardTitle>Upcoming Tasks</CardTitle>
               </CardHeader>
               <CardContent className="space-y-2">
