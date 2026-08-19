@@ -37,15 +37,31 @@ export default function FileUploadField({
       const formData = new FormData();
       formData.append("file", file);
       const res = await fetch("/api/drive/upload", { method: "POST", body: formData });
-      const data = await res.json();
+
+      // Not every failure comes back as JSON — a platform-level 413 or a gateway error
+      // is plain text, and parsing it blindly threw, leaving the user with no message
+      // at all and an upload that silently did nothing.
+      const data = await res.json().catch(() => null);
 
       if (!res.ok) {
-        toast.error(data.error ?? "Upload nahi ho paya.");
+        toast.error(
+          data?.error ??
+            (res.status === 413
+              ? `File ${MAX_SIZE_MB}MB se chhoti honi chahiye.`
+              : `Upload nahi ho paya (${res.status}).`)
+        );
+        return;
+      }
+
+      if (!data?.url) {
+        toast.error("Upload nahi ho paya — server se file ka link nahi mila.");
         return;
       }
 
       onChange(data.url);
       toast.success("File upload ho gayi.");
+    } catch {
+      toast.error("Upload nahi ho paya. Internet check karke dobara try karein.");
     } finally {
       setUploading(false);
       if (inputRef.current) inputRef.current.value = "";
