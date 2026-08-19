@@ -5,9 +5,12 @@ const SESSION_TTL = "8h";
 
 export interface SessionPayload {
   userId: string;
+  orgId: string;
   email: string;
   fullName: string;
   role: string;
+  /** Module keys this user may work in — see src/lib/moduleAccess.ts. */
+  access: string[];
 }
 
 function getSecretKey(): Uint8Array {
@@ -29,16 +32,21 @@ export async function signSession(payload: SessionPayload): Promise<string> {
 export async function verifySession(token: string): Promise<SessionPayload | null> {
   try {
     const { payload } = await jwtVerify(token, getSecretKey());
-    const { userId, email, fullName, role } = payload as Record<string, unknown>;
+    const { userId, orgId, email, fullName, role, access } = payload as Record<string, unknown>;
+    // orgId is what scopes every sheet read to one tenant — a token without it is
+    // rejected outright rather than being allowed to fall back to some default org.
     if (
       typeof userId !== "string" ||
+      typeof orgId !== "string" ||
       typeof email !== "string" ||
       typeof fullName !== "string" ||
-      typeof role !== "string"
+      typeof role !== "string" ||
+      !Array.isArray(access) ||
+      !access.every((a): a is string => typeof a === "string")
     ) {
       return null;
     }
-    return { userId, email, fullName, role };
+    return { userId, orgId, email, fullName, role, access };
   } catch {
     return null;
   }

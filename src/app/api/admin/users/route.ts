@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import { MODULE_ACCESS_KEYS } from "@/lib/moduleAccess";
 import { requireRole } from "@/lib/auth/guard";
 import { listUsers, createUser, toSafeUser } from "@/lib/auth/users";
 import { ROLES } from "@/lib/roles";
@@ -19,6 +20,7 @@ const createSchema = z.object({
   role: z.enum(ROLES),
   department: z.string().optional().default(""),
   phoneNumber: z.string().optional().default(""),
+  moduleAccess: z.array(z.enum(MODULE_ACCESS_KEYS)).optional().default([]),
 });
 
 export async function POST(request: Request) {

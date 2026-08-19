@@ -1,15 +1,19 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { requireRole } from "@/lib/auth/guard";
+import { requireModule } from "@/lib/auth/guard";
 import { listRecurringTasks, createRecurringTask } from "@/lib/recurringTasks";
-import { DELEGATOR_ROLES } from "@/lib/roles";
+import { tryModule } from "@/lib/moduleSheets";
 import { FREQUENCY_CODES } from "@/lib/frequency";
 
 export async function GET() {
-  const guard = await requireRole(DELEGATOR_ROLES);
+  const guard = await requireModule("RECURRING_ASSIGN");
   if (!guard.ok) return guard.response;
 
-  const rules = await listRecurringTasks();
+  const rules = await tryModule(() => listRecurringTasks());
+  if (rules === null) {
+    return NextResponse.json({ rules: [], setupRequired: "Recurring Tasks" });
+  }
+
   return NextResponse.json({ rules });
 }
 
@@ -21,7 +25,7 @@ const createSchema = z.object({
 });
 
 export async function POST(request: Request) {
-  const guard = await requireRole(DELEGATOR_ROLES);
+  const guard = await requireModule("RECURRING_ASSIGN");
   if (!guard.ok) return guard.response;
 
   const body = await request.json().catch(() => null);

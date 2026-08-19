@@ -59,7 +59,7 @@ export async function POST(request: Request) {
   }
 
   await upsertSetting(def.settingKey, url);
-  invalidateModuleTarget(moduleKey);
+  await invalidateModuleTarget(moduleKey);
 
   return NextResponse.json({ success: true });
 }

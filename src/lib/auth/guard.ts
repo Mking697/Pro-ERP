@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { verifySession, SESSION_COOKIE, type SessionPayload } from "@/lib/auth/session";
+import { getModuleAccessDefinition, type ModuleAccessKey } from "@/lib/moduleAccess";
 
 type GuardResult =
   | { ok: true; session: SessionPayload }
@@ -31,6 +32,32 @@ export async function requireRole(allowedRoles: string[]): Promise<GuardResult> 
     return {
       ok: false,
       response: NextResponse.json({ error: "Forbidden." }, { status: 403 }),
+    };
+  }
+
+  return guard;
+}
+
+/**
+ * For use inside API route handlers — checks the caller holds a specific module grant.
+ *
+ * Grants live on the session, so this costs no sheet read. Admins hold every grant
+ * implicitly (see effectiveModuleAccess), which is baked into the token at login.
+ */
+export async function requireModule(key: ModuleAccessKey): Promise<GuardResult> {
+  const guard = await requireSession();
+  if (!guard.ok) return guard;
+
+  if (!guard.session.access.includes(key)) {
+    const def = getModuleAccessDefinition(key);
+    return {
+      ok: false,
+      response: NextResponse.json(
+        {
+          error: `Aapke paas "${def?.label ?? key}" ka access nahi hai. Apne Admin se kahein.`,
+        },
+        { status: 403 }
+      ),
     };
   }
 

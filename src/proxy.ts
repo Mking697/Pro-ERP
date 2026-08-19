@@ -2,12 +2,23 @@ import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { verifySession, SESSION_COOKIE } from "@/lib/auth/session";
 
-const PUBLIC_PATHS = ["/login"];
+const PUBLIC_PATHS = ["/login", "/signup"];
 
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
-  if (pathname.startsWith("/api/auth")) {
+  // Routes that authenticate themselves and must not be bounced to /login.
+  //
+  // Signup has no session by definition. Cron routes are called by Vercel Cron with only
+  // an Authorization header and no cookie — redirecting those to /login means the daily
+  // jobs silently never run. Both cron handlers check CRON_SECRET (all organizations) or
+  // an Admin session (their own organization) before doing any work.
+  if (
+    pathname.startsWith("/api/auth") ||
+    pathname.startsWith("/api/signup") ||
+    pathname.startsWith("/api/cron") ||
+    pathname.startsWith("/api/whatsapp/send-reminders")
+  ) {
     return NextResponse.next();
   }
 

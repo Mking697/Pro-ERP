@@ -4,10 +4,11 @@ import {
   appendSheetRow,
   updateSheetRow,
   rowsToObjects,
-} from "@/lib/googleSheets";
+} from "@/lib/tenantSheets";
 import { getSetting } from "@/lib/settings";
 import { extractSpreadsheetId, extractGid } from "@/lib/sheetUrl";
-import { cached, invalidateCache } from "@/lib/cache";
+import { tenantCached, invalidateTenantCache } from "@/lib/cache";
+import { getTenantOrgId } from "@/lib/tenant";
 
 export interface ModuleDefinition {
   key: string;
@@ -143,15 +144,43 @@ interface ResolvedTarget {
   sheetTitle: string;
 }
 
+/**
+ * A module whose sheet the organization has not connected yet. Distinct from a real
+ * failure: a freshly signed-up org legitimately has none of these connected, and its
+ * pages should invite it to finish onboarding rather than render an error.
+ */
+export class ModuleNotConfiguredError extends Error {
+  constructor(
+    readonly moduleKey: string,
+    readonly label: string
+  ) {
+    super(
+      `"${label}" ka Google Sheet abhi configure nahi hua hai. Admin > Settings me jaake iska URL paste karein.`
+    );
+    this.name = "ModuleNotConfiguredError";
+  }
+}
+
+/** Runs a module read, returning null when that module's sheet is not connected yet. */
+export async function tryModule<T>(fn: () => Promise<T>): Promise<T | null> {
+  try {
+    return await fn();
+  } catch (error) {
+    if (error instanceof ModuleNotConfiguredError) return null;
+    throw error;
+  }
+}
+
 async function resolveModuleTarget(moduleKey: string): Promise<ResolvedTarget> {
   const def = getModuleDefinition(moduleKey);
+  const orgId = await getTenantOrgId();
 
-  return cached(`module-target:${moduleKey}`, 60_000, async () => {
+  // Scoped to the org: every tenant connects a different spreadsheet under the same
+  // module key, so an unscoped key would point one org's writes at another's sheet.
+  return tenantCached(orgId, `module-target:${moduleKey}`, 60_000, async () => {
     const url = await getSetting(def.settingKey);
     if (!url) {
-      throw new Error(
-        `"${def.label}" ka Google Sheet abhi configure nahi hua hai. Admin > Settings me jaake iska URL paste karein.`
-      );
+      throw new ModuleNotConfiguredError(moduleKey, def.label);
     }
 
     const spreadsheetId = extractSpreadsheetId(url);
@@ -194,7 +223,7 @@ async function ensureHeaderRow(target: ResolvedTarget, headers: string[]): Promi
     await sheets.spreadsheets.values.update({
       spreadsheetId: target.spreadsheetId,
       range: `${target.sheetTitle}!A1`,
-      valueInputOption: "USER_ENTERED",
+      valueInputOption: "RAW",
       requestBody: { values: [headers] },
     });
   }
@@ -246,17 +275,8 @@ export async function findModuleRow<T = Record<string, string>>(
   return { rowNumber: rowIndex + 1, record };
 }
 
-export function invalidateModuleTarget(moduleKey: string): void {
-  invalidateCache(`module-target:${moduleKey}`);
+export async function invalidateModuleTarget(moduleKey: string): Promise<void> {
+  invalidateTenantCache(await getTenantOrgId(), `module-target:${moduleKey}`);
 }
 
-/** Verifies the service account can access a spreadsheet before saving its URL. */
-export async function verifySheetAccess(spreadsheetId: string): Promise<boolean> {
-  try {
-    const sheets = getSheetsClient();
-    await sheets.spreadsheets.get({ spreadsheetId, fields: "spreadsheetId" });
-    return true;
-  } catch {
-    return false;
-  }
-}
+export { verifySheetAccess } from "@/lib/googleSheets";

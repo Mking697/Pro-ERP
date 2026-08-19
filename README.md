@@ -1,13 +1,51 @@
 # Pro ERP
 
-Custom ERP with Google Sheets as the database and Google Drive as file storage. Built with Next.js (App Router), Tailwind CSS, and Shadcn UI, deployable for free on Vercel.
+Multi-tenant SaaS ERP with Google Sheets as the database and Google Drive as file storage. Built with Next.js (App Router), Tailwind CSS, and Shadcn UI, deployable for free on Vercel.
+
+Any organization signs up, connects **its own** Google Sheets, Drive folder, and ChatXFlow credentials, and gets an isolated system. Every customer's data stays in their own Google account — Pro ERP only reads and writes it.
 
 ## Sheet architecture
 
-- **System spreadsheet** (fixed, via `.env` — `GOOGLE_SHEET_ID`): always holds the `Users` and `Settings` tabs. This is the only sheet that must exist before the app can even start, since login depends on it.
-- **Module spreadsheets** (configurable from the app, no `.env` needed): `Tasks`, `Inward & IQC FMS`, `Failure Log`, `IMS - Inward Sub-Sheet` — each is its own separate Google Sheet. An Admin connects each one by pasting its URL under **Admin → Settings**. The header row on each is created automatically the first time the app writes to it — you only need to create a blank spreadsheet and share it, not type out columns.
+Three levels, and the distinction matters:
 
-## Module 1: Authentication — Setup
+- **Platform registry** (one, for the whole install, via `.env` — `PLATFORM_SHEET_ID`): the only spreadsheet Pro ERP itself owns. It holds no business data — just two tabs:
+  - `Organizations` — `Org_ID | Org_Name | Slug | System_Sheet_ID | Owner_Email | Plan | Status | Created_At`
+  - `Users_Index` — `Email | Org_ID | User_ID | Status`, so login can find which organization an email belongs to without scanning every tenant's sheet.
+
+  Both tabs and their header rows are created automatically on the first signup. You only need a blank spreadsheet shared with the service account.
+
+- **Per-organization System spreadsheet** (one per customer, connected at signup): holds that organization's `Users` and `Settings` tabs. Its ID is recorded in the registry — never in `.env`.
+
+- **Per-organization module spreadsheets** (connected from the app): `Tasks`, `Recurring Tasks`, `Holiday List`, `Inward & IQC FMS`, `Failure Log`, `IMS - Inward Sub-Sheet` — each its own Google Sheet, connected by pasting a URL under **Onboarding** or **Admin → Settings**. Header rows are created automatically on first write; you never type out columns.
+
+## Platform setup (once, by whoever runs the install)
+
+1. Google Cloud Console → APIs & Services → enable **Google Sheets API** and **Google Drive API**.
+2. IAM & Admin → Service Accounts → create one → Keys → Add Key → JSON (download it). This single service account serves every organization.
+3. Create a blank spreadsheet for the registry, share it with the service account's `client_email` as **Editor**, and copy its ID from the URL (`/d/<ID>/edit`).
+4. Copy `.env.example` to `.env.local` and fill in `GOOGLE_SERVICE_ACCOUNT_EMAIL`, `GOOGLE_PRIVATE_KEY`, `PLATFORM_SHEET_ID`, and `JWT_SECRET`.
+5. `npm install && npm run dev` → open `http://localhost:3000/signup`.
+
+## How an organization onboards itself
+
+No admin work on your side — this is the self-serve path:
+
+1. The organization visits `/signup` and creates a blank Google Sheet.
+2. They share it with the service account address shown right on the signup form, as **Editor**.
+3. They fill in organization name, their admin account (name, email, password), and paste the sheet URL. Pro ERP verifies access, refuses a sheet already in use, creates the `Users` + `Settings` tabs with headers, registers the organization, and logs them straight in as Admin.
+4. They land on `/onboarding` to paste their module sheet URLs, their Drive folder link, and their ChatXFlow token. Whatever they connect starts working immediately; the rest can be added later from **Admin → Settings**.
+
+### Tenant isolation
+
+Every sheet read/write resolves through `getTenant()` (`src/lib/tenant.ts`), which throws rather than falling back to a default spreadsheet. Cache entries are keyed by organization (`tenantCached`) because a warm serverless instance serves many tenants and the `Settings` tab holds each one's ChatXFlow API token. Cron jobs carrying `CRON_SECRET` walk every active organization in turn; the same routes triggered from the UI run only for the signed-in admin's organization.
+
+### Known scaling limit
+
+All tenants share one Google Cloud project's Sheets API quota, so the per-minute rate limit is split across every organization on the install. Reads are batched, retried with backoff, and cached per org, and cron runs sequentially rather than in parallel — but the ceiling is real. Measure it against your own quota before onboarding a large number of organizations.
+
+## Module 1: Authentication — how it works
+
+> Setup is now handled by the signup flow above; this section documents the mechanics. The manual steps below only apply if you are seeding an organization's `Users` tab by hand.
 
 1. **Create the System spreadsheet** (any Google account). Add a tab named exactly `Users` with this header row (row 1):
 

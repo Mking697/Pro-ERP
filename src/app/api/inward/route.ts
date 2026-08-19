@@ -1,13 +1,18 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { requireSession } from "@/lib/auth/guard";
+import { requireModule, requireSession } from "@/lib/auth/guard";
 import { listInwardEntries, createInwardEntry } from "@/lib/inward";
+import { tryModule } from "@/lib/moduleSheets";
 
 export async function GET() {
   const guard = await requireSession();
   if (!guard.ok) return guard.response;
 
-  const entries = await listInwardEntries();
+  const entries = await tryModule(() => listInwardEntries());
+  if (entries === null) {
+    return NextResponse.json({ entries: [], setupRequired: "Inward & IQC FMS" });
+  }
+
   return NextResponse.json({ entries });
 }
 
@@ -20,7 +25,7 @@ const createInwardSchema = z.object({
 });
 
 export async function POST(request: Request) {
-  const guard = await requireSession();
+  const guard = await requireModule("INWARD_ENTRY");
   if (!guard.ok) return guard.response;
 
   const body = await request.json().catch(() => null);

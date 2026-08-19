@@ -1,23 +1,36 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { requireRole, requireSession } from "@/lib/auth/guard";
+import { requireModule, requireSession } from "@/lib/auth/guard";
 import { listTasks, createTask } from "@/lib/tasks";
-import { DELEGATOR_ROLES } from "@/lib/roles";
+import { tryModule } from "@/lib/moduleSheets";
 import { PRIORITIES } from "@/lib/priority";
 
 export async function GET() {
   const guard = await requireSession();
   if (!guard.ok) return guard.response;
 
-  const allTasks = await listTasks();
-  const canDelegate = DELEGATOR_ROLES.includes(guard.session.role as (typeof DELEGATOR_ROLES)[number]);
+  const canDelegate = guard.session.access.includes("TASK_DELEGATE");
+  const canAssignRecurring = guard.session.access.includes("RECURRING_ASSIGN");
+
+  // An org that has not connected its Tasks sheet yet is mid-onboarding, not broken —
+  // report that as a state the UI can render, rather than a 500.
+  const allTasks = await tryModule(() => listTasks());
+  if (allTasks === null) {
+    return NextResponse.json({
+      myTasks: [],
+      delegatedTasks: [],
+      canDelegate,
+      canAssignRecurring,
+      setupRequired: "Tasks",
+    });
+  }
 
   const myTasks = allTasks.filter((t) => t.Assigned_To === guard.session.userId);
   const delegatedTasks = canDelegate
     ? allTasks.filter((t) => t.Assigned_By === guard.session.userId)
     : [];
 
-  return NextResponse.json({ myTasks, delegatedTasks, canDelegate });
+  return NextResponse.json({ myTasks, delegatedTasks, canDelegate, canAssignRecurring });
 }
 
 // One-time tasks only — recurring tasks are created via /api/recurring-tasks instead.
@@ -32,7 +45,7 @@ const createTaskSchema = z.object({
 });
 
 export async function POST(request: Request) {
-  const guard = await requireRole(DELEGATOR_ROLES);
+  const guard = await requireModule("TASK_DELEGATE");
   if (!guard.ok) return guard.response;
 
   const body = await request.json().catch(() => null);

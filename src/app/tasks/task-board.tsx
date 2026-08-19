@@ -38,6 +38,7 @@ export default function TaskBoard({ currentUserId }: { currentUserId: string }) 
   const [myTasks, setMyTasks] = useState<TaskRecord[]>([]);
   const [delegatedTasks, setDelegatedTasks] = useState<TaskRecord[]>([]);
   const [canDelegate, setCanDelegate] = useState(false);
+  const [canAssignRecurring, setCanAssignRecurring] = useState(false);
   const [userMap, setUserMap] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
 
@@ -47,12 +48,18 @@ export default function TaskBoard({ currentUserId }: { currentUserId: string }) 
       fetch("/api/users/directory").then((res) => res.json()),
     ])
       .then(([tasksData, usersData]: [
-        { myTasks: TaskRecord[]; delegatedTasks: TaskRecord[]; canDelegate: boolean },
+        {
+          myTasks: TaskRecord[];
+          delegatedTasks: TaskRecord[];
+          canDelegate: boolean;
+          canAssignRecurring: boolean;
+        },
         { users: UserOption[] },
       ]) => {
         setMyTasks(tasksData.myTasks ?? []);
         setDelegatedTasks(tasksData.delegatedTasks ?? []);
         setCanDelegate(tasksData.canDelegate ?? false);
+        setCanAssignRecurring(tasksData.canAssignRecurring ?? false);
 
         const map: Record<string, string> = {};
         for (const u of usersData.users ?? []) map[u.userId] = u.fullName;
@@ -127,7 +134,9 @@ export default function TaskBoard({ currentUserId }: { currentUserId: string }) 
     </div>
   );
 
-  if (!canDelegate) {
+  // Assigning one-time tasks and creating recurring rules are separate grants now,
+  // so someone can hold either without the other.
+  if (!canDelegate && !canAssignRecurring) {
     return myTasksTable;
   }
 
@@ -139,8 +148,10 @@ export default function TaskBoard({ currentUserId }: { currentUserId: string }) 
           <TabsTrigger value="delegated">Delegated by Me</TabsTrigger>
         </TabsList>
         <div className="flex gap-2">
-          <CreateRecurringDialog onCreated={() => toast.success("Ab is rule ke occurrences roz apne-aap generate hongi.")} />
-          <CreateTaskDialog onCreated={handleCreated} />
+          {canAssignRecurring && (
+            <CreateRecurringDialog onCreated={() => toast.success("Ab is rule ke occurrences roz apne-aap generate hongi.")} />
+          )}
+          {canDelegate && <CreateTaskDialog onCreated={handleCreated} />}
         </div>
       </div>
 

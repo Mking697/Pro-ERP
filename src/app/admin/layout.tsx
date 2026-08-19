@@ -1,7 +1,7 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
-import Link from "next/link";
 import { verifySession, SESSION_COOKIE } from "@/lib/auth/session";
+import AppShell from "@/components/app-shell";
 
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
   const cookieStore = await cookies();
@@ -11,20 +11,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
   if (!session) redirect("/login");
   if (session.role !== "Admin") redirect("/dashboard");
 
-  return (
-    <div className="mx-auto max-w-4xl space-y-6 p-6">
-      <nav className="flex items-center gap-4 border-b pb-4">
-        <Link href="/dashboard" className="text-sm text-muted-foreground hover:text-foreground">
-          Dashboard
-        </Link>
-        <Link href="/admin/users" className="text-sm font-medium hover:text-foreground">
-          Users
-        </Link>
-        <Link href="/admin/settings" className="text-sm font-medium hover:text-foreground">
-          Settings
-        </Link>
-      </nav>
-      {children}
-    </div>
-  );
+  // Navigation lives in AppShell now, so admin pages sit in the same frame as every
+  // other page rather than being an island with its own separate nav.
+  return <AppShell session={session}>{children}</AppShell>;
 }

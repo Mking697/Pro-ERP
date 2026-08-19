@@ -1,7 +1,7 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { verifySession, SESSION_COOKIE } from "@/lib/auth/session";
-import { IQC_ROLES } from "@/lib/roles";
+import AppShell from "@/components/app-shell";
 import InwardBoard from "./inward-board";
 
 export default async function InwardPage() {
@@ -11,17 +11,19 @@ export default async function InwardPage() {
 
   if (!session) redirect("/login");
 
-  const canVerify = IQC_ROLES.includes(session.role as (typeof IQC_ROLES)[number]);
+  const canVerify = session.access.includes("IQC_CHECK");
 
   return (
-    <div className="mx-auto max-w-4xl space-y-6 p-6">
-      <div>
-        <h1 className="text-2xl font-semibold">Inward & IQC</h1>
-        <p className="text-muted-foreground">
-          Material inward entries aur unka quality check status.
-        </p>
+    <AppShell session={session}>
+      <div className="space-y-6">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight">Inward &amp; IQC</h1>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Material inward entries aur unka quality check status.
+          </p>
+        </div>
+        <InwardBoard canVerify={canVerify} />
       </div>
-      <InwardBoard canVerify={canVerify} />
-    </div>
+    </AppShell>
   );
 }

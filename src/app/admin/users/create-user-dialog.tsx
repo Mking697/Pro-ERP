@@ -12,6 +12,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import PasswordInput from "@/components/password-input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import {
@@ -22,6 +23,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { ROLES } from "@/lib/roles";
+import ModuleAccessPicker from "@/components/module-access-picker";
 import { generateRandomPassword } from "@/lib/generatePassword";
 import type { SafeUser } from "./types";
 
@@ -38,6 +40,7 @@ export default function CreateUserDialog({
   const [role, setRole] = useState<string>("Employee");
   const [department, setDepartment] = useState("");
   const [phoneNumber, setPhoneNumber] = useState("");
+  const [moduleAccess, setModuleAccess] = useState<string[]>([]);
 
   function resetForm() {
     setFullName("");
@@ -46,6 +49,7 @@ export default function CreateUserDialog({
     setRole("Employee");
     setDepartment("");
     setPhoneNumber("");
+    setModuleAccess([]);
   }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -55,7 +59,15 @@ export default function CreateUserDialog({
       const res = await fetch("/api/admin/users", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ fullName, email, password, role, department, phoneNumber }),
+        body: JSON.stringify({
+          fullName,
+          email,
+          password,
+          role,
+          department,
+          phoneNumber,
+          moduleAccess,
+        }),
       });
       const data = await res.json();
 
@@ -106,8 +118,10 @@ export default function CreateUserDialog({
           <div className="space-y-2">
             <Label htmlFor="password">Password</Label>
             <div className="flex gap-2">
-              <Input
+              <PasswordInput
                 id="password"
+                className="flex-1"
+                autoComplete="new-password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
@@ -156,6 +170,12 @@ export default function CreateUserDialog({
               />
             </div>
           </div>
+          <ModuleAccessPicker
+            value={moduleAccess}
+            onChange={setModuleAccess}
+            isAdmin={role === "Admin"}
+          />
+
           <DialogFooter>
             <Button type="submit" disabled={loading}>
               {loading ? "Creating..." : "Create User"}

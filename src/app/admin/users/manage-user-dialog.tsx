@@ -11,6 +11,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import PasswordInput from "@/components/password-input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
@@ -23,6 +24,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { ROLES } from "@/lib/roles";
+import ModuleAccessPicker from "@/components/module-access-picker";
+import { parseModuleAccess } from "@/lib/moduleAccess";
 import { generateRandomPassword } from "@/lib/generatePassword";
 import type { SafeUser } from "./types";
 
@@ -38,6 +41,9 @@ export default function ManageUserDialog({
   const [department, setDepartment] = useState(user.Department);
   const [phoneNumber, setPhoneNumber] = useState(user.Phone_Number);
   const [active, setActive] = useState(user.Status === "Active");
+  const [moduleAccess, setModuleAccess] = useState<string[]>(
+    parseModuleAccess(user.Module_Access)
+  );
   const [savingDetails, setSavingDetails] = useState(false);
 
   const [newPassword, setNewPassword] = useState("");
@@ -54,6 +60,7 @@ export default function ManageUserDialog({
           department,
           phoneNumber,
           status: active ? "Active" : "Inactive",
+          moduleAccess,
         }),
       });
       const data = await res.json();
@@ -139,6 +146,12 @@ export default function ManageUserDialog({
               />
             </div>
           </div>
+          <ModuleAccessPicker
+            value={moduleAccess}
+            onChange={setModuleAccess}
+            isAdmin={role === "Admin"}
+          />
+
           <div className="flex items-center justify-between rounded-lg border p-3">
             <Label htmlFor="edit-active">Active</Label>
             <Switch id="edit-active" checked={active} onCheckedChange={setActive} />
@@ -153,8 +166,10 @@ export default function ManageUserDialog({
         <div className="space-y-2">
           <Label htmlFor="new-password">Reset Password</Label>
           <div className="flex gap-2">
-            <Input
+            <PasswordInput
               id="new-password"
+              className="flex-1"
+              autoComplete="new-password"
               value={newPassword}
               onChange={(e) => setNewPassword(e.target.value)}
               placeholder="Naya password"

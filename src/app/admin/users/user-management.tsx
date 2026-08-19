@@ -13,6 +13,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import CreateUserDialog from "./create-user-dialog";
 import ManageUserDialog from "./manage-user-dialog";
+import { parseModuleAccess, getModuleAccessDefinition } from "@/lib/moduleAccess";
 import type { SafeUser } from "./types";
 
 export default function UserManagement() {
@@ -52,6 +53,7 @@ export default function UserManagement() {
               <TableHead>Email</TableHead>
               <TableHead>Role</TableHead>
               <TableHead>Department</TableHead>
+              <TableHead>Access</TableHead>
               <TableHead>Status</TableHead>
               <TableHead className="text-right">Actions</TableHead>
             </TableRow>
@@ -59,7 +61,7 @@ export default function UserManagement() {
           <TableBody>
             {users.length === 0 && (
               <TableRow>
-                <TableCell colSpan={6} className="text-center text-muted-foreground">
+                <TableCell colSpan={7} className="text-center text-muted-foreground">
                   Koi user nahi mila. &quot;Add User&quot; se pehla user banayein.
                 </TableCell>
               </TableRow>
@@ -70,6 +72,27 @@ export default function UserManagement() {
                 <TableCell>{user.Email}</TableCell>
                 <TableCell>{user.Role}</TableCell>
                 <TableCell>{user.Department || "—"}</TableCell>
+                <TableCell>
+                  {user.Role === "Admin" ? (
+                    <Badge variant="secondary">Full access</Badge>
+                  ) : (
+                    (() => {
+                      const granted = parseModuleAccess(user.Module_Access);
+                      return granted.length === 0 ? (
+                        <span className="text-sm text-muted-foreground">—</span>
+                      ) : (
+                        <span
+                          className="text-sm text-muted-foreground"
+                          title={granted
+                            .map((k) => getModuleAccessDefinition(k)?.label ?? k)
+                            .join(", ")}
+                        >
+                          {granted.length} module{granted.length > 1 ? "s" : ""}
+                        </span>
+                      );
+                    })()
+                  )}
+                </TableCell>
                 <TableCell>
                   <Badge variant={user.Status === "Active" ? "default" : "secondary"}>
                     {user.Status}

@@ -1,8 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { requireRole } from "@/lib/auth/guard";
+import { requireModule } from "@/lib/auth/guard";
 import { submitQualityCheck } from "@/lib/inward";
-import { IQC_ROLES } from "@/lib/roles";
 
 const qualityCheckSchema = z
   .object({
@@ -20,7 +19,7 @@ export async function POST(
   request: Request,
   { params }: { params: Promise<{ entryId: string }> }
 ) {
-  const guard = await requireRole(IQC_ROLES);
+  const guard = await requireModule("IQC_CHECK");
   if (!guard.ok) return guard.response;
 
   const { entryId } = await params;

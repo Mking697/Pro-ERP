@@ -3,8 +3,10 @@ import { redirect } from "next/navigation";
 import { verifySession, SESSION_COOKIE } from "@/lib/auth/session";
 import { listUsers } from "@/lib/auth/users";
 import { listTasks } from "@/lib/tasks";
+import { tryModule } from "@/lib/moduleSheets";
+import SetupRequired from "@/components/setup-required";
+import AppShell from "@/components/app-shell";
 import { computeMisSummary, getScoreColorClass } from "@/lib/mis";
-import { DELEGATOR_ROLES } from "@/lib/roles";
 import {
   Table,
   TableBody,
@@ -20,11 +22,21 @@ export default async function PerformancePage() {
   const session = token ? await verifySession(token) : null;
 
   if (!session) redirect("/login");
-  if (!DELEGATOR_ROLES.includes(session.role as (typeof DELEGATOR_ROLES)[number])) {
+  if (!session.access.includes("PERFORMANCE_VIEW")) {
     redirect("/dashboard");
   }
 
-  const [users, allTasks] = await Promise.all([listUsers(), listTasks()]);
+  const [users, allTasks] = await Promise.all([
+    listUsers(),
+    tryModule(() => listTasks()),
+  ]);
+  if (allTasks === null) {
+    return (
+      <AppShell session={session}>
+        <SetupRequired what="Tasks" isAdmin={session.role === "Admin"} />
+      </AppShell>
+    );
+  }
 
   const rows = users
     .filter((u) => u.Status === "Active")
@@ -35,11 +47,14 @@ export default async function PerformancePage() {
     .sort((a, b) => (b.summary.score ?? -1) - (a.summary.score ?? -1));
 
   return (
-    <div className="mx-auto max-w-3xl space-y-6 p-6">
-      <div>
-        <h1 className="text-2xl font-semibold">Team Performance</h1>
-        <p className="text-muted-foreground">MIS score, timestamps ke hisaab se dynamically calculate hota hai.</p>
-      </div>
+    <AppShell session={session}>
+      <div className="space-y-6">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight">Team Performance</h1>
+          <p className="mt-1 text-sm text-muted-foreground">
+            MIS score, timestamps ke hisaab se dynamically calculate hota hai.
+          </p>
+        </div>
 
       <div className="rounded-lg border">
         <Table>
@@ -75,7 +90,8 @@ export default async function PerformancePage() {
             ))}
           </TableBody>
         </Table>
+        </div>
       </div>
-    </div>
+    </AppShell>
   );
 }

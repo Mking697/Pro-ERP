@@ -1,5 +1,11 @@
 import bcrypt from "bcryptjs";
-import { getSheetRows, appendSheetRow, updateSheetRow, rowsToObjects } from "@/lib/googleSheets";
+import { getSheetRows, appendSheetRow, updateSheetRow, rowsToObjects } from "@/lib/tenantSheets";
+import { getTenantOrgId } from "@/lib/tenant";
+import { generateId } from "@/lib/id";
+import { indexUser, isEmailTaken, updateIndexedUserStatus } from "@/lib/platform/registry";
+import { getSheetsClient } from "@/lib/googleSheets";
+import { getTenantSheetId } from "@/lib/tenant";
+import { serializeModuleAccess } from "@/lib/moduleAccess";
 
 const USERS_TAB = "Users";
 
@@ -14,6 +20,8 @@ export interface SheetUser {
   Status: string;
   Created_At: string;
   Created_By: string;
+  /** Comma-separated module keys — see src/lib/moduleAccess.ts. */
+  Module_Access: string;
 }
 
 export type SafeSheetUser = Omit<SheetUser, "Password_Hash">;
@@ -29,10 +37,11 @@ export function toSafeUser(user: SheetUser): SafeSheetUser {
     Status: user.Status,
     Created_At: user.Created_At,
     Created_By: user.Created_By,
+    Module_Access: user.Module_Access ?? "",
   };
 }
 
-const USERS_HEADERS: (keyof SheetUser)[] = [
+export const USERS_HEADERS: (keyof SheetUser)[] = [
   "User_ID",
   "Full_Name",
   "Email",
@@ -43,10 +52,43 @@ const USERS_HEADERS: (keyof SheetUser)[] = [
   "Status",
   "Created_At",
   "Created_By",
+  "Module_Access",
 ];
 
 function userToRow(user: SheetUser): string[] {
   return USERS_HEADERS.map((h) => user[h] ?? "");
+}
+
+// One check per warm instance per spreadsheet — the header only ever grows.
+const headersEnsured = new Set<string>();
+
+/**
+ * Adds any columns the code knows about but the sheet's header row is missing.
+ *
+ * Rows are read back by matching against the sheet's own header row, so a column added
+ * to USERS_HEADERS after an organization already connected its sheet would otherwise be
+ * written into a position no header names — the value would be invisible on read. This
+ * makes adding a column a code change instead of a manual instruction to every customer.
+ */
+export async function ensureUsersHeaders(): Promise<void> {
+  const spreadsheetId = await getTenantSheetId();
+  if (headersEnsured.has(spreadsheetId)) return;
+
+  const rows = await getSheetRows(USERS_TAB);
+  const existing = rows[0] ?? [];
+  const missing = USERS_HEADERS.filter((h) => !existing.includes(h));
+
+  if (missing.length > 0) {
+    const sheets = getSheetsClient();
+    await sheets.spreadsheets.values.update({
+      spreadsheetId,
+      range: `${USERS_TAB}!A1`,
+      valueInputOption: "RAW",
+      requestBody: { values: [[...existing, ...missing]] },
+    });
+  }
+
+  headersEnsured.add(spreadsheetId);
 }
 
 /**
@@ -88,18 +130,21 @@ interface CreateUserInput {
   department: string;
   phoneNumber: string;
   createdBy: string;
+  moduleAccess?: readonly string[];
 }
 
 export async function createUser(input: CreateUserInput): Promise<SheetUser> {
-  const rows = await getSheetRows(USERS_TAB);
-  const users = rowsToObjects<SheetUser>(rows);
-
+  const orgId = await getTenantOrgId();
+  await ensureUsersHeaders();
   const normalizedEmail = input.email.trim().toLowerCase();
-  if (users.some((u) => u.Email?.trim().toLowerCase() === normalizedEmail)) {
+
+  // The login form asks only for an email, so an address has to identify exactly one
+  // account across the whole platform — not just within this organization.
+  if (await isEmailTaken(normalizedEmail)) {
     throw new Error("Is email se pehle se ek user maujood hai.");
   }
 
-  const userId = `UID${String(users.length + 1).padStart(3, "0")}`;
+  const userId = generateId("UID");
   const passwordHash = await hashPassword(input.password);
 
   const newUser: SheetUser = {
@@ -113,9 +158,20 @@ export async function createUser(input: CreateUserInput): Promise<SheetUser> {
     Status: "Active",
     Created_At: new Date().toISOString(),
     Created_By: input.createdBy,
+    Module_Access: serializeModuleAccess(input.moduleAccess ?? []),
   };
 
   await appendSheetRow(USERS_TAB, userToRow(newUser));
+
+  // The platform index is what lets login find this user's organization from their
+  // email alone, without scanning every tenant's Users tab.
+  await indexUser({
+    Email: normalizedEmail,
+    Org_ID: orgId,
+    User_ID: userId,
+    Status: newUser.Status,
+  });
+
   return newUser;
 }
 
@@ -133,9 +189,11 @@ interface UpdateUserInput {
   department?: string;
   phoneNumber?: string;
   status?: string;
+  moduleAccess?: readonly string[];
 }
 
 export async function updateUser(userId: string, patch: UpdateUserInput): Promise<SheetUser> {
+  await ensureUsersHeaders();
   const found = await findUserRow(userId);
   if (!found) {
     throw new Error("User nahi mila.");
@@ -147,9 +205,18 @@ export async function updateUser(userId: string, patch: UpdateUserInput): Promis
     Department: patch.department ?? found.user.Department,
     Phone_Number: patch.phoneNumber ?? found.user.Phone_Number,
     Status: patch.status ?? found.user.Status,
+    Module_Access:
+      patch.moduleAccess !== undefined
+        ? serializeModuleAccess(patch.moduleAccess)
+        : found.user.Module_Access,
   };
 
   await updateSheetRow(USERS_TAB, found.rowNumber, userToRow(updated));
+
+  if (patch.status && patch.status !== found.user.Status) {
+    await updateIndexedUserStatus(updated.Email, updated.Status);
+  }
+
   return updated;
 }
 

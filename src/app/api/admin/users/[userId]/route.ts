@@ -3,12 +3,14 @@ import { z } from "zod";
 import { requireRole } from "@/lib/auth/guard";
 import { updateUser, toSafeUser } from "@/lib/auth/users";
 import { ROLES } from "@/lib/roles";
+import { MODULE_ACCESS_KEYS } from "@/lib/moduleAccess";
 
 const updateSchema = z.object({
   role: z.enum(ROLES).optional(),
   department: z.string().optional(),
   phoneNumber: z.string().optional(),
   status: z.enum(["Active", "Inactive"]).optional(),
+  moduleAccess: z.array(z.enum(MODULE_ACCESS_KEYS)).optional(),
 });
 
 export async function PATCH(
