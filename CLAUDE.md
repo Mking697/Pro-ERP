@@ -28,6 +28,7 @@ Multi-tenant SaaS ERP with Google Sheets as the database and Google Drive as fil
   - Org connected a **Shared Drive** folder → files go to its own Drive.
   - Otherwise (or if a Drive upload fails at runtime) → **Vercel Blob**, keyed `orgs/<orgId>/…` so tenants cannot collide. Needs `BLOB_READ_WRITE_TOKEN`, which Vercel injects once a Blob store is connected to the project.
   - Connecting a Drive folder runs a real upload-and-delete probe (`verifyDriveFolderWritable`), so an org learns at setup that a personal-Drive folder will not work — not later, when a user tries to attach a file.
+  - **Verified on production 2026-08-19**: an org with a personal-Drive folder fell through to blob without losing the file, an org with no Drive folder went straight to blob, and both uploaded files fetched back as the exact bytes. Blob store `pro-erp-attachments` (Public, region bom1) is connected to the project; `GET /api/health` reports `blobStorage`.
 - **Sheets API quota is the platform's scaling ceiling** — every tenant shares one service account, so one Google Cloud project's per-minute limit is split across all organizations. Mitigated (batch reads, retry/backoff, per-org caches, sequential cron) but not removed; measure it before onboarding many paying orgs.
 - No platform-admin UI — organizations can only be paused/inspected by editing the registry sheet by hand.
 - No billing — every org is created on the `Free` plan and nothing enforces plan limits.
