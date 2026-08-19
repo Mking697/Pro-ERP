@@ -1,3 +1,4 @@
+import LogoForm from "./logo-form";
 import SheetConnectionsForm from "./sheet-connections-form";
 import WhatsAppForm from "./whatsapp-form";
 
@@ -10,6 +11,7 @@ export default function AdminSettingsPage() {
           Google Sheets, Drive, aur WhatsApp connections manage karein.
         </p>
       </div>
+      <LogoForm />
       <SheetConnectionsForm />
       <WhatsAppForm />
     </div>

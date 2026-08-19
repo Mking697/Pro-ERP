@@ -17,6 +17,8 @@ import { runWithTenant, tenantFromOrgId } from "@/lib/tenant";
 import { createUser } from "@/lib/auth/users";
 import { signSession, SESSION_COOKIE } from "@/lib/auth/session";
 import { effectiveModuleAccess } from "@/lib/moduleAccess";
+import { uploadOrgLogo, decodeDataUrl } from "@/lib/storage";
+import { upsertSetting } from "@/lib/settings";
 
 const signupSchema = z.object({
   orgName: z.string().trim().min(2, "Organization ka naam daalein."),
@@ -25,6 +27,8 @@ const signupSchema = z.object({
   password: z.string().min(8, "Password kam se kam 8 characters ka ho."),
   phoneNumber: z.string().trim().optional().default(""),
   systemSheetUrl: z.string().trim().min(1, "System sheet ka URL daalein."),
+  /** Optional `data:image/png;base64,...` from the signup form. */
+  logo: z.string().optional(),
 });
 
 function fail(message: string, status = 400) {
@@ -39,7 +43,8 @@ export async function POST(request: Request) {
     return fail(parsed.error.issues[0]?.message ?? "Form theek se bharein.");
   }
 
-  const { orgName, fullName, email, password, phoneNumber, systemSheetUrl } = parsed.data;
+  const { orgName, fullName, email, password, phoneNumber, systemSheetUrl, logo } =
+    parsed.data;
 
   const spreadsheetId = extractSpreadsheetId(systemSheetUrl);
   if (!spreadsheetId) {
@@ -93,6 +98,25 @@ export async function POST(request: Request) {
       createdBy: "Signup",
     })
   );
+
+  // After the org exists, so the logo is stored under its own id and no unauthenticated
+  // upload endpoint has to exist. A logo failure must not undo a successful signup —
+  // the organization is created either way and can set a logo later from Settings.
+  if (logo) {
+    try {
+      const decoded = decodeDataUrl(logo);
+      if (decoded) {
+        const url = await uploadOrgLogo(org.Org_ID, {
+          fileName: "logo",
+          mimeType: decoded.mimeType,
+          buffer: decoded.buffer,
+        });
+        await runWithTenant(tenant, () => upsertSetting("ORG_LOGO_URL", url));
+      }
+    } catch (error) {
+      console.error("[signup] logo upload failed, continuing:", error);
+    }
+  }
 
   const token = await signSession({
     userId: admin.User_ID,

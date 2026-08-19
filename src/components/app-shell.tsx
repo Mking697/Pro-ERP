@@ -5,6 +5,8 @@ import { Badge } from "@/components/ui/badge";
 import NavLinks, { type NavItem } from "@/components/nav-links";
 import LogoutButton from "@/app/dashboard/logout-button";
 import { isPlatformAdmin } from "@/lib/platform/admin";
+import { getSetting } from "@/lib/settings";
+import { OrgLogo } from "@/components/logo-picker";
 
 /**
  * The frame every signed-in page sits inside.
@@ -21,6 +23,8 @@ export default async function AppShell({
   children: React.ReactNode;
 }) {
   const org = await getOrganization(session.orgId);
+  // Settings are cached per org, so this costs nothing after the first page view.
+  const logoUrl = await getSetting("ORG_LOGO_URL").catch(() => null);
 
   const items: NavItem[] = [{ href: "/dashboard", label: "Dashboard" }];
 
@@ -60,12 +64,7 @@ export default async function AppShell({
             href="/dashboard"
             className="flex min-w-0 items-center gap-2.5 rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
-            <span
-              aria-hidden="true"
-              className="grid size-8 shrink-0 place-items-center rounded-md bg-foreground text-xs font-bold text-background"
-            >
-              PE
-            </span>
+            <OrgLogo url={logoUrl} name={org?.Org_Name ?? "Pro ERP"} />
             <span className="min-w-0">
               <span className="block text-sm font-semibold leading-tight">Pro ERP</span>
               {org && (

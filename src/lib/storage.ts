@@ -98,3 +98,60 @@ export async function uploadAttachment(input: {
 
   return uploadToBlob(orgId, input.fileName, input.mimeType, input.buffer);
 }
+
+/** Rasterised logos only — an SVG can carry script, and this renders on every page. */
+const LOGO_TYPES = ["image/png", "image/jpeg", "image/webp"];
+export const MAX_LOGO_BYTES = 1024 * 1024;
+
+export function isAllowedLogoType(mimeType: string): boolean {
+  return LOGO_TYPES.includes(mimeType);
+}
+
+/**
+ * Stores an organization's logo.
+ *
+ * Always platform storage, never the org's Drive: the logo renders in the header on
+ * every page load, so it needs to come off a CDN without an auth round-trip. It is also
+ * branding rather than business data, so the "your files stay in your Drive" promise
+ * does not apply to it.
+ *
+ * Takes the org id explicitly because signup uploads a logo before any session exists.
+ */
+export async function uploadOrgLogo(
+  orgId: string,
+  input: { fileName: string; mimeType: string; buffer: Buffer }
+): Promise<string> {
+  if (!blobConfigured()) {
+    throw new StorageUnavailableError(
+      "Logo storage abhi configure nahi hui hai. Platform administrator se kahein."
+    );
+  }
+  if (!isAllowedLogoType(input.mimeType)) {
+    throw new StorageUnavailableError("Logo PNG, JPG ya WebP hona chahiye.");
+  }
+  if (input.buffer.byteLength > MAX_LOGO_BYTES) {
+    throw new StorageUnavailableError("Logo 1MB se chhota hona chahiye.");
+  }
+
+  const ext = input.mimeType.split("/")[1]?.replace("jpeg", "jpg") ?? "png";
+  const blob = await put(`orgs/${orgId}/logo-${generateId("LOGO")}.${ext}`, input.buffer, {
+    access: "public",
+    contentType: input.mimeType,
+    addRandomSuffix: false,
+  });
+
+  return blob.url;
+}
+
+/** Decodes a `data:image/png;base64,...` URL, the shape the signup form sends. */
+export function decodeDataUrl(
+  dataUrl: string
+): { mimeType: string; buffer: Buffer } | null {
+  const match = /^data:([a-z]+\/[a-z+.-]+);base64,(.+)$/i.exec(dataUrl.trim());
+  if (!match) return null;
+  try {
+    return { mimeType: match[1].toLowerCase(), buffer: Buffer.from(match[2], "base64") };
+  } catch {
+    return null;
+  }
+}

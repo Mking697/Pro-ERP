@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Input } from "@/components/ui/input";
 import PasswordInput from "@/components/password-input";
+import LogoPicker from "@/components/logo-picker";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 
@@ -16,6 +17,7 @@ export default function SignupForm({ serviceAccountEmail }: { serviceAccountEmai
   const [phoneNumber, setPhoneNumber] = useState("");
   const [password, setPassword] = useState("");
   const [systemSheetUrl, setSystemSheetUrl] = useState("");
+  const [logo, setLogo] = useState("");
   const [loading, setLoading] = useState(false);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -32,6 +34,7 @@ export default function SignupForm({ serviceAccountEmail }: { serviceAccountEmai
           phoneNumber,
           password,
           systemSheetUrl,
+          logo,
         }),
       });
       const data = await res.json();
@@ -65,6 +68,7 @@ export default function SignupForm({ serviceAccountEmail }: { serviceAccountEmai
             required
           />
         </div>
+        <LogoPicker value={logo} onChange={setLogo} />
       </div>
 
       <div className="space-y-4">
