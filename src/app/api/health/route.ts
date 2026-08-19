@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { getPlatformAdminEmails } from "@/lib/platform/admin";
 
 export const dynamic = "force-dynamic";
 
@@ -26,6 +27,8 @@ export async function GET() {
       jwtSecret: Boolean(process.env.JWT_SECRET),
       cronSecret: Boolean(process.env.CRON_SECRET),
       blobStorage: Boolean(process.env.BLOB_READ_WRITE_TOKEN),
+      // Count only — the addresses themselves stay out of a public endpoint.
+      platformAdmins: getPlatformAdminEmails().length,
     },
   });
 }
