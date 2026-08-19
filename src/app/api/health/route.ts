@@ -25,6 +25,7 @@ export async function GET() {
       platformSheet: Boolean(process.env.PLATFORM_SHEET_ID),
       jwtSecret: Boolean(process.env.JWT_SECRET),
       cronSecret: Boolean(process.env.CRON_SECRET),
+      blobStorage: Boolean(process.env.BLOB_READ_WRITE_TOKEN),
     },
   });
 }
