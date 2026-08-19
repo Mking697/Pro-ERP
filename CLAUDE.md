@@ -19,8 +19,9 @@ Multi-tenant SaaS ERP with Google Sheets as the database and Google Drive as fil
 
 **Verified end-to-end against live Google Sheets (2026-08-19)** — two organizations created through `/signup`, module sheets connected, and every flow exercised with real data: task assign → complete → MIS score (50%, matching the formula), recurring rule → generated occurrence, inward → IQC → simultaneous Failure Log + IMS Inward routing, cron under `CRON_SECRET` (idempotent on re-run). Tenant isolation confirmed by interleaved requests from two orgs: users, connected sheets, Drive folder, tasks, and ChatXFlow tokens all stayed separate, and a cross-tenant direct-ID request resolved against the caller's own sheets.
 
+**Live** at https://pro-erp-chi.vercel.app (Vercel, `Mking697/Pro-ERP` → auto-deploys on push to `main`). Production smoke test passed 2026-08-19: logins for three users across two orgs, all six pages, real task/user data, tenant isolation, module-access denials, and cron auth. `GET /api/health` reports the live commit and which env vars are set.
+
 **Not done yet / next up:**
-- Deployment to Vercel — env vars, `CRON_SECRET`, production smoke test.
 - ChatXFlow has never been called with a real token — WhatsApp send is the one integration still unproven.
 - Drive file upload not exercised yet (folder is connected and reachable, but no file has been uploaded through `/api/drive/upload`).
 - **Sheets API quota is the platform's scaling ceiling** — every tenant shares one service account, so one Google Cloud project's per-minute limit is split across all organizations. Mitigated (batch reads, retry/backoff, per-org caches, sequential cron) but not removed; measure it before onboarding many paying orgs.
