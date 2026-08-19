@@ -66,6 +66,18 @@ export const GUIDE: GuideChapter[] = [
         ],
       },
       {
+        id: "charts",
+        title: "Dashboard tab ke charts",
+        audience: "everyone",
+        summary:
+          "Dashboard tab me aapke har module ka apna chart hai — jo access aapke paas hai, sirf uske.",
+        notes: [
+          "Upar ke buttons se period badlein: Aaj, Is hafte, Is mahine, Is saal, Sab — ya From/To se apni date range.",
+          "Har chart me rang ke saath ginti bhi likhi hoti hai, isliye rang na dikhe tab bhi sab padha ja sakta hai.",
+          "Kisi bhi bar ya slice par maus le jaane se uski poori value dikhti hai.",
+        ],
+      },
+      {
         id: "dashboard",
         title: "Apna dashboard padhna",
         audience: "everyone",
@@ -73,7 +85,7 @@ export const GUIDE: GuideChapter[] = [
           "Upar teen cards hain — Pending Tasks, Completed Tasks, aur aapka MIS Score. Uske neeche tabs hain jo aapke access ke hisaab se dikhte hain.",
         notes: [
           "Overview tab me aapke modules aur aane wale tasks dikhte hain.",
-          "Performance tab me sirf score nahi, uska poora hisaab bhi hai — kaunse task se kitna credit mila.",
+          "Performance tab me sirf score nahi, uska poora hisaab bhi hai — kaunse task se kitni penalty bani.",
         ],
       },
       {
@@ -96,16 +108,17 @@ export const GUIDE: GuideChapter[] = [
         title: "MIS score kaise banta hai",
         audience: "everyone",
         summary:
-          "Score kisi ne haath se nahi daala — wo aapke tasks ke timestamps se har baar naya calculate hota hai.",
+          "Score kisi ne haath se nahi daala — wo aapke tasks ke timestamps se har baar naya calculate hota hai. Ye ek penalty score hai: 0% sabse achha, −100% sabse kharab.",
         steps: [
-          "Due date se pehle complete kiya = 1 poora credit.",
-          "Due date ke baad complete kiya = aadha (0.5) credit.",
-          "Due date nikal gayi aur task abhi bhi pending = 0 credit.",
-          "Score = mila hua credit ÷ kitne evaluate hue × 100.",
+          "Due date se pehle complete kiya = koi penalty nahi.",
+          "Due date ke baad complete kiya = aadhi penalty.",
+          "Due date nikal gayi aur task abhi bhi pending = poori penalty.",
+          "Score = − (kul penalty ÷ kitne evaluate hue) × 100.",
         ],
         notes: [
+          "Score −100% se aage ja hi nahi sakta — har task se zyada se zyada ek penalty banti hai, isliye ye ganit se hi possible nahi.",
           "Jo task abhi due nahi hua, wo score me ginta hi nahi — na fayda, na nuksaan.",
-          "Dashboard ke Performance tab me har task ki alag line hai: kya hua aur kitna credit mila.",
+          "Dashboard ke Performance tab me har task ki alag line hai: kya hua aur kitni penalty bani.",
         ],
       },
     ],
@@ -230,10 +243,17 @@ export const GUIDE: GuideChapter[] = [
         title: "Team performance dekhna",
         audience: "PERFORMANCE_VIEW",
         summary:
-          "Performance page par har active user ka MIS score, score ke hisaab se sorted.",
+          "Poori team ka score ek jagah — sabse kharab sabse upar, taaki dhyan wahin jaaye jahan zaroorat hai.",
+        steps: [
+          "Dashboard tab me neeche Performance section kholein.",
+          "Upar se period chunein — Aaj, hafta, mahina, saal, ya apni date range.",
+          "Excel export dabakar wahi list download karein jo screen par dikh rahi hai.",
+        ],
         notes: [
+          "0% se −20% theek hai, −21% se −50% par dhyan dein, −50% se neeche kharab.",
           "Har user ke saath On Time, Delay aur Not Done ka breakdown hai — sirf final number nahi.",
           "Ye wahi hisaab hai jo user apne dashboard par khud dekhta hai, toh number kabhi alag nahi hoga.",
+          "Export me wahi period jaata hai jo screen par chuna hua hai. File .csv hai, jo Excel me seedhe khulti hai.",
         ],
       },
     ],

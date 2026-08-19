@@ -5,14 +5,23 @@ export interface MisSummary {
   delay: number;
   notDone: number;
   totalEvaluated: number;
-  /** 0-100, or null when there's nothing to evaluate yet. */
+  /** Penalty points accrued — 0 is spotless. */
+  penalty: number;
+  /** 0 (best) to -100 (worst), or null when there's nothing to evaluate yet. */
   score: number | null;
 }
 
-// On-time counts full credit, a late-but-done task counts half, an overdue-and-still-pending
-// task counts zero. Tune here if the business wants a different weighting later.
-const ON_TIME_WEIGHT = 1;
-const DELAY_WEIGHT = 0.5;
+/**
+ * Scoring is a penalty scale: 0% is a clean record, -100% is the worst possible.
+ *
+ * Finishing on time costs nothing, finishing late costs half a mark, and letting a task
+ * go past its date without finishing costs a full mark. Because every penalty is between
+ * 0 and 1 per evaluated task, the total can never exceed the count — so the score cannot
+ * go past -100% by construction, with no clamp to enforce it.
+ */
+const ON_TIME_PENALTY = 0;
+const DELAY_PENALTY = 0.5;
+const NOT_DONE_PENALTY = 1;
 
 /** A task counts as "Not Done" (for scoring) only while it's overdue and still pending —
  * this is a live, timestamp-derived classification, never a status stored in the sheet. */
@@ -33,19 +42,26 @@ export function computeMisSummary(tasks: TaskRecord[]): MisSummary {
   }
 
   const totalEvaluated = onTime + delay + notDone;
+  const penalty =
+    onTime * ON_TIME_PENALTY + delay * DELAY_PENALTY + notDone * NOT_DONE_PENALTY;
   const score =
-    totalEvaluated === 0
-      ? null
-      : Math.round(((onTime * ON_TIME_WEIGHT + delay * DELAY_WEIGHT) / totalEvaluated) * 100);
+    totalEvaluated === 0 ? null : -Math.round((penalty / totalEvaluated) * 100);
 
-  return { onTime, delay, notDone, totalEvaluated, score };
+  return { onTime, delay, notDone, totalEvaluated, penalty, score };
 }
 
+/** 0 is best, -100 worst — so the thresholds run the other way from a credit score. */
 export function getScoreColorClass(score: number | null): string {
   if (score === null) return "text-muted-foreground";
-  if (score >= 80) return "text-emerald-600 dark:text-emerald-400";
-  if (score >= 50) return "text-amber-600 dark:text-amber-400";
+  if (score >= -20) return "text-emerald-600 dark:text-emerald-400";
+  if (score >= -50) return "text-amber-600 dark:text-amber-400";
   return "text-destructive";
+}
+
+/** e.g. "-40%", or "0%" for a clean record. Always signed so the scale reads correctly. */
+export function formatScore(score: number | null): string {
+  if (score === null) return "—";
+  return `${score}%`;
 }
 
 export type MisOutcome = "On Time" | "Delay Done" | "Not Done";
@@ -55,8 +71,8 @@ export interface MisRow {
   outcome: MisOutcome;
   /** How many evaluated units this row contributes to the denominator. */
   evaluated: number;
-  /** Weighted credit earned, out of `evaluated`. */
-  points: number;
+  /** Penalty caused, out of `evaluated`. 0 means this row cost nothing. */
+  penalty: number;
   /** Plain-language reason the row scored what it did. */
   reason: string;
 }
@@ -80,11 +96,11 @@ export function computeMisBreakdown(tasks: TaskRecord[]): MisRow[] {
         task,
         outcome: "On Time",
         evaluated: onTime,
-        points: onTime * ON_TIME_WEIGHT,
+        penalty: onTime * ON_TIME_PENALTY,
         reason:
           onTime === 1
-            ? "Due date se pehle complete hua — poora credit."
-            : `${onTime} baar due date se pehle complete hua — poora credit.`,
+            ? "Due date se pehle complete hua — koi penalty nahi."
+            : `${onTime} baar due date se pehle complete hua — koi penalty nahi.`,
       });
     }
 
@@ -93,11 +109,11 @@ export function computeMisBreakdown(tasks: TaskRecord[]): MisRow[] {
         task,
         outcome: "Delay Done",
         evaluated: delay,
-        points: delay * DELAY_WEIGHT,
+        penalty: delay * DELAY_PENALTY,
         reason:
           delay === 1
-            ? "Due date ke baad complete hua — aadha credit."
-            : `${delay} baar due date ke baad complete hua — aadha credit.`,
+            ? "Due date ke baad complete hua — aadhi penalty."
+            : `${delay} baar due date ke baad complete hua — aadhi penalty.`,
       });
     }
 
@@ -106,8 +122,8 @@ export function computeMisBreakdown(tasks: TaskRecord[]): MisRow[] {
         task,
         outcome: "Not Done",
         evaluated: 1,
-        points: 0,
-        reason: "Due date nikal chuki hai aur task abhi bhi pending hai — zero credit.",
+        penalty: NOT_DONE_PENALTY,
+        reason: "Due date nikal chuki hai aur task abhi bhi pending hai — poori penalty.",
       });
     }
   }

@@ -128,3 +128,39 @@
     @apply font-sans;
   }
 }
+
+/*
+ * Chart palette — from a validated data-viz palette, not picked by eye.
+ *
+ * Status colours are fixed and never themed: they mean a state (finished on time,
+ * finished late, missed), so they must not drift with a theme or get reused as
+ * "series 4". On a light surface the warning step sits under 3:1 by design, which is
+ * why every chart here also carries direct labels and a legend — colour never carries
+ * the meaning on its own.
+ *
+ * Series slots are for identity (one bar per person, per party). Assigned in fixed
+ * order, never cycled.
+ */
+:root {
+  --chart-good: #0ca30c;
+  --chart-warning: #fab219;
+  --chart-critical: #d03b3b;
+  --chart-series-1: #2a78d6;
+  --chart-series-2: #eb6834;
+  --chart-series-3: #1baf7a;
+  --chart-grid: oklch(0.922 0 0);
+  --chart-axis: oklch(0.556 0 0);
+}
+
+.dark {
+  /* Same four status steps — all clear 3:1 on the dark surface. */
+  --chart-good: #0ca30c;
+  --chart-warning: #fab219;
+  --chart-critical: #d03b3b;
+  /* Series re-stepped for the dark surface, not an automatic flip of the light values. */
+  --chart-series-1: #3987e5;
+  --chart-series-2: #d95926;
+  --chart-series-3: #199e70;
+  --chart-grid: oklch(1 0 0 / 12%);
+  --chart-axis: oklch(0.708 0 0);
+}

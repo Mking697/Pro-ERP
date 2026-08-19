@@ -6,7 +6,7 @@ import { listTasks } from "@/lib/tasks";
 import { tryModule } from "@/lib/moduleSheets";
 import SetupRequired from "@/components/setup-required";
 import AppShell from "@/components/app-shell";
-import { computeMisSummary, getScoreColorClass } from "@/lib/mis";
+import { computeMisSummary, getScoreColorClass, formatScore } from "@/lib/mis";
 import {
   Table,
   TableBody,
@@ -52,7 +52,8 @@ export default async function PerformancePage() {
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Team Performance</h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            MIS score, timestamps ke hisaab se dynamically calculate hota hai.
+            MIS score timestamps se calculate hota hai. <strong>0% sabse achha</strong>,
+            −100% sabse kharab — late aur chhoote hue tasks penalty banate hain.
           </p>
         </div>
 
@@ -84,7 +85,7 @@ export default async function PerformancePage() {
                 <TableCell className="text-center">{summary.delay}</TableCell>
                 <TableCell className="text-center">{summary.notDone}</TableCell>
                 <TableCell className={`text-right font-semibold ${getScoreColorClass(summary.score)}`}>
-                  {summary.score === null ? "—" : `${summary.score}%`}
+                  {formatScore(summary.score)}
                 </TableCell>
               </TableRow>
             ))}

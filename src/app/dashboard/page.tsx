@@ -7,7 +7,7 @@ import { tryModule } from "@/lib/moduleSheets";
 import { MODULE_ACCESS } from "@/lib/moduleAccess";
 import SetupRequired from "@/components/setup-required";
 import AppShell from "@/components/app-shell";
-import { computeMisSummary, isOverdue, getScoreColorClass } from "@/lib/mis";
+import { computeMisSummary, isOverdue, getScoreColorClass, formatScore } from "@/lib/mis";
 import { priorityVariant } from "@/lib/priority";
 import { formatDueDisplay } from "@/lib/formatDate";
 import { Badge } from "@/components/ui/badge";
@@ -17,6 +17,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import TaskBoard from "@/app/tasks/task-board";
 import InwardBoard from "@/app/inward/inward-board";
 import ScoreBreakdown from "./score-breakdown";
+import Analytics from "./analytics";
 
 function StatCard({
   label,
@@ -47,7 +48,13 @@ function StatCard({
   );
 }
 
-export default async function DashboardPage() {
+export default async function DashboardPage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
+  const sp = await searchParams;
+  const one = (k: string) => (Array.isArray(sp[k]) ? sp[k][0] : sp[k]);
   const cookieStore = await cookies();
   const token = cookieStore.get(SESSION_COOKIE)?.value;
   const session = token ? await verifySession(token) : null;
@@ -105,9 +112,9 @@ export default async function DashboardPage() {
           <StatCard label="Completed Tasks" value={String(completed.length)} />
           <StatCard
             label="MIS Score"
-            value={mis.score === null ? "—" : `${mis.score}%`}
+            value={formatScore(mis.score)}
             valueClassName={getScoreColorClass(mis.score)}
-            hint={`On Time ${mis.onTime} · Delay ${mis.delay} · Not Done ${mis.notDone}`}
+            hint={`On Time ${mis.onTime} · Delay ${mis.delay} · Not Done ${mis.notDone} — 0% best`}
           />
         </div>
 
@@ -116,9 +123,10 @@ export default async function DashboardPage() {
           Tasks and Performance, while someone who also holds Inward/IQC/IMS gets that
           work in the same place instead of having to know another URL exists.
         */}
-        <Tabs defaultValue="overview">
+        <Tabs defaultValue={one("tab") ?? "overview"}>
           <TabsList>
             <TabsTrigger value="overview">Overview</TabsTrigger>
+            <TabsTrigger value="analytics">Dashboard</TabsTrigger>
             <TabsTrigger value="tasks">Tasks</TabsTrigger>
             {showInward && <TabsTrigger value="inward">Inward &amp; IQC</TabsTrigger>}
             <TabsTrigger value="performance">Performance</TabsTrigger>
@@ -221,6 +229,15 @@ export default async function DashboardPage() {
                 )}
               </CardContent>
             </Card>
+          </TabsContent>
+
+          <TabsContent value="analytics" className="mt-4">
+            <Analytics
+              session={session}
+              rangeKey={one("range") ?? "month"}
+              from={one("from")}
+              to={one("to")}
+            />
           </TabsContent>
 
           <TabsContent value="tasks" className="mt-4">

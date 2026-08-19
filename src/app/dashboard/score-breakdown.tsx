@@ -11,6 +11,7 @@ import { formatDueDisplay } from "@/lib/formatDate";
 import {
   computeMisBreakdown,
   misOutcomeVariant,
+  formatScore,
   type MisSummary,
 } from "@/lib/mis";
 import type { TaskRecord } from "@/lib/tasks";
@@ -39,24 +40,21 @@ export default function ScoreBreakdown({
     );
   }
 
-  const totalPoints = rows.reduce((sum, r) => sum + r.points, 0);
+  const totalPenalty = rows.reduce((sum, r) => sum + r.penalty, 0);
   const totalEvaluated = rows.reduce((sum, r) => sum + r.evaluated, 0);
 
   return (
     <div className="space-y-3">
       <p className="text-sm text-muted-foreground">
-        Score ={" "}
-        <span className="font-medium tabular-nums text-foreground">
-          {totalPoints}
-        </span>{" "}
-        credit ÷{" "}
-        <span className="font-medium tabular-nums text-foreground">
-          {totalEvaluated}
-        </span>{" "}
+        Score = −
+        <span className="font-medium tabular-nums text-foreground">{totalPenalty}</span>{" "}
+        penalty ÷{" "}
+        <span className="font-medium tabular-nums text-foreground">{totalEvaluated}</span>{" "}
         evaluated ={" "}
         <span className="font-medium tabular-nums text-foreground">
-          {summary.score === null ? "—" : `${summary.score}%`}
+          {formatScore(summary.score)}
         </span>
+        {" — "}0% sabse achha, −100% sabse kharab.
       </p>
 
       {/* Wide table scrolls inside its own box rather than pushing the page sideways. */}
@@ -67,7 +65,7 @@ export default function ScoreBreakdown({
               <TableHead>Task</TableHead>
               <TableHead>Completion due</TableHead>
               <TableHead>Result</TableHead>
-              <TableHead className="text-right">Credit</TableHead>
+              <TableHead className="text-right">Penalty</TableHead>
               <TableHead>Kyun</TableHead>
             </TableRow>
           </TableHeader>
@@ -82,7 +80,7 @@ export default function ScoreBreakdown({
                   <Badge variant={misOutcomeVariant(row.outcome)}>{row.outcome}</Badge>
                 </TableCell>
                 <TableCell className="whitespace-nowrap text-right tabular-nums">
-                  {row.points} / {row.evaluated}
+                  {row.penalty} / {row.evaluated}
                 </TableCell>
                 <TableCell className="text-sm text-muted-foreground">
                   {row.reason}
