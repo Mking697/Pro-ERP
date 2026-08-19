@@ -3,7 +3,7 @@ import { z } from "zod";
 import { requireRole } from "@/lib/auth/guard";
 import { getSetting, upsertSetting } from "@/lib/settings";
 import { extractDriveFolderId } from "@/lib/sheetUrl";
-import { verifyDriveFolderAccess } from "@/lib/googleDrive";
+import { verifyDriveFolderWritable } from "@/lib/googleDrive";
 
 const SETTING_KEY = "DRIVE_FOLDER_URL";
 
@@ -35,13 +35,11 @@ export async function POST(request: Request) {
     );
   }
 
-  const hasAccess = await verifyDriveFolderAccess(folderId);
-  if (!hasAccess) {
+  // Checks writability, not just visibility — see verifyDriveFolderWritable.
+  const check = await verifyDriveFolderWritable(folderId);
+  if (!check.ok) {
     return NextResponse.json(
-      {
-        error:
-          "Is folder tak access nahi mil paya. Folder ko Service Account email ke saath Editor access se share karein.",
-      },
+      { error: check.reason ?? "Is folder me file upload nahi ho payi." },
       { status: 400 }
     );
   }
