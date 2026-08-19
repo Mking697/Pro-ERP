@@ -28,6 +28,19 @@ Multi-tenant SaaS ERP with Google Sheets as the database and Google Drive as fil
 
 **WhatsApp (ChatXFlow) verified end-to-end 2026-08-19**, on localhost and production: test message, pending-task reminders, task-completion confirmation, and the `CRON_SECRET` all-orgs path. ChatXFlow accepts phone numbers both with and without a leading `+`, so the `+91…` form stored in the Users tab works. In the all-orgs cron run one organization failing (no Tasks sheet connected) did not stop the others — per-org isolation in `forEachActiveOrganization` confirmed against live sends.
 
+## Next up — Inventory · BOM · PPC
+
+**This is what the next session builds.** Full specification: **[docs/INVENTORY-PPC-PLAN.md](docs/INVENTORY-PPC-PLAN.md)** — read it before writing any code for this.
+
+Replaces a Google-Sheets + Apps Script system the user already runs. Fourteen decisions are already settled there (do not re-litigate them). The short version:
+
+- **Stock is derived from an append-only `Stock_Ledger`, never stored.** `free = on_hand − committed` is what PPC and reorder both read.
+- **Reorder uses the fields their old system collected but ignored**: `ROP = ADC × Lead_Time × Safety_Factor`. Indent qty covers the shortage *and* tops up to Max Level, never below MOQ, and stays editable.
+- **PPC allocates from a shared material pool, earliest production date first**, while still showing each product its own Done/Shortage status. Checking products independently is the mistake that makes two plans both read "Done" for the same stock.
+- **Submitting a plan reserves material; Start Production (pressed by a Production Dept user) asks the actual quantity, writes the Out rows, and releases the leftover reserve.**
+- A plan **snapshots its BOM**, so editing a BOM never rewrites history.
+- Build order: (1) Items + ledger + In/Out + IQC auto-In → (2) ADC/ROP/reorder/indents → (3) BOM → (4) PPC → (5) production execution, Semi-FG, PDI, Packing, Dispatch.
+
 **Not done yet / next up:**
 - **Attachment storage is hybrid** (`src/lib/storage.ts`). A service account has **zero Drive storage quota**, so uploading into a folder in anyone's *personal* My Drive fails with 403 "Service Accounts do not have storage quota" — even when the folder is shared and `canAddChildren` is true. Confirmed against a live folder 2026-08-19. Requiring a Shared Drive would leave every free-Gmail organization without attachments, so:
   - Org connected a **Shared Drive** folder → files go to its own Drive.
