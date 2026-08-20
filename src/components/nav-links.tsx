@@ -2,11 +2,48 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import {
+  BarChart3,
+  BookOpen,
+  Building2,
+  ClipboardList,
+  Factory,
+  LayoutDashboard,
+  ListChecks,
+  Package,
+  Settings,
+  Truck,
+  Users,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
+
+/**
+ * Icons live here, keyed by name, because the nav is assembled in a server component and
+ * a component cannot be handed across that boundary as a plain prop.
+ *
+ * Every item keeps its text label — an icon alone would make people guess, and this bar
+ * carries items ("BOM", "PPC") whose icons nobody recognises on sight.
+ */
+const ICONS = {
+  dashboard: LayoutDashboard,
+  tasks: ListChecks,
+  inventory: Package,
+  bom: ClipboardList,
+  ppc: Factory,
+  inward: Truck,
+  performance: BarChart3,
+  users: Users,
+  settings: Settings,
+  platform: Building2,
+  guide: BookOpen,
+} as const;
+
+export type NavIcon = keyof typeof ICONS;
 
 export interface NavItem {
   href: string;
   label: string;
+  icon?: NavIcon;
 }
 
 /**
@@ -31,13 +68,14 @@ export default function NavLinks({ items }: { items: NavItem[] }) {
     >
       {items.map((item) => {
         const active = isActive(pathname, item.href);
+        const Icon = item.icon ? ICONS[item.icon] : null;
         return (
           <Link
             key={item.href}
             href={item.href}
             aria-current={active ? "page" : undefined}
             className={cn(
-              "relative shrink-0 rounded-md px-3 py-2 text-sm font-medium",
+              "relative flex shrink-0 items-center gap-2 rounded-md px-3 py-2 text-sm font-medium",
               "transition-colors duration-150",
               "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
               active
@@ -45,6 +83,7 @@ export default function NavLinks({ items }: { items: NavItem[] }) {
                 : "text-muted-foreground hover:bg-muted hover:text-foreground"
             )}
           >
+            {Icon && <Icon aria-hidden="true" className="size-4" />}
             {item.label}
             {active && (
               // Position, not colour alone, marks the current section.

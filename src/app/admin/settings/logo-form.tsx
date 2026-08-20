@@ -11,6 +11,7 @@ import {
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import LogoPicker from "@/components/logo-picker";
+import { FormSkeleton } from "@/components/loading-states";
 
 export default function LogoForm() {
   const [current, setCurrent] = useState("");
@@ -63,7 +64,7 @@ export default function LogoForm() {
       </CardHeader>
       <CardContent className="space-y-4">
         {loading ? (
-          <p className="text-sm text-muted-foreground">Loading...</p>
+          <FormSkeleton fields={1} label="Logo load ho raha hai" />
         ) : (
           <>
             {current && !draft && (

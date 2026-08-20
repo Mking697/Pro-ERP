@@ -15,6 +15,7 @@ import CreateUserDialog from "./create-user-dialog";
 import ManageUserDialog from "./manage-user-dialog";
 import { parseModuleAccess, getModuleAccessDefinition } from "@/lib/moduleAccess";
 import type { SafeUser } from "./types";
+import { TableSkeleton } from "@/components/loading-states";
 
 export default function UserManagement() {
   const [users, setUsers] = useState<SafeUser[]>([]);
@@ -37,7 +38,7 @@ export default function UserManagement() {
   }
 
   if (loading) {
-    return <p className="text-muted-foreground">Loading...</p>;
+    return <TableSkeleton columns={5} label="Users load ho rahe hain" />;
   }
 
   return (

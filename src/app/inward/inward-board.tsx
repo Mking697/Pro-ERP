@@ -16,6 +16,7 @@ import AttachmentLink from "@/components/attachment-link";
 import CreateInwardDialog from "./create-inward-dialog";
 import QualityCheckDialog from "./quality-check-dialog";
 import type { InwardRecord } from "./types";
+import { TableSkeleton } from "@/components/loading-states";
 
 export default function InwardBoard({ canVerify }: { canVerify: boolean }) {
   const [entries, setEntries] = useState<InwardRecord[]>([]);
@@ -38,7 +39,7 @@ export default function InwardBoard({ canVerify }: { canVerify: boolean }) {
   }
 
   if (loading) {
-    return <p className="text-muted-foreground">Loading...</p>;
+    return <TableSkeleton columns={5} label="Inward entries load ho rahi hain" />;
   }
 
   return (

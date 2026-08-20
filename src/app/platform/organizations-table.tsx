@@ -13,6 +13,8 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { formatDueDisplay } from "@/lib/formatDate";
+import { TableSkeleton } from "@/components/loading-states";
+import { useConfirm } from "@/components/confirm-dialog";
 
 interface OrgRow {
   orgId: string;
@@ -29,6 +31,7 @@ interface OrgRow {
 
 export default function OrganizationsTable() {
   const [orgs, setOrgs] = useState<OrgRow[]>([]);
+  const confirm = useConfirm();
   const [loading, setLoading] = useState(true);
   const [savingId, setSavingId] = useState<string | null>(null);
 
@@ -39,6 +42,25 @@ export default function OrganizationsTable() {
       .catch(() => toast.error("Organizations load nahi ho paye."))
       .finally(() => setLoading(false));
   }, []);
+
+  /**
+   * Turning the switch off logs out every user in that organization on their next
+   * request. It is one click on a row of many, so switching *off* asks first —
+   * switching back on does not, because restoring service harms nobody.
+   */
+  function requestToggle(org: OrgRow, active: boolean) {
+    if (active) {
+      void toggleStatus(org, true);
+      return;
+    }
+    confirm.ask({
+      title: `${org.name} ko suspend karein?`,
+      description:
+        "Is organization ke saare users agli request par bahar ho jaayenge aur uske automated kaam ruk jaayenge. Data, sheets aur users kuch delete nahi hota — switch wapas on karte hi sab pehle jaisa chalne lagta hai.",
+      confirmLabel: "Haan, suspend karein",
+      onConfirm: () => toggleStatus(org, false),
+    });
+  }
 
   async function toggleStatus(org: OrgRow, active: boolean) {
     const next = active ? "Active" : "Suspended";
@@ -72,7 +94,7 @@ export default function OrganizationsTable() {
   }
 
   if (loading) {
-    return <p className="py-8 text-center text-sm text-muted-foreground">Loading...</p>;
+    return <TableSkeleton columns={4} label="Organizations load ho rahi hain" />;
   }
 
   return (
@@ -130,7 +152,7 @@ export default function OrganizationsTable() {
                   <Switch
                     checked={active}
                     disabled={savingId === org.orgId}
-                    onCheckedChange={(checked) => toggleStatus(org, checked === true)}
+                    onCheckedChange={(checked) => requestToggle(org, checked === true)}
                     aria-label={`${org.name} ko ${active ? "suspend" : "chalu"} karein`}
                   />
                 </TableCell>
@@ -139,6 +161,8 @@ export default function OrganizationsTable() {
           })}
         </TableBody>
       </Table>
+
+      {confirm.dialog}
     </div>
   );
 }

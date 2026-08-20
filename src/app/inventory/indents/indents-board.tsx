@@ -16,6 +16,8 @@ import {
 } from "@/components/ui/table";
 import { formatDueDisplay } from "@/lib/formatDate";
 import { qty } from "../types";
+import { TableSkeleton } from "@/components/loading-states";
+import { useConfirm } from "@/components/confirm-dialog";
 
 interface Indent {
   Indent_ID: string;
@@ -62,6 +64,7 @@ export default function IndentsBoard({
   canReceive: boolean;
 }) {
   const [indents, setIndents] = useState<Indent[]>([]);
+  const confirm = useConfirm();
   const [setupRequired, setSetupRequired] = useState<string | null>(null);
   const [filter, setFilter] = useState<(typeof STATUS_FILTERS)[number]>("Open");
   const [receiveDraft, setReceiveDraft] = useState<Record<string, string>>({});
@@ -142,7 +145,7 @@ export default function IndentsBoard({
   }
 
   if (loading) {
-    return <p className="py-10 text-center text-sm text-muted-foreground">Loading...</p>;
+    return <TableSkeleton columns={6} label="Indents load ho rahe hain" />;
   }
 
   if (setupRequired) {
@@ -257,7 +260,14 @@ export default function IndentsBoard({
                             size="sm"
                             variant="ghost"
                             disabled={busy}
-                            onClick={() => act(indent, "cancel")}
+                            onClick={() =>
+                              confirm.ask({
+                                title: `${indent.Item_Name} ka indent cancel karein?`,
+                                description: `${indent.Final_Qty || indent.Suggested_Qty} ${indent.UOM} ki ye purchase request band ho jaayegi. Zaroorat phir bhi rahi to reorder page se nayi banani padegi.`,
+                                confirmLabel: "Haan, cancel karein",
+                                onConfirm: () => act(indent, "cancel"),
+                              })
+                            }
                           >
                             Cancel
                           </Button>
@@ -298,6 +308,8 @@ export default function IndentsBoard({
           </TableBody>
         </Table>
       </div>
+
+      {confirm.dialog}
     </div>
   );
 }

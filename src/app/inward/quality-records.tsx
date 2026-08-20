@@ -13,6 +13,7 @@ import {
 } from "@/components/ui/table";
 import { formatDueDisplay } from "@/lib/formatDate";
 import AttachmentLink from "@/components/attachment-link";
+import { TableSkeleton } from "@/components/loading-states";
 
 interface FailureRow {
   Log_ID: string;
@@ -62,7 +63,7 @@ export default function QualityRecords({ view }: { view: "failures" | "ims" }) {
   }, []);
 
   if (loading) {
-    return <p className="py-8 text-center text-sm text-muted-foreground">Loading...</p>;
+    return <TableSkeleton columns={5} label="Records load ho rahe hain" />;
   }
 
   const sheetName = view === "failures" ? "Failure Log" : "IMS - Inward Sub-Sheet";

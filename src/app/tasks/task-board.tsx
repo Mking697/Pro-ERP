@@ -20,6 +20,7 @@ import CreateRecurringDialog from "./create-recurring-dialog";
 import RecurringRules from "./recurring-rules";
 import CompleteTaskDialog from "./complete-task-dialog";
 import type { TaskRecord, UserOption } from "./types";
+import { CardListSkeleton } from "@/components/loading-states";
 
 function completionText(task: TaskRecord): string {
   const date = formatDueDisplay(task.Due_Date);
@@ -85,7 +86,7 @@ export default function TaskBoard({ currentUserId }: { currentUserId: string }) 
   }
 
   if (loading) {
-    return <p className="text-muted-foreground">Loading...</p>;
+    return <CardListSkeleton label="Tasks load ho rahe hain" />;
   }
 
   const myTasksTable = (

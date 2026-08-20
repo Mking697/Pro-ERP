@@ -16,6 +16,13 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
   Table,
   TableBody,
   TableCell,
@@ -193,19 +200,23 @@ export default function PlanForm({ onCreated }: { onCreated: () => void }) {
               >
                 <div className="space-y-2">
                   <Label htmlFor={`product-${line.id}`}>Product {i + 1}</Label>
-                  <select
-                    id={`product-${line.id}`}
+                  <Select
                     value={line.productName}
-                    onChange={(e) => setLine(line.id, { productName: e.target.value })}
-                    className="h-9 w-full rounded-md border bg-transparent px-3 text-sm"
+                    onValueChange={(value) =>
+                      setLine(line.id, { productName: value ?? "" })
+                    }
                   >
-                    <option value="">Chunein...</option>
-                    {products.map((p) => (
-                      <option key={p.productName} value={p.productName}>
-                        {p.productName} (v{p.version})
-                      </option>
-                    ))}
-                  </select>
+                    <SelectTrigger id={`product-${line.id}`} className="w-full">
+                      <SelectValue placeholder="Chunein..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {products.map((p) => (
+                        <SelectItem key={p.productName} value={p.productName}>
+                          {p.productName} (v{p.version})
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor={`qty-${line.id}`}>Quantity</Label>

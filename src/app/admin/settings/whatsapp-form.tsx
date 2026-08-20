@@ -14,6 +14,7 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
+import { FormSkeleton } from "@/components/loading-states";
 
 interface WhatsAppSettings {
   hasToken: boolean;
@@ -111,7 +112,7 @@ export default function WhatsAppForm() {
   }
 
   if (loading || !settings) {
-    return <p className="text-muted-foreground">Loading...</p>;
+    return <FormSkeleton fields={3} label="WhatsApp settings load ho rahi hain" />;
   }
 
   return (

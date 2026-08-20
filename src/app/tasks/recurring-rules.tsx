@@ -13,6 +13,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { getFrequencyLabel } from "@/lib/frequency";
+import { TableSkeleton } from "@/components/loading-states";
 
 interface RecurringRule {
   Recurring_ID: string;
@@ -97,7 +98,7 @@ export default function RecurringRules({ refreshKey = 0 }: { refreshKey?: number
   }
 
   if (loading) {
-    return <p className="py-8 text-center text-sm text-muted-foreground">Loading...</p>;
+    return <TableSkeleton columns={5} label="Rules load ho rahe hain" />;
   }
 
   if (setupRequired) {

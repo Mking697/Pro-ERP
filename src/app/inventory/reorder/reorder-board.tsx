@@ -16,6 +16,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { qty, statusVariant, type StockStatus } from "../types";
+import { TableSkeleton } from "@/components/loading-states";
 
 interface Suggestion {
   sku: string;
@@ -120,7 +121,7 @@ export default function ReorderBoard({ canRaise }: { canRaise: boolean }) {
   }
 
   if (loading) {
-    return <p className="py-10 text-center text-sm text-muted-foreground">Loading...</p>;
+    return <TableSkeleton columns={5} label="Reorder list load ho rahi hai" />;
   }
 
   if (missingSheets.length > 0) {

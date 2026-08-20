@@ -164,3 +164,22 @@
   --chart-grid: oklch(1 0 0 / 12%);
   --chart-axis: oklch(0.708 0 0);
 }
+
+/**
+ * Respect a reader who has asked their system for less movement.
+ *
+ * Motion sensitivity is a real accessibility need, not a preference to be talked out of:
+ * for some people a pulsing skeleton or a sliding dialog triggers nausea or vertigo.
+ * Animations are cut to a single frame rather than removed, so anything that relies on a
+ * transition finishing still fires its completion event and the UI cannot get stuck.
+ */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

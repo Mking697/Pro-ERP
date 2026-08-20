@@ -18,6 +18,7 @@ import { cn } from "@/lib/utils";
 import CreateItemDialog from "./create-item-dialog";
 import StockMovementDialog from "./stock-movement-dialog";
 import { qty, statusVariant, type ItemRow, type StockStatus } from "./types";
+import { TableSkeleton } from "@/components/loading-states";
 
 const STATUS_FILTERS: (StockStatus | "All")[] = [
   "All",
@@ -79,7 +80,7 @@ export default function InventoryBoard({
   const needsSetup = items.filter((i) => i.missingFields.length > 0).length;
 
   if (loading) {
-    return <p className="py-10 text-center text-sm text-muted-foreground">Loading...</p>;
+    return <TableSkeleton columns={6} label="Items load ho rahe hain" />;
   }
 
   if (missingSheets.length > 0) {

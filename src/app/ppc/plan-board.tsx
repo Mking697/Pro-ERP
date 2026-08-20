@@ -24,7 +24,9 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { useConfirm } from "@/components/confirm-dialog";
 import PlanForm from "./plan-form";
+import { CardListSkeleton } from "@/components/loading-states";
 
 interface PlanMaterial {
   sku: string;
@@ -74,6 +76,8 @@ export default function PlanBoard({ access }: { access: string[] }) {
   const [starting, setStarting] = useState<Plan | null>(null);
   const [actualQty, setActualQty] = useState("");
   const [version, setVersion] = useState(0);
+
+  const confirm = useConfirm();
 
   const canPlan = access.includes("PPC_PLAN");
   const canRun = access.includes("INVENTORY_TXN");
@@ -136,7 +140,7 @@ export default function PlanBoard({ access }: { access: string[] }) {
   }
 
   if (loading) {
-    return <p className="py-10 text-center text-sm text-muted-foreground">Loading...</p>;
+    return <CardListSkeleton label="Plans load ho rahe hain" />;
   }
 
   if (setupRequired) {
@@ -269,11 +273,17 @@ export default function PlanBoard({ access }: { access: string[] }) {
                           size="sm"
                           disabled={busy === plan.planId}
                           onClick={() =>
-                            act(
-                              plan.planId,
-                              { action: "cancel" },
-                              "Plan cancel ho gaya, material free ho gaya."
-                            )
+                            confirm.ask({
+                              title: `${plan.productName} ka plan cancel karein?`,
+                              description: `Is plan ne jo material rok rakha hai wo free ho jaayega, aur agla plan use le sakta hai. ${plan.plannedQty} unit ka ye plan wapas nahi aayega — dobara banana padega.`,
+                              confirmLabel: "Haan, cancel karein",
+                              onConfirm: () =>
+                                act(
+                                  plan.planId,
+                                  { action: "cancel" },
+                                  "Plan cancel ho gaya, material free ho gaya."
+                                ),
+                            })
                           }
                         >
                           Cancel
@@ -345,6 +355,8 @@ export default function PlanBoard({ access }: { access: string[] }) {
           })}
         </div>
       )}
+
+      {confirm.dialog}
 
       <Dialog open={starting !== null} onOpenChange={(v) => !v && setStarting(null)}>
         <DialogContent>

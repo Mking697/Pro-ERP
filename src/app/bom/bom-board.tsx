@@ -16,6 +16,7 @@ import {
 } from "@/components/ui/table";
 import { formatDueDisplay } from "@/lib/formatDate";
 import BomForm from "./bom-form";
+import { CardListSkeleton } from "@/components/loading-states";
 
 interface BomLine {
   lineNo: number;
@@ -56,7 +57,7 @@ export default function BomBoard() {
   }, [version]);
 
   if (loading) {
-    return <p className="py-10 text-center text-sm text-muted-foreground">Loading...</p>;
+    return <CardListSkeleton label="BOMs load ho rahi hain" />;
   }
 
   if (setupRequired) {

@@ -15,6 +15,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import type { ItemRow } from "../types";
+import { TableSkeleton } from "@/components/loading-states";
 
 const FIELDS = [
   { key: "Lead_Time_Days", label: "Lead Time", hint: "din" },
@@ -120,7 +121,7 @@ export default function BulkSetup() {
   }
 
   if (loading) {
-    return <p className="py-10 text-center text-sm text-muted-foreground">Loading...</p>;
+    return <TableSkeleton columns={6} label="Items load ho rahe hain" />;
   }
 
   if (items.length === 0) {

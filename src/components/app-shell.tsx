@@ -26,17 +26,17 @@ export default async function AppShell({
   // Settings are cached per org, so this costs nothing after the first page view.
   const logoUrl = await getSetting("ORG_LOGO_URL").catch(() => null);
 
-  const items: NavItem[] = [{ href: "/dashboard", label: "Dashboard" }];
+  const items: NavItem[] = [{ icon: "dashboard", href: "/dashboard", label: "Dashboard" }];
 
   // Everyone has tasks assigned to them, so Tasks is always reachable.
-  items.push({ href: "/tasks", label: "Tasks" });
+  items.push({ icon: "tasks", href: "/tasks", label: "Tasks" });
 
   if (session.access.includes("INVENTORY_VIEW")) {
-    items.push({ href: "/inventory", label: "Inventory" });
+    items.push({ icon: "inventory", href: "/inventory", label: "Inventory" });
   }
 
   if (session.access.includes("BOM_MANAGE")) {
-    items.push({ href: "/bom", label: "BOM" });
+    items.push({ icon: "bom", href: "/bom", label: "BOM" });
   }
 
   // Production-floor users reach PPC to start a run, planners to build one.
@@ -44,7 +44,7 @@ export default async function AppShell({
     session.access.includes("PPC_PLAN") ||
     session.access.includes("INVENTORY_TXN")
   ) {
-    items.push({ href: "/ppc", label: "PPC" });
+    items.push({ icon: "ppc", href: "/ppc", label: "PPC" });
   }
 
   if (
@@ -52,25 +52,25 @@ export default async function AppShell({
     session.access.includes("IQC_CHECK") ||
     session.access.includes("IMS_VIEW")
   ) {
-    items.push({ href: "/inward", label: "Inward" });
+    items.push({ icon: "inward", href: "/inward", label: "Inward" });
   }
 
   if (session.access.includes("PERFORMANCE_VIEW")) {
-    items.push({ href: "/performance", label: "Performance" });
+    items.push({ icon: "performance", href: "/performance", label: "Performance" });
   }
 
   if (session.role === "Admin") {
-    items.push({ href: "/admin/users", label: "Users" });
-    items.push({ href: "/admin/settings", label: "Settings" });
+    items.push({ icon: "users", href: "/admin/users", label: "Users" });
+    items.push({ icon: "settings", href: "/admin/settings", label: "Settings" });
   }
 
   // Platform operator only — not an organization Admin.
   if (isPlatformAdmin(session.email)) {
-    items.push({ href: "/platform", label: "Platform" });
+    items.push({ icon: "platform", href: "/platform", label: "Platform" });
   }
 
   // Last, so it never pushes day-to-day work off a narrow screen.
-  items.push({ href: "/guide", label: "Guide" });
+  items.push({ icon: "guide", href: "/guide", label: "Guide" });
 
   return (
     <div className="flex min-h-dvh flex-col bg-muted/30">

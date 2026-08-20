@@ -14,6 +14,7 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
+import { FormSkeleton } from "@/components/loading-states";
 
 interface ConnectionRow {
   key: string;
@@ -97,7 +98,7 @@ export default function SheetConnectionsForm() {
   }
 
   if (loading) {
-    return <p className="text-muted-foreground">Loading...</p>;
+    return <FormSkeleton fields={6} label="Sheet connections load ho rahi hain" />;
   }
 
   return (
