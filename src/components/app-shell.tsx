@@ -31,6 +31,10 @@ export default async function AppShell({
   // Everyone has tasks assigned to them, so Tasks is always reachable.
   items.push({ href: "/tasks", label: "Tasks" });
 
+  if (session.access.includes("INVENTORY_VIEW")) {
+    items.push({ href: "/inventory", label: "Inventory" });
+  }
+
   if (
     session.access.includes("INWARD_ENTRY") ||
     session.access.includes("IQC_CHECK") ||

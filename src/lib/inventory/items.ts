@@ -9,8 +9,7 @@ import { generateId } from "@/lib/id";
 
 const MODULE_KEY = "ITEMS";
 
-export const ITEM_CATEGORIES = ["Raw Material", "Consumable"] as const;
-export type ItemCategory = (typeof ITEM_CATEGORIES)[number];
+export { ITEM_CATEGORIES, type ItemCategory } from "@/lib/inventory/constants";
 
 /**
  * One row of the inventory master.

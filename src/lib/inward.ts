@@ -1,10 +1,13 @@
 import {
   appendModuleRow,
+  ensureModuleHeaders,
   getModuleRows,
   updateModuleRow,
   findModuleRow,
   recordToRow,
 } from "@/lib/moduleSheets";
+import { recordMovement } from "@/lib/inventory/ledger";
+import { findItem } from "@/lib/inventory/items";
 import { generateId } from "@/lib/id";
 
 const MODULE_KEY = "INWARD_IQC_FMS";
@@ -26,6 +29,9 @@ export interface InwardRecord {
   IQC_Pass_Qty: string;
   IQC_Fail_Qty: string;
   Fail_Reason: string;
+  /** Optional link to an inventory item — set, a passed check adds to stock. */
+  SKU: string;
+  Item_Name: string;
 }
 
 export interface FailureLogRecord {
@@ -74,9 +80,15 @@ interface CreateInwardInput {
   inwardType: string;
   attachmentUrl: string;
   remark: string;
+  /** Optional: naming an item is what lets the passed quantity reach stock. */
+  sku?: string;
+  itemName?: string;
 }
 
 export async function createInwardEntry(input: CreateInwardInput): Promise<InwardRecord> {
+  // The SKU columns were added after some organizations connected this sheet.
+  await ensureModuleHeaders(MODULE_KEY);
+
   const record: InwardRecord = {
     Entry_ID: generateId("INW"),
     Timestamp: new Date().toISOString(),
@@ -92,6 +104,8 @@ export async function createInwardEntry(input: CreateInwardInput): Promise<Inwar
     IQC_Pass_Qty: "",
     IQC_Fail_Qty: "",
     Fail_Reason: "",
+    SKU: input.sku ?? "",
+    Item_Name: input.itemName ?? "",
   };
 
   await appendModuleRow(MODULE_KEY, recordToRow(MODULE_KEY, record));
@@ -108,6 +122,7 @@ interface QualityCheckInput {
 }
 
 export async function submitQualityCheck(input: QualityCheckInput): Promise<InwardRecord> {
+  await ensureModuleHeaders(MODULE_KEY);
   const found = await findModuleRow<InwardRecord>(MODULE_KEY, 0, input.entryId);
   if (!found) {
     throw new Error("Entry nahi mili.");
@@ -160,6 +175,36 @@ export async function submitQualityCheck(input: QualityCheckInput): Promise<Inwa
       Verified_By: input.verifiedBy,
     };
     await appendModuleRow(IMS_INWARD_KEY, recordToRow(IMS_INWARD_KEY, imsRecord));
+
+    // A passed quantity is stock that has physically arrived, so it enters the ledger
+    // here rather than waiting for someone to key the same numbers a second time.
+    //
+    // Only when the entry names an item — an inward recorded without a SKU has nothing
+    // to add to. Best-effort: a stock write must never undo a completed quality check,
+    // which is already saved above.
+    if (updated.SKU) {
+      try {
+        const item = await findItem(updated.SKU);
+        if (item) {
+          await recordMovement({
+            sku: updated.SKU,
+            direction: "In",
+            quantity: input.passQty,
+            uom: item.UOM,
+            source: "IQC",
+            referenceId: updated.Entry_ID,
+            location: item.Location,
+            remark: `IQC pass — ${updated.Party_Name} / ${updated.Invoice_No}`,
+            userId: input.verifiedBy,
+          });
+        }
+      } catch (error) {
+        console.error(
+          `[inward] IQC stock In failed for ${updated.Entry_ID} / ${updated.SKU}:`,
+          error
+        );
+      }
+    }
   }
 
   return updated;

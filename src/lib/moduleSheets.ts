@@ -89,6 +89,8 @@ export const MODULE_SHEETS: ModuleDefinition[] = [
       "IQC_Pass_Qty",
       "IQC_Fail_Qty",
       "Fail_Reason",
+      "SKU",
+      "Item_Name",
     ],
   },
   {
@@ -270,6 +272,45 @@ async function ensureHeaderRow(target: ResolvedTarget, headers: string[]): Promi
   }
 
   headerEnsured.add(cacheKey);
+}
+
+// One check per warm instance per (spreadsheet, tab) — the header only ever grows.
+const headersMigrated = new Set<string>();
+
+/**
+ * Adds any column this code knows about that the connected sheet's header row is
+ * missing.
+ *
+ * Rows are read back by matching against the sheet's *own* header row, so a column
+ * added to a module definition after an organization already connected its sheet would
+ * be written into a position no header names — invisible on read. This makes adding a
+ * column a code change rather than an instruction sent to every customer.
+ */
+export async function ensureModuleHeaders(moduleKey: string): Promise<void> {
+  const def = getModuleDefinition(moduleKey);
+  const target = await resolveModuleTarget(moduleKey);
+  const cacheKey = `${target.spreadsheetId}:${target.sheetTitle}`;
+  if (headersMigrated.has(cacheKey)) return;
+
+  const sheets = getSheetsClient();
+  const res = await sheets.spreadsheets.values.get({
+    spreadsheetId: target.spreadsheetId,
+    range: `${target.sheetTitle}!1:1`,
+  });
+
+  const existing = (res.data.values?.[0] ?? []) as string[];
+  const missing = def.headers.filter((h) => !existing.includes(h));
+
+  if (missing.length > 0) {
+    await sheets.spreadsheets.values.update({
+      spreadsheetId: target.spreadsheetId,
+      range: `${target.sheetTitle}!A1`,
+      valueInputOption: "RAW",
+      requestBody: { values: [[...existing, ...missing]] },
+    });
+  }
+
+  headersMigrated.add(cacheKey);
 }
 
 /** Appends a row to a module's connected sheet, creating the header row first if needed. */

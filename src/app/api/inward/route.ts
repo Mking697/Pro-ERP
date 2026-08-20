@@ -22,6 +22,9 @@ const createInwardSchema = z.object({
   inwardType: z.enum(["Raw Material", "Consumable", "Other"]),
   attachmentUrl: z.string().optional().default(""),
   remark: z.string().optional().default(""),
+  // Optional: naming an item is what lets a passed quality check reach stock.
+  sku: z.string().trim().optional().default(""),
+  itemName: z.string().trim().optional().default(""),
 });
 
 export async function POST(request: Request) {

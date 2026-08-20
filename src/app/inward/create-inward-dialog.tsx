@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, type FormEvent } from "react";
+import ItemPicker, { type PickerItem } from "@/components/item-picker";
 import { toast } from "sonner";
 import {
   Dialog,
@@ -39,6 +40,7 @@ export default function CreateInwardDialog({
   const [inwardType, setInwardType] = useState("Raw Material");
   const [attachmentUrl, setAttachmentUrl] = useState("");
   const [remark, setRemark] = useState("");
+  const [item, setItem] = useState<PickerItem | null>(null);
 
   function resetForm() {
     setPartyName("");
@@ -55,7 +57,15 @@ export default function CreateInwardDialog({
       const res = await fetch("/api/inward", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ partyName, invoiceNo, inwardType, attachmentUrl, remark }),
+        body: JSON.stringify({
+          partyName,
+          invoiceNo,
+          inwardType,
+          attachmentUrl,
+          remark,
+          sku: item?.sku ?? "",
+          itemName: item?.name ?? "",
+        }),
       });
       const data = await res.json();
 
@@ -82,6 +92,18 @@ export default function CreateInwardDialog({
           <DialogDescription>Material aane par yeh form bharein.</DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
+          <ItemPicker value={item} onChange={setItem} label="Item (optional)" />
+          {item ? (
+            <p className="-mt-2 text-xs text-muted-foreground">
+              Quality check pass hote hi is item ka stock apne aap badh jaayega.
+            </p>
+          ) : (
+            <p className="-mt-2 text-xs text-muted-foreground">
+              Item chunenge to IQC pass hone par stock apne aap update hoga. Na chunein to
+              entry sirf record rahegi.
+            </p>
+          )}
+
           <div className="space-y-2">
             <Label htmlFor="partyName">Party Name</Label>
             <Input

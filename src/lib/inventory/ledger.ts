@@ -1,27 +1,17 @@
 import { appendModuleRow, getModuleRows, recordToRow } from "@/lib/moduleSheets";
 import { generateId } from "@/lib/id";
 import { num, numOr0, type ItemRecord } from "@/lib/inventory/items";
+import type { Direction, LedgerSource, StockStatus } from "@/lib/inventory/constants";
 
 const MODULE_KEY = "STOCK_LEDGER";
 
-export const DIRECTIONS = ["In", "Out"] as const;
-export type Direction = (typeof DIRECTIONS)[number];
-
-/**
- * Where a movement came from. Kept on every row because six months later "why did this
- * number move?" is the only question anyone asks, and a bare quantity cannot answer it.
- */
-export const LEDGER_SOURCES = [
-  "Opening",
-  "Manual",
-  "Form",
-  "IQC",
-  "Production",
-  "Production_Output",
-  "Indent_Receipt",
-  "Adjustment",
-] as const;
-export type LedgerSource = (typeof LEDGER_SOURCES)[number];
+export {
+  DIRECTIONS,
+  type Direction,
+  LEDGER_SOURCES,
+  type LedgerSource,
+  type StockStatus,
+} from "@/lib/inventory/constants";
 
 export interface LedgerRecord {
   Txn_ID: string;
@@ -140,14 +130,6 @@ export function adcFromLedger(
 
   return sawAny ? total / windowDays : null;
 }
-
-export type StockStatus =
-  | "Out of Stock"
-  | "Critical"
-  | "Low"
-  | "Healthy"
-  | "Overstock"
-  | "Not Set Up";
 
 export interface ItemStock extends StockPosition {
   item: ItemRecord;
