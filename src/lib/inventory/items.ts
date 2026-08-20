@@ -2,7 +2,9 @@ import {
   appendModuleRow,
   findModuleRow,
   getModuleRows,
+  getModuleRowNumbers,
   recordToRow,
+  updateModuleCells,
   updateModuleRow,
 } from "@/lib/moduleSheets";
 import { generateId } from "@/lib/id";
@@ -187,4 +189,60 @@ export async function updateItem(
 
   await updateModuleRow(MODULE_KEY, found.rowNumber, recordToRow(MODULE_KEY, updated));
   return updated;
+}
+
+/** The planning fields Bulk Setup edits. Nothing else on an item is touched there. */
+export const PLANNING_FIELDS = [
+  "ADC_Manual",
+  "Lead_Time_Days",
+  "Safety_Factor",
+  "MOQ",
+  "Max_Level",
+] as const;
+export type PlanningField = (typeof PLANNING_FIELDS)[number];
+
+export type PlanningPatch = Partial<Record<PlanningField, number | null>>;
+
+/**
+ * Applies planning-field edits to many items in one API call.
+ *
+ * Bulk Setup exists because an item master runs to hundreds of rows and the reorder
+ * maths is useless until Max Level, Lead Time and Safety Factor are filled — doing that
+ * one dialog at a time is not realistic, and leaving it undone is what made the user's
+ * previous system never suggest a reorder.
+ *
+ * Only the edited cells are written, so this cannot overwrite a name or category that
+ * someone changed while the grid was open.
+ */
+export async function bulkUpdatePlanningFields(
+  patches: { sku: string; fields: PlanningPatch }[]
+): Promise<{ updated: number; unknownSkus: string[] }> {
+  if (patches.length === 0) return { updated: 0, unknownSkus: [] };
+
+  const rowNumbers = await getModuleRowNumbers(MODULE_KEY, 0);
+
+  const rows: { rowNumber: number; fields: Record<string, string | number> }[] = [];
+  const unknownSkus: string[] = [];
+
+  for (const patch of patches) {
+    const rowNumber = rowNumbers.get(patch.sku);
+    if (rowNumber === undefined) {
+      unknownSkus.push(patch.sku);
+      continue;
+    }
+
+    const fields: Record<string, string | number> = {};
+    for (const [key, value] of Object.entries(patch.fields)) {
+      // An empty string clears the field back to "not set", which the reorder maths
+      // treats differently from zero — so null has to survive the round trip.
+      fields[key] = value === null || value === undefined ? "" : value;
+    }
+
+    if (Object.keys(fields).length > 0) {
+      rows.push({ rowNumber, fields });
+    }
+  }
+
+  await updateModuleCells(MODULE_KEY, rows);
+  return { updated: rows.length, unknownSkus };
 }

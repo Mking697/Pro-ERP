@@ -257,7 +257,7 @@ and would be expensive to retrofit:
 
 | Phase | Contents |
 |---|---|
-| **1** ✅ | `Items` master + `Stock_Ledger` + In/Out (blocking negative) + IQC pass → auto In. Verified end to end: ADC 250.5/30 = 8.35, ROP 8.35 × 7 × 1.5 = 87.675, an Out of 99999 against 1749.5 free refused with 409, and an IQC pass of 800 lifting free stock 1749.5 → 2549.5 with `Source = IQC` traceable to its inward entry. **Bulk Setup screen still to do.** |
+| **1** ✅ | `Items` master + `Stock_Ledger` + In/Out (blocking negative) + IQC pass → auto In. Verified end to end: ADC 250.5/30 = 8.35, ROP 8.35 × 7 × 1.5 = 87.675, an Out of 99999 against 1749.5 free refused with 409, and an IQC pass of 800 lifting free stock 1749.5 → 2549.5 with `Source = IQC` traceable to its inward entry. Bulk Setup fills the planning fields across many items in one batched write, touching only edited cells. Verified: setting Lead Time 10, Safety 1.2 and a manual ADC of 3 produced ROP 36, with the item's name untouched. |
 | **2** | ADC, ROP, live status, Reorder screen, Indents |
 | **3** | BOM — sheet + form |
 | **4** | PPC — plan builder, shared-pool allocation, reserve, Start Production, indent from shortage, PPC dashboard |

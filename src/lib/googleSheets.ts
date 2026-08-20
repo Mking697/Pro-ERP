@@ -127,6 +127,55 @@ export async function updateRow(
   );
 }
 
+/** 0 -> "A", 25 -> "Z", 26 -> "AA". */
+export function columnLetter(index: number): string {
+  let n = index;
+  let letters = "";
+  do {
+    letters = String.fromCharCode(65 + (n % 26)) + letters;
+    n = Math.floor(n / 26) - 1;
+  } while (n >= 0);
+  return letters;
+}
+
+export interface CellUpdate {
+  /** 1-indexed, including the header row. */
+  rowNumber: number;
+  /** 0-indexed column position. */
+  columnIndex: number;
+  value: string | number;
+}
+
+/**
+ * Writes many individual cells in one API call.
+ *
+ * Two reasons this exists rather than looping `updateRow`. Editing a hundred items would
+ * otherwise cost a hundred requests against a per-project quota every tenant shares. And
+ * writing only the cells that changed leaves the rest of each row untouched, so a bulk
+ * edit of planning fields cannot overwrite a name or category someone changed meanwhile.
+ */
+export async function updateCells(
+  spreadsheetId: string,
+  tabName: string,
+  updates: CellUpdate[]
+): Promise<void> {
+  if (updates.length === 0) return;
+
+  const sheets = getSheetsClient();
+  await withRetry(() =>
+    sheets.spreadsheets.values.batchUpdate({
+      spreadsheetId,
+      requestBody: {
+        valueInputOption: "RAW",
+        data: updates.map((u) => ({
+          range: `${tabName}!${columnLetter(u.columnIndex)}${u.rowNumber}`,
+          values: [[u.value]],
+        })),
+      },
+    })
+  );
+}
+
 /** Verifies the service account can actually reach a spreadsheet. */
 export async function verifySheetAccess(spreadsheetId: string): Promise<boolean> {
   try {

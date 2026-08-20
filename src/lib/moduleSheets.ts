@@ -1,6 +1,7 @@
 import {
   getSheetsClient,
   getSheetRows,
+  updateCells,
   appendSheetRow,
   updateSheetRow,
   rowsToObjects,
@@ -342,6 +343,31 @@ export async function updateModuleRow(
   await updateSheetRow(target.sheetTitle, rowNumber, row, target.spreadsheetId);
 }
 
+/**
+ * Maps a key column's value to its 1-indexed sheet row, in a single read.
+ *
+ * A bulk edit needs the row number of every item it touches; resolving them one lookup
+ * at a time would read the whole sheet once per row.
+ */
+export async function getModuleRowNumbers(
+  moduleKey: string,
+  matchColumnIndex: number
+): Promise<Map<string, number>> {
+  const target = await resolveModuleTarget(moduleKey);
+  const rows = await getSheetRows(target.sheetTitle, target.spreadsheetId);
+
+  const index = new Map<string, number>();
+  rows.forEach((row, i) => {
+    if (i === 0) return;
+    const key = row[matchColumnIndex];
+    // First occurrence wins; a duplicate key is a data problem the item master already
+    // refuses to create, and silently preferring the later row would hide it.
+    if (key && !index.has(key)) index.set(key, i + 1);
+  });
+
+  return index;
+}
+
 /** Finds the first data row whose column (0-indexed) matches, e.g. column 0 for an ID lookup. */
 export async function findModuleRow<T = Record<string, string>>(
   moduleKey: string,
@@ -355,6 +381,37 @@ export async function findModuleRow<T = Record<string, string>>(
 
   const record = rowsToObjects<T>([rows[0], rows[rowIndex]])[0];
   return { rowNumber: rowIndex + 1, record };
+}
+
+/**
+ * Patches specific fields on many rows of a module sheet in one API call.
+ *
+ * `rows` maps a row number (1-indexed, header included) to the field names and values to
+ * set on it. Only those cells are written — the rest of each row is left alone.
+ */
+export async function updateModuleCells(
+  moduleKey: string,
+  rows: { rowNumber: number; fields: Record<string, string | number> }[]
+): Promise<void> {
+  const def = getModuleDefinition(moduleKey);
+  const target = await resolveModuleTarget(moduleKey);
+
+  const updates = rows.flatMap((row) =>
+    Object.entries(row.fields)
+      .map(([field, value]) => {
+        const columnIndex = def.headers.indexOf(field);
+        // A field this module does not declare would land in an unnamed column and be
+        // invisible on read, so it is dropped rather than written to the wrong place.
+        if (columnIndex === -1) return null;
+        return { rowNumber: row.rowNumber, columnIndex, value };
+      })
+      .filter(
+        (u): u is { rowNumber: number; columnIndex: number; value: string | number } =>
+          u !== null
+      )
+  );
+
+  await updateCells(target.spreadsheetId, target.sheetTitle, updates);
 }
 
 export async function invalidateModuleTarget(moduleKey: string): Promise<void> {

@@ -42,4 +42,11 @@ export async function updateSheetRow(
   return updateRow(spreadsheetId ?? (await getTenantSheetId()), tabName, rowNumber, row);
 }
 
-export { rowsToObjects, getSheetsClient, verifySheetAccess } from "@/lib/googleSheets";
+// updateCells always takes an explicit spreadsheet id, so it stays a raw primitive —
+// re-exported here only so module code has one import site for sheet access.
+export {
+  rowsToObjects,
+  getSheetsClient,
+  verifySheetAccess,
+  updateCells,
+} from "@/lib/googleSheets";
