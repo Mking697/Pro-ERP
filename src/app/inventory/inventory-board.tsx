@@ -19,6 +19,8 @@ import CreateItemDialog from "./create-item-dialog";
 import StockMovementDialog from "./stock-movement-dialog";
 import { qty, statusVariant, type ItemRow, type StockStatus } from "./types";
 import { TableSkeleton } from "@/components/loading-states";
+import { Unplug } from "lucide-react";
+import EmptyState from "@/components/empty-state";
 
 const STATUS_FILTERS: (StockStatus | "All")[] = [
   "All",
@@ -85,18 +87,18 @@ export default function InventoryBoard({
 
   if (missingSheets.length > 0) {
     return (
-      <div className="rounded-lg border p-6 text-center">
-        <p className="text-sm font-medium">Inventory ki sheets abhi connect nahi hui</p>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Baaki hain: {missingSheets.join(", ")}
-        </p>
-        <Button
-          variant="outline"
-          size="sm"
-          className="mt-4"
-          render={<Link href="/admin/settings">Settings kholein</Link>}
-        />
-      </div>
+      <EmptyState
+        icon={<Unplug />}
+        title="Inventory ki sheets abhi connect nahi hui"
+        description={`Baaki hain: ${missingSheets.join(", ")}`}
+        action={
+          <Button
+            variant="outline"
+            size="sm"
+            render={<Link href="/admin/settings">Settings kholein</Link>}
+          />
+        }
+      />
     );
   }
 

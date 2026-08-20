@@ -27,6 +27,9 @@ import {
 import { useConfirm } from "@/components/confirm-dialog";
 import PlanForm from "./plan-form";
 import { CardListSkeleton } from "@/components/loading-states";
+import SheetNotConnected from "@/components/sheet-not-connected";
+import { Factory } from "lucide-react";
+import EmptyState from "@/components/empty-state";
 
 interface PlanMaterial {
   sku: string;
@@ -145,18 +148,10 @@ export default function PlanBoard({ access }: { access: string[] }) {
 
   if (setupRequired) {
     return (
-      <div className="rounded-lg border p-6 text-center">
-        <p className="text-sm font-medium">&quot;{setupRequired}&quot; sheet connect nahi hui</p>
-        <p className="mt-1 text-sm text-muted-foreground">
-          PPC ke liye Production Plans aur Plan Materials — dono sheet chahiye.
-        </p>
-        <Button
-          variant="outline"
-          size="sm"
-          className="mt-4"
-          render={<Link href="/admin/settings">Settings kholein</Link>}
-        />
-      </div>
+      <SheetNotConnected
+        what={setupRequired}
+        hint="PPC ke liye Production Plans aur Plan Materials — dono sheet chahiye."
+      />
     );
   }
 
@@ -195,12 +190,11 @@ export default function PlanBoard({ access }: { access: string[] }) {
       </div>
 
       {visible.length === 0 ? (
-        <div className="rounded-lg border p-10 text-center">
-          <p className="text-sm font-medium">Koi chalu plan nahi hai</p>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Naya plan banate hi uska material reserve ho jaata hai.
-          </p>
-        </div>
+        <EmptyState
+          icon={<Factory />}
+          title="Koi chalu plan nahi hai"
+          description="Naya plan banate hi uska material reserve ho jaata hai."
+        />
       ) : (
         <div className="space-y-3">
           {visible.map((plan) => {

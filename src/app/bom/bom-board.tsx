@@ -17,6 +17,9 @@ import {
 import { formatDueDisplay } from "@/lib/formatDate";
 import BomForm from "./bom-form";
 import { CardListSkeleton } from "@/components/loading-states";
+import SheetNotConnected from "@/components/sheet-not-connected";
+import { ClipboardList } from "lucide-react";
+import EmptyState from "@/components/empty-state";
 
 interface BomLine {
   lineNo: number;
@@ -62,15 +65,7 @@ export default function BomBoard() {
 
   if (setupRequired) {
     return (
-      <div className="rounded-lg border p-6 text-center">
-        <p className="text-sm font-medium">&quot;{setupRequired}&quot; sheet connect nahi hui</p>
-        <Button
-          variant="outline"
-          size="sm"
-          className="mt-4"
-          render={<Link href="/admin/settings">Settings kholein</Link>}
-        />
-      </div>
+      <SheetNotConnected what={setupRequired} />
     );
   }
 
@@ -99,12 +94,11 @@ export default function BomBoard() {
       </div>
 
       {visible.length === 0 ? (
-        <div className="rounded-lg border p-10 text-center">
-          <p className="text-sm font-medium">Abhi koi BOM nahi hai</p>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Production planning tabhi chalegi jab product ki BOM bani ho.
-          </p>
-        </div>
+        <EmptyState
+          icon={<ClipboardList />}
+          title="Abhi koi BOM nahi hai"
+          description="Production planning tabhi chalegi jab product ki BOM bani ho."
+        />
       ) : (
         <div className="space-y-3">
           {visible.map((bom) => {

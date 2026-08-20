@@ -17,6 +17,8 @@ import {
 } from "@/components/ui/table";
 import { qty, statusVariant, type StockStatus } from "../types";
 import { TableSkeleton } from "@/components/loading-states";
+import { Unplug, PackageCheck } from "lucide-react";
+import EmptyState from "@/components/empty-state";
 
 interface Suggestion {
   sku: string;
@@ -126,10 +128,18 @@ export default function ReorderBoard({ canRaise }: { canRaise: boolean }) {
 
   if (missingSheets.length > 0) {
     return (
-      <div className="rounded-lg border p-6 text-center">
-        <p className="text-sm font-medium">Inventory sheets connect nahi hui</p>
-        <p className="mt-1 text-sm text-muted-foreground">{missingSheets.join(", ")}</p>
-      </div>
+      <EmptyState
+        icon={<Unplug />}
+        title="Inventory sheets connect nahi hui"
+        description={missingSheets.join(", ")}
+        action={
+          <Button
+            variant="outline"
+            size="sm"
+            render={<Link href="/admin/settings">Settings kholein</Link>}
+          />
+        }
+      />
     );
   }
 
@@ -149,12 +159,11 @@ export default function ReorderBoard({ canRaise }: { canRaise: boolean }) {
       )}
 
       {rows.length === 0 ? (
-        <div className="rounded-lg border p-10 text-center">
-          <p className="text-sm font-medium">Abhi kisi item ko order ki zaroorat nahi</p>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Har item apne reorder point se upar hai.
-          </p>
-        </div>
+        <EmptyState
+          icon={<PackageCheck />}
+          title="Abhi kisi item ko order ki zaroorat nahi"
+          description="Har item apne reorder point se upar hai."
+        />
       ) : (
         <>
           <div className="flex flex-wrap items-center gap-2">

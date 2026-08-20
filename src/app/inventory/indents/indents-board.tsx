@@ -18,6 +18,7 @@ import { formatDueDisplay } from "@/lib/formatDate";
 import { qty } from "../types";
 import { TableSkeleton } from "@/components/loading-states";
 import { useConfirm } from "@/components/confirm-dialog";
+import SheetNotConnected from "@/components/sheet-not-connected";
 
 interface Indent {
   Indent_ID: string;
@@ -150,15 +151,7 @@ export default function IndentsBoard({
 
   if (setupRequired) {
     return (
-      <div className="rounded-lg border p-6 text-center">
-        <p className="text-sm font-medium">&quot;{setupRequired}&quot; sheet connect nahi hui</p>
-        <Button
-          variant="outline"
-          size="sm"
-          className="mt-4"
-          render={<Link href="/admin/settings">Settings kholein</Link>}
-        />
-      </div>
+      <SheetNotConnected what={setupRequired} />
     );
   }
 

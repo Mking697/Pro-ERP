@@ -30,9 +30,15 @@ export interface InventorySnapshot {
 export async function getInventorySnapshot(
   adcWindowDays = 30
 ): Promise<InventorySnapshot> {
-  const [items, ledger] = await Promise.all([
+  // All four in one round. None of them depends on another, so waiting for items and the
+  // ledger before asking about reservations and open orders doubled the wall-clock time
+  // of the slowest call on every inventory screen — each round is a Sheets round trip,
+  // and those are hundreds of milliseconds, not microseconds.
+  const [items, ledger, committed, inTransit] = await Promise.all([
     tryModule(() => listItems()),
     tryModule(() => listLedger()),
+    committedBySku(),
+    inTransitBySku(),
   ]);
 
   const missingSheets = [
@@ -46,10 +52,6 @@ export async function getInventorySnapshot(
 
   const rows = ledger ?? [];
   const onHand = onHandBySku(rows);
-  const [committed, inTransit] = await Promise.all([
-    committedBySku(),
-    inTransitBySku(),
-  ]);
 
   return {
     items: items
@@ -64,12 +66,12 @@ export async function getInventorySnapshot(
 
 /** Free stock for one SKU — what an `Out` is checked against before it is written. */
 export async function freeStockFor(sku: string): Promise<number> {
-  const ledger = (await tryModule(() => listLedger())) ?? [];
-  const [committed, inTransit] = await Promise.all([
+  const [ledger, committed, inTransit] = await Promise.all([
+    tryModule(() => listLedger()),
     committedBySku(),
     inTransitBySku(),
   ]);
-  return positionFor(sku, onHandBySku(ledger), committed, inTransit).free;
+  return positionFor(sku, onHandBySku(ledger ?? []), committed, inTransit).free;
 }
 
 export interface ItemDetail {

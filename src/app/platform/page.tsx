@@ -5,6 +5,7 @@ import { isPlatformAdmin } from "@/lib/platform/admin";
 import AppShell from "@/components/app-shell";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import OrganizationsTable from "./organizations-table";
+import PageHeader from "@/components/page-header";
 
 export default async function PlatformPage() {
   const cookieStore = await cookies();
@@ -19,13 +20,10 @@ export default async function PlatformPage() {
   return (
     <AppShell session={session}>
       <div className="space-y-6">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Platform</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Is install par chal rahe saare organizations. Ye sirf platform operator ke liye
-            hai — kisi organization ke Admin ko ye page dikhta hi nahi.
-          </p>
-        </div>
+        <PageHeader
+          title="Platform"
+          description="Is install par chal rahe saare organizations. Ye sirf platform operator ke liye hai — kisi organization ke Admin ko ye page dikhta hi nahi."
+        />
 
         <OrganizationsTable />
 

@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { verifySession, SESSION_COOKIE } from "@/lib/auth/session";
 import AppShell from "@/components/app-shell";
 import InventoryBoard from "./inventory-board";
+import PageHeader from "@/components/page-header";
 
 export default async function InventoryPage() {
   const cookieStore = await cookies();
@@ -15,13 +16,10 @@ export default async function InventoryPage() {
   return (
     <AppShell session={session}>
       <div className="space-y-6">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Inventory</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Har item ka live stock. Stock kahin store nahi hota — har baar In/Out
-            entries se nikala jaata hai.
-          </p>
-        </div>
+        <PageHeader
+          title="Inventory"
+          description="Har item ka live stock. Stock kahin store nahi hota — har baar In/Out entries se nikala jaata hai."
+        />
 
         <InventoryBoard
           canTransact={session.access.includes("INVENTORY_TXN")}

@@ -76,7 +76,7 @@ export default function CreateItemDialog({ onCreated }: { onCreated: () => void 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger render={<Button>Naya Item</Button>} />
-      <DialogContent className="max-h-[85vh] overflow-y-auto">
+      <DialogContent className="max-h-[85vh] max-w-2xl overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Naya Item</DialogTitle>
           <DialogDescription>

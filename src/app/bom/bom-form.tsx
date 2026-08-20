@@ -48,7 +48,13 @@ export default function BomForm({
   const [productSku, setProductSku] = useState("");
   const [skuEdited, setSkuEdited] = useState(false);
   const [lineCount, setLineCount] = useState("");
-  const [lines, setLines] = useState<DraftLine[]>([]);
+  // Opens ready to type. Starting empty meant the first thing anyone met was a count box
+  // and a "Rows banayein" button — a step to get to the step, before any real work.
+  const [lines, setLines] = useState<DraftLine[]>(() => [
+    blankLine(),
+    blankLine(),
+    blankLine(),
+  ]);
   const [saving, setSaving] = useState(false);
 
   // The SKU follows the name until the user types in the box themselves; after that it is
@@ -76,7 +82,7 @@ export default function BomForm({
     setProductSku("");
     setSkuEdited(false);
     setLineCount("");
-    setLines([]);
+    setLines([blankLine(), blankLine(), blankLine()]);
   }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -169,7 +175,7 @@ export default function BomForm({
               </p>
             </div>
             <div className="space-y-2">
-              <Label htmlFor="lineCount">Kitne item lagenge</Label>
+              <Label htmlFor="lineCount">Ek saath rows</Label>
               <div className="flex gap-2">
                 <Input
                   id="lineCount"
@@ -191,12 +197,7 @@ export default function BomForm({
             </div>
           </div>
 
-          {lines.length === 0 ? (
-            <p className="rounded-lg border bg-muted/40 p-4 text-center text-sm text-muted-foreground">
-              Upar item ki ginti daal kar &quot;Rows banayein&quot; dabayein.
-            </p>
-          ) : (
-            <div className="space-y-3">
+          <div className="space-y-3">
               {lines.map((line, i) => (
                 <div
                   key={line.id}
@@ -239,16 +240,15 @@ export default function BomForm({
                 </div>
               ))}
 
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => setLines((prev) => [...prev, blankLine()])}
-              >
-                Ek aur line
-              </Button>
-            </div>
-          )}
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setLines((prev) => [...prev, blankLine()])}
+            >
+              Ek aur line
+            </Button>
+          </div>
 
           <DialogFooter>
             <Button type="submit" disabled={saving || lines.length === 0}>

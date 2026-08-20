@@ -16,6 +16,8 @@ import {
 } from "@/components/ui/table";
 import type { ItemRow } from "../types";
 import { TableSkeleton } from "@/components/loading-states";
+import { Package } from "lucide-react";
+import EmptyState from "@/components/empty-state";
 
 const FIELDS = [
   { key: "Lead_Time_Days", label: "Lead Time", hint: "din" },
@@ -126,17 +128,18 @@ export default function BulkSetup() {
 
   if (items.length === 0) {
     return (
-      <div className="rounded-lg border p-6 text-center">
-        <p className="text-sm text-muted-foreground">
-          Abhi koi item nahi hai. Pehle Inventory se item banayein.
-        </p>
-        <Button
-          variant="outline"
-          size="sm"
-          className="mt-4"
-          render={<Link href="/inventory">Inventory</Link>}
-        />
-      </div>
+      <EmptyState
+        icon={<Package />}
+        title="Abhi koi item nahi hai"
+        description="Planning ke number bharne se pehle item master me item banane honge."
+        action={
+          <Button
+            variant="outline"
+            size="sm"
+            render={<Link href="/inventory">Inventory kholein</Link>}
+          />
+        }
+      />
     );
   }
 
