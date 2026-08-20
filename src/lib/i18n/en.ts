@@ -366,6 +366,12 @@ export const EN: Record<string, string> = {
   // --- analytics -------------------------------------------------------------------
   "Aapko assign hue tasks, samay ke saath.": "Tasks assigned to you, over time.",
 
+  // --- guidebook page chrome (the content itself lives in guide.en.ts) --------------
+  "Sirf wahi cheezein jo aap is system me kar sakte hain":
+    "Only the things you can actually do in this system",
+  "Aapka access badlega to ye guide bhi apne aap badal jaayegi.":
+    "As your access changes, this guide changes with it.",
+
   // --- shared UI -------------------------------------------------------------------
   "Chunein...": "Select...",
   "Poora": "Full",

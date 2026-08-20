@@ -1,4 +1,6 @@
 import { MODULE_ACCESS_KEYS, type ModuleAccessKey } from "@/lib/moduleAccess";
+import type { Locale } from "@/lib/preferences";
+import { GUIDE_EN } from "@/lib/guide.en";
 
 /**
  * The in-app guidebook, as data rather than a page of prose.
@@ -972,18 +974,27 @@ export const GUIDE: GuideChapter[] = [
   },
 ];
 
-/** Everything a viewer with these grants is meant to read, empty chapters dropped. */
+/**
+ * Everything a viewer with these grants is meant to read, empty chapters dropped.
+ *
+ * The English guidebook is a parallel structure rather than a set of dictionary lookups:
+ * a paragraph makes a brittle key, and prose is translated far more reliably with its
+ * section visible around it. Both files carry the same ids, which `npm run i18n:check`
+ * verifies.
+ */
 export function guideFor(options: {
   role: string;
   access: readonly string[];
   isPlatformAdmin: boolean;
+  locale?: Locale;
 }): GuideChapter[] {
+  const source = options.locale === "hi" ? GUIDE : GUIDE_EN;
   const isAdmin = options.role === "Admin";
   // An Admin holds every module grant implicitly; be explicit so the guide never hides
   // a module's instructions from the person expected to explain it to their team.
   const grants = new Set<string>(isAdmin ? MODULE_ACCESS_KEYS : options.access);
 
-  return GUIDE.map((chapter) => ({
+  return source.map((chapter) => ({
     ...chapter,
     sections: chapter.sections.filter((section) => {
       if (section.audience === "everyone") return true;

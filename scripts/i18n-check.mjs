@@ -35,6 +35,23 @@ console.log(`keys matching no source : ${unmatched.length}`);
 console.log(`t() calls in source     : ${wrapped.size}`);
 console.log(`t() calls with no EN    : ${untranslated.length}`);
 
+// The guidebook is a parallel structure rather than dictionary entries, so the two files
+// are compared by id: a section added to one and forgotten in the other would otherwise
+// vanish for half the readers with nothing to show for it.
+function guideIds(file) {
+  const src = readFileSync(file, "utf8");
+  const body = src.slice(src.indexOf("["));
+  return [...body.matchAll(/^\s+id: "([a-z0-9-]+)",$/gm)].map((m) => m[1]);
+}
+const hiIds = guideIds("src/lib/guide.ts");
+const enIds = guideIds("src/lib/guide.en.ts");
+const missingEn = hiIds.filter((id) => !enIds.includes(id));
+const extraEn = enIds.filter((id) => !hiIds.includes(id));
+
+console.log(`guide ids hi / en       : ${hiIds.length} / ${enIds.length}`);
+if (missingEn.length) console.log("  missing from guide.en.ts:", missingEn.join(", "));
+if (extraEn.length) console.log("  only in guide.en.ts     :", extraEn.join(", "));
+
 if (unmatched.length) {
   console.log("\nKeys that match nothing in src/ (they will never be used):");
   for (const k of unmatched) console.log("  " + JSON.stringify(k));
@@ -45,4 +62,4 @@ if (untranslated.length) {
   if (untranslated.length > 40) console.log(`  ... and ${untranslated.length - 40} more`);
 }
 
-process.exit(unmatched.length ? 1 : 0);
+process.exit(unmatched.length || missingEn.length || extraEn.length ? 1 : 0);

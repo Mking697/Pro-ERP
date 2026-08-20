@@ -3,7 +3,9 @@ import { redirect } from "next/navigation";
 import { verifySession, SESSION_COOKIE } from "@/lib/auth/session";
 import { isPlatformAdmin } from "@/lib/platform/admin";
 import { guideFor } from "@/lib/guide";
+import { getLocale, getT } from "@/lib/i18n/server";
 import AppShell from "@/components/app-shell";
+import PageHeader from "@/components/page-header";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
@@ -14,10 +16,13 @@ export default async function GuidePage() {
 
   if (!session) redirect("/login");
 
+  const t = await getT();
+
   const chapters = guideFor({
     role: session.role,
     access: session.access,
     isPlatformAdmin: isPlatformAdmin(session.email),
+    locale: await getLocale(),
   });
 
   const sectionCount = chapters.reduce((n, c) => n + c.sections.length, 0);
@@ -25,22 +30,19 @@ export default async function GuidePage() {
   return (
     <AppShell session={session}>
       <div className="space-y-6">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Guidebook</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Sirf wahi cheezein jo aap is system me kar sakte hain — {sectionCount} topics.
-            Aapka access badlega to ye guide bhi apne aap badal jaayegi.
-          </p>
-        </div>
+        <PageHeader
+          title={t("Guidebook")}
+          description={`${t("Sirf wahi cheezein jo aap is system me kar sakte hain")} — ${sectionCount} ${t("topics")}. ${t("Aapka access badlega to ye guide bhi apne aap badal jaayegi.")}`}
+        />
 
         <div className="grid gap-6 lg:grid-cols-[220px_1fr]">
           {/* Contents list — on desktop it stays visible while the reader scrolls. */}
           <nav
-            aria-label="Guidebook contents"
+            aria-label={t("Guidebook contents")}
             className="hidden lg:block lg:sticky lg:top-32 lg:self-start"
           >
             <p className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-              Contents
+              {t("Contents")}
             </p>
             <ul className="space-y-1">
               {chapters.map((chapter) => (
