@@ -147,12 +147,27 @@ export async function createReportShare(input: CreateShareInput): Promise<Report
   return share;
 }
 
-/** The active link for this token, or null — expired, revoked and unknown look alike. */
+/**
+ * The active link for this token, or null — revoked, expired and unknown look alike.
+ *
+ * Deliberately reads the sheet rather than the cache. The cache is per-process, and this
+ * runs across several serverless instances, so revoking on one would leave the others
+ * serving the link until their own copy expired. A revocation that takes effect "within
+ * thirty seconds, depending which server you reach" is not a revocation.
+ *
+ * The extra read is affordable because the expensive part of the page — the whole report
+ * data set — is cached; this is one row lookup in front of it.
+ */
 export async function getReportShare(token: string): Promise<ReportShare | null> {
   if (!token) return null;
-  const shares = await allShares();
-  const found = shares.find((s) => s.Token === token);
-  return found && found.Status === "Active" ? found : null;
+  try {
+    const rows = await readRows(getPlatformSheetId(), REPORT_SHARES_TAB);
+    const found = rowsToObjects<ReportShare>(rows).find((s) => s.Token === token);
+    return found && found.Status === "Active" ? found : null;
+  } catch {
+    // No tab yet, or the registry is unreachable. Refusing is the safe direction.
+    return null;
+  }
 }
 
 export async function listReportShares(orgId: string): Promise<ReportShare[]> {
