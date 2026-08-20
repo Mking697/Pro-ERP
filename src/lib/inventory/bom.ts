@@ -189,7 +189,15 @@ export async function createBom(input: CreateBomInput): Promise<Bom> {
   // A new version keeps the product's existing SKU unless the user deliberately typed a
   // different one. Letting v2 silently take a fresh SKU would split one product's history
   // into two identities.
-  const productSku = (input.productSku?.trim() || existing?.productSku || "").trim();
+  //
+  // Falling back to a suggested SKU means a product always has one however the BOM was
+  // created — the form fills the box in, but an import or an API call should not be able
+  // to leave a product with no identity for production and dispatch to refer to.
+  const productSku = (
+    input.productSku?.trim() ||
+    existing?.productSku ||
+    suggestProductSku(productName)
+  ).trim();
 
   if (productSku) {
     const clash = boms.find(
