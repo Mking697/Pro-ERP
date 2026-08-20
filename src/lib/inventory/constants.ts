@@ -33,3 +33,20 @@ export type StockStatus =
   | "Healthy"
   | "Overstock"
   | "Not Set Up";
+
+/**
+ * Turns a product name into a usable SKU: "Sliding Door 80mm" -> "FG-SLIDING-DOOR-80MM".
+ *
+ * Suggested rather than imposed. A product SKU is how production, dispatch and any
+ * outside system will refer to this product for years, and organizations usually already
+ * have a coding scheme — so the box stays editable and this is only the starting point.
+ */
+export function suggestProductSku(productName: string): string {
+  const slug = productName
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 28);
+  return slug ? `FG-${slug}` : "";
+}

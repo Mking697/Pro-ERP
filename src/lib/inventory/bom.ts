@@ -6,8 +6,11 @@ import {
 } from "@/lib/moduleSheets";
 import { generateId } from "@/lib/id";
 import { numOr0 } from "@/lib/inventory/items";
+import { suggestProductSku } from "@/lib/inventory/constants";
 
 const MODULE_KEY = "BOM";
+
+export { suggestProductSku };
 
 /**
  * A component is an inventory item today. When Semi-FG arrives, a BOM line will be able
@@ -172,8 +175,34 @@ export async function createBom(input: CreateBomInput): Promise<Bom> {
     seen.add(line.componentSku);
   }
 
-  const existing = await findActiveBom(productName);
+  // One read, reused for both the version lookup and the SKU collision check — the
+  // Sheets per-minute quota is shared across every tenant, so a second fetch here costs
+  // every organization, not just this one.
+  const boms = await listBoms();
+  const normalized = productName.toLowerCase();
+  const existing =
+    boms.find(
+      (b) => b.status === "Active" && b.productName.trim().toLowerCase() === normalized
+    ) ?? null;
   const version = existing ? existing.version + 1 : 1;
+
+  // A new version keeps the product's existing SKU unless the user deliberately typed a
+  // different one. Letting v2 silently take a fresh SKU would split one product's history
+  // into two identities.
+  const productSku = (input.productSku?.trim() || existing?.productSku || "").trim();
+
+  if (productSku) {
+    const clash = boms.find(
+      (b) =>
+        b.productSku.trim().toLowerCase() === productSku.toLowerCase() &&
+        b.productName.trim().toLowerCase() !== productName.toLowerCase()
+    );
+    if (clash) {
+      throw new BomValidationError(
+        `SKU "${productSku}" pehle se "${clash.productName}" ka hai. Har product ka SKU alag hona chahiye.`
+      );
+    }
+  }
 
   const bomId = generateId("BOM");
   const now = new Date().toISOString();
@@ -182,7 +211,7 @@ export async function createBom(input: CreateBomInput): Promise<Bom> {
     const row: BomRow = {
       BOM_ID: bomId,
       Product_Name: productName,
-      Product_SKU: input.productSku?.trim() ?? "",
+      Product_SKU: productSku,
       Version: String(version),
       Line_No: String(i + 1),
       Component_SKU: line.componentSku,
@@ -210,7 +239,7 @@ export async function createBom(input: CreateBomInput): Promise<Bom> {
   return {
     bomId,
     productName,
-    productSku: input.productSku?.trim() ?? "",
+    productSku,
     version,
     status: "Active",
     createdAt: now,

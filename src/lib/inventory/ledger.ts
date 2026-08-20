@@ -54,17 +54,6 @@ export function onHandBySku(ledger: LedgerRecord[]): Map<string, number> {
   return stock;
 }
 
-/**
- * Quantity reserved by production plans that are submitted but not yet consumed.
- *
- * Empty until PPC exists (phase 4). It is a function rather than a constant so the whole
- * system already reads *free* stock — wiring plans in later becomes one implementation
- * change instead of an audit of every call site.
- */
-export async function committedBySku(): Promise<Map<string, number>> {
-  return new Map();
-}
-
 export interface StockPosition {
   sku: string;
   onHand: number;

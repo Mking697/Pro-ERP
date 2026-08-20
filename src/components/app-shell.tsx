@@ -39,6 +39,14 @@ export default async function AppShell({
     items.push({ href: "/bom", label: "BOM" });
   }
 
+  // Production-floor users reach PPC to start a run, planners to build one.
+  if (
+    session.access.includes("PPC_PLAN") ||
+    session.access.includes("INVENTORY_TXN")
+  ) {
+    items.push({ href: "/ppc", label: "PPC" });
+  }
+
   if (
     session.access.includes("INWARD_ENTRY") ||
     session.access.includes("IQC_CHECK") ||

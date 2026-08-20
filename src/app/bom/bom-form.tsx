@@ -15,6 +15,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import ItemPicker, { type PickerItem } from "@/components/item-picker";
+import { suggestProductSku } from "@/lib/inventory/constants";
 
 interface DraftLine {
   id: number;
@@ -34,12 +35,32 @@ function blankLine(): DraftLine {
  * the item itself is not measured in, or every shortage calculation built on it is
  * quietly wrong.
  */
-export default function BomForm({ onCreated }: { onCreated: () => void }) {
+export default function BomForm({
+  onCreated,
+  known = [],
+}: {
+  onCreated: () => void;
+  /** Existing BOMs, so re-planning a known product re-uses its SKU instead of minting one. */
+  known?: { productName: string; productSku: string }[];
+}) {
   const [open, setOpen] = useState(false);
   const [productName, setProductName] = useState("");
+  const [productSku, setProductSku] = useState("");
+  const [skuEdited, setSkuEdited] = useState(false);
   const [lineCount, setLineCount] = useState("");
   const [lines, setLines] = useState<DraftLine[]>([]);
   const [saving, setSaving] = useState(false);
+
+  // The SKU follows the name until the user types in the box themselves; after that it is
+  // theirs and nothing overwrites it.
+  function handleNameChange(name: string) {
+    setProductName(name);
+    if (skuEdited) return;
+    const match = known.find(
+      (b) => b.productName.trim().toLowerCase() === name.trim().toLowerCase()
+    );
+    setProductSku(match?.productSku || suggestProductSku(name));
+  }
 
   function buildLines(count: number) {
     const n = Math.max(1, Math.min(count, 100));
@@ -52,6 +73,8 @@ export default function BomForm({ onCreated }: { onCreated: () => void }) {
 
   function reset() {
     setProductName("");
+    setProductSku("");
+    setSkuEdited(false);
     setLineCount("");
     setLines([]);
   }
@@ -72,6 +95,7 @@ export default function BomForm({ onCreated }: { onCreated: () => void }) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           productName,
+          productSku,
           lines: filled.map((l) => ({
             componentSku: l.item!.sku,
             componentName: l.item!.name,
@@ -115,16 +139,34 @@ export default function BomForm({ onCreated }: { onCreated: () => void }) {
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="grid gap-4 sm:grid-cols-[1fr_auto]">
+          <div className="grid gap-4 sm:grid-cols-[1fr_1fr_auto]">
             <div className="space-y-2">
               <Label htmlFor="productName">Product ka naam</Label>
               <Input
                 id="productName"
                 value={productName}
-                onChange={(e) => setProductName(e.target.value)}
+                onChange={(e) => handleNameChange(e.target.value)}
                 placeholder="Sliding Door 80mm"
                 required
               />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="productSku">Product SKU</Label>
+              <Input
+                id="productSku"
+                value={productSku}
+                onChange={(e) => {
+                  setSkuEdited(true);
+                  setProductSku(e.target.value);
+                }}
+                placeholder="FG-SLIDING-DOOR-80MM"
+                className="font-mono text-sm"
+              />
+              <p className="text-xs text-muted-foreground">
+                {skuEdited
+                  ? "Aapka apna SKU."
+                  : "Naam se apne aap bana — badal sakte hain."}
+              </p>
             </div>
             <div className="space-y-2">
               <Label htmlFor="lineCount">Kitne item lagenge</Label>

@@ -67,6 +67,12 @@ export const MODULE_ACCESS = [
     href: "/bom",
   },
   {
+    key: "PPC_PLAN",
+    label: "Production Planning",
+    description: "Production plan bana sakta hai aur material reserve kar sakta hai",
+    href: "/ppc",
+  },
+  {
     key: "INDENT_APPROVE",
     label: "Indent Approval",
     description: "Purchase indents approve aur receive kar sakta hai",

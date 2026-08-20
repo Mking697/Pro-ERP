@@ -234,6 +234,69 @@ export const GUIDE: GuideChapter[] = [
   },
 
   {
+    id: "production",
+    title: "BOM aur Production Planning",
+    description: "Product kis cheez se banta hai, aur usse banane ka plan.",
+    sections: [
+      {
+        id: "bom-create",
+        title: "Product ki BOM banana",
+        audience: "BOM_MANAGE",
+        summary: "Ek product banane me kaun sa item kitna lagta hai.",
+        steps: [
+          "BOM page par Nayi BOM dabayein.",
+          "Product ka naam likhein — SKU apne aap ban jaata hai, chahein to badal lein.",
+          "Kitne item lagenge wo ginti daal kar Rows banayein dabayein.",
+          "Har row me item chunein aur ek unit ke liye quantity likhein.",
+          "BOM banayein dabayein.",
+        ],
+        notes: [
+          "Item chunte hi uska SKU aur unit apne aap aa jaate hain — BOM me wahi unit rahega jisme item nap-ta hai.",
+          "Ek hi item do baar daalne par system rok dega. Dono quantity ek hi line me jodkar likhein.",
+          "Purane product ki BOM dobara banayenge to nayi version banegi aur purani Archived ho jaayegi — mitti nahi. Purane record padhne ke liye 'Purani versions' dabayein.",
+        ],
+      },
+      {
+        id: "ppc-plan",
+        title: "Production plan banana",
+        audience: "PPC_PLAN",
+        summary:
+          "Jo product banane hain unka plan, aur uske liye material ka reserve ho jaana.",
+        steps: [
+          "PPC page par Naya plan dabayein.",
+          "Jo product ek saath banane hain, sabko ek hi baar me daalein — product, quantity aur production date.",
+          "Material check karein dabakar dekhein kis product ka kya material kam pad raha hai.",
+          "Plan banayein dabayein.",
+        ],
+        notes: [
+          "Sab product ek saath daalna zaroori hai. Stock ek hi pool hai — alag-alag check karne par do product ek hi material par 'Ready' dikha sakte hain.",
+          "Material pehle us product ko milta hai jiski production date pehle hai.",
+          "Plan bante hi material reserve ho jaata hai, isliye wahi stock doosra plan nahi le sakta.",
+          "Material kam ho to bhi plan ban jaata hai — jitna mila utna reserve ho jaata hai, aur baaki ke liye indent raise kar sakte hain.",
+          "Indent aane ke baad Dobara check dabayein — bacha hua material plan me aa jaayega.",
+        ],
+      },
+      {
+        id: "ppc-start",
+        title: "Production shuru karna",
+        audience: "INVENTORY_TXN",
+        summary: "Actual quantity daal kar material issue karna.",
+        steps: [
+          "PPC page par plan ke saamne Production shuru dabayein.",
+          "Kitne unit actually ban rahe hain wo quantity daalein.",
+          "Material issue karein dabayein.",
+          "Kaam khatam hone par Complete dabayein.",
+        ],
+        notes: [
+          "Plan ki quantity nahi, actual quantity poochhi jaati hai — dono aksar alag hote hain, aur stock wahi ghatna chahiye jo sach me laga.",
+          "Jitna material bach gaya wo turant free ho jaata hai, taaki doosra plan use le sake.",
+          "Har issue Stock Ledger me Out ban kar jaata hai, jisme Plan ID likhi hoti hai.",
+        ],
+      },
+    ],
+  },
+
+  {
     id: "team",
     title: "Team",
     description: "Doosron ka kaam dekhne ke liye.",

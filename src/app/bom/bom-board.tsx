@@ -28,6 +28,7 @@ interface BomLine {
 interface Bom {
   bomId: string;
   productName: string;
+  productSku: string;
   version: number;
   status: string;
   createdAt: string;
@@ -89,7 +90,10 @@ export default function BomBoard() {
           </Button>
         )}
         <div className="ml-auto">
-          <BomForm onCreated={() => setVersion((v) => v + 1)} />
+          <BomForm
+            onCreated={() => setVersion((v) => v + 1)}
+            known={boms.map((b) => ({ productName: b.productName, productSku: b.productSku }))}
+          />
         </div>
       </div>
 

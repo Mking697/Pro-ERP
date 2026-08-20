@@ -2,10 +2,11 @@ import { tryModule } from "@/lib/moduleSheets";
 import { listItems, type ItemRecord } from "@/lib/inventory/items";
 // In-transit lives with indents, which own the data it is derived from.
 import { inTransitBySku, suggestIndentQty } from "@/lib/inventory/indents";
+// Reservations live with plans, which own the data they are derived from.
+import { committedBySku } from "@/lib/inventory/plans";
 import {
   listLedger,
   onHandBySku,
-  committedBySku,
   buildItemStock,
   positionFor,
   type ItemStock,
