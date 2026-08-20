@@ -41,6 +41,8 @@ Replaces a Google-Sheets + Apps Script system the user already runs. Fourteen de
 - A plan **snapshots its BOM**, so editing a BOM never rewrites history.
 - Build order: (1) Items + ledger + In/Out + IQC auto-In → (2) ADC/ROP/reorder/indents → (3) BOM → (4) PPC → (5) production execution, Semi-FG, PDI, Packing, Dispatch.
 
+**Phase 1 is done and verified against live sheets (2026-08-20)**: `Items` + `Stock_Ledger` connected, item master, In/Out with the negative-stock block, live status/ADC/ROP, item detail with running balance, and IQC pass writing a stock In traceable to its inward entry. `ensureModuleHeaders()` (`src/lib/moduleSheets.ts`) now migrates any module sheet's header row, which is what let inward gain its `SKU` column without touching customers' sheets by hand. Still to do in phase 1: the Bulk Setup screen for filling `Max_Level` / `Lead_Time_Days` / `Safety_Factor` across many items.
+
 **Not done yet / next up:**
 - **Attachment storage is hybrid** (`src/lib/storage.ts`). A service account has **zero Drive storage quota**, so uploading into a folder in anyone's *personal* My Drive fails with 403 "Service Accounts do not have storage quota" — even when the folder is shared and `canAddChildren` is true. Confirmed against a live folder 2026-08-19. Requiring a Shared Drive would leave every free-Gmail organization without attachments, so:
   - Org connected a **Shared Drive** folder → files go to its own Drive.

@@ -1,7 +1,9 @@
 # Inventory · BOM · PPC — build specification
 
-Agreed with the user on 2026-08-19. **Nothing here is built yet.** This is the plan the
-next session works from.
+Agreed with the user on 2026-08-19.
+
+**Phase 1 is built and verified against live sheets (2026-08-20).** Phases 2-5 are still
+the plan. Progress is tracked in the build-order table at the bottom.
 
 Replaces a Google-Sheets + Apps Script system the user already runs ("Ultimate IMS
 V3.0"). That system's core idea is right and is kept: **stock is never stored, it is
@@ -255,7 +257,7 @@ and would be expensive to retrofit:
 
 | Phase | Contents |
 |---|---|
-| **1** | `Items` master + Bulk Setup + `Stock_Ledger` + In/Out (blocking negative) + IQC pass → auto In |
+| **1** ✅ | `Items` master + `Stock_Ledger` + In/Out (blocking negative) + IQC pass → auto In. Verified end to end: ADC 250.5/30 = 8.35, ROP 8.35 × 7 × 1.5 = 87.675, an Out of 99999 against 1749.5 free refused with 409, and an IQC pass of 800 lifting free stock 1749.5 → 2549.5 with `Source = IQC` traceable to its inward entry. **Bulk Setup screen still to do.** |
 | **2** | ADC, ROP, live status, Reorder screen, Indents |
 | **3** | BOM — sheet + form |
 | **4** | PPC — plan builder, shared-pool allocation, reserve, Start Production, indent from shortage, PPC dashboard |
