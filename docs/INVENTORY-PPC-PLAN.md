@@ -259,7 +259,7 @@ and would be expensive to retrofit:
 |---|---|
 | **1** ✅ | `Items` master + `Stock_Ledger` + In/Out (blocking negative) + IQC pass → auto In. Verified end to end: ADC 250.5/30 = 8.35, ROP 8.35 × 7 × 1.5 = 87.675, an Out of 99999 against 1749.5 free refused with 409, and an IQC pass of 800 lifting free stock 1749.5 → 2549.5 with `Source = IQC` traceable to its inward entry. Bulk Setup fills the planning fields across many items in one batched write, touching only edited cells. Verified: setting Lead Time 10, Safety 1.2 and a manual ADC of 3 produced ROP 36, with the item's name untouched. |
 | **2** ✅ | ADC, ROP, live status, Reorder screen, Indents. Verified end to end: an Out of 2500 raised ADC and with it the reorder point (87.7 → 962.7), the item appeared with a suggested 5000 (`max(0, 5000−49.5, 500)` rounded up to the MOQ multiple), a Pending indent counted 0 in transit while an Approved one counted 5000 and removed the item from the list, a partial receipt of 2000 moved free 49.5 → 2049.5 and in-transit 5000 → 3000 while **projected stayed 5049.5**, over-receiving was refused with 409, and both receipts landed with `Source = Indent_Receipt` referencing the indent. |
-| **3** | BOM — sheet + form |
+| **3** ✅ | BOM — sheet + form. Verified: the same component twice was refused by name, a BOM saved with 12 PCS and 1.5 PCS (decimal preserved), and re-saving the same product produced v2 Active while v1 stayed readable as Archived with its old quantities. |
 | **4** | PPC — plan builder, shared-pool allocation, reserve, Start Production, indent from shortage, PPC dashboard |
 | **5** | Production execution detail, Semi-FG, PDI, Packing, Dispatch |
 
