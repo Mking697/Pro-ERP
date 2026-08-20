@@ -12,14 +12,17 @@ import { priorityVariant } from "@/lib/priority";
 import { formatDueDisplay } from "@/lib/formatDate";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import TaskBoard from "@/app/tasks/task-board";
-import InwardBoard from "@/app/inward/inward-board";
 import ScoreBreakdown from "./score-breakdown";
-import Analytics from "./analytics";
-import ShareReport from "./share-report";
 import { getT } from "@/lib/i18n/server";
+import { reportsFor } from "@/lib/reports";
 
 function StatCard({
   label,
@@ -87,12 +90,6 @@ export default async function DashboardPage({
     .sort((a, b) => (a.Due_Date || "9999").localeCompare(b.Due_Date || "9999"))
     .slice(0, 5);
 
-  const canVerifyIqc = session.access.includes("IQC_CHECK");
-  const showInward =
-    session.access.includes("INWARD_ENTRY") ||
-    canVerifyIqc ||
-    session.access.includes("IMS_VIEW");
-
   // Whatever an Admin granted this person shows up here as somewhere they can go.
   const myModules = MODULE_ACCESS.filter((m) => session.access.includes(m.key));
 
@@ -122,17 +119,16 @@ export default async function DashboardPage({
         </div>
 
         {/*
-          Tabs are built from this person's own grants: a plain doer sees Overview,
-          Tasks and Performance, while someone who also holds Inward/IQC/IMS gets that
-          work in the same place instead of having to know another URL exists.
+          Two things live here: an overview of your own work, and the way in to the
+          reports. The operational boards used to be duplicated as tabs, so Tasks and
+          Inward each existed in two places; they stay in the nav where they were already
+          reachable, and each one now has a report of its own instead.
         */}
         <Tabs defaultValue={one("tab") ?? "overview"}>
           <TabsList>
             <TabsTrigger value="overview">Overview</TabsTrigger>
             <TabsTrigger value="analytics">{t("Reports")}</TabsTrigger>
-            <TabsTrigger value="tasks">Tasks</TabsTrigger>
-            {showInward && <TabsTrigger value="inward">Inward &amp; IQC</TabsTrigger>}
-            <TabsTrigger value="performance">Performance</TabsTrigger>
+            <TabsTrigger value="performance">{t("Aapka score")}</TabsTrigger>
           </TabsList>
 
           <TabsContent value="overview" className="mt-4 space-y-6">
@@ -233,31 +229,32 @@ export default async function DashboardPage({
           </TabsContent>
 
           <TabsContent value="analytics" className="mt-4 space-y-4">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <p className="text-sm text-muted-foreground">
-                {t("Har module ki report, aapke access ke hisaab se.")}
-              </p>
-              {/* The share link carries the range chosen here, so what the recipient
-                  opens is the report the sharer was looking at. */}
-              <ShareReport rangeKey={one("range") ?? "month"} />
+            <p className="text-sm text-muted-foreground">
+              {t(
+                "Har module ki apni report. Jo aapke access me hai, wahi yahan dikhta hai — aur har report alag se share ki ja sakti hai."
+              )}
+            </p>
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {reportsFor(session.access).map((report) => (
+                <Card
+                  key={report.id}
+                  className="transition-colors duration-150 hover:border-foreground/20"
+                >
+                  <CardHeader>
+                    <CardTitle className="text-base">
+                      <Link
+                        href={`/reports/${report.id}`}
+                        className="after:absolute after:inset-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      >
+                        {t(report.label)}
+                      </Link>
+                    </CardTitle>
+                    <CardDescription>{t(report.description)}</CardDescription>
+                  </CardHeader>
+                </Card>
+              ))}
             </div>
-            <Analytics
-              session={session}
-              rangeKey={one("range") ?? "month"}
-              from={one("from")}
-              to={one("to")}
-            />
           </TabsContent>
-
-          <TabsContent value="tasks" className="mt-4">
-            <TaskBoard currentUserId={session.userId} />
-          </TabsContent>
-
-          {showInward && (
-            <TabsContent value="inward" className="mt-4">
-              <InwardBoard canVerify={canVerifyIqc} />
-            </TabsContent>
-          )}
 
           <TabsContent value="performance" className="mt-4">
             <Card>

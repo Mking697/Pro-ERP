@@ -6,6 +6,7 @@ import {
   listReportShares,
   revokeReportShare,
 } from "@/lib/platform/shares";
+import { canSeeReport, getReport } from "@/lib/reports";
 
 export async function GET() {
   const guard = await requireSession();
@@ -15,6 +16,7 @@ export async function GET() {
   return NextResponse.json({
     shares: shares.map((s) => ({
       token: s.Token,
+      report: s.Report,
       label: s.Label,
       rangeKey: s.Range_Key,
       createdBy: s.Created_By,
@@ -24,6 +26,7 @@ export async function GET() {
 }
 
 const createSchema = z.object({
+  report: z.string().trim().min(1),
   label: z.string().trim().max(80).optional().default(""),
   rangeKey: z.string().trim().min(1).default("month"),
   from: z.string().trim().optional(),
@@ -41,8 +44,19 @@ export async function POST(request: Request) {
   }
 
   try {
+    // A personal report has no "you" on the other end of a public link, so it would
+    // either be empty or show somebody else's work. Refused rather than rendered blank.
+    const definition = getReport(parsed.data.report);
+    if (!definition || definition.personal) {
+      return NextResponse.json({ error: "Ye report share nahi ho sakti." }, { status: 400 });
+    }
+    if (!canSeeReport(definition, guard.session.access)) {
+      return NextResponse.json({ error: "Is report ka access nahi hai." }, { status: 403 });
+    }
+
     const share = await createReportShare({
       orgId: guard.session.orgId,
+      report: parsed.data.report,
       label: parsed.data.label,
       rangeKey: parsed.data.rangeKey,
       from: parsed.data.from,

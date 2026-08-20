@@ -89,7 +89,14 @@ export default async function SharedReportPage({
             rangeKey={range}
             from={from}
             to={to}
-            hidePersonal
+            // One report, named by the link. A link made before reports were split
+            // carries no report name; those fall back to the inward report rather than
+            // showing everything, since showing more than was meant is the worse error.
+            only={share.Report || "inward"}
+            // Handed down explicitly. The runWithTenant wrapped around this JSX has
+            // already gone out of scope by the time React renders this child, so
+            // without it the reads would resolve against the visitor's own session.
+            tenant={tenant}
           />
         </main>
 

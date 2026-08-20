@@ -380,6 +380,7 @@ export const EN: Record<string, string> = {
   "ko delete karein?": "— delete?",
   "Delete ho raha hai...": "Deleting...",
   "Delete User": "Delete user",
+  "Haan, delete karein": "Yes, delete",
   "Delete karein": "Delete",
   "Delete nahi ho paya.": "Could not delete.",
   "Aap khud ko delete nahi kar sakte.": "You cannot delete your own account.",
@@ -400,9 +401,7 @@ export const EN: Record<string, string> = {
     "The MIS score is calculated from timestamps. 0% is the best and −100% the worst — late and missed tasks build the penalty.",
 
   // --- reports and public share links -----------------------------------------------
-  "Har module ki report, aapke access ke hisaab se.":
-    "A report for each module, according to your access.",
-  "Report share karein": "Share this report",
+  "share karein": "share",
   "Is link ka naam": "Name this link",
   "Jaise: Supplier ke liye monthly report": "e.g. Monthly report for the supplier",
   "Link banayein": "Create link",
@@ -428,6 +427,33 @@ export const EN: Record<string, string> = {
   "Live report — sirf padhne ke liye": "Live report — read only",
   "Ye report live hai — page refresh karne par taaza data aata hai.":
     "This report is live — refreshing the page shows the latest data.",
+
+  // --- reports, split one per page --------------------------------------------------
+  "Har module ki apni report. Jo aapke access me hai, wahi yahan dikhta hai — aur har report alag se share ki ja sakti hai.":
+    "A report of its own for every module. You see the ones your access covers, and each can be shared on its own.",
+  "Abhi koi report nahi hai": "No reports yet",
+  "Aapke Admin ne jo modules diye honge, unki reports yahan aayengi.":
+    "Reports appear here for whichever modules your Admin has given you.",
+  "Saari reports": "All reports",
+  "Aapka score": "Your score",
+  "Ye report share nahi ho sakti.": "This report cannot be shared.",
+  "Is report ka access nahi hai.": "You do not have access to this report.",
+
+  // report names and descriptions (src/lib/reports.ts)
+  "My tasks": "My tasks",
+  "Aapko assign hue tasks — result aur samay ke saath.":
+    "Tasks assigned to you — the outcome and the timing.",
+  "Material inward entries aur unka IQC status.":
+    "Inward entries and their IQC status.",
+  "Quality check ka nateeja — pass, fail aur kyun.":
+    "The result of the quality check — pass, fail and why.",
+  "Aaj ka stock status aur reorder ki haalat.":
+    "Stock status today, and where reorder stands.",
+  "Purchase requests aur unki haalat.": "Purchase requests and their state.",
+  "Kis product me kitne item lagte hain.": "How many items each product takes.",
+  "Production plans aur unki haalat.": "Production plans and their state.",
+  "Poori team ka MIS score, doer wise.":
+    "The whole team's MIS score, person by person.",
 
   // --- new report sections ----------------------------------------------------------
   "Aaj ka stock — ye period filter par nahi badalta.":

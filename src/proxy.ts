@@ -2,9 +2,21 @@ import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { verifySession, SESSION_COOKIE } from "@/lib/auth/session";
 
-// /share/<token> is deliberately public: the token is the credential, and the page
-// resolves its tenant from that token alone rather than from any session cookie.
+// Reachable without a session.
+//
+// /share/<token> is deliberately here: the token is the credential, and the page resolves
+// its tenant from that token alone rather than from any session cookie.
 const PUBLIC_PATHS = ["/login", "/signup", "/share"];
+
+/**
+ * Public pages that a signed-in person has no business seeing — they get sent home.
+ *
+ * Only the sign-in flow belongs here. A share link must open for everybody: it is passed
+ * around in messages, and half the people who receive it work at the company and are
+ * already signed in. Bouncing them to their own dashboard makes the link look broken to
+ * exactly the people most likely to click it.
+ */
+const AUTH_PATHS = ["/login", "/signup"];
 
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
@@ -35,7 +47,7 @@ export async function proxy(request: NextRequest) {
     return NextResponse.redirect(loginUrl);
   }
 
-  if (session && isPublicPath) {
+  if (session && AUTH_PATHS.some((path) => pathname.startsWith(path))) {
     return NextResponse.redirect(new URL("/dashboard", request.url));
   }
 

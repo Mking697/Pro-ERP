@@ -23,6 +23,7 @@ export const REPORT_SHARES_TAB = "Report_Shares";
 export const REPORT_SHARES_HEADERS = [
   "Token",
   "Org_ID",
+  "Report",
   "Label",
   "Range_Key",
   "From_Date",
@@ -36,6 +37,8 @@ export const REPORT_SHARES_HEADERS = [
 export interface ReportShare {
   Token: string;
   Org_ID: string;
+  /** Which single report this link shows. Blank on links made before reports were split. */
+  Report: string;
   Label: string;
   Range_Key: string;
   From_Date: string;
@@ -60,7 +63,19 @@ function newToken(): string {
   return randomBytes(24).toString("base64url");
 }
 
-async function ensureSharesTab(): Promise<void> {
+/**
+ * Creates the tab if it is missing, and adds any header column it does not yet have.
+ *
+ * Missing columns are **appended**, never inserted in the middle. A sheet that already
+ * holds rows has them laid out under its own header; inserting a column into the
+ * constant and writing rows in that new order would shift every value one place along —
+ * `Status` would be read from the wrong column and every link would be born dead. This
+ * is the same rule `ensureModuleHeaders()` follows for the module sheets.
+ *
+ * Returns the header as the sheet actually has it, which is the order rows must be
+ * written in.
+ */
+async function ensureSharesTab(): Promise<string[]> {
   const spreadsheetId = getPlatformSheetId();
   const sheets = getSheetsClient();
   const meta = await sheets.spreadsheets.get({ spreadsheetId });
@@ -77,8 +92,10 @@ async function ensureSharesTab(): Promise<void> {
     });
   }
 
-  const rows = await readRows(spreadsheetId, REPORT_SHARES_TAB);
-  if ((rows[0] ?? []).length === 0) {
+  const rows = exists ? await readRows(spreadsheetId, REPORT_SHARES_TAB) : [];
+  const current = (rows[0] ?? []).filter(Boolean);
+
+  if (current.length === 0) {
     await sheets.spreadsheets.values.batchUpdate({
       spreadsheetId,
       requestBody: {
@@ -88,7 +105,21 @@ async function ensureSharesTab(): Promise<void> {
         ],
       },
     });
+    return [...REPORT_SHARES_HEADERS];
   }
+
+  const missing = REPORT_SHARES_HEADERS.filter((h) => !current.includes(h));
+  if (missing.length === 0) return current;
+
+  const merged = [...current, ...missing];
+  await sheets.spreadsheets.values.batchUpdate({
+    spreadsheetId,
+    requestBody: {
+      valueInputOption: "RAW",
+      data: [{ range: `${REPORT_SHARES_TAB}!A1`, values: [merged] }],
+    },
+  });
+  return merged;
 }
 
 async function allShares(): Promise<ReportShare[]> {
@@ -105,6 +136,7 @@ async function allShares(): Promise<ReportShare[]> {
 
 export interface CreateShareInput {
   orgId: string;
+  report: string;
   label: string;
   rangeKey: string;
   from?: string;
@@ -123,12 +155,13 @@ export interface CreateShareInput {
  * start showing production plans. What was shared stays what was shared.
  */
 export async function createReportShare(input: CreateShareInput): Promise<ReportShare> {
-  await ensureSharesTab();
+  const header = await ensureSharesTab();
 
   const share: ReportShare = {
     Token: newToken(),
     Org_ID: input.orgId,
-    Label: input.label.trim() || "Reports",
+    Report: input.report,
+    Label: input.label.trim() || "Report",
     Range_Key: input.rangeKey,
     From_Date: input.from ?? "",
     To_Date: input.to ?? "",
@@ -138,10 +171,12 @@ export async function createReportShare(input: CreateShareInput): Promise<Report
     Status: "Active",
   };
 
+  // Laid out to the sheet's own header, not to the constant's order — the two differ on
+  // any sheet created before a column was added.
   await appendRow(
     getPlatformSheetId(),
     REPORT_SHARES_TAB,
-    REPORT_SHARES_HEADERS.map((h) => share[h])
+    header.map((h) => share[h as keyof ReportShare] ?? "")
   );
   invalidateCache(SHARES_CACHE_KEY);
   return share;
@@ -187,9 +222,15 @@ export async function revokeReportShare(orgId: string, token: string): Promise<v
   const spreadsheetId = getPlatformSheetId();
   const rows = await readRows(spreadsheetId, REPORT_SHARES_TAB);
 
+  // Columns are located by name rather than by position, for the same reason writes are.
+  const header = rows[0] ?? [];
+  const tokenAt = header.indexOf("Token");
+  const orgAt = header.indexOf("Org_ID");
+  if (tokenAt === -1 || orgAt === -1) return;
+
   // Both must match: an organization may only revoke a link that is its own.
   const rowIndex = rows.findIndex(
-    (row, i) => i > 0 && row[0] === token && row[1] === orgId
+    (row, i) => i > 0 && row[tokenAt] === token && row[orgAt] === orgId
   );
   if (rowIndex === -1) return;
 

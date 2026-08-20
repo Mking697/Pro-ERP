@@ -19,6 +19,7 @@ import { useConfirm } from "@/components/confirm-dialog";
 
 interface Share {
   token: string;
+  report: string;
   label: string;
   rangeKey: string;
   createdBy: string;
@@ -32,7 +33,15 @@ interface Share {
  * it. Revoking is offered beside every link rather than buried elsewhere — a link that
  * cannot be taken back easily is one people are right to be nervous about creating.
  */
-export default function ShareReport({ rangeKey }: { rangeKey: string }) {
+export default function ShareReport({
+  reportId,
+  reportLabel,
+  rangeKey,
+}: {
+  reportId: string;
+  reportLabel: string;
+  rangeKey: string;
+}) {
   const t = useT();
   const confirm = useConfirm();
   const [open, setOpen] = useState(false);
@@ -46,9 +55,13 @@ export default function ShareReport({ rangeKey }: { rangeKey: string }) {
     if (!open) return;
     fetch("/api/reports/shares")
       .then((res) => res.json())
-      .then((data: { shares?: Share[] }) => setShares(data.shares ?? []))
+      .then((data: { shares?: Share[] }) =>
+        // Only this report's links: a page that listed every link would make it easy
+        // to revoke the wrong one.
+        setShares((data.shares ?? []).filter((s) => s.report === reportId))
+      )
       .catch(() => toast.error(t("Links load nahi ho paye.")));
-  }, [open, version, t]);
+  }, [open, version, t, reportId]);
 
   const refresh = useCallback(() => setVersion((v) => v + 1), []);
 
@@ -62,7 +75,7 @@ export default function ShareReport({ rangeKey }: { rangeKey: string }) {
       const res = await fetch("/api/reports/shares", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ label, rangeKey }),
+        body: JSON.stringify({ report: reportId, label: label || reportLabel, rangeKey }),
       });
       const data = await res.json().catch(() => null);
       if (!res.ok) {
@@ -114,7 +127,7 @@ export default function ShareReport({ rangeKey }: { rangeKey: string }) {
       />
       <DialogContent className="max-w-2xl">
         <DialogHeader>
-          <DialogTitle>{t("Report share karein")}</DialogTitle>
+          <DialogTitle>{reportLabel} — {t("share karein")}</DialogTitle>
           <DialogDescription>
             {t(
               "Link jiske paas hoga wo ye report bina login ke dekh sakega, aur data hamesha taaza rehta hai. Wo sirf dekh sakta hai — kuch badal nahi sakta."

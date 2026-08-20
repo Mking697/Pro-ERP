@@ -23,6 +23,10 @@ const keys = [...enSource.matchAll(/^  "((?:[^"\\]|\\.)*)":/gm)].map((m) => m[1]
 
 const unmatched = keys.filter((k) => !corpus.includes(k));
 
+// A duplicate key is silently shadowed by whichever copy comes last, so the earlier
+// translation simply never runs. TypeScript catches this too, but only at build time.
+const duplicates = keys.filter((k, i) => keys.indexOf(k) !== i);
+
 // Strings passed through t("...") that have no English yet.
 const wrapped = new Set(
   [...corpus.matchAll(/\bt\(\s*"((?:[^"\\]|\\.){2,})"\s*\)/g)].map((m) => m[1])
@@ -32,6 +36,7 @@ const untranslated = [...wrapped].filter((s) => !known.has(s));
 
 console.log(`en.ts keys              : ${keys.length}`);
 console.log(`keys matching no source : ${unmatched.length}`);
+console.log(`duplicate keys          : ${duplicates.length}`);
 console.log(`t() calls in source     : ${wrapped.size}`);
 console.log(`t() calls with no EN    : ${untranslated.length}`);
 
@@ -62,4 +67,11 @@ if (untranslated.length) {
   if (untranslated.length > 40) console.log(`  ... and ${untranslated.length - 40} more`);
 }
 
-process.exit(unmatched.length || missingEn.length || extraEn.length ? 1 : 0);
+if (duplicates.length) {
+  console.log("\nDuplicate keys (the later copy wins, the earlier never runs):");
+  for (const k of new Set(duplicates)) console.log("  " + JSON.stringify(k));
+}
+
+process.exit(
+  unmatched.length || duplicates.length || missingEn.length || extraEn.length ? 1 : 0
+);

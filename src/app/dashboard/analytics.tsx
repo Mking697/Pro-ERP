@@ -37,6 +37,8 @@ import { listIndents } from "@/lib/inventory/indents";
 import { listBoms } from "@/lib/inventory/bom";
 import { listPlans } from "@/lib/inventory/plans";
 import { tenantCached } from "@/lib/cache";
+import { canSeeReport, getReport } from "@/lib/reports";
+import { runWithTenant, type TenantContext } from "@/lib/tenant";
 
 const SERIES = [
   "var(--chart-series-1)",
@@ -101,18 +103,47 @@ export default async function Analytics({
   rangeKey,
   from,
   to,
-  hidePersonal = false,
+  only,
+  hideFilter = false,
+  tenant,
 }: {
   session: SessionPayload;
   rangeKey: string;
   from?: string;
   to?: string;
-  /** Drops the "my work" section, which means nothing on a link with no viewer. */
-  hidePersonal?: boolean;
+  /**
+   * An explicit tenant, for the public share page.
+   *
+   * It has to be applied around the *data fetch* rather than around the JSX. React
+   * renders an async child after the parent's own function has returned, so a
+   * `runWithTenant` wrapped around the element is already out of scope by the time this
+   * component runs — and `getTenant()` would quietly fall back to the visitor's session
+   * cookie, showing a signed-in stranger their own organization's figures under someone
+   * else's report. Wrapping the awaited read keeps the context where it is needed.
+   */
+  tenant?: TenantContext;
+  /**
+   * Render one report instead of all of them.
+   *
+   * This also decides what gets read: opening the inward report should not spend the
+   * shared Sheets quota on inventory, BOM and PPC sheets nobody asked to see.
+   */
+  only?: string;
+  hideFilter?: boolean;
 }) {
   const t = await getT();
   const range = resolveRange(rangeKey, from, to);
   const access = session.access;
+
+  // A section renders when the reader is allowed it and, in single-report mode, when it
+  // is the one asked for. Both the "may I" and the "which one" questions run through the
+  // shared registry, so a report can never appear here but 404 when opened on its own.
+  const shows = (id: string) => {
+    if (only && only !== id) return false;
+    const def = getReport(id);
+    return def ? canSeeReport(def, access) : false;
+  };
+  const needs = (id: string) => shows(id);
 
   // Only read the sheets this viewer is actually allowed to see — every extra read
   // spends the shared Sheets quota for no one's benefit.
@@ -126,29 +157,31 @@ export default async function Analytics({
   //
   // Each read degrades to null on its own rather than throwing, so one exhausted quota
   // or one disconnected sheet leaves the rest of the report standing.
-  const [allTasks, users, rules, inward, failures, ims, stock, indents, boms, plans] =
-    await tenantCached(session.orgId, `analytics:${access.join(",")}`, 30_000, () =>
+  const read = () =>
+    tenantCached(session.orgId, `analytics:${only ?? "all"}:${range.key}:${from ?? ""}:${to ?? ""}:${access.join(",")}`, 30_000, () =>
       Promise.all([
-        safe(() => tryModule(() => listTasks())),
-        access.includes("PERFORMANCE_VIEW") || access.includes("TASK_DELEGATE")
+        needs("tasks") || needs("delegation") || needs("performance")
+          ? safe(() => tryModule(() => listTasks()))
+          : null,
+        needs("performance") || needs("delegation")
           ? listUsers().catch(() => [])
           : Promise.resolve([]),
-        access.includes("RECURRING_ASSIGN")
-          ? safe(() => tryModule(() => listRecurringTasks()))
+        needs("recurring") ? safe(() => tryModule(() => listRecurringTasks())) : null,
+        needs("inward") ? safe(() => tryModule(() => listInwardEntries())) : null,
+        needs("iqc") ? safe(() => tryModule(() => listFailureLog())) : null,
+        needs("iqc") || needs("ims")
+          ? safe(() => tryModule(() => listImsInward()))
           : null,
-        access.includes("INWARD_ENTRY") ||
-        access.includes("IQC_CHECK") ||
-        access.includes("IMS_VIEW")
-          ? safe(() => tryModule(() => listInwardEntries()))
-          : null,
-        access.includes("IMS_VIEW") ? safe(() => tryModule(() => listFailureLog())) : null,
-        access.includes("IMS_VIEW") ? safe(() => tryModule(() => listImsInward())) : null,
-        access.includes("INVENTORY_VIEW") ? safe(() => getInventorySnapshot()) : null,
-        access.includes("INVENTORY_VIEW") ? safe(() => tryModule(() => listIndents())) : null,
-        access.includes("BOM_MANAGE") ? safe(() => tryModule(() => listBoms())) : null,
-        access.includes("PPC_PLAN") ? safe(() => tryModule(() => listPlans())) : null,
+        needs("inventory") ? safe(() => getInventorySnapshot()) : null,
+        needs("indents") ? safe(() => tryModule(() => listIndents())) : null,
+        needs("bom") ? safe(() => tryModule(() => listBoms())) : null,
+        needs("ppc") ? safe(() => tryModule(() => listPlans())) : null,
       ])
     );
+
+  const [allTasks, users, rules, inward, failures, ims, stock, indents, boms, plans] =
+    tenant ? await runWithTenant(tenant, read) : await read();
+
 
   const tasks = filterTasks(allTasks ?? [], range);
   const myTasks = tasks.filter((t) => t.Assigned_To === session.userId);
@@ -162,9 +195,11 @@ export default async function Analytics({
 
   return (
     <div className="space-y-8">
-      <DateRangeFilter active={range} presets={RANGE_PRESETS} from={from} to={to} />
+      {!hideFilter && (
+        <DateRangeFilter active={range} presets={RANGE_PRESETS} from={from} to={to} />
+      )}
 
-      {!hidePersonal && (
+      {shows("tasks") && (
       <Section
         title={t("Mera kaam")}
         description={`${range.label} — aapko assign hue tasks.`}
@@ -190,7 +225,7 @@ export default async function Analytics({
       </Section>
       )}
 
-      {access.includes("TASK_DELEGATE") && (
+      {shows("delegation") && (
         <Section
           title="Delegation"
           description={t("Jo tasks aapne doosron ko diye.")}
@@ -217,7 +252,7 @@ export default async function Analytics({
         </Section>
       )}
 
-      {access.includes("RECURRING_ASSIGN") && (
+      {shows("recurring") && (
         <Section title="Recurring" description={t("Repeating rules aur unki haalat.")}>
           <ChartFrame title={t("Active vs Paused")}>
             <DonutChart
@@ -250,7 +285,7 @@ export default async function Analytics({
         </Section>
       )}
 
-      {inward && (
+      {shows("inward") && inward && (
         <Section title="Inward" description={`${range.label} — material inward entries.`}>
           <ChartFrame title="IQC status">
             <DonutChart
@@ -286,7 +321,7 @@ export default async function Analytics({
         </Section>
       )}
 
-      {access.includes("IQC_CHECK") && failures && ims && (
+      {shows("iqc") && failures && ims && (
         <Section title="IQC" description={t("Quality check ka nateeja.")}>
           <ChartFrame
             title={t("Pass vs Fail quantity")}
@@ -325,7 +360,7 @@ export default async function Analytics({
         </Section>
       )}
 
-      {access.includes("IMS_VIEW") && ims && (
+      {shows("ims") && ims && (
         <Section title="IMS" description={t("Verified stock jo andar aaya.")}>
           <ChartFrame title={t("Party ke hisaab se accepted qty")}>
             <BarChart
@@ -351,7 +386,7 @@ export default async function Analytics({
         </Section>
       )}
 
-      {access.includes("INVENTORY_VIEW") && stock && stock.items.length > 0 && (
+      {shows("inventory") && stock && stock.items.length > 0 && (
         <Section
           title={t("Inventory")}
           description={t("Aaj ka stock — ye period filter par nahi badalta.")}
@@ -390,7 +425,7 @@ export default async function Analytics({
         </Section>
       )}
 
-      {access.includes("INVENTORY_VIEW") && indents && (
+      {shows("indents") && indents && (
         <Section
           title={t("Indents")}
           description={`${range.label} — ${t("purchase requests.")}`}
@@ -417,7 +452,7 @@ export default async function Analytics({
         </Section>
       )}
 
-      {access.includes("BOM_MANAGE") && boms && (
+      {shows("bom") && boms && (
         <Section
           title={t("BOM")}
           description={t("Kis product me kitne item lagte hain — aaj ki active BOMs.")}
@@ -459,7 +494,7 @@ export default async function Analytics({
         </Section>
       )}
 
-      {access.includes("PPC_PLAN") && plans && (
+      {shows("ppc") && plans && (
         <Section
           title={t("Production Planning")}
           description={`${range.label} — ${t("production plans aur unki haalat.")}`}
@@ -492,7 +527,7 @@ export default async function Analytics({
         </Section>
       )}
 
-      {access.includes("PERFORMANCE_VIEW") && (
+      {shows("performance") && (
         <PerformanceSection tasks={tasks} users={users} range={range} t={t} />
       )}
     </div>
