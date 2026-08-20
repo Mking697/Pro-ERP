@@ -79,6 +79,33 @@ export default async function GuidePage() {
                       <CardContent className="space-y-4 text-sm">
                         <p className="text-muted-foreground">{section.summary}</p>
 
+                        {section.how && (
+                          <div className="space-y-2">
+                            {section.how.map((para, i) => (
+                              <p key={i}>{para}</p>
+                            ))}
+                          </div>
+                        )}
+
+                        {section.example && (
+                          <figure className="rounded-lg border bg-muted/40">
+                            <figcaption className="border-b px-3 py-2 text-xs font-medium">
+                              {section.example.title}
+                            </figcaption>
+                            {/* Wide worked examples scroll inside the box rather than
+                                stretching the page on a phone. */}
+                            <div className="overflow-x-auto p-3">
+                              <pre className="font-mono text-xs leading-relaxed">
+                                {section.example.lines.map((line, i) => (
+                                  <span key={i} className="block">
+                                    {line}
+                                  </span>
+                                ))}
+                              </pre>
+                            </div>
+                          </figure>
+                        )}
+
                         {section.steps && (
                           <ol className="list-inside list-decimal space-y-1.5 marker:text-muted-foreground">
                             {section.steps.map((step, i) => (
