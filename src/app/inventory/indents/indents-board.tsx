@@ -199,8 +199,8 @@ export default function IndentsBoard({
               <TableRow>
                 <TableCell colSpan={7} className="py-10 text-center text-muted-foreground">
                   {indents.length === 0
-                    ? "Abhi koi indent nahi hai. Reorder page se banayein."
-                    : "Is filter par koi indent nahi mila."}
+                    ? t("Abhi koi indent nahi hai. Reorder page se banayein.")
+                    : t("Is filter par koi indent nahi mila.")}
                 </TableCell>
               </TableRow>
             )}

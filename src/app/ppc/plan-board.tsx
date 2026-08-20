@@ -152,7 +152,7 @@ export default function PlanBoard({ access }: { access: string[] }) {
     return (
       <SheetNotConnected
         what={setupRequired}
-        hint="PPC ke liye Production Plans aur Plan Materials — dono sheet chahiye."
+        hint={t("PPC ke liye Production Plans aur Plan Materials — dono sheet chahiye.")}
       />
     );
   }

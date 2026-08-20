@@ -239,6 +239,60 @@ export const EN: Record<string, string> = {
   "Is install par chal rahe saare organizations. Ye sirf platform operator ke liye hai — kisi organization ke Admin ko ye page dikhta hi nahi.":
     "Every organization running on this install. This is for the platform operator only — an organization's own Admin never sees this page.",
 
+  // --- empty and filtered states ---------------------------------------------------
+  "Abhi koi data nahi.": "No data yet.",
+  "Abhi koi item nahi hai.": "No items yet.",
+  "Abhi koi indent nahi hai. Reorder page se banayein.":
+    "No indents yet. Raise one from the Reorder page.",
+  "Is filter par koi indent nahi mila.": "No indents match this filter.",
+  "Is filter par koi item nahi mila.": "No items match this filter.",
+  "Koi recurring rule nahi hai.": "No recurring rules.",
+  "Koi rejection nahi — achhi baat hai.": "No rejections — which is good news.",
+  "Sab items ke planning fields bhare hue hain.":
+    "Every item's planning fields are filled in.",
+  "Items sheet connect nahi hai": "The Items sheet is not connected",
+  "PPC ke liye Production Plans aur Plan Materials — dono sheet chahiye.":
+    "PPC needs both sheets: Production Plans and Plan Materials.",
+  "Ye page usi sheet se padhta hai. Settings me uska URL paste karte hi yahan data aane lagega.":
+    "This page reads from that sheet. Paste its URL in Settings and the data will appear here.",
+
+  // --- period-filtered analytics ---------------------------------------------------
+  "Is period me koi data nahi.": "No data in this period.",
+  "Is period me aapne koi task assign nahi kiya.":
+    "You did not assign any tasks in this period.",
+  "Is period me kisi ka score evaluate nahi hua.":
+    "Nobody's score was evaluated in this period.",
+  "Is period me koi task evaluate nahi hua.": "No task was evaluated in this period.",
+  "Is period me koi inward entry nahi.": "No inward entries in this period.",
+  "Is period me koi quality check nahi hua.": "No quality check in this period.",
+  "Is period me koi verified stock nahi.": "No verified stock in this period.",
+
+  // --- chart and figure captions ---------------------------------------------------
+  "Bar jitna lamba, penalty utni zyada. Har bar par uska score likha hai.":
+    "The longer the bar, the bigger the penalty. Each bar carries its own score.",
+  "Har rang ke saath uski ginti bhi likhi hai — sirf rang par nahi jaana padta.":
+    "Every colour carries its count as well, so nothing depends on colour alone.",
+  "Har movement ke baad ka balance — wahi hisaab, bas har kadam par.":
+    "The balance after each movement — the same arithmetic, step by step.",
+  "Kitne log kis haalat me hain.": "How many people are in each state.",
+  "Quantity, entries ki ginti nahi.": "Quantity, not the number of entries.",
+  "Pichle 30 din ke Out se": "From the last 30 days of Out movements",
+  "Naya kaam plan karne ke liye itna hi available hai":
+    "This is all that is available to plan new work against",
+
+  // --- form hints ------------------------------------------------------------------
+  "Naam se apne aap bana — badal sakte hain.":
+    "Generated from the name — you can change it.",
+  "Aapka apna SKU.": "Your own SKU.",
+  "Admin ke paas har module ka access apne aap hota hai.":
+    "An Admin holds access to every module automatically.",
+  "Jo modules tick karenge, wahi is user ke dashboard par dikhenge.":
+    "The modules you tick are the ones that appear on this person's dashboard.",
+  "PNG, JPG ya WebP — 1MB tak. Ye aapke system ke header me dikhega.":
+    "PNG, JPG or WebP, up to 1MB. This appears in your system's header.",
+  "Logo save ho gaya — page refresh karke header me dekhein.":
+    "Logo saved — refresh the page to see it in the header.",
+
   // --- shared UI -------------------------------------------------------------------
   "Chunein...": "Select...",
   "Poora": "Full",

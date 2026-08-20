@@ -172,8 +172,8 @@ export default function BomForm({
               />
               <p className="text-xs text-muted-foreground">
                 {skuEdited
-                  ? "Aapka apna SKU."
-                  : "Naam se apne aap bana — badal sakte hain."}
+                  ? t("Aapka apna SKU.")
+                  : t("Naam se apne aap bana — badal sakte hain.")}
               </p>
             </div>
             <div className="space-y-2">
