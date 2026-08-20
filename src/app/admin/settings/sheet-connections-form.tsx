@@ -15,6 +15,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { FormSkeleton } from "@/components/loading-states";
+import { useT } from "@/components/preferences-provider";
 
 interface ConnectionRow {
   key: string;
@@ -26,6 +27,7 @@ interface ConnectionRow {
 const DRIVE_ROW_KEY = "DRIVE_FOLDER";
 
 export default function SheetConnectionsForm() {
+  const t = useT();
   const [rows, setRows] = useState<ConnectionRow[]>([]);
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [savingKey, setSavingKey] = useState<string | null>(null);
@@ -61,14 +63,14 @@ export default function SheetConnectionsForm() {
           setDrafts(initialDrafts);
         }
       )
-      .catch(() => toast.error("Settings load nahi ho payi."))
+      .catch(() => toast.error(t("Settings load nahi ho payi.")))
       .finally(() => setLoading(false));
-  }, []);
+  }, [t]);
 
   async function handleSave(row: ConnectionRow) {
     const url = drafts[row.key]?.trim();
     if (!url) {
-      toast.error("Pehle URL daalein.");
+      toast.error(t("Pehle URL daalein."));
       return;
     }
 
@@ -90,7 +92,7 @@ export default function SheetConnectionsForm() {
         return;
       }
 
-      toast.success("Connect ho gaya.");
+      toast.success(t("Connect ho gaya."));
       setRows((prev) => prev.map((r) => (r.key === row.key ? { ...r, url } : r)));
     } finally {
       setSavingKey(null);
@@ -98,7 +100,7 @@ export default function SheetConnectionsForm() {
   }
 
   if (loading) {
-    return <FormSkeleton fields={6} label="Sheet connections load ho rahi hain" />;
+    return <FormSkeleton fields={6} label={t("Sheet connections load ho rahi hain")} />;
   }
 
   return (

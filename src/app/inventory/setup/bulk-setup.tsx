@@ -18,6 +18,7 @@ import type { ItemRow } from "../types";
 import { TableSkeleton } from "@/components/loading-states";
 import { Package } from "lucide-react";
 import EmptyState from "@/components/empty-state";
+import { useT } from "@/components/preferences-provider";
 
 const FIELDS = [
   { key: "Lead_Time_Days", label: "Lead Time", hint: "din" },
@@ -42,6 +43,7 @@ type Draft = Record<string, Partial<Record<FieldKey, string>>>;
  * overwrite a name or category someone changed while this grid was open.
  */
 export default function BulkSetup() {
+  const t = useT();
   const [items, setItems] = useState<ItemRow[]>([]);
   const [draft, setDraft] = useState<Draft>({});
   const [loading, setLoading] = useState(true);
@@ -53,9 +55,9 @@ export default function BulkSetup() {
     fetch("/api/inventory/items")
       .then((res) => res.json())
       .then((data: { items?: ItemRow[] }) => setItems(data.items ?? []))
-      .catch(() => toast.error("Items load nahi ho paye."))
+      .catch(() => toast.error(t("Items load nahi ho paye.")))
       .finally(() => setLoading(false));
-  }, []);
+  }, [t]);
 
   function edit(sku: string, field: FieldKey, value: string) {
     setDraft((d) => ({ ...d, [sku]: { ...d[sku], [field]: value } }));
@@ -116,27 +118,27 @@ export default function BulkSetup() {
       const refreshed = await fetch("/api/inventory/items").then((r) => r.json());
       setItems(refreshed.items ?? []);
     } catch {
-      toast.error("Save nahi ho paya.");
+      toast.error(t("Save nahi ho paya."));
     } finally {
       setSaving(false);
     }
   }
 
   if (loading) {
-    return <TableSkeleton columns={6} label="Items load ho rahe hain" />;
+    return <TableSkeleton columns={6} label={t("Items load ho rahe hain")} />;
   }
 
   if (items.length === 0) {
     return (
       <EmptyState
         icon={<Package />}
-        title="Abhi koi item nahi hai"
-        description="Planning ke number bharne se pehle item master me item banane honge."
+        title={t("Abhi koi item nahi hai")}
+        description={t("Planning ke number bharne se pehle item master me item banane honge.")}
         action={
           <Button
             variant="outline"
             size="sm"
-            render={<Link href="/inventory">Inventory kholein</Link>}
+            render={<Link href="/inventory">{t("Inventory kholein")}</Link>}
           />
         }
       />
@@ -149,16 +151,14 @@ export default function BulkSetup() {
         <Input
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          placeholder="Item ya SKU..."
+          placeholder={t("Item ya SKU...")}
           className="h-9 max-w-xs"
         />
         <Button
           size="sm"
           variant={onlyIncomplete ? "default" : "outline"}
           onClick={() => setOnlyIncomplete((v) => !v)}
-        >
-          Sirf adhoore
-          <span className="ml-1.5 tabular-nums opacity-70">{incompleteCount}</span>
+        >{t("Sirf adhoore")}<span className="ml-1.5 tabular-nums opacity-70">{incompleteCount}</span>
         </Button>
         <span className="text-sm text-muted-foreground">
           {visible.length} / {items.length} dikh rahe hain
@@ -238,7 +238,7 @@ export default function BulkSetup() {
 
                   <TableCell>
                     {item.missingFields.length === 0 ? (
-                      <Badge variant="default">Poora</Badge>
+                      <Badge variant="default">{t("Poora")}</Badge>
                     ) : (
                       <span
                         className="text-xs text-muted-foreground"

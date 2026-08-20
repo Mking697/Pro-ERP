@@ -24,12 +24,14 @@ import {
 import { FREQUENCIES } from "@/lib/frequency";
 import type { RecurringTaskRecord } from "@/lib/recurringTasks";
 import type { UserOption } from "./types";
+import { useT } from "@/components/preferences-provider";
 
 export default function CreateRecurringDialog({
   onCreated,
 }: {
   onCreated: (rule: RecurringTaskRecord) => void;
 }) {
+  const t = useT();
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [users, setUsers] = useState<UserOption[]>([]);
@@ -49,8 +51,8 @@ export default function CreateRecurringDialog({
     fetch("/api/users/directory")
       .then((res) => res.json())
       .then((data: { users: UserOption[] }) => setUsers(data.users ?? []))
-      .catch(() => toast.error("Users list load nahi ho payi."));
-  }, [open]);
+      .catch(() => toast.error(t("Users list load nahi ho payi.")));
+  }, [open, t]);
 
   function resetForm() {
     setDoerId("");
@@ -62,7 +64,7 @@ export default function CreateRecurringDialog({
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!doerId) {
-      toast.error("Pehle ek Doer select karein.");
+      toast.error(t("Pehle ek Doer select karein."));
       return;
     }
 
@@ -80,7 +82,7 @@ export default function CreateRecurringDialog({
         return;
       }
 
-      toast.success("Recurring task assign ho gaya.");
+      toast.success(t("Recurring task assign ho gaya."));
       onCreated(data.rule);
       resetForm();
       setOpen(false);
@@ -94,7 +96,7 @@ export default function CreateRecurringDialog({
       <DialogTrigger render={<Button variant="outline">Assign Recurring Task</Button>} />
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Naya Recurring Task</DialogTitle>
+          <DialogTitle>{t("Naya Recurring Task")}</DialogTitle>
           <DialogDescription>
             Yeh ek repeating rule banata hai — occurrences roz apne-aap generate hongi
             (Holiday List ke dates skip karke).
@@ -105,7 +107,7 @@ export default function CreateRecurringDialog({
             <Label htmlFor="doerId">Doer Name</Label>
             <Select value={doerId} onValueChange={(v) => v && setDoerId(v)}>
               <SelectTrigger id="doerId" className="w-full">
-                <SelectValue placeholder="Doer select karein" />
+                <SelectValue placeholder={t("Doer select karein")} />
               </SelectTrigger>
               <SelectContent>
                 {users.map((u) => (

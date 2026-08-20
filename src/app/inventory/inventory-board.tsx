@@ -21,6 +21,7 @@ import { qty, statusVariant, type ItemRow, type StockStatus } from "./types";
 import { TableSkeleton } from "@/components/loading-states";
 import { Unplug } from "lucide-react";
 import EmptyState from "@/components/empty-state";
+import { useT } from "@/components/preferences-provider";
 
 const STATUS_FILTERS: (StockStatus | "All")[] = [
   "All",
@@ -39,6 +40,7 @@ export default function InventoryBoard({
   canTransact: boolean;
   canSetup: boolean;
 }) {
+  const t = useT();
   const [items, setItems] = useState<ItemRow[]>([]);
   const [missingSheets, setMissingSheets] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
@@ -53,9 +55,9 @@ export default function InventoryBoard({
         setItems(data.items ?? []);
         setMissingSheets(data.missingSheets ?? []);
       })
-      .catch(() => toast.error("Items load nahi ho paye."))
+      .catch(() => toast.error(t("Items load nahi ho paye.")))
       .finally(() => setLoading(false));
-  }, [version]);
+  }, [version, t]);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -82,20 +84,20 @@ export default function InventoryBoard({
   const needsSetup = items.filter((i) => i.missingFields.length > 0).length;
 
   if (loading) {
-    return <TableSkeleton columns={6} label="Items load ho rahe hain" />;
+    return <TableSkeleton columns={6} label={t("Items load ho rahe hain")} />;
   }
 
   if (missingSheets.length > 0) {
     return (
       <EmptyState
         icon={<Unplug />}
-        title="Inventory ki sheets abhi connect nahi hui"
+        title={t("Inventory ki sheets abhi connect nahi hui")}
         description={`Baaki hain: ${missingSheets.join(", ")}`}
         action={
           <Button
             variant="outline"
             size="sm"
-            render={<Link href="/admin/settings">Settings kholein</Link>}
+            render={<Link href="/admin/settings">{t("Settings kholein")}</Link>}
           />
         }
       />
@@ -108,7 +110,7 @@ export default function InventoryBoard({
         <Input
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          placeholder="Item ya SKU search karein..."
+          placeholder={t("Item ya SKU search karein...")}
           className="h-9 max-w-xs"
         />
         <div className="ml-auto flex gap-2">
@@ -218,7 +220,7 @@ export default function InventoryBoard({
                 <TableCell className="text-right tabular-nums text-muted-foreground">
                   {qty(item.adc)}
                   {item.adcIsManual && (
-                    <span className="ml-1 text-xs" title="Manually set">
+                    <span className="ml-1 text-xs" title={t("Manually set")}>
                       ✎
                     </span>
                   )}

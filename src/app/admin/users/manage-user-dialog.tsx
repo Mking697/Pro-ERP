@@ -28,6 +28,7 @@ import ModuleAccessPicker from "@/components/module-access-picker";
 import { parseModuleAccess } from "@/lib/moduleAccess";
 import { generateRandomPassword } from "@/lib/generatePassword";
 import type { SafeUser } from "./types";
+import { useT } from "@/components/preferences-provider";
 
 export default function ManageUserDialog({
   user,
@@ -36,6 +37,7 @@ export default function ManageUserDialog({
   user: SafeUser;
   onUpdated: (user: SafeUser) => void;
 }) {
+  const t = useT();
   const [open, setOpen] = useState(false);
   const [role, setRole] = useState(user.Role);
   const [department, setDepartment] = useState(user.Department);
@@ -70,7 +72,7 @@ export default function ManageUserDialog({
         return;
       }
 
-      toast.success("User update ho gaya.");
+      toast.success(t("User update ho gaya."));
       onUpdated(data.user);
     } finally {
       setSavingDetails(false);
@@ -79,7 +81,7 @@ export default function ManageUserDialog({
 
   async function handleResetPassword() {
     if (newPassword.length < 6) {
-      toast.error("Password kam se kam 6 characters ka ho.");
+      toast.error(t("Password kam se kam 6 characters ka ho."));
       return;
     }
     setResetting(true);
@@ -96,7 +98,7 @@ export default function ManageUserDialog({
         return;
       }
 
-      toast.success("Password reset ho gaya.");
+      toast.success(t("Password reset ho gaya."));
       setNewPassword("");
     } finally {
       setResetting(false);
@@ -172,7 +174,7 @@ export default function ManageUserDialog({
               autoComplete="new-password"
               value={newPassword}
               onChange={(e) => setNewPassword(e.target.value)}
-              placeholder="Naya password"
+              placeholder={t("Naya password")}
             />
             <Button
               type="button"

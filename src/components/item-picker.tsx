@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
+import { useT } from "@/components/preferences-provider";
 
 export interface PickerItem {
   sku: string;
@@ -35,6 +36,7 @@ export default function ItemPicker({
   label?: string;
   required?: boolean;
 }) {
+  const t = useT();
   const [items, setItems] = useState<PickerItem[]>([]);
   const [configured, setConfigured] = useState(true);
   const [query, setQuery] = useState("");
@@ -88,9 +90,7 @@ export default function ItemPicker({
               onChange(null);
               setQuery("");
             }}
-          >
-            Badlein
-          </Button>
+          >{t("Badlein")}</Button>
         </div>
       </div>
     );
@@ -144,7 +144,7 @@ export default function ItemPicker({
         </p>
       )}
       {configured && query && matches.length === 0 && (
-        <p className="text-xs text-muted-foreground">Koi item nahi mila.</p>
+        <p className="text-xs text-muted-foreground">{t("Koi item nahi mila.")}</p>
       )}
     </div>
   );

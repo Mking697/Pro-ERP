@@ -30,6 +30,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { useT } from "@/components/preferences-provider";
 
 interface Product {
   productName: string;
@@ -76,6 +77,7 @@ function blankLine(): DraftLine {
  * submitting will do, because it runs the same allocation.
  */
 export default function PlanForm({ onCreated }: { onCreated: () => void }) {
+  const t = useT();
   const [open, setOpen] = useState(false);
   const [products, setProducts] = useState<Product[]>([]);
   const [lines, setLines] = useState<DraftLine[]>([blankLine()]);
@@ -88,8 +90,8 @@ export default function PlanForm({ onCreated }: { onCreated: () => void }) {
     fetch("/api/ppc/products")
       .then((res) => res.json())
       .then((data: { products?: Product[] }) => setProducts(data.products ?? []))
-      .catch(() => toast.error("Product list load nahi hui."));
-  }, [open]);
+      .catch(() => toast.error(t("Product list load nahi hui.")));
+  }, [open, t]);
 
   function setLine(id: number, patch: Partial<DraftLine>) {
     // Any edit invalidates the preview — showing a check that no longer matches what is
@@ -116,7 +118,7 @@ export default function PlanForm({ onCreated }: { onCreated: () => void }) {
   async function handleCheck() {
     const body = payload();
     if (body.length === 0) {
-      toast.error("Product, quantity aur date bharein.");
+      toast.error(t("Product, quantity aur date bharein."));
       return;
     }
 
@@ -134,7 +136,7 @@ export default function PlanForm({ onCreated }: { onCreated: () => void }) {
       }
       setPreview(data.lines ?? []);
     } catch {
-      toast.error("Check nahi ho paya.");
+      toast.error(t("Check nahi ho paya."));
     } finally {
       setChecking(false);
     }
@@ -144,7 +146,7 @@ export default function PlanForm({ onCreated }: { onCreated: () => void }) {
     event.preventDefault();
     const body = payload();
     if (body.length === 0) {
-      toast.error("Product, quantity aur date bharein.");
+      toast.error(t("Product, quantity aur date bharein."));
       return;
     }
 
@@ -173,7 +175,7 @@ export default function PlanForm({ onCreated }: { onCreated: () => void }) {
       setOpen(false);
       onCreated();
     } catch {
-      toast.error("Plan save nahi ho paya.");
+      toast.error(t("Plan save nahi ho paya."));
     } finally {
       setSaving(false);
     }
@@ -181,10 +183,10 @@ export default function PlanForm({ onCreated }: { onCreated: () => void }) {
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger render={<Button>Naya plan</Button>} />
+      <DialogTrigger render={<Button>{t("Naya plan")}</Button>} />
       <DialogContent className="max-h-[85vh] max-w-4xl overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Naya production plan</DialogTitle>
+          <DialogTitle>{t("Naya production plan")}</DialogTitle>
           <DialogDescription>
             Jo product ek saath banane hain, sab yahin daalein. Material ek hi pool se
             baanta jaata hai — pehle wali production date ko pehle milta hai.
@@ -207,7 +209,7 @@ export default function PlanForm({ onCreated }: { onCreated: () => void }) {
                     }
                   >
                     <SelectTrigger id={`product-${line.id}`} className="w-full">
-                      <SelectValue placeholder="Chunein..." />
+                      <SelectValue placeholder={t("Chunein...")} />
                     </SelectTrigger>
                     <SelectContent>
                       {products.map((p) => (
@@ -231,7 +233,7 @@ export default function PlanForm({ onCreated }: { onCreated: () => void }) {
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor={`date-${line.id}`}>Production date</Label>
+                  <Label htmlFor={`date-${line.id}`}>{t("Production date")}</Label>
                   <Input
                     id={`date-${line.id}`}
                     type="date"
@@ -249,9 +251,7 @@ export default function PlanForm({ onCreated }: { onCreated: () => void }) {
                       setPreview(null);
                       setLines((prev) => prev.filter((l) => l.id !== line.id));
                     }}
-                  >
-                    Hatayein
-                  </Button>
+                  >{t("Hatayein")}</Button>
                 </div>
               </div>
             ))}
@@ -261,9 +261,7 @@ export default function PlanForm({ onCreated }: { onCreated: () => void }) {
               variant="outline"
               size="sm"
               onClick={() => setLines((prev) => [...prev, blankLine()])}
-            >
-              Ek aur product
-            </Button>
+            >{t("Ek aur product")}</Button>
           </div>
 
           {products.length === 0 && (
@@ -275,7 +273,7 @@ export default function PlanForm({ onCreated }: { onCreated: () => void }) {
 
           {preview && (
             <div className="space-y-3 rounded-lg border p-3">
-              <p className="text-sm font-medium">Material check</p>
+              <p className="text-sm font-medium">{t("Material check")}</p>
               {preview.map((line) => (
                 <div key={`${line.productName}-${line.productionDate}`} className="space-y-2">
                   <div className="flex flex-wrap items-center gap-2 text-sm">
@@ -292,9 +290,9 @@ export default function PlanForm({ onCreated }: { onCreated: () => void }) {
                       <TableHeader>
                         <TableRow>
                           <TableHead>Item</TableHead>
-                          <TableHead className="text-right">Chahiye</TableHead>
-                          <TableHead className="text-right">Milega</TableHead>
-                          <TableHead className="text-right">Kam</TableHead>
+                          <TableHead className="text-right">{t("Chahiye")}</TableHead>
+                          <TableHead className="text-right">{t("Milega")}</TableHead>
+                          <TableHead className="text-right">{t("Kam")}</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>

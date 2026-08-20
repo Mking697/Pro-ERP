@@ -6,8 +6,10 @@ import AppShell from "@/components/app-shell";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import OrganizationsTable from "./organizations-table";
 import PageHeader from "@/components/page-header";
+import { getT } from "@/lib/i18n/server";
 
 export default async function PlatformPage() {
+  const t = await getT();
   const cookieStore = await cookies();
   const token = cookieStore.get(SESSION_COOKIE)?.value;
   const session = token ? await verifySession(token) : null;
@@ -21,8 +23,8 @@ export default async function PlatformPage() {
     <AppShell session={session}>
       <div className="space-y-6">
         <PageHeader
-          title="Platform"
-          description="Is install par chal rahe saare organizations. Ye sirf platform operator ke liye hai — kisi organization ke Admin ko ye page dikhta hi nahi."
+          title={t("Platform")}
+          description={t("Is install par chal rahe saare organizations. Ye sirf platform operator ke liye hai — kisi organization ke Admin ko ye page dikhta hi nahi.")}
         />
 
         <OrganizationsTable />

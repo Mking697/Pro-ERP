@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { useT } from "@/components/preferences-provider";
 
 const ACCEPTED = "image/png,image/jpeg,image/webp";
 const MAX_KB = 1024;
@@ -29,6 +30,7 @@ export default function LogoPicker({
   label?: string;
   hint?: string;
 }) {
+  const t = useT();
   const inputRef = useRef<HTMLInputElement>(null);
   const [reading, setReading] = useState(false);
 
@@ -37,7 +39,7 @@ export default function LogoPicker({
     if (!file) return;
 
     if (!ACCEPTED.split(",").includes(file.type)) {
-      toast.error("Logo PNG, JPG ya WebP hona chahiye.");
+      toast.error(t("Logo PNG, JPG ya WebP hona chahiye."));
       if (inputRef.current) inputRef.current.value = "";
       return;
     }
@@ -54,7 +56,7 @@ export default function LogoPicker({
       setReading(false);
     };
     reader.onerror = () => {
-      toast.error("Logo padha nahi ja saka.");
+      toast.error(t("Logo padha nahi ja saka."));
       setReading(false);
     };
     reader.readAsDataURL(file);
@@ -73,7 +75,7 @@ export default function LogoPicker({
             alt="Chuna hua logo"
             className="h-12 w-12 shrink-0 rounded-md object-contain"
           />
-          <p className="min-w-0 flex-1 text-sm text-muted-foreground">Logo taiyaar hai.</p>
+          <p className="min-w-0 flex-1 text-sm text-muted-foreground">{t("Logo taiyaar hai.")}</p>
           <Button
             type="button"
             variant="ghost"
@@ -82,9 +84,7 @@ export default function LogoPicker({
               onChange("");
               if (inputRef.current) inputRef.current.value = "";
             }}
-          >
-            Hatayein
-          </Button>
+          >{t("Hatayein")}</Button>
         </div>
       ) : (
         <>

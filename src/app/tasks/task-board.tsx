@@ -21,6 +21,7 @@ import RecurringRules from "./recurring-rules";
 import CompleteTaskDialog from "./complete-task-dialog";
 import type { TaskRecord, UserOption } from "./types";
 import { CardListSkeleton } from "@/components/loading-states";
+import { useT } from "@/components/preferences-provider";
 
 function completionText(task: TaskRecord): string {
   const date = formatDueDisplay(task.Due_Date);
@@ -37,6 +38,7 @@ function statusBadge(task: TaskRecord) {
 }
 
 export default function TaskBoard({ currentUserId }: { currentUserId: string }) {
+  const t = useT();
   const [myTasks, setMyTasks] = useState<TaskRecord[]>([]);
   const [delegatedTasks, setDelegatedTasks] = useState<TaskRecord[]>([]);
   const [canDelegate, setCanDelegate] = useState(false);
@@ -69,9 +71,9 @@ export default function TaskBoard({ currentUserId }: { currentUserId: string }) 
         for (const u of usersData.users ?? []) map[u.userId] = u.fullName;
         setUserMap(map);
       })
-      .catch(() => toast.error("Tasks load nahi ho paye."))
+      .catch(() => toast.error(t("Tasks load nahi ho paye.")))
       .finally(() => setLoading(false));
-  }, []);
+  }, [t]);
 
   function handleCreated(task: TaskRecord) {
     setDelegatedTasks((prev) => [...prev, task]);
@@ -86,7 +88,7 @@ export default function TaskBoard({ currentUserId }: { currentUserId: string }) 
   }
 
   if (loading) {
-    return <CardListSkeleton label="Tasks load ho rahe hain" />;
+    return <CardListSkeleton label={t("Tasks load ho rahe hain")} />;
   }
 
   const myTasksTable = (
@@ -105,9 +107,7 @@ export default function TaskBoard({ currentUserId }: { currentUserId: string }) 
         <TableBody>
           {myTasks.length === 0 && (
             <TableRow>
-              <TableCell colSpan={6} className="text-center text-muted-foreground">
-                Koi task assign nahi hua.
-              </TableCell>
+              <TableCell colSpan={6} className="text-center text-muted-foreground">{t("Koi task assign nahi hua.")}</TableCell>
             </TableRow>
           )}
           {myTasks.map((task) => {
@@ -158,7 +158,7 @@ export default function TaskBoard({ currentUserId }: { currentUserId: string }) 
           {canAssignRecurring && (
             <CreateRecurringDialog onCreated={() => {
                 setRulesVersion((v) => v + 1);
-                toast.success("Ab is rule ke occurrences roz apne-aap generate hongi.");
+                toast.success(t("Ab is rule ke occurrences roz apne-aap generate hongi."));
               }} />
           )}
           {canDelegate && <CreateTaskDialog onCreated={handleCreated} />}
@@ -185,9 +185,7 @@ export default function TaskBoard({ currentUserId }: { currentUserId: string }) 
             <TableBody>
               {delegatedTasks.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={6} className="text-center text-muted-foreground">
-                    Aapne abhi tak koi task assign nahi kiya.
-                  </TableCell>
+                  <TableCell colSpan={6} className="text-center text-muted-foreground">{t("Aapne abhi tak koi task assign nahi kiya.")}</TableCell>
                 </TableRow>
               )}
               {delegatedTasks.map((task) => {

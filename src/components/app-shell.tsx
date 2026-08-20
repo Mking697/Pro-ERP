@@ -7,6 +7,7 @@ import LogoutButton from "@/app/dashboard/logout-button";
 import { isPlatformAdmin } from "@/lib/platform/admin";
 import { getSetting } from "@/lib/settings";
 import { OrgLogo } from "@/components/logo-picker";
+import SettingsMenu from "@/components/settings-menu";
 
 /**
  * The frame every signed-in page sits inside.
@@ -103,6 +104,9 @@ export default async function AppShell({
             <Badge variant="secondary" className="hidden shrink-0 sm:inline-flex">
               {session.role}
             </Badge>
+            {/* Theme and language belong to the person, so they sit with their name —
+                reachable by everyone, not only by an Admin who can open Settings. */}
+            <SettingsMenu />
             <LogoutButton />
           </div>
         </div>

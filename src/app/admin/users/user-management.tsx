@@ -16,8 +16,10 @@ import ManageUserDialog from "./manage-user-dialog";
 import { parseModuleAccess, getModuleAccessDefinition } from "@/lib/moduleAccess";
 import type { SafeUser } from "./types";
 import { TableSkeleton } from "@/components/loading-states";
+import { useT } from "@/components/preferences-provider";
 
 export default function UserManagement() {
+  const t = useT();
   const [users, setUsers] = useState<SafeUser[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -25,9 +27,9 @@ export default function UserManagement() {
     fetch("/api/admin/users")
       .then((res) => res.json())
       .then((data: { users: SafeUser[] }) => setUsers(data.users ?? []))
-      .catch(() => toast.error("Users load nahi ho paye."))
+      .catch(() => toast.error(t("Users load nahi ho paye.")))
       .finally(() => setLoading(false));
-  }, []);
+  }, [t]);
 
   function handleCreated(user: SafeUser) {
     setUsers((prev) => [...prev, user]);
@@ -38,7 +40,7 @@ export default function UserManagement() {
   }
 
   if (loading) {
-    return <TableSkeleton columns={5} label="Users load ho rahe hain" />;
+    return <TableSkeleton columns={5} label={t("Users load ho rahe hain")} />;
   }
 
   return (
@@ -75,7 +77,7 @@ export default function UserManagement() {
                 <TableCell>{user.Department || "—"}</TableCell>
                 <TableCell>
                   {user.Role === "Admin" ? (
-                    <Badge variant="secondary">Full access</Badge>
+                    <Badge variant="secondary">{t("Full access")}</Badge>
                   ) : (
                     (() => {
                       const granted = parseModuleAccess(user.Module_Access);

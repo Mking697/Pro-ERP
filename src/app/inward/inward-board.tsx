@@ -17,8 +17,10 @@ import CreateInwardDialog from "./create-inward-dialog";
 import QualityCheckDialog from "./quality-check-dialog";
 import type { InwardRecord } from "./types";
 import { TableSkeleton } from "@/components/loading-states";
+import { useT } from "@/components/preferences-provider";
 
 export default function InwardBoard({ canVerify }: { canVerify: boolean }) {
+  const t = useT();
   const [entries, setEntries] = useState<InwardRecord[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -26,9 +28,9 @@ export default function InwardBoard({ canVerify }: { canVerify: boolean }) {
     fetch("/api/inward")
       .then((res) => res.json())
       .then((data: { entries: InwardRecord[] }) => setEntries(data.entries ?? []))
-      .catch(() => toast.error("Inward entries load nahi ho payi."))
+      .catch(() => toast.error(t("Inward entries load nahi ho payi.")))
       .finally(() => setLoading(false));
-  }, []);
+  }, [t]);
 
   function handleCreated(entry: InwardRecord) {
     setEntries((prev) => [...prev, entry]);
@@ -39,7 +41,7 @@ export default function InwardBoard({ canVerify }: { canVerify: boolean }) {
   }
 
   if (loading) {
-    return <TableSkeleton columns={5} label="Inward entries load ho rahi hain" />;
+    return <TableSkeleton columns={5} label={t("Inward entries load ho rahi hain")} />;
   }
 
   return (
@@ -63,9 +65,7 @@ export default function InwardBoard({ canVerify }: { canVerify: boolean }) {
           <TableBody>
             {entries.length === 0 && (
               <TableRow>
-                <TableCell colSpan={canVerify ? 7 : 6} className="text-center text-muted-foreground">
-                  Koi inward entry nahi hai.
-                </TableCell>
+                <TableCell colSpan={canVerify ? 7 : 6} className="text-center text-muted-foreground">{t("Koi inward entry nahi hai.")}</TableCell>
               </TableRow>
             )}
             {entries.map((entry) => (

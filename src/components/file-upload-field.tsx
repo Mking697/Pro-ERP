@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { useT } from "@/components/preferences-provider";
 
 const ACCEPTED_TYPES =
   "image/*,video/*,application/pdf,.xls,.xlsx,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
@@ -19,6 +20,7 @@ export default function FileUploadField({
   value: string;
   onChange: (url: string) => void;
 }) {
+  const t = useT();
   const [uploading, setUploading] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -54,14 +56,14 @@ export default function FileUploadField({
       }
 
       if (!data?.url) {
-        toast.error("Upload nahi ho paya — server se file ka link nahi mila.");
+        toast.error(t("Upload nahi ho paya — server se file ka link nahi mila."));
         return;
       }
 
       onChange(data.url);
-      toast.success("File upload ho gayi.");
+      toast.success(t("File upload ho gayi."));
     } catch {
-      toast.error("Upload nahi ho paya. Internet check karke dobara try karein.");
+      toast.error(t("Upload nahi ho paya. Internet check karke dobara try karein."));
     } finally {
       setUploading(false);
       if (inputRef.current) inputRef.current.value = "";

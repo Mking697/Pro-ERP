@@ -25,12 +25,14 @@ import {
 import FileUploadField from "@/components/file-upload-field";
 import { PRIORITIES } from "@/lib/priority";
 import type { TaskRecord, UserOption } from "./types";
+import { useT } from "@/components/preferences-provider";
 
 export default function CreateTaskDialog({
   onCreated,
 }: {
   onCreated: (task: TaskRecord) => void;
 }) {
+  const t = useT();
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [users, setUsers] = useState<UserOption[]>([]);
@@ -53,8 +55,8 @@ export default function CreateTaskDialog({
     fetch("/api/users/directory")
       .then((res) => res.json())
       .then((data: { users: UserOption[] }) => setUsers(data.users ?? []))
-      .catch(() => toast.error("Users list load nahi ho payi."));
-  }, [open]);
+      .catch(() => toast.error(t("Users list load nahi ho payi.")));
+  }, [open, t]);
 
   function resetForm() {
     setTitle("");
@@ -69,7 +71,7 @@ export default function CreateTaskDialog({
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!assignedTo) {
-      toast.error("Pehle ek user select karein.");
+      toast.error(t("Pehle ek user select karein."));
       return;
     }
 
@@ -95,7 +97,7 @@ export default function CreateTaskDialog({
         return;
       }
 
-      toast.success("Task assign ho gaya.");
+      toast.success(t("Task assign ho gaya."));
       onCreated(data.task);
       resetForm();
       setOpen(false);
@@ -109,7 +111,7 @@ export default function CreateTaskDialog({
       <DialogTrigger render={<Button>Assign Task</Button>} />
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Naya Task Assign Karein</DialogTitle>
+          <DialogTitle>{t("Naya Task Assign Karein")}</DialogTitle>
           <DialogDescription>
             One-time task assign karein. Recurring task ke liye &quot;Assign Recurring
             Task&quot; use karein.
@@ -120,7 +122,7 @@ export default function CreateTaskDialog({
             <Label htmlFor="assignedTo">User Name</Label>
             <Select value={assignedTo} onValueChange={(v) => v && setAssignedTo(v)}>
               <SelectTrigger id="assignedTo" className="w-full">
-                <SelectValue placeholder="User select karein" />
+                <SelectValue placeholder={t("User select karein")} />
               </SelectTrigger>
               <SelectContent>
                 {users.map((u) => (

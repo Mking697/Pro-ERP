@@ -26,12 +26,14 @@ import { ROLES } from "@/lib/roles";
 import ModuleAccessPicker from "@/components/module-access-picker";
 import { generateRandomPassword } from "@/lib/generatePassword";
 import type { SafeUser } from "./types";
+import { useT } from "@/components/preferences-provider";
 
 export default function CreateUserDialog({
   onCreated,
 }: {
   onCreated: (user: SafeUser) => void;
 }) {
+  const t = useT();
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [fullName, setFullName] = useState("");
@@ -90,10 +92,8 @@ export default function CreateUserDialog({
       <DialogTrigger render={<Button>Add User</Button>} />
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Naya User Banayein</DialogTitle>
-          <DialogDescription>
-            Email aur password set karein — user isi se login karega.
-          </DialogDescription>
+          <DialogTitle>{t("Naya User Banayein")}</DialogTitle>
+          <DialogDescription>{t("Email aur password set karein — user isi se login karega.")}</DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-2">

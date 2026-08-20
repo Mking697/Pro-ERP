@@ -8,8 +8,10 @@ import PasswordInput from "@/components/password-input";
 import LogoPicker from "@/components/logo-picker";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
+import { useT } from "@/components/preferences-provider";
 
 export default function SignupForm({ serviceAccountEmail }: { serviceAccountEmail: string }) {
+  const t = useT();
   const router = useRouter();
   const [orgName, setOrgName] = useState("");
   const [fullName, setFullName] = useState("");
@@ -48,7 +50,7 @@ export default function SignupForm({ serviceAccountEmail }: { serviceAccountEmai
       router.push("/onboarding");
       router.refresh();
     } catch {
-      toast.error("Kuch galat ho gaya. Dobara try karein.");
+      toast.error(t("Kuch galat ho gaya. Dobara try karein."));
     } finally {
       setLoading(false);
     }
@@ -110,7 +112,7 @@ export default function SignupForm({ serviceAccountEmail }: { serviceAccountEmai
             autoComplete="new-password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            placeholder="Kam se kam 8 characters"
+            placeholder={t("Kam se kam 8 characters")}
             minLength={8}
             required
           />
@@ -120,8 +122,7 @@ export default function SignupForm({ serviceAccountEmail }: { serviceAccountEmai
       <div className="space-y-4">
         <p className="text-sm font-medium">3. Aapka Google Sheet</p>
         <div className="rounded-md border bg-muted/40 p-3 text-sm text-muted-foreground">
-          <p className="mb-2">
-            Ek <strong>blank</strong> Google Sheet banayein, use is address ke saath{" "}
+          <p className="mb-2">{t("Ek")}<strong>blank</strong> Google Sheet banayein, use is address ke saath{" "}
             <strong>Editor</strong> access se share karein:
           </p>
           <code className="block break-all rounded bg-background px-2 py-1.5 text-xs font-medium text-foreground">

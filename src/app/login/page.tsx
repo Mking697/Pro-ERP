@@ -15,8 +15,10 @@ import { Input } from "@/components/ui/input";
 import PasswordInput from "@/components/password-input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
+import { useT } from "@/components/preferences-provider";
 
 export default function LoginPage() {
+  const t = useT();
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -53,7 +55,7 @@ export default function LoginPage() {
       <Card className="w-full max-w-sm">
         <CardHeader>
           <CardTitle>Pro ERP Login</CardTitle>
-          <CardDescription>Apna email aur password daalein.</CardDescription>
+          <CardDescription>{t("Apna email aur password daalein.")}</CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">
@@ -84,9 +86,7 @@ export default function LoginPage() {
           </form>
           <p className="mt-4 text-center text-sm text-muted-foreground">
             Naya organization?{" "}
-            <Link href="/signup" className="font-medium text-foreground underline">
-              Apna system shuru karein
-            </Link>
+            <Link href="/signup" className="font-medium text-foreground underline">{t("Apna system shuru karein")}</Link>
           </p>
         </CardContent>
       </Card>

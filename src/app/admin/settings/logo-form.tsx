@@ -12,8 +12,10 @@ import {
 import { Button } from "@/components/ui/button";
 import LogoPicker from "@/components/logo-picker";
 import { FormSkeleton } from "@/components/loading-states";
+import { useT } from "@/components/preferences-provider";
 
 export default function LogoForm() {
+  const t = useT();
   const [current, setCurrent] = useState("");
   const [draft, setDraft] = useState("");
   const [loading, setLoading] = useState(true);
@@ -23,9 +25,9 @@ export default function LogoForm() {
     fetch("/api/admin/settings/logo")
       .then((res) => res.json())
       .then((data: { url?: string }) => setCurrent(data.url ?? ""))
-      .catch(() => toast.error("Logo load nahi ho paya."))
+      .catch(() => toast.error(t("Logo load nahi ho paya.")))
       .finally(() => setLoading(false));
-  }, []);
+  }, [t]);
 
   async function save(logo: string) {
     setSaving(true);
@@ -48,7 +50,7 @@ export default function LogoForm() {
         data.url ? "Logo save ho gaya — page refresh karke header me dekhein." : "Logo hata diya."
       );
     } catch {
-      toast.error("Logo save nahi ho paya.");
+      toast.error(t("Logo save nahi ho paya."));
     } finally {
       setSaving(false);
     }
@@ -64,7 +66,7 @@ export default function LogoForm() {
       </CardHeader>
       <CardContent className="space-y-4">
         {loading ? (
-          <FormSkeleton fields={1} label="Logo load ho raha hai" />
+          <FormSkeleton fields={1} label={t("Logo load ho raha hai")} />
         ) : (
           <>
             {current && !draft && (
@@ -75,18 +77,14 @@ export default function LogoForm() {
                   alt="Abhi ka logo"
                   className="h-12 w-12 shrink-0 rounded-md object-contain"
                 />
-                <p className="min-w-0 flex-1 text-sm text-muted-foreground">
-                  Abhi yahi logo laga hua hai.
-                </p>
+                <p className="min-w-0 flex-1 text-sm text-muted-foreground">{t("Abhi yahi logo laga hua hai.")}</p>
                 <Button
                   type="button"
                   variant="ghost"
                   size="sm"
                   disabled={saving}
                   onClick={() => save("")}
-                >
-                  Hatayein
-                </Button>
+                >{t("Hatayein")}</Button>
               </div>
             )}
 

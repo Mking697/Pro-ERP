@@ -20,6 +20,7 @@ import { CardListSkeleton } from "@/components/loading-states";
 import SheetNotConnected from "@/components/sheet-not-connected";
 import { ClipboardList } from "lucide-react";
 import EmptyState from "@/components/empty-state";
+import { useT } from "@/components/preferences-provider";
 
 interface BomLine {
   lineNo: number;
@@ -41,6 +42,7 @@ interface Bom {
 }
 
 export default function BomBoard() {
+  const t = useT();
   const [boms, setBoms] = useState<Bom[]>([]);
   const [setupRequired, setSetupRequired] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -55,12 +57,12 @@ export default function BomBoard() {
         setBoms(data.boms ?? []);
         setSetupRequired(data.setupRequired ?? null);
       })
-      .catch(() => toast.error("BOMs load nahi ho payi."))
+      .catch(() => toast.error(t("BOMs load nahi ho payi.")))
       .finally(() => setLoading(false));
-  }, [version]);
+  }, [version, t]);
 
   if (loading) {
-    return <CardListSkeleton label="BOMs load ho rahi hain" />;
+    return <CardListSkeleton label={t("BOMs load ho rahi hain")} />;
   }
 
   if (setupRequired) {
@@ -80,9 +82,7 @@ export default function BomBoard() {
             size="sm"
             variant={showArchived ? "default" : "outline"}
             onClick={() => setShowArchived((v) => !v)}
-          >
-            Purani versions
-            <span className="ml-1.5 tabular-nums opacity-70">{archivedCount}</span>
+          >{t("Purani versions")}<span className="ml-1.5 tabular-nums opacity-70">{archivedCount}</span>
           </Button>
         )}
         <div className="ml-auto">
@@ -96,8 +96,8 @@ export default function BomBoard() {
       {visible.length === 0 ? (
         <EmptyState
           icon={<ClipboardList />}
-          title="Abhi koi BOM nahi hai"
-          description="Production planning tabhi chalegi jab product ki BOM bani ho."
+          title={t("Abhi koi BOM nahi hai")}
+          description={t("Production planning tabhi chalegi jab product ki BOM bani ho.")}
         />
       ) : (
         <div className="space-y-3">
@@ -137,7 +137,7 @@ export default function BomBoard() {
                           <TableRow>
                             <TableHead className="w-12">#</TableHead>
                             <TableHead>Item</TableHead>
-                            <TableHead className="text-right">Qty / unit</TableHead>
+                            <TableHead className="text-right">{t("Qty / unit")}</TableHead>
                           </TableRow>
                         </TableHeader>
                         <TableBody>

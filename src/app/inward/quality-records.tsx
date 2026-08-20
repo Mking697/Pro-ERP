@@ -14,6 +14,7 @@ import {
 import { formatDueDisplay } from "@/lib/formatDate";
 import AttachmentLink from "@/components/attachment-link";
 import { TableSkeleton } from "@/components/loading-states";
+import { useT } from "@/components/preferences-provider";
 
 interface FailureRow {
   Log_ID: string;
@@ -45,6 +46,7 @@ interface ImsRow {
  * Google Sheet.
  */
 export default function QualityRecords({ view }: { view: "failures" | "ims" }) {
+  const t = useT();
   const [failures, setFailures] = useState<FailureRow[]>([]);
   const [ims, setIms] = useState<ImsRow[]>([]);
   const [missing, setMissing] = useState<string[]>([]);
@@ -58,12 +60,12 @@ export default function QualityRecords({ view }: { view: "failures" | "ims" }) {
         setIms(data.ims ?? []);
         setMissing(data.setupRequired ?? []);
       })
-      .catch(() => toast.error("Records load nahi ho paye."))
+      .catch(() => toast.error(t("Records load nahi ho paye.")))
       .finally(() => setLoading(false));
-  }, []);
+  }, [t]);
 
   if (loading) {
-    return <TableSkeleton columns={5} label="Records load ho rahe hain" />;
+    return <TableSkeleton columns={5} label={t("Records load ho rahe hain")} />;
   }
 
   const sheetName = view === "failures" ? "Failure Log" : "IMS - Inward Sub-Sheet";
@@ -93,9 +95,7 @@ export default function QualityRecords({ view }: { view: "failures" | "ims" }) {
           <TableBody>
             {failures.length === 0 && (
               <TableRow>
-                <TableCell colSpan={7} className="py-8 text-center text-muted-foreground">
-                  Abhi tak koi rejection record nahi hua.
-                </TableCell>
+                <TableCell colSpan={7} className="py-8 text-center text-muted-foreground">{t("Abhi tak koi rejection record nahi hua.")}</TableCell>
               </TableRow>
             )}
             {failures.map((row) => (
@@ -138,9 +138,7 @@ export default function QualityRecords({ view }: { view: "failures" | "ims" }) {
         <TableBody>
           {ims.length === 0 && (
             <TableRow>
-              <TableCell colSpan={5} className="py-8 text-center text-muted-foreground">
-                Abhi tak koi verified stock record nahi hua.
-              </TableCell>
+              <TableCell colSpan={5} className="py-8 text-center text-muted-foreground">{t("Abhi tak koi verified stock record nahi hua.")}</TableCell>
             </TableRow>
           )}
           {ims.map((row) => (

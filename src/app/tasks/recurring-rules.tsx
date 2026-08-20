@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/table";
 import { getFrequencyLabel } from "@/lib/frequency";
 import { TableSkeleton } from "@/components/loading-states";
+import { useT } from "@/components/preferences-provider";
 
 interface RecurringRule {
   Recurring_ID: string;
@@ -37,6 +38,7 @@ interface DirectoryUser {
  * admin should have to do and which nothing in the app hinted at.
  */
 export default function RecurringRules({ refreshKey = 0 }: { refreshKey?: number }) {
+  const t = useT();
   const [rules, setRules] = useState<RecurringRule[]>([]);
   const [names, setNames] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
@@ -60,9 +62,9 @@ export default function RecurringRules({ refreshKey = 0 }: { refreshKey?: number
           );
         }
       )
-      .catch(() => toast.error("Recurring rules load nahi ho paye."))
+      .catch(() => toast.error(t("Recurring rules load nahi ho paye.")))
       .finally(() => setLoading(false));
-  }, [refreshKey]);
+  }, [refreshKey, t]);
 
   async function toggle(rule: RecurringRule, active: boolean) {
     const next = active ? "Active" : "Paused";
@@ -91,14 +93,14 @@ export default function RecurringRules({ refreshKey = 0 }: { refreshKey?: number
           : "Rule paused — nayi occurrences nahi banengi. Purane tasks waise hi rahenge."
       );
     } catch {
-      toast.error("Status update nahi ho paya.");
+      toast.error(t("Status update nahi ho paya."));
     } finally {
       setSavingId(null);
     }
   }
 
   if (loading) {
-    return <TableSkeleton columns={5} label="Rules load ho rahe hain" />;
+    return <TableSkeleton columns={5} label={t("Rules load ho rahe hain")} />;
   }
 
   if (setupRequired) {

@@ -22,6 +22,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { ITEM_CATEGORIES } from "@/lib/inventory/constants";
+import { useT } from "@/components/preferences-provider";
 
 const EMPTY = {
   sku: "",
@@ -38,6 +39,7 @@ const EMPTY = {
 };
 
 export default function CreateItemDialog({ onCreated }: { onCreated: () => void }) {
+  const t = useT();
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState(EMPTY);
   const [saving, setSaving] = useState(false);
@@ -67,7 +69,7 @@ export default function CreateItemDialog({ onCreated }: { onCreated: () => void 
       setOpen(false);
       onCreated();
     } catch {
-      toast.error("Item ban nahi paya.");
+      toast.error(t("Item ban nahi paya."));
     } finally {
       setSaving(false);
     }
@@ -75,10 +77,10 @@ export default function CreateItemDialog({ onCreated }: { onCreated: () => void 
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger render={<Button>Naya Item</Button>} />
+      <DialogTrigger render={<Button>{t("Naya Item")}</Button>} />
       <DialogContent className="max-h-[85vh] max-w-2xl overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Naya Item</DialogTitle>
+          <DialogTitle>{t("Naya Item")}</DialogTitle>
           <DialogDescription>
             Planning ke fields abhi khaali chhod sakte hain — baad me Setup se bhar
             dijiye. Tab tak us item ka reorder point nahi banega.
@@ -102,7 +104,7 @@ export default function CreateItemDialog({ onCreated }: { onCreated: () => void 
                 id="sku"
                 value={form.sku}
                 onChange={(e) => set("sku", e.target.value)}
-                placeholder="Khaali chhodenge to bann jaayega"
+                placeholder={t("Khaali chhodenge to bann jaayega")}
               />
             </div>
           </div>
@@ -147,7 +149,7 @@ export default function CreateItemDialog({ onCreated }: { onCreated: () => void 
           </div>
 
           <div className="rounded-lg border p-3">
-            <p className="text-sm font-medium">Planning fields</p>
+            <p className="text-sm font-medium">{t("Planning fields")}</p>
             <p className="mt-0.5 text-xs text-muted-foreground">
               Reorder point = ADC × Lead Time × Safety Factor. Teeno bhare hone par hi
               system order suggest kar payega.

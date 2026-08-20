@@ -19,6 +19,7 @@ import { qty, statusVariant, type StockStatus } from "../types";
 import { TableSkeleton } from "@/components/loading-states";
 import { Unplug, PackageCheck } from "lucide-react";
 import EmptyState from "@/components/empty-state";
+import { useT } from "@/components/preferences-provider";
 
 interface Suggestion {
   sku: string;
@@ -43,6 +44,7 @@ interface Suggestion {
  * (a supplier's carton size, a price break, a delivery already being negotiated).
  */
 export default function ReorderBoard({ canRaise }: { canRaise: boolean }) {
+  const t = useT();
   const [rows, setRows] = useState<Suggestion[]>([]);
   const [notSetUp, setNotSetUp] = useState(0);
   const [missingSheets, setMissingSheets] = useState<string[]>([]);
@@ -66,9 +68,9 @@ export default function ReorderBoard({ canRaise }: { canRaise: boolean }) {
           setMissingSheets(data.missingSheets ?? []);
         }
       )
-      .catch(() => toast.error("Reorder list load nahi ho payi."))
+      .catch(() => toast.error(t("Reorder list load nahi ho payi.")))
       .finally(() => setLoading(false));
-  }, [version]);
+  }, [version, t]);
 
   function qtyFor(row: Suggestion): string {
     return qtyDraft[row.sku] ?? String(row.suggestedQty);
@@ -116,27 +118,27 @@ export default function ReorderBoard({ canRaise }: { canRaise: boolean }) {
       setQtyDraft({});
       setVersion((v) => v + 1);
     } catch {
-      toast.error("Indent nahi ban paye.");
+      toast.error(t("Indent nahi ban paye."));
     } finally {
       setSaving(false);
     }
   }
 
   if (loading) {
-    return <TableSkeleton columns={5} label="Reorder list load ho rahi hai" />;
+    return <TableSkeleton columns={5} label={t("Reorder list load ho rahi hai")} />;
   }
 
   if (missingSheets.length > 0) {
     return (
       <EmptyState
         icon={<Unplug />}
-        title="Inventory sheets connect nahi hui"
+        title={t("Inventory sheets connect nahi hui")}
         description={missingSheets.join(", ")}
         action={
           <Button
             variant="outline"
             size="sm"
-            render={<Link href="/admin/settings">Settings kholein</Link>}
+            render={<Link href="/admin/settings">{t("Settings kholein")}</Link>}
           />
         }
       />
@@ -161,8 +163,8 @@ export default function ReorderBoard({ canRaise }: { canRaise: boolean }) {
       {rows.length === 0 ? (
         <EmptyState
           icon={<PackageCheck />}
-          title="Abhi kisi item ko order ki zaroorat nahi"
-          description="Har item apne reorder point se upar hai."
+          title={t("Abhi kisi item ko order ki zaroorat nahi")}
+          description={t("Har item apne reorder point se upar hai.")}
         />
       ) : (
         <>
@@ -189,7 +191,7 @@ export default function ReorderBoard({ canRaise }: { canRaise: boolean }) {
                     <TableHead className="w-10">
                       <Checkbox
                         checked={allSelected}
-                        aria-label="Sab select karein"
+                        aria-label={t("Sab select karein")}
                         onCheckedChange={(checked) =>
                           setSelected(
                             checked === true

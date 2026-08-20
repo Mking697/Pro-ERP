@@ -19,6 +19,7 @@ import { qty } from "../types";
 import { TableSkeleton } from "@/components/loading-states";
 import { useConfirm } from "@/components/confirm-dialog";
 import SheetNotConnected from "@/components/sheet-not-connected";
+import { useT } from "@/components/preferences-provider";
 
 interface Indent {
   Indent_ID: string;
@@ -64,6 +65,7 @@ export default function IndentsBoard({
   canApprove: boolean;
   canReceive: boolean;
 }) {
+  const t = useT();
   const [indents, setIndents] = useState<Indent[]>([]);
   const confirm = useConfirm();
   const [setupRequired, setSetupRequired] = useState<string | null>(null);
@@ -80,9 +82,9 @@ export default function IndentsBoard({
         setIndents(data.indents ?? []);
         setSetupRequired(data.setupRequired ?? null);
       })
-      .catch(() => toast.error("Indents load nahi ho paye."))
+      .catch(() => toast.error(t("Indents load nahi ho paye.")))
       .finally(() => setLoading(false));
-  }, [version]);
+  }, [version, t]);
 
   async function act(indent: Indent, action: "approve" | "cancel") {
     setBusyId(indent.Indent_ID);
@@ -106,7 +108,7 @@ export default function IndentsBoard({
       );
       setVersion((v) => v + 1);
     } catch {
-      toast.error("Update nahi ho paya.");
+      toast.error(t("Update nahi ho paya."));
     } finally {
       setBusyId(null);
     }
@@ -115,7 +117,7 @@ export default function IndentsBoard({
   async function receive(indent: Indent) {
     const quantity = Number(receiveDraft[indent.Indent_ID]);
     if (!(quantity > 0)) {
-      toast.error("Received quantity daalein.");
+      toast.error(t("Received quantity daalein."));
       return;
     }
 
@@ -139,14 +141,14 @@ export default function IndentsBoard({
       setReceiveDraft((d) => ({ ...d, [indent.Indent_ID]: "" }));
       setVersion((v) => v + 1);
     } catch {
-      toast.error("Receive nahi ho paya.");
+      toast.error(t("Receive nahi ho paya."));
     } finally {
       setBusyId(null);
     }
   }
 
   if (loading) {
-    return <TableSkeleton columns={6} label="Indents load ho rahe hain" />;
+    return <TableSkeleton columns={6} label={t("Indents load ho rahe hain")} />;
   }
 
   if (setupRequired) {

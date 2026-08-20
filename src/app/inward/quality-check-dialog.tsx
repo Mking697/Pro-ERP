@@ -16,6 +16,7 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import type { InwardRecord } from "./types";
+import { useT } from "@/components/preferences-provider";
 
 export default function QualityCheckDialog({
   entry,
@@ -24,6 +25,7 @@ export default function QualityCheckDialog({
   entry: InwardRecord;
   onVerified: (entry: InwardRecord) => void;
 }) {
+  const t = useT();
   const [open, setOpen] = useState(false);
   const [verifyChecked, setVerifyChecked] = useState(false);
   const [passQty, setPassQty] = useState("0");
@@ -35,7 +37,7 @@ export default function QualityCheckDialog({
 
   async function handleSave() {
     if (failQtyNumber > 0 && !failReason.trim()) {
-      toast.error("Fail Qty ho to Fail Reason zaroori hai.");
+      toast.error(t("Fail Qty ho to Fail Reason zaroori hai."));
       return;
     }
 
@@ -58,7 +60,7 @@ export default function QualityCheckDialog({
         return;
       }
 
-      toast.success("Quality check save ho gaya.");
+      toast.success(t("Quality check save ho gaya."));
       onVerified(data.entry);
       setOpen(false);
     } finally {

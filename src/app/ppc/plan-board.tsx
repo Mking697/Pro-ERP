@@ -30,6 +30,7 @@ import { CardListSkeleton } from "@/components/loading-states";
 import SheetNotConnected from "@/components/sheet-not-connected";
 import { Factory } from "lucide-react";
 import EmptyState from "@/components/empty-state";
+import { useT } from "@/components/preferences-provider";
 
 interface PlanMaterial {
   sku: string;
@@ -70,6 +71,7 @@ function statusVariant(status: Plan["status"]) {
 }
 
 export default function PlanBoard({ access }: { access: string[] }) {
+  const t = useT();
   const [plans, setPlans] = useState<Plan[]>([]);
   const [setupRequired, setSetupRequired] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -94,9 +96,9 @@ export default function PlanBoard({ access }: { access: string[] }) {
         setPlans(data.plans ?? []);
         setSetupRequired(data.setupRequired ?? null);
       })
-      .catch(() => toast.error("Plans load nahi ho paye."))
+      .catch(() => toast.error(t("Plans load nahi ho paye.")))
       .finally(() => setLoading(false));
-  }, [version]);
+  }, [version, t]);
 
   const refresh = useCallback(() => setVersion((v) => v + 1), []);
 
@@ -117,7 +119,7 @@ export default function PlanBoard({ access }: { access: string[] }) {
       refresh();
       return true;
     } catch {
-      toast.error("Kaam nahi hua.");
+      toast.error(t("Kaam nahi hua."));
       return false;
     } finally {
       setBusy(null);
@@ -128,7 +130,7 @@ export default function PlanBoard({ access }: { access: string[] }) {
     if (!starting) return;
     const qty = Number(actualQty);
     if (!(qty > 0)) {
-      toast.error("Actual quantity 0 se zyada honi chahiye.");
+      toast.error(t("Actual quantity 0 se zyada honi chahiye."));
       return;
     }
     const ok = await act(
@@ -143,7 +145,7 @@ export default function PlanBoard({ access }: { access: string[] }) {
   }
 
   if (loading) {
-    return <CardListSkeleton label="Plans load ho rahe hain" />;
+    return <CardListSkeleton label={t("Plans load ho rahe hain")} />;
   }
 
   if (setupRequired) {
@@ -174,13 +176,11 @@ export default function PlanBoard({ access }: { access: string[] }) {
             size="sm"
             variant={showClosed ? "default" : "outline"}
             onClick={() => setShowClosed((v) => !v)}
-          >
-            Purane plan
-            <span className="ml-1.5 tabular-nums opacity-70">{closed.length}</span>
+          >{t("Purane plan")}<span className="ml-1.5 tabular-nums opacity-70">{closed.length}</span>
           </Button>
         )}
         {shortages.length > 0 && (
-          <Button size="sm" variant="outline" render={<Link href="/inventory/reorder">Indent raise karein</Link>} />
+          <Button size="sm" variant="outline" render={<Link href="/inventory/reorder">{t("Indent raise karein")}</Link>} />
         )}
         {canPlan && (
           <div className="ml-auto">
@@ -192,8 +192,8 @@ export default function PlanBoard({ access }: { access: string[] }) {
       {visible.length === 0 ? (
         <EmptyState
           icon={<Factory />}
-          title="Koi chalu plan nahi hai"
-          description="Naya plan banate hi uska material reserve ho jaata hai."
+          title={t("Koi chalu plan nahi hai")}
+          description={t("Naya plan banate hi uska material reserve ho jaata hai.")}
         />
       ) : (
         <div className="space-y-3">
@@ -234,9 +234,7 @@ export default function PlanBoard({ access }: { access: string[] }) {
                               "Stock dobara check ho gaya."
                             )
                           }
-                        >
-                          Dobara check
-                        </Button>
+                        >{t("Dobara check")}</Button>
                       )}
                       {open && canRun && (
                         <Button
@@ -246,9 +244,7 @@ export default function PlanBoard({ access }: { access: string[] }) {
                             setStarting(plan);
                             setActualQty(String(plan.plannedQty));
                           }}
-                        >
-                          Production shuru
-                        </Button>
+                        >{t("Production shuru")}</Button>
                       )}
                       {plan.status === "In_Production" && canRun && (
                         <Button
@@ -301,10 +297,10 @@ export default function PlanBoard({ access }: { access: string[] }) {
                         <TableHeader>
                           <TableRow>
                             <TableHead>Item</TableHead>
-                            <TableHead className="text-right">Chahiye</TableHead>
+                            <TableHead className="text-right">{t("Chahiye")}</TableHead>
                             <TableHead className="text-right">Reserve</TableHead>
-                            <TableHead className="text-right">Kam</TableHead>
-                            <TableHead className="text-right">Laga</TableHead>
+                            <TableHead className="text-right">{t("Kam")}</TableHead>
+                            <TableHead className="text-right">{t("Laga")}</TableHead>
                           </TableRow>
                         </TableHeader>
                         <TableBody>
@@ -355,7 +351,7 @@ export default function PlanBoard({ access }: { access: string[] }) {
       <Dialog open={starting !== null} onOpenChange={(v) => !v && setStarting(null)}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Production shuru karein</DialogTitle>
+            <DialogTitle>{t("Production shuru karein")}</DialogTitle>
             <DialogDescription>
               Kitne unit actually ban rahe hain? Utne ka hi material issue hoga, aur bacha
               hua reserve turant free ho jaayega.

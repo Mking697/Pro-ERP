@@ -14,6 +14,7 @@ import {
 import { Button } from "@/components/ui/button";
 import FileUploadField from "@/components/file-upload-field";
 import type { TaskRecord } from "./types";
+import { useT } from "@/components/preferences-provider";
 
 export default function CompleteTaskDialog({
   task,
@@ -22,6 +23,7 @@ export default function CompleteTaskDialog({
   task: TaskRecord;
   onCompleted: (task: TaskRecord) => void;
 }) {
+  const t = useT();
   const [open, setOpen] = useState(false);
   const [proofUrl, setProofUrl] = useState("");
   const [loading, setLoading] = useState(false);
@@ -41,7 +43,7 @@ export default function CompleteTaskDialog({
         return;
       }
 
-      toast.success("Task complete ho gaya.");
+      toast.success(t("Task complete ho gaya."));
       onCompleted(data.task);
       setOpen(false);
     } finally {
@@ -60,7 +62,7 @@ export default function CompleteTaskDialog({
           </DialogDescription>
         </DialogHeader>
         <FileUploadField
-          label="Completion Proof (optional)"
+          label={t("Completion Proof (optional)")}
           value={proofUrl}
           onChange={setProofUrl}
         />

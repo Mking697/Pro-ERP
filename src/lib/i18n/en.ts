@@ -1,0 +1,247 @@
+/**
+ * English strings, keyed by the Hinglish original.
+ *
+ * A key that does not exactly match a string in the source does nothing — it cannot be
+ * looked up — so `npm run i18n:check` compares this file against the strings actually
+ * wrapped in `t()` and reports both directions.
+ *
+ * Strings already in English, proper nouns, example placeholders and unit labels
+ * (SKU, UOM, ADC, ROP, PCS) are deliberately absent: they read the same either way.
+ */
+export const EN: Record<string, string> = {
+  // --- shell, nav, auth ------------------------------------------------------------
+  "Mera kaam": "My work",
+  "Apna system shuru karein": "Set up your system",
+  "Apne organization ka Pro ERP shuru karein": "Start Pro ERP for your organization",
+  "Apna email aur password daalein.": "Enter your email and password.",
+  "Login karein": "Sign in",
+  "Naya password": "New password",
+  "Password kam se kam 6 characters ka ho.": "Password must be at least 6 characters.",
+  "Kam se kam 8 characters": "At least 8 characters",
+  "Kuch galat ho gaya. Dobara try karein.": "Something went wrong. Please try again.",
+  "Dashboard pe jayein": "Go to dashboard",
+  "Guidebook kholein": "Open the guidebook",
+  "Kaise use karein": "How to use this",
+  "Pehle ye kar lein": "Do this first",
+  "Setup poora karein": "Finish setup",
+
+  // --- dashboard -------------------------------------------------------------------
+  "Aapke modules": "Your modules",
+  "Aapka score kaise bana": "How your score was calculated",
+  "Aapke paas koi pending task nahi hai.": "You have no pending tasks.",
+  "Apne tasks dekhein aur, agar authorized hain, naye tasks assign karein.":
+    "See your tasks and, if you are authorized, assign new ones.",
+  "Abhi tak koi task evaluate nahi hua, isliye score nahi bana.":
+    "No task has been evaluated yet, so there is no score.",
+  "MIS score timestamps se calculate hota hai.":
+    "The MIS score is calculated from timestamps.",
+  "Har user ka score": "Every person's score",
+  "Team ka batwara": "Team breakdown",
+  "Result ka batwara": "Result breakdown",
+  "Kisko kitne tasks diye": "Tasks assigned, by person",
+  "Tasks kab bane": "When tasks were created",
+  "Entries kab aayi": "When entries arrived",
+  "Stock ka safar": "Stock movement",
+  "Stock kab aaya": "When stock arrived",
+  "Priority ke hisaab se": "By priority",
+  "Frequency ke hisaab se": "By frequency",
+  "Party ke hisaab se accepted qty": "Accepted quantity by party",
+  "Pass vs Fail quantity": "Pass vs fail quantity",
+  "Active vs Paused": "Active vs paused",
+  "Rejection ke kaaran": "Reasons for rejection",
+  "Saare tasks dekhein": "See all tasks",
+
+  // --- tasks -----------------------------------------------------------------------
+  "Naya Task Assign Karein": "Assign a new task",
+  "Naya Recurring Task": "New recurring task",
+  "Task assign ho gaya.": "Task assigned.",
+  "Task complete ho gaya.": "Task completed.",
+  "Recurring task assign ho gaya.": "Recurring task created.",
+  "Ab is rule ke occurrences roz apne-aap generate hongi.":
+    "This rule's occurrences will now be generated automatically each day.",
+  "Koi pending task nahi hai.": "No pending tasks.",
+  "Koi task assign nahi hua.": "No tasks have been assigned.",
+  "Aapne abhi tak koi task assign nahi kiya.": "You have not assigned any tasks yet.",
+  "Jo tasks aapne doosron ko diye.": "Tasks you assigned to other people.",
+  "Repeating rules aur unki haalat.": "Repeating rules and their state.",
+  "Doer select karein": "Select a doer",
+  "Pehle ek Doer select karein.": "Select a doer first.",
+  "Pehle ek user select karein.": "Select a user first.",
+  "User select karein": "Select a user",
+  "Kisko diya": "Assigned to",
+  "Tasks load ho rahe hain": "Loading tasks",
+  "Tasks load nahi ho paye.": "Could not load tasks.",
+  "Recurring rules load nahi ho paye.": "Could not load recurring rules.",
+  "Rules load ho rahe hain": "Loading rules",
+  "Completion Proof (optional)": "Completion proof (optional)",
+  "Completion due": "Due",
+
+  // --- inventory -------------------------------------------------------------------
+  "Naya Item": "New item",
+  "Item ban nahi paya.": "Could not create the item.",
+  "Item ya SKU search karein...": "Search by name or SKU...",
+  "Item ya SKU...": "Name or SKU...",
+  "Koi item nahi mila.": "No item found.",
+  "Abhi koi item nahi hai": "No items yet",
+  "Abhi koi movement nahi hui.": "No movements yet.",
+  "Items load ho rahe hain": "Loading items",
+  "Items load nahi ho paye.": "Could not load items.",
+  "Inventory kholein": "Open Inventory",
+  "Inventory ki sheets abhi connect nahi hui": "Inventory sheets are not connected yet",
+  "Inventory sheets connect nahi hui": "Inventory sheets are not connected",
+  "Har item ka live stock. Stock kahin store nahi hota — har baar In/Out entries se nikala jaata hai.":
+    "Live stock for every item. Stock is never stored — it is worked out from the In and Out entries every time.",
+  "Planning ke number bharne se pehle item master me item banane honge.":
+    "Items have to exist in the item master before their planning figures can be filled in.",
+  "Planning fields": "Planning fields",
+  "Movement history": "Movement history",
+  "Khaali chhodenge to bann jaayega": "Leave blank and one will be generated",
+  "Department, machine, ya vyakti": "Department, machine or person",
+  "Manually set": "Set manually",
+  "Kisko / Remark": "Issued to / remark",
+
+  // --- reorder and indents ---------------------------------------------------------
+  "Abhi kisi item ko order ki zaroorat nahi": "Nothing needs ordering right now",
+  "Har item apne reorder point se upar hai.": "Every item is above its reorder point.",
+  "Reorder list load ho rahi hai": "Loading the reorder list",
+  "Reorder list load nahi ho payi.": "Could not load the reorder list.",
+  "Indent raise karein": "Raise an indent",
+  "Indent nahi ban paye.": "Could not create the indent.",
+  "Indents load ho rahe hain": "Loading indents",
+  "Indents load nahi ho paye.": "Could not load indents.",
+  "Received quantity daalein.": "Enter the quantity received.",
+  "Receive nahi ho paya.": "Could not record the receipt.",
+  "Sab select karein": "Select all",
+  "Sirf adhoore": "Incomplete only",
+
+  // --- BOM -------------------------------------------------------------------------
+  "Nayi BOM": "New BOM",
+  "Product ka naam": "Product name",
+  "Ek saath rows": "Rows at once",
+  "Rows banayein": "Add rows",
+  "Ek aur line": "One more line",
+  "Hatayein": "Remove",
+  "Qty / unit": "Qty per unit",
+  "Purani versions": "Older versions",
+  "Abhi koi BOM nahi hai": "No BOM yet",
+  "Production planning tabhi chalegi jab product ki BOM bani ho.":
+    "Production planning only works once a product has a BOM.",
+  "Kam se kam ek line me item aur quantity daalein.":
+    "Fill in an item and a quantity on at least one line.",
+  "BOM save nahi ho payi.": "Could not save the BOM.",
+  "BOMs load ho rahi hain": "Loading BOMs",
+  "BOMs load nahi ho payi.": "Could not load BOMs.",
+  "Har product ke liye kaun se item kitne lagte hain. BOM badalne par purani version archive ho jaati hai, mitti nahi — taaki puraane record padhe ja sakein.":
+    "What each product is made from, and how much of each. Changing a BOM archives the old version rather than erasing it, so past records stay readable.",
+
+  // --- PPC -------------------------------------------------------------------------
+  "Naya plan": "New plan",
+  "Naya production plan": "New production plan",
+  "Koi chalu plan nahi hai": "No active plans",
+  "Naya plan banate hi uska material reserve ho jaata hai.":
+    "Creating a plan reserves its material straight away.",
+  "Plan banate hi material reserve ho jaata hai. Ek hi stock do plan ko nahi mil sakta — jiski production date pehle hai, use pehle milta hai.":
+    "Creating a plan reserves its material. The same stock cannot go to two plans — whichever has the earlier production date gets it first.",
+  "Plan save nahi ho paya.": "Could not save the plan.",
+  "Plans load ho rahe hain": "Loading plans",
+  "Plans load nahi ho paye.": "Could not load plans.",
+  "Product list load nahi hui.": "Could not load the product list.",
+  "Product, quantity aur date bharein.": "Fill in product, quantity and date.",
+  "Production date": "Production date",
+  "Production shuru": "Start production",
+  "Production shuru karein": "Start production",
+  "Actual quantity 0 se zyada honi chahiye.": "Actual quantity must be more than 0.",
+  "Material check": "Material check",
+  "Dobara check": "Check again",
+  "Purane plan": "Past plans",
+  "Ek aur product": "One more product",
+  "Check nahi ho paya.": "Could not run the check.",
+  "Chahiye": "Needed",
+  "Milega": "Available",
+  "Kam": "Short",
+  "Laga": "Used",
+
+  // --- inward and IQC --------------------------------------------------------------
+  "Naya Inward Entry": "New inward entry",
+  "Material aane par yeh form bharein.": "Fill this in when material arrives.",
+  "Inward entry submit ho gayi.": "Inward entry submitted.",
+  "Entry save nahi ho payi.": "Could not save the entry.",
+  "Koi inward entry nahi hai.": "No inward entries.",
+  "Inward entries load ho rahi hain": "Loading inward entries",
+  "Inward entries load nahi ho payi.": "Could not load inward entries.",
+  "Material inward entries, unka quality check, aur uska result.":
+    "Inward entries, their quality check, and the result.",
+  "Quality check save ho gaya.": "Quality check saved.",
+  "Quality check ka nateeja.": "The result of the quality check.",
+  "Fail Qty ho to Fail Reason zaroori hai.":
+    "A fail reason is required when there is a fail quantity.",
+  "Verified stock jo andar aaya.": "Verified stock that came in.",
+  "Abhi tak koi rejection record nahi hua.": "No rejections recorded yet.",
+  "Abhi tak koi verified stock record nahi hua.": "No verified stock recorded yet.",
+  "Pending IQC entries load nahi ho payi.": "Could not load pending IQC entries.",
+  "Records load ho rahe hain": "Loading records",
+  "Records load nahi ho paye.": "Could not load records.",
+  "Kyun": "Why",
+
+  // --- admin: users ----------------------------------------------------------------
+  "Naya User Banayein": "Create a user",
+  "Naye users banayein aur unke roles manage karein.":
+    "Create users and manage their roles.",
+  "Email aur password set karein — user isi se login karega.":
+    "Set an email and password — this is what they will sign in with.",
+  "User update ho gaya.": "User updated.",
+  "Password reset ho gaya.": "Password reset.",
+  "Koi active user nahi mila.": "No active users found.",
+  "Users load ho rahe hain": "Loading users",
+  "Users load nahi ho paye.": "Could not load users.",
+  "Users list load nahi ho payi.": "Could not load the user list.",
+  "Full access": "Full access",
+
+  // --- admin: settings -------------------------------------------------------------
+  "Google Sheets, Drive, aur WhatsApp connections manage karein.":
+    "Manage Google Sheets, Drive and WhatsApp connections.",
+  "Har sheet aur Drive folder is address ke saath":
+    "Share every sheet and Drive folder with this address",
+  "Settings kholein": "Open Settings",
+  "Settings load nahi ho payi.": "Could not load settings.",
+  "Sheet connections load ho rahi hain": "Loading sheet connections",
+  "Connect ho gaya.": "Connected.",
+  "Pehle URL daalein.": "Enter a URL first.",
+  "Save nahi ho paya.": "Could not save.",
+  "Update nahi ho paya.": "Could not update.",
+  "Status update nahi ho paya.": "Could not update the status.",
+  "Kaam nahi hua.": "That did not work.",
+  "WhatsApp settings save ho gayi.": "WhatsApp settings saved.",
+  "WhatsApp settings load ho rahi hain": "Loading WhatsApp settings",
+  "WhatsApp settings load nahi ho payi.": "Could not load WhatsApp settings.",
+  "Test message bhej diya — apna WhatsApp check karein.":
+    "Test message sent — check your WhatsApp.",
+  "Logo load ho raha hai": "Loading the logo",
+  "Logo load nahi ho paya.": "Could not load the logo.",
+  "Logo save nahi ho paya.": "Could not save the logo.",
+  "Logo padha nahi ja saka.": "The logo could not be read.",
+  "Logo taiyaar hai.": "Logo ready.",
+  "Logo PNG, JPG ya WebP hona chahiye.": "The logo must be a PNG, JPG or WebP.",
+  "Abhi yahi logo laga hua hai.": "This is the logo currently in use.",
+  "File upload ho gayi.": "File uploaded.",
+  "Upload nahi ho paya — server se file ka link nahi mila.":
+    "Upload failed — the server did not return a file link.",
+  "Upload nahi ho paya. Internet check karke dobara try karein.":
+    "Upload failed. Check your connection and try again.",
+  "Badlein": "Change",
+  "Bas ho gaya": "All done",
+
+  // --- platform --------------------------------------------------------------------
+  "Abhi tak koi organization signup nahi hua.": "No organization has signed up yet.",
+  "Organizations load ho rahi hain": "Loading organizations",
+  "Organizations load nahi ho paye.": "Could not load organizations.",
+  "Suspend karne ka matlab": "What suspending does",
+  "Is install par chal rahe saare organizations. Ye sirf platform operator ke liye hai — kisi organization ke Admin ko ye page dikhta hi nahi.":
+    "Every organization running on this install. This is for the platform operator only — an organization's own Admin never sees this page.",
+
+  // --- shared UI -------------------------------------------------------------------
+  "Chunein...": "Select...",
+  "Poora": "Full",
+  "Ek": "One",
+  "Sab select karein ": "Select all ",
+};

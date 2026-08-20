@@ -15,6 +15,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { FormSkeleton } from "@/components/loading-states";
+import { useT } from "@/components/preferences-provider";
 
 interface WhatsAppSettings {
   hasToken: boolean;
@@ -24,6 +25,7 @@ interface WhatsAppSettings {
 }
 
 export default function WhatsAppForm() {
+  const t = useT();
   const [settings, setSettings] = useState<WhatsAppSettings | null>(null);
   const [tokenDraft, setTokenDraft] = useState("");
   const [phoneNumber, setPhoneNumber] = useState("");
@@ -41,9 +43,9 @@ export default function WhatsAppForm() {
         setPhoneNumber(data.phoneNumber);
         setBaseUrl(data.baseUrl);
       })
-      .catch(() => toast.error("WhatsApp settings load nahi ho payi."))
+      .catch(() => toast.error(t("WhatsApp settings load nahi ho payi.")))
       .finally(() => setLoading(false));
-  }, []);
+  }, [t]);
 
   async function handleSave() {
     setSaving(true);
@@ -60,7 +62,7 @@ export default function WhatsAppForm() {
         return;
       }
 
-      toast.success("WhatsApp settings save ho gayi.");
+      toast.success(t("WhatsApp settings save ho gayi."));
       setSettings((prev) =>
         prev
           ? {
@@ -88,7 +90,7 @@ export default function WhatsAppForm() {
         return;
       }
 
-      toast.success("Test message bhej diya — apna WhatsApp check karein.");
+      toast.success(t("Test message bhej diya — apna WhatsApp check karein."));
     } finally {
       setTesting(false);
     }
@@ -112,7 +114,7 @@ export default function WhatsAppForm() {
   }
 
   if (loading || !settings) {
-    return <FormSkeleton fields={3} label="WhatsApp settings load ho rahi hain" />;
+    return <FormSkeleton fields={3} label={t("WhatsApp settings load ho rahi hain")} />;
   }
 
   return (

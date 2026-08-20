@@ -15,6 +15,7 @@ import {
 import { formatDueDisplay } from "@/lib/formatDate";
 import { TableSkeleton } from "@/components/loading-states";
 import { useConfirm } from "@/components/confirm-dialog";
+import { useT } from "@/components/preferences-provider";
 
 interface OrgRow {
   orgId: string;
@@ -30,6 +31,7 @@ interface OrgRow {
 }
 
 export default function OrganizationsTable() {
+  const t = useT();
   const [orgs, setOrgs] = useState<OrgRow[]>([]);
   const confirm = useConfirm();
   const [loading, setLoading] = useState(true);
@@ -39,9 +41,9 @@ export default function OrganizationsTable() {
     fetch("/api/platform/organizations")
       .then((res) => res.json())
       .then((data: { organizations?: OrgRow[] }) => setOrgs(data.organizations ?? []))
-      .catch(() => toast.error("Organizations load nahi ho paye."))
+      .catch(() => toast.error(t("Organizations load nahi ho paye.")))
       .finally(() => setLoading(false));
-  }, []);
+  }, [t]);
 
   /**
    * Turning the switch off logs out every user in that organization on their next
@@ -87,14 +89,14 @@ export default function OrganizationsTable() {
           : `${org.name} suspend — uske users ab login nahi kar payenge. Data waise ka waisa rahega.`
       );
     } catch {
-      toast.error("Status update nahi ho paya.");
+      toast.error(t("Status update nahi ho paya."));
     } finally {
       setSavingId(null);
     }
   }
 
   if (loading) {
-    return <TableSkeleton columns={4} label="Organizations load ho rahi hain" />;
+    return <TableSkeleton columns={4} label={t("Organizations load ho rahi hain")} />;
   }
 
   return (
@@ -114,9 +116,7 @@ export default function OrganizationsTable() {
         <TableBody>
           {orgs.length === 0 && (
             <TableRow>
-              <TableCell colSpan={7} className="py-8 text-center text-muted-foreground">
-                Abhi tak koi organization signup nahi hua.
-              </TableCell>
+              <TableCell colSpan={7} className="py-8 text-center text-muted-foreground">{t("Abhi tak koi organization signup nahi hua.")}</TableCell>
             </TableRow>
           )}
           {orgs.map((org) => {

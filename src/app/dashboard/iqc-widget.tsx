@@ -6,8 +6,10 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { formatDueDisplay } from "@/lib/formatDate";
 import QualityCheckDialog from "@/app/inward/quality-check-dialog";
 import type { InwardRecord } from "@/app/inward/types";
+import { useT } from "@/components/preferences-provider";
 
 export default function IqcWidget() {
+  const t = useT();
   const [entries, setEntries] = useState<InwardRecord[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -17,9 +19,9 @@ export default function IqcWidget() {
       .then((data: { entries: InwardRecord[] }) =>
         setEntries((data.entries ?? []).filter((e) => e.IQC_Status === "Pending"))
       )
-      .catch(() => toast.error("Pending IQC entries load nahi ho payi."))
+      .catch(() => toast.error(t("Pending IQC entries load nahi ho payi.")))
       .finally(() => setLoading(false));
-  }, []);
+  }, [t]);
 
   function handleVerified(updated: InwardRecord) {
     setEntries((prev) => prev.filter((e) => e.Entry_ID !== updated.Entry_ID));

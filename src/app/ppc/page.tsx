@@ -4,8 +4,10 @@ import { verifySession, SESSION_COOKIE } from "@/lib/auth/session";
 import AppShell from "@/components/app-shell";
 import PlanBoard from "./plan-board";
 import PageHeader from "@/components/page-header";
+import { getT } from "@/lib/i18n/server";
 
 export default async function PpcPage() {
+  const t = await getT();
   const cookieStore = await cookies();
   const token = cookieStore.get(SESSION_COOKIE)?.value;
   const session = token ? await verifySession(token) : null;
@@ -21,8 +23,8 @@ export default async function PpcPage() {
     <AppShell session={session}>
       <div className="space-y-6">
         <PageHeader
-          title="Production Planning"
-          description="Plan banate hi material reserve ho jaata hai. Ek hi stock do plan ko nahi mil sakta — jiski production date pehle hai, use pehle milta hai."
+          title={t("Production Planning")}
+          description={t("Plan banate hi material reserve ho jaata hai. Ek hi stock do plan ko nahi mil sakta — jiski production date pehle hai, use pehle milta hai.")}
         />
 
         <PlanBoard access={[...session.access]} />

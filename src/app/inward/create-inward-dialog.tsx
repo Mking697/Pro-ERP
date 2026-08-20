@@ -24,6 +24,7 @@ import {
 } from "@/components/ui/select";
 import FileUploadField from "@/components/file-upload-field";
 import type { InwardRecord } from "./types";
+import { useT } from "@/components/preferences-provider";
 
 const INWARD_TYPES = ["Raw Material", "Consumable", "Other"];
 
@@ -32,6 +33,7 @@ export default function CreateInwardDialog({
 }: {
   onCreated: (entry: InwardRecord) => void;
 }) {
+  const t = useT();
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
 
@@ -74,7 +76,7 @@ export default function CreateInwardDialog({
         return;
       }
 
-      toast.success("Inward entry submit ho gayi.");
+      toast.success(t("Inward entry submit ho gayi."));
       onCreated(data.entry);
       resetForm();
       setOpen(false);
@@ -88,8 +90,8 @@ export default function CreateInwardDialog({
       <DialogTrigger render={<Button>New Inward Entry</Button>} />
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Naya Inward Entry</DialogTitle>
-          <DialogDescription>Material aane par yeh form bharein.</DialogDescription>
+          <DialogTitle>{t("Naya Inward Entry")}</DialogTitle>
+          <DialogDescription>{t("Material aane par yeh form bharein.")}</DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
           <ItemPicker value={item} onChange={setItem} label="Item (optional)" />

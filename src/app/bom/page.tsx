@@ -4,8 +4,10 @@ import { verifySession, SESSION_COOKIE } from "@/lib/auth/session";
 import AppShell from "@/components/app-shell";
 import BomBoard from "./bom-board";
 import PageHeader from "@/components/page-header";
+import { getT } from "@/lib/i18n/server";
 
 export default async function BomPage() {
+  const t = await getT();
   const cookieStore = await cookies();
   const token = cookieStore.get(SESSION_COOKIE)?.value;
   const session = token ? await verifySession(token) : null;
@@ -17,8 +19,8 @@ export default async function BomPage() {
     <AppShell session={session}>
       <div className="space-y-6">
         <PageHeader
-          title="BOM"
-          description="Har product ke liye kaun se item kitne lagte hain. BOM badalne par purani version archive ho jaati hai, mitti nahi — taaki puraane record padhe ja sakein."
+          title={t("BOM")}
+          description={t("Har product ke liye kaun se item kitne lagte hain. BOM badalne par purani version archive ho jaati hai, mitti nahi — taaki puraane record padhe ja sakein.")}
         />
 
         <BomBoard />

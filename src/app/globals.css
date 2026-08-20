@@ -183,3 +183,76 @@
     scroll-behavior: auto !important;
   }
 }
+
+/**
+ * Accent themes.
+ *
+ * The base palette is neutral; an accent only re-points the handful of tokens that carry
+ * brand colour — primary fills, the focus ring, and the sidebar's primary. Everything
+ * else (surfaces, borders, text) stays neutral, so a theme change cannot quietly break a
+ * contrast pair that was checked once.
+ *
+ * Each accent is given separately for light and dark rather than reusing one hue: the
+ * same colour that reads well on white is usually too dark on a near-black surface.
+ */
+[data-accent="blue"] {
+  --primary: oklch(0.55 0.18 258);
+  --primary-foreground: oklch(0.98 0 0);
+  --ring: oklch(0.55 0.18 258);
+  --sidebar-primary: oklch(0.55 0.18 258);
+  --sidebar-ring: oklch(0.55 0.18 258);
+}
+.dark[data-accent="blue"] {
+  --primary: oklch(0.7 0.15 258);
+  --primary-foreground: oklch(0.18 0.03 258);
+  --ring: oklch(0.7 0.15 258);
+  --sidebar-primary: oklch(0.7 0.15 258);
+  --sidebar-ring: oklch(0.7 0.15 258);
+}
+
+[data-accent="green"] {
+  --primary: oklch(0.52 0.13 158);
+  --primary-foreground: oklch(0.98 0 0);
+  --ring: oklch(0.52 0.13 158);
+  --sidebar-primary: oklch(0.52 0.13 158);
+  --sidebar-ring: oklch(0.52 0.13 158);
+}
+.dark[data-accent="green"] {
+  --primary: oklch(0.72 0.14 158);
+  --primary-foreground: oklch(0.17 0.03 158);
+  --ring: oklch(0.72 0.14 158);
+  --sidebar-primary: oklch(0.72 0.14 158);
+  --sidebar-ring: oklch(0.72 0.14 158);
+}
+
+[data-accent="violet"] {
+  --primary: oklch(0.53 0.2 292);
+  --primary-foreground: oklch(0.98 0 0);
+  --ring: oklch(0.53 0.2 292);
+  --sidebar-primary: oklch(0.53 0.2 292);
+  --sidebar-ring: oklch(0.53 0.2 292);
+}
+.dark[data-accent="violet"] {
+  --primary: oklch(0.72 0.16 292);
+  --primary-foreground: oklch(0.18 0.04 292);
+  --ring: oklch(0.72 0.16 292);
+  --sidebar-primary: oklch(0.72 0.16 292);
+  --sidebar-ring: oklch(0.72 0.16 292);
+}
+
+[data-accent="amber"] {
+  /* Amber is light by nature, so its foreground is dark in both themes — an off-white
+     label on amber would fall under 4.5:1 and become the one unreadable button. */
+  --primary: oklch(0.72 0.16 70);
+  --primary-foreground: oklch(0.24 0.04 70);
+  --ring: oklch(0.62 0.15 70);
+  --sidebar-primary: oklch(0.72 0.16 70);
+  --sidebar-ring: oklch(0.62 0.15 70);
+}
+.dark[data-accent="amber"] {
+  --primary: oklch(0.78 0.15 70);
+  --primary-foreground: oklch(0.22 0.04 70);
+  --ring: oklch(0.78 0.15 70);
+  --sidebar-primary: oklch(0.78 0.15 70);
+  --sidebar-ring: oklch(0.78 0.15 70);
+}

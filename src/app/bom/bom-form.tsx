@@ -16,6 +16,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import ItemPicker, { type PickerItem } from "@/components/item-picker";
 import { suggestProductSku } from "@/lib/inventory/constants";
+import { useT } from "@/components/preferences-provider";
 
 interface DraftLine {
   id: number;
@@ -43,6 +44,7 @@ export default function BomForm({
   /** Existing BOMs, so re-planning a known product re-uses its SKU instead of minting one. */
   known?: { productName: string; productSku: string }[];
 }) {
+  const t = useT();
   const [open, setOpen] = useState(false);
   const [productName, setProductName] = useState("");
   const [productSku, setProductSku] = useState("");
@@ -90,7 +92,7 @@ export default function BomForm({
 
     const filled = lines.filter((l) => l.item && Number(l.qty) > 0);
     if (filled.length === 0) {
-      toast.error("Kam se kam ek line me item aur quantity daalein.");
+      toast.error(t("Kam se kam ek line me item aur quantity daalein."));
       return;
     }
 
@@ -126,7 +128,7 @@ export default function BomForm({
       setOpen(false);
       onCreated();
     } catch {
-      toast.error("BOM save nahi ho payi.");
+      toast.error(t("BOM save nahi ho payi."));
     } finally {
       setSaving(false);
     }
@@ -134,10 +136,10 @@ export default function BomForm({
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger render={<Button>Nayi BOM</Button>} />
+      <DialogTrigger render={<Button>{t("Nayi BOM")}</Button>} />
       <DialogContent className="max-h-[85vh] max-w-3xl overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Nayi BOM</DialogTitle>
+          <DialogTitle>{t("Nayi BOM")}</DialogTitle>
           <DialogDescription>
             Ek product banane me kaun se item kitne lagte hain. Item chunte hi uska SKU
             aur unit apne aap aa jaayenge — aapko sirf quantity likhni hai.
@@ -147,7 +149,7 @@ export default function BomForm({
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="grid gap-4 sm:grid-cols-[1fr_1fr_auto]">
             <div className="space-y-2">
-              <Label htmlFor="productName">Product ka naam</Label>
+              <Label htmlFor="productName">{t("Product ka naam")}</Label>
               <Input
                 id="productName"
                 value={productName}
@@ -175,7 +177,7 @@ export default function BomForm({
               </p>
             </div>
             <div className="space-y-2">
-              <Label htmlFor="lineCount">Ek saath rows</Label>
+              <Label htmlFor="lineCount">{t("Ek saath rows")}</Label>
               <div className="flex gap-2">
                 <Input
                   id="lineCount"
@@ -190,9 +192,7 @@ export default function BomForm({
                   type="button"
                   variant="outline"
                   onClick={() => buildLines(Number(lineCount) || 1)}
-                >
-                  Rows banayein
-                </Button>
+                >{t("Rows banayein")}</Button>
               </div>
             </div>
           </div>
@@ -233,9 +233,7 @@ export default function BomForm({
                       variant="ghost"
                       size="sm"
                       onClick={() => setLines((prev) => prev.filter((l) => l.id !== line.id))}
-                    >
-                      Hatayein
-                    </Button>
+                    >{t("Hatayein")}</Button>
                   </div>
                 </div>
               ))}
@@ -245,9 +243,7 @@ export default function BomForm({
               variant="outline"
               size="sm"
               onClick={() => setLines((prev) => [...prev, blankLine()])}
-            >
-              Ek aur line
-            </Button>
+            >{t("Ek aur line")}</Button>
           </div>
 
           <DialogFooter>

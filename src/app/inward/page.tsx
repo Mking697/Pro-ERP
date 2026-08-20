@@ -6,8 +6,10 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import InwardBoard from "./inward-board";
 import QualityRecords from "./quality-records";
 import PageHeader from "@/components/page-header";
+import { getT } from "@/lib/i18n/server";
 
 export default async function InwardPage() {
+  const t = await getT();
   const cookieStore = await cookies();
   const token = cookieStore.get(SESSION_COOKIE)?.value;
   const session = token ? await verifySession(token) : null;
@@ -22,8 +24,8 @@ export default async function InwardPage() {
     <AppShell session={session}>
       <div className="space-y-6">
         <PageHeader
-          title="Inward & IQC"
-          description="Material inward entries, unka quality check, aur uska result."
+          title={t("Inward & IQC")}
+          description={t("Material inward entries, unka quality check, aur uska result.")}
         />
 
         {canViewRecords ? (

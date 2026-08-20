@@ -4,6 +4,7 @@ import Link from "next/link";
 import { Unplug } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import EmptyState from "@/components/empty-state";
+import { useT } from "@/components/preferences-provider";
 
 /**
  * A board's stand-in when the sheet it reads from has not been connected yet.
@@ -21,6 +22,7 @@ export default function SheetNotConnected({
   what: string;
   hint?: string;
 }) {
+  const t = useT();
   return (
     <EmptyState
       icon={<Unplug />}
@@ -33,7 +35,7 @@ export default function SheetNotConnected({
         <Button
           variant="outline"
           size="sm"
-          render={<Link href="/admin/settings">Settings kholein</Link>}
+          render={<Link href="/admin/settings">{t("Settings kholein")}</Link>}
         />
       }
     />

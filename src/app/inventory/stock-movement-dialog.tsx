@@ -16,6 +16,7 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { qty, type ItemRow } from "./types";
+import { useT } from "@/components/preferences-provider";
 
 /**
  * Records one In or Out against a single item.
@@ -34,6 +35,7 @@ export default function StockMovementDialog({
   direction: "In" | "Out";
   onDone: () => void;
 }) {
+  const t = useT();
   const [open, setOpen] = useState(false);
   const [quantity, setQuantity] = useState("");
   const [issuedTo, setIssuedTo] = useState("");
@@ -77,7 +79,7 @@ export default function StockMovementDialog({
       setOpen(false);
       onDone();
     } catch {
-      toast.error("Entry save nahi ho payi.");
+      toast.error(t("Entry save nahi ho payi."));
     } finally {
       setSaving(false);
     }
@@ -129,12 +131,12 @@ export default function StockMovementDialog({
 
           {isOut && (
             <div className="space-y-2">
-              <Label htmlFor="issuedTo">Kisko diya</Label>
+              <Label htmlFor="issuedTo">{t("Kisko diya")}</Label>
               <Input
                 id="issuedTo"
                 value={issuedTo}
                 onChange={(e) => setIssuedTo(e.target.value)}
-                placeholder="Department, machine, ya vyakti"
+                placeholder={t("Department, machine, ya vyakti")}
               />
             </div>
           )}
