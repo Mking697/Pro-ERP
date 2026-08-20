@@ -108,8 +108,20 @@ export default function InventoryBoard({
           placeholder="Item ya SKU search karein..."
           className="h-9 max-w-xs"
         />
+        <div className="ml-auto flex gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            render={<Link href="/inventory/reorder">Reorder</Link>}
+          />
+          <Button
+            variant="outline"
+            size="sm"
+            render={<Link href="/inventory/indents">Indents</Link>}
+          />
+        </div>
         {canSetup && (
-          <div className="ml-auto flex gap-2">
+          <div className="flex gap-2">
             <Button
               variant="outline"
               size="sm"

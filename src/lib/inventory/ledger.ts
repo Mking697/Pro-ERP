@@ -65,15 +65,6 @@ export async function committedBySku(): Promise<Map<string, number>> {
   return new Map();
 }
 
-/**
- * Quantity on approved or ordered indents that has not arrived yet.
- *
- * Empty until indents exist (phase 2), for the same reason as above.
- */
-export async function inTransitBySku(): Promise<Map<string, number>> {
-  return new Map();
-}
-
 export interface StockPosition {
   sku: string;
   onHand: number;

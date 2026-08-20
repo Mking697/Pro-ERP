@@ -61,6 +61,12 @@ export const MODULE_ACCESS = [
     href: "/inventory/setup",
   },
   {
+    key: "INDENT_APPROVE",
+    label: "Indent Approval",
+    description: "Purchase indents approve aur receive kar sakta hai",
+    href: "/inventory/indents",
+  },
+  {
     key: "PERFORMANCE_VIEW",
     label: "Team Performance",
     description: "Poori team ka MIS score dekh sakta hai",

@@ -1,10 +1,11 @@
 import { tryModule } from "@/lib/moduleSheets";
 import { listItems, type ItemRecord } from "@/lib/inventory/items";
+// In-transit lives with indents, which own the data it is derived from.
+import { inTransitBySku, suggestIndentQty } from "@/lib/inventory/indents";
 import {
   listLedger,
   onHandBySku,
   committedBySku,
-  inTransitBySku,
   buildItemStock,
   positionFor,
   type ItemStock,
@@ -100,15 +101,35 @@ export function statusCounts(items: ItemStock[]): Record<string, number> {
   return counts;
 }
 
-/** Items whose free stock has fallen to or below their reorder point. */
+export interface ReorderSuggestion {
+  stock: ItemStock;
+  /** How much to order, before the person adjusts it. */
+  suggestedQty: number;
+}
+
+/**
+ * Items at or below their reorder point, worst first, with a quantity to order.
+ *
+ * The comparison uses *projected* stock, not free: something already on its way should
+ * not be ordered twice. An item whose reorder point cannot be computed is left out
+ * entirely rather than guessed at.
+ */
+export function reorderSuggestions(items: ItemStock[]): ReorderSuggestion[] {
+  return itemsNeedingReorder(items).map((stock) => ({
+    stock,
+    suggestedQty: suggestIndentQty(stock.item, stock.projected),
+  }));
+}
+
+/** Items whose projected stock has fallen to or below their reorder point. */
 export function itemsNeedingReorder(items: ItemStock[]): ItemStock[] {
   return items
-    .filter((i) => i.rop !== null && i.free <= i.rop)
+    .filter((i) => i.rop !== null && i.projected <= i.rop)
     .sort((a, b) => {
       // Deepest shortfall relative to its own reorder point comes first, so a small
       // item that is completely out outranks a large one that is merely at the line.
-      const aGap = a.rop ? (a.rop - a.free) / a.rop : 0;
-      const bGap = b.rop ? (b.rop - b.free) / b.rop : 0;
+      const aGap = a.rop ? (a.rop - a.projected) / a.rop : 0;
+      const bGap = b.rop ? (b.rop - b.projected) / b.rop : 0;
       return bGap - aGap;
     });
 }

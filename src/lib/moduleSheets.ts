@@ -167,6 +167,29 @@ export const MODULE_SHEETS: ModuleDefinition[] = [
       "User_ID",
     ],
   },
+  {
+    key: "INDENTS",
+    label: "Indents (Purchase requests)",
+    settingKey: "SHEET_URL_INDENTS",
+    headers: [
+      "Indent_ID",
+      "Timestamp",
+      "SKU",
+      "Item_Name",
+      "Suggested_Qty",
+      "Final_Qty",
+      "UOM",
+      "Reason",
+      "Linked_Plan_ID",
+      "Status",
+      "Requested_By",
+      "Approved_By",
+      "Approved_At",
+      "Expected_Date",
+      "Received_Qty",
+      "Received_At",
+    ],
+  },
 ];
 
 export function getModuleDefinition(moduleKey: string): ModuleDefinition {
