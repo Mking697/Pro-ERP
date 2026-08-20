@@ -61,6 +61,12 @@ export const MODULE_ACCESS = [
     href: "/inventory/setup",
   },
   {
+    key: "BOM_MANAGE",
+    label: "BOM",
+    description: "Product ki Bill of Materials bana aur badal sakta hai",
+    href: "/bom",
+  },
+  {
     key: "INDENT_APPROVE",
     label: "Indent Approval",
     description: "Purchase indents approve aur receive kar sakta hai",

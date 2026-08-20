@@ -109,6 +109,31 @@ export async function appendRow(
   );
 }
 
+/**
+ * Appends many rows in one call.
+ *
+ * A BOM with twenty lines would otherwise cost twenty requests against a quota every
+ * tenant shares — a limit this project has already hit in practice.
+ */
+export async function appendRows(
+  spreadsheetId: string,
+  tabName: string,
+  rows: (string | number)[][]
+): Promise<void> {
+  if (rows.length === 0) return;
+
+  const sheets = getSheetsClient();
+  await withRetry(() =>
+    sheets.spreadsheets.values.append({
+      spreadsheetId,
+      range: tabName,
+      valueInputOption: "RAW",
+      insertDataOption: "INSERT_ROWS",
+      requestBody: { values: rows },
+    })
+  );
+}
+
 /** Overwrites a single row (1-indexed, including header) in a tab. */
 export async function updateRow(
   spreadsheetId: string,

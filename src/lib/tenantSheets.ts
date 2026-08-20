@@ -1,4 +1,4 @@
-import { readRows, readRowsBatch, appendRow, updateRow } from "@/lib/googleSheets";
+import { readRows, readRowsBatch, appendRow, appendRows, updateRow } from "@/lib/googleSheets";
 import { getTenantSheetId } from "@/lib/tenant";
 
 /**
@@ -31,6 +31,15 @@ export async function appendSheetRow(
   spreadsheetId?: string
 ): Promise<void> {
   return appendRow(spreadsheetId ?? (await getTenantSheetId()), tabName, row);
+}
+
+/** Appends many rows to the tenant's sheet in a single call. */
+export async function appendSheetRows(
+  tabName: string,
+  rows: (string | number)[][],
+  spreadsheetId?: string
+): Promise<void> {
+  return appendRows(spreadsheetId ?? (await getTenantSheetId()), tabName, rows);
 }
 
 export async function updateSheetRow(

@@ -35,6 +35,10 @@ export default async function AppShell({
     items.push({ href: "/inventory", label: "Inventory" });
   }
 
+  if (session.access.includes("BOM_MANAGE")) {
+    items.push({ href: "/bom", label: "BOM" });
+  }
+
   if (
     session.access.includes("INWARD_ENTRY") ||
     session.access.includes("IQC_CHECK") ||

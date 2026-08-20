@@ -3,6 +3,7 @@ import {
   getSheetRows,
   updateCells,
   appendSheetRow,
+  appendSheetRows,
   updateSheetRow,
   rowsToObjects,
 } from "@/lib/tenantSheets";
@@ -190,6 +191,26 @@ export const MODULE_SHEETS: ModuleDefinition[] = [
       "Received_At",
     ],
   },
+  {
+    key: "BOM",
+    label: "BOM (Bill of Materials)",
+    settingKey: "SHEET_URL_BOM",
+    headers: [
+      "BOM_ID",
+      "Product_Name",
+      "Product_SKU",
+      "Version",
+      "Line_No",
+      "Component_SKU",
+      "Component_Name",
+      "Component_Type",
+      "Qty_Per_Unit",
+      "UOM",
+      "Status",
+      "Created_At",
+      "Created_By",
+    ],
+  },
 ];
 
 export function getModuleDefinition(moduleKey: string): ModuleDefinition {
@@ -346,6 +367,18 @@ export async function appendModuleRow(
   const target = await resolveModuleTarget(moduleKey);
   await ensureHeaderRow(target, def.headers);
   await appendSheetRow(target.sheetTitle, row, target.spreadsheetId);
+}
+
+/** Appends many rows to a module's sheet in one call, header ensured first. */
+export async function appendModuleRows(
+  moduleKey: string,
+  rows: (string | number)[][]
+): Promise<void> {
+  if (rows.length === 0) return;
+  const def = getModuleDefinition(moduleKey);
+  const target = await resolveModuleTarget(moduleKey);
+  await ensureHeaderRow(target, def.headers);
+  await appendSheetRows(target.sheetTitle, rows, target.spreadsheetId);
 }
 
 export async function getModuleRows<T = Record<string, string>>(
