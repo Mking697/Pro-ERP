@@ -108,7 +108,7 @@ export default function ItemPicker({
             setOpen(true);
           }}
           onFocus={() => setOpen(true)}
-          placeholder={configured ? "Naam ya SKU type karein..." : "Items sheet connect nahi hai"}
+          placeholder={configured ? "Naam ya SKU type karein..." : t("Items sheet connect nahi hai")}
           disabled={!configured}
           required={required}
           autoComplete="off"

@@ -112,7 +112,7 @@ export default function PlanBoard({ access }: { access: string[] }) {
       });
       const data = await res.json().catch(() => null);
       if (!res.ok) {
-        toast.error(data?.error ?? "Kaam nahi hua.");
+        toast.error(t(data?.error ?? "Kaam nahi hua."));
         return false;
       }
       toast.success(done);

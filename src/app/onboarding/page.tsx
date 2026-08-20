@@ -15,8 +15,10 @@ import { Button } from "@/components/ui/button";
 import AppShell from "@/components/app-shell";
 import SheetConnectionsForm from "@/app/admin/settings/sheet-connections-form";
 import WhatsAppForm from "@/app/admin/settings/whatsapp-form";
+import { getT } from "@/lib/i18n/server";
 
 export default async function OnboardingPage() {
+  const t = await getT();
   const cookieStore = await cookies();
   const token = cookieStore.get(SESSION_COOKIE)?.value;
   const session = token ? await verifySession(token) : null;
@@ -42,9 +44,8 @@ export default async function OnboardingPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Pehle ye kar lein</CardTitle>
-          <CardDescription>
-            Har sheet aur Drive folder is address ke saath <strong>Editor</strong> access
+          <CardTitle>{t("Pehle ye kar lein")}</CardTitle>
+          <CardDescription>{t("Har sheet aur Drive folder is address ke saath")}<strong>Editor</strong> access
             se share hona chahiye, warna hum usme likh nahi paayenge.
           </CardDescription>
         </CardHeader>
@@ -64,7 +65,7 @@ export default async function OnboardingPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Bas ho gaya</CardTitle>
+          <CardTitle>{t("Bas ho gaya")}</CardTitle>
           <CardDescription>
             Jitne module aapne jode hain wo abhi se kaam karenge. Baaki baad me{" "}
             <Link href="/admin/settings" className="underline">
@@ -74,7 +75,7 @@ export default async function OnboardingPage() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <Button render={<Link href="/dashboard">Dashboard pe jayein</Link>} />
+          <Button render={<Link href="/dashboard">{t("Dashboard pe jayein")}</Link>} />
         </CardContent>
       </Card>
       </div>

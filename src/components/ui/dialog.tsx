@@ -59,7 +59,11 @@ function DialogContent({
           // then win at >=640px — every wide dialog silently squashed to 384px and its
           // columns spilled into a horizontal scrollbar. Keeping the cap unprefixed lets
           // `max-w-4xl` from a caller replace it cleanly.
-          "fixed top-1/2 left-1/2 z-50 grid w-[calc(100%-2rem)] max-w-sm -translate-x-1/2 -translate-y-1/2 gap-4 rounded-xl bg-popover p-4 text-sm text-popover-foreground ring-1 ring-foreground/10 duration-100 outline-none data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95",
+          // Height is capped here rather than by each caller. A dialog is centred with
+          // -translate-y-1/2, so one taller than the viewport runs off *both* ends at
+          // once — its title above the top and its submit button below the bottom, with
+          // no way to reach either. Callers kept forgetting the cap; now they cannot.
+          "fixed top-1/2 left-1/2 z-50 grid max-h-[calc(100dvh-2rem)] w-[calc(100%-2rem)] max-w-sm -translate-x-1/2 -translate-y-1/2 gap-4 overflow-y-auto rounded-xl bg-popover p-4 text-sm text-popover-foreground ring-1 ring-foreground/10 duration-100 outline-none data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95",
           className
         )}
         {...props}

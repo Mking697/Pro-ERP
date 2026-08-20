@@ -15,8 +15,10 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { getT } from "@/lib/i18n/server";
 
 export default async function PerformancePage() {
+  const t = await getT();
   const cookieStore = await cookies();
   const token = cookieStore.get(SESSION_COOKIE)?.value;
   const session = token ? await verifySession(token) : null;
@@ -51,8 +53,7 @@ export default async function PerformancePage() {
       <div className="space-y-6">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Team Performance</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            MIS score timestamps se calculate hota hai. <strong>0% sabse achha</strong>,
+          <p className="mt-1 text-sm text-muted-foreground">{t("MIS score timestamps se calculate hota hai.")}<strong>0% sabse achha</strong>,
             −100% sabse kharab — late aur chhoote hue tasks penalty banate hain.
           </p>
         </div>
@@ -72,9 +73,7 @@ export default async function PerformancePage() {
           <TableBody>
             {rows.length === 0 && (
               <TableRow>
-                <TableCell colSpan={6} className="text-center text-muted-foreground">
-                  Koi active user nahi mila.
-                </TableCell>
+                <TableCell colSpan={6} className="text-center text-muted-foreground">{t("Koi active user nahi mila.")}</TableCell>
               </TableRow>
             )}
             {rows.map(({ user, summary }) => (

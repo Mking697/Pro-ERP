@@ -18,6 +18,7 @@ import {
 import { TimelineChart, ChartFrame } from "@/components/charts";
 import { formatDueDisplay } from "@/lib/formatDate";
 import { qty, statusVariant } from "../types";
+import { getT } from "@/lib/i18n/server";
 
 /**
  * Balance after each movement, oldest first — the same derivation the totals use, kept
@@ -78,6 +79,7 @@ export default async function ItemDetailPage({
 }: {
   params: Promise<{ sku: string }>;
 }) {
+  const t = await getT();
   const cookieStore = await cookies();
   const token = cookieStore.get(SESSION_COOKIE)?.value;
   const session = token ? await verifySession(token) : null;
@@ -130,7 +132,7 @@ export default async function ItemDetailPage({
             label="Free"
             value={qty(stock.free)}
             unit={item.UOM}
-            hint="Naya kaam plan karne ke liye itna hi available hai"
+            hint={t("Naya kaam plan karne ke liye itna hi available hai")}
             emphasis
           />
           <Figure label="On Hand" value={qty(stock.onHand)} unit={item.UOM} hint="Godown me kul" />
@@ -153,7 +155,7 @@ export default async function ItemDetailPage({
             label="ADC"
             value={qty(stock.adc)}
             unit={`${item.UOM}/din`}
-            hint={stock.adcIsManual ? "Manually set" : "Pichle 30 din ke Out se"}
+            hint={stock.adcIsManual ? t("Manually set") : t("Pichle 30 din ke Out se")}
           />
           <Figure
             label="Reorder Point"
@@ -165,15 +167,15 @@ export default async function ItemDetailPage({
         </div>
 
         <ChartFrame
-          title="Stock ka safar"
-          hint="Har movement ke baad ka balance — wahi hisaab, bas har kadam par."
+          title={t("Stock ka safar")}
+          hint={t("Har movement ke baad ka balance — wahi hisaab, bas har kadam par.")}
         >
-          <TimelineChart points={points} emptyMessage="Abhi koi movement nahi hui." />
+          <TimelineChart points={points} emptyMessage={t("Abhi koi movement nahi hui.")} />
         </ChartFrame>
 
         <Card>
           <CardHeader>
-            <CardTitle>Movement history</CardTitle>
+            <CardTitle>{t("Movement history")}</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="overflow-x-auto rounded-lg border">
@@ -184,15 +186,13 @@ export default async function ItemDetailPage({
                     <TableHead>Direction</TableHead>
                     <TableHead className="text-right">Qty</TableHead>
                     <TableHead>Source</TableHead>
-                    <TableHead>Kisko / Remark</TableHead>
+                    <TableHead>{t("Kisko / Remark")}</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {movements.length === 0 && (
                     <TableRow>
-                      <TableCell colSpan={5} className="py-8 text-center text-muted-foreground">
-                        Abhi koi movement nahi hui.
-                      </TableCell>
+                      <TableCell colSpan={5} className="py-8 text-center text-muted-foreground">{t("Abhi koi movement nahi hui.")}</TableCell>
                     </TableRow>
                   )}
                   {movements.map((m) => (

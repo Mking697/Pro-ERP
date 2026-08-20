@@ -68,7 +68,7 @@ export default function ManageUserDialog({
       const data = await res.json();
 
       if (!res.ok) {
-        toast.error(data.error ?? "Update nahi ho paya.");
+        toast.error(t(data.error ?? "Update nahi ho paya."));
         return;
       }
 
@@ -94,7 +94,7 @@ export default function ManageUserDialog({
       const data = await res.json();
 
       if (!res.ok) {
-        toast.error(data.error ?? "Password reset nahi ho paya.");
+        toast.error(t(data.error ?? "Password reset nahi ho paya."));
         return;
       }
 

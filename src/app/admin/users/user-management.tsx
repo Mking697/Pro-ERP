@@ -87,7 +87,7 @@ export default function UserManagement() {
                         <span
                           className="text-sm text-muted-foreground"
                           title={granted
-                            .map((k) => getModuleAccessDefinition(k)?.label ?? k)
+                            .map((k) => t(getModuleAccessDefinition(k)?.label ?? k))
                             .join(", ")}
                         >
                           {granted.length} module{granted.length > 1 ? "s" : ""}

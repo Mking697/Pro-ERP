@@ -66,7 +66,7 @@ export default function StockMovementDialog({
       const data = await res.json().catch(() => null);
 
       if (!res.ok) {
-        toast.error(data?.error ?? "Entry save nahi ho payi.");
+        toast.error(t(data?.error ?? "Entry save nahi ho payi."));
         return;
       }
 

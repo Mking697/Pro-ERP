@@ -15,6 +15,7 @@ import {
   type MisSummary,
 } from "@/lib/mis";
 import type { TaskRecord } from "@/lib/tasks";
+import { getT } from "@/lib/i18n/server";
 
 /**
  * Shows where a MIS score came from, row by row.
@@ -23,20 +24,19 @@ import type { TaskRecord } from "@/lib/tasks";
  * Each row names the task, what happened to it, and the credit that produced — so the
  * score reads as a consequence of specific work rather than an opaque grade.
  */
-export default function ScoreBreakdown({
+export default async function ScoreBreakdown({
   tasks,
   summary,
 }: {
   tasks: TaskRecord[];
   summary: MisSummary;
 }) {
+  const t = await getT();
   const rows = computeMisBreakdown(tasks);
 
   if (rows.length === 0) {
     return (
-      <p className="py-6 text-center text-sm text-muted-foreground">
-        Abhi tak koi task evaluate nahi hua, isliye score nahi bana.
-      </p>
+      <p className="py-6 text-center text-sm text-muted-foreground">{t("Abhi tak koi task evaluate nahi hua, isliye score nahi bana.")}</p>
     );
   }
 
@@ -63,10 +63,10 @@ export default function ScoreBreakdown({
           <TableHeader>
             <TableRow>
               <TableHead>Task</TableHead>
-              <TableHead>Completion due</TableHead>
+              <TableHead>{t("Completion due")}</TableHead>
               <TableHead>Result</TableHead>
               <TableHead className="text-right">Penalty</TableHead>
-              <TableHead>Kyun</TableHead>
+              <TableHead>{t("Kyun")}</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>

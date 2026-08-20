@@ -39,7 +39,7 @@ export default function CompleteTaskDialog({
       const data = await res.json();
 
       if (!res.ok) {
-        toast.error(data.error ?? "Task complete nahi ho paya.");
+        toast.error(t(data.error ?? "Task complete nahi ho paya."));
         return;
       }
 

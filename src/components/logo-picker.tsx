@@ -23,7 +23,7 @@ export default function LogoPicker({
   value,
   onChange,
   label = "Logo (optional)",
-  hint = "PNG, JPG ya WebP — 1MB tak. Ye aapke system ke header me dikhega.",
+  hint,
 }: {
   value: string;
   onChange: (dataUrl: string) => void;
@@ -31,6 +31,10 @@ export default function LogoPicker({
   hint?: string;
 }) {
   const t = useT();
+  // Defaulted here rather than in the parameter list: a default value is evaluated
+  // before the component body, where the hook does not exist yet.
+  const hintText =
+    hint ?? t("PNG, JPG ya WebP — 1MB tak. Ye aapke system ke header me dikhega.");
   const inputRef = useRef<HTMLInputElement>(null);
   const [reading, setReading] = useState(false);
 
@@ -96,7 +100,7 @@ export default function LogoPicker({
             onChange={handleChange}
             disabled={reading}
           />
-          <p className="text-xs text-muted-foreground">{hint}</p>
+          <p className="text-xs text-muted-foreground">{hintText}</p>
         </>
       )}
     </div>

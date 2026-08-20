@@ -78,7 +78,7 @@ export default function CreateRecurringDialog({
       const data = await res.json();
 
       if (!res.ok) {
-        toast.error(data.error ?? "Recurring task create nahi ho paya.");
+        toast.error(t(data.error ?? "Recurring task create nahi ho paya."));
         return;
       }
 

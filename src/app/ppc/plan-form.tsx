@@ -131,7 +131,7 @@ export default function PlanForm({ onCreated }: { onCreated: () => void }) {
       });
       const data = await res.json().catch(() => null);
       if (!res.ok) {
-        toast.error(data?.error ?? "Check nahi ho paya.");
+        toast.error(t(data?.error ?? "Check nahi ho paya."));
         return;
       }
       setPreview(data.lines ?? []);
@@ -159,7 +159,7 @@ export default function PlanForm({ onCreated }: { onCreated: () => void }) {
       });
       const data = await res.json().catch(() => null);
       if (!res.ok) {
-        toast.error(data?.error ?? "Plan save nahi ho paya.");
+        toast.error(t(data?.error ?? "Plan save nahi ho paya."));
         return;
       }
 

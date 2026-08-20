@@ -88,7 +88,7 @@ export default function SheetConnectionsForm() {
       const data = await res.json();
 
       if (!res.ok) {
-        toast.error(data.error ?? "Save nahi ho paya.");
+        toast.error(t(data.error ?? "Save nahi ho paya."));
         return;
       }
 

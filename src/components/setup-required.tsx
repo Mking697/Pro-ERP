@@ -1,12 +1,13 @@
 import Link from "next/link";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { getT } from "@/lib/i18n/server";
 
 /**
  * Shown instead of a page's data when the organization has not connected the sheet that
  * page reads from — the normal state for an org that just signed up.
  */
-export default function SetupRequired({
+export default async function SetupRequired({
   title = "Abhi setup baaki hai",
   what,
   isAdmin,
@@ -15,6 +16,7 @@ export default function SetupRequired({
   what: string;
   isAdmin: boolean;
 }) {
+  const t = await getT();
   return (
     <div className="mx-auto max-w-3xl p-6">
       <Card>
@@ -33,7 +35,7 @@ export default function SetupRequired({
                 se share karein, aur uska URL paste kar dein — headers apne aap ban jaayenge.
               </p>
               <div className="flex gap-2">
-                <Button render={<Link href="/onboarding">Setup poora karein</Link>} />
+                <Button render={<Link href="/onboarding">{t("Setup poora karein")}</Link>} />
                 <Button
                   variant="outline"
                   render={<Link href="/admin/settings">Settings</Link>}

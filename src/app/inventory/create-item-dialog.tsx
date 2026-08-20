@@ -60,7 +60,7 @@ export default function CreateItemDialog({ onCreated }: { onCreated: () => void 
       const data = await res.json().catch(() => null);
 
       if (!res.ok) {
-        toast.error(data?.error ?? "Item ban nahi paya.");
+        toast.error(t(data?.error ?? "Item ban nahi paya."));
         return;
       }
 

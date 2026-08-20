@@ -58,7 +58,7 @@ export default function WhatsAppForm() {
       const data = await res.json();
 
       if (!res.ok) {
-        toast.error(data.error ?? "Save nahi ho paya.");
+        toast.error(t(data.error ?? "Save nahi ho paya."));
         return;
       }
 
@@ -86,7 +86,7 @@ export default function WhatsAppForm() {
       const data = await res.json();
 
       if (!res.ok) {
-        toast.error(data.error ?? "Test message bhej nahi paye.");
+        toast.error(t(data.error ?? "Test message bhej nahi paye."));
         return;
       }
 
@@ -103,7 +103,7 @@ export default function WhatsAppForm() {
       const data = await res.json();
 
       if (!res.ok) {
-        toast.error(data.error ?? "Reminders bhej nahi paye.");
+        toast.error(t(data.error ?? "Reminders bhej nahi paye."));
         return;
       }
 

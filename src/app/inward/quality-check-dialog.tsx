@@ -56,7 +56,7 @@ export default function QualityCheckDialog({
       const data = await res.json();
 
       if (!res.ok) {
-        toast.error(data.error ?? "Quality check save nahi ho paya.");
+        toast.error(t(data.error ?? "Quality check save nahi ho paya."));
         return;
       }
 

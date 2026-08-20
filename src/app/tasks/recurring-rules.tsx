@@ -78,7 +78,7 @@ export default function RecurringRules({ refreshKey = 0 }: { refreshKey?: number
       const data = await res.json().catch(() => null);
 
       if (!res.ok) {
-        toast.error(data?.error ?? "Status update nahi ho paya.");
+        toast.error(t(data?.error ?? "Status update nahi ho paya."));
         return;
       }
 

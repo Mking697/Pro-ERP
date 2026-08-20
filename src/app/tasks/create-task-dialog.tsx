@@ -93,7 +93,7 @@ export default function CreateTaskDialog({
       const data = await res.json();
 
       if (!res.ok) {
-        toast.error(data.error ?? "Task create nahi ho paya.");
+        toast.error(t(data.error ?? "Task create nahi ho paya."));
         return;
       }
 

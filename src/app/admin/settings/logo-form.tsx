@@ -40,14 +40,14 @@ export default function LogoForm() {
       const data = await res.json().catch(() => null);
 
       if (!res.ok) {
-        toast.error(data?.error ?? "Logo save nahi ho paya.");
+        toast.error(t(data?.error ?? "Logo save nahi ho paya."));
         return;
       }
 
       setCurrent(data.url ?? "");
       setDraft("");
       toast.success(
-        data.url ? "Logo save ho gaya — page refresh karke header me dekhein." : "Logo hata diya."
+        data.url ? t("Logo save ho gaya — page refresh karke header me dekhein.") : "Logo hata diya."
       );
     } catch {
       toast.error(t("Logo save nahi ho paya."));

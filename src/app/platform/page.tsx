@@ -31,7 +31,7 @@ export default async function PlatformPage() {
 
         <Card>
           <CardHeader>
-            <CardTitle>Suspend karne ka matlab</CardTitle>
+            <CardTitle>{t("Suspend karne ka matlab")}</CardTitle>
             <CardDescription>
               Suspend karte hi us organization ke saare users agli request par hi bahar ho
               jaate hain — login block ho jaata hai aur uske crons chalna band. Uska data,

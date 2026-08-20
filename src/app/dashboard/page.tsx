@@ -18,6 +18,7 @@ import TaskBoard from "@/app/tasks/task-board";
 import InwardBoard from "@/app/inward/inward-board";
 import ScoreBreakdown from "./score-breakdown";
 import Analytics from "./analytics";
+import { getT } from "@/lib/i18n/server";
 
 function StatCard({
   label,
@@ -53,6 +54,7 @@ export default async function DashboardPage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
+  const t = await getT();
   const sp = await searchParams;
   const one = (k: string) => (Array.isArray(sp[k]) ? sp[k][0] : sp[k]);
   const cookieStore = await cookies();
@@ -102,7 +104,7 @@ export default async function DashboardPage({
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">
             {pending.length === 0
-              ? "Aapke paas koi pending task nahi hai."
+              ? t("Aapke paas koi pending task nahi hai.")
               : `${pending.length} task pending${overdueCount > 0 ? `, ${overdueCount} overdue` : ""}.`}
           </p>
         </div>
@@ -136,7 +138,7 @@ export default async function DashboardPage({
             {myModules.length > 0 && (
               <Card>
                 <CardHeader>
-                  <CardTitle>Aapke modules</CardTitle>
+                  <CardTitle>{t("Aapke modules")}</CardTitle>
                 </CardHeader>
                 <CardContent className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                   {myModules.map((m) => (
@@ -145,9 +147,9 @@ export default async function DashboardPage({
                       href={m.href}
                       className="rounded-lg border p-3 transition-colors duration-150 hover:border-foreground/30 hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                     >
-                      <p className="text-sm font-medium">{m.label}</p>
+                      <p className="text-sm font-medium">{t(m.label)}</p>
                       <p className="mt-0.5 text-xs text-muted-foreground">
-                        {m.description}
+                        {t(m.description)}
                       </p>
                     </Link>
                   ))}
@@ -157,7 +159,7 @@ export default async function DashboardPage({
 
             <Card>
               <CardHeader>
-                <CardTitle>Kaise use karein</CardTitle>
+                <CardTitle>{t("Kaise use karein")}</CardTitle>
               </CardHeader>
               <CardContent className="flex flex-wrap items-center justify-between gap-3">
                 <p className="text-sm text-muted-foreground">
@@ -166,7 +168,7 @@ export default async function DashboardPage({
                 <Button
                   variant="outline"
                   size="sm"
-                  render={<Link href="/guide">Guidebook kholein</Link>}
+                  render={<Link href="/guide">{t("Guidebook kholein")}</Link>}
                 />
               </CardContent>
             </Card>
@@ -177,9 +179,7 @@ export default async function DashboardPage({
               </CardHeader>
               <CardContent className="space-y-2">
                 {upcoming.length === 0 && (
-                  <p className="py-6 text-center text-sm text-muted-foreground">
-                    Koi pending task nahi hai.
-                  </p>
+                  <p className="py-6 text-center text-sm text-muted-foreground">{t("Koi pending task nahi hai.")}</p>
                 )}
                 {upcoming.map((task) => (
                   <div
@@ -224,7 +224,7 @@ export default async function DashboardPage({
                   <Button
                     variant="outline"
                     size="sm"
-                    render={<Link href="/tasks">Saare tasks dekhein</Link>}
+                    render={<Link href="/tasks">{t("Saare tasks dekhein")}</Link>}
                   />
                 )}
               </CardContent>
@@ -253,7 +253,7 @@ export default async function DashboardPage({
           <TabsContent value="performance" className="mt-4">
             <Card>
               <CardHeader>
-                <CardTitle>Aapka score kaise bana</CardTitle>
+                <CardTitle>{t("Aapka score kaise bana")}</CardTitle>
               </CardHeader>
               <CardContent>
                 <ScoreBreakdown tasks={myTasks} summary={mis} />

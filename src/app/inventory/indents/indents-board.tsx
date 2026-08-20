@@ -97,7 +97,7 @@ export default function IndentsBoard({
       const data = await res.json().catch(() => null);
 
       if (!res.ok) {
-        toast.error(data?.error ?? "Update nahi ho paya.");
+        toast.error(t(data?.error ?? "Update nahi ho paya."));
         return;
       }
 
@@ -131,7 +131,7 @@ export default function IndentsBoard({
       const data = await res.json().catch(() => null);
 
       if (!res.ok) {
-        toast.error(data?.error ?? "Receive nahi ho paya.");
+        toast.error(t(data?.error ?? "Receive nahi ho paya."));
         return;
       }
 

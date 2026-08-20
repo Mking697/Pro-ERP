@@ -51,7 +51,7 @@ export default function BomForm({
   const [skuEdited, setSkuEdited] = useState(false);
   const [lineCount, setLineCount] = useState("");
   // Opens ready to type. Starting empty meant the first thing anyone met was a count box
-  // and a "Rows banayein" button — a step to get to the step, before any real work.
+  // and a t("Rows banayein") button — a step to get to the step, before any real work.
   const [lines, setLines] = useState<DraftLine[]>(() => [
     blankLine(),
     blankLine(),
@@ -115,7 +115,7 @@ export default function BomForm({
       const data = await res.json().catch(() => null);
 
       if (!res.ok) {
-        toast.error(data?.error ?? "BOM save nahi ho payi.");
+        toast.error(t(data?.error ?? "BOM save nahi ho payi."));
         return;
       }
 

@@ -181,8 +181,8 @@ export default function InventoryBoard({
                   className="py-10 text-center text-muted-foreground"
                 >
                   {items.length === 0
-                    ? "Abhi koi item nahi hai."
-                    : "Is filter par koi item nahi mila."}
+                    ? t("Abhi koi item nahi hai.")
+                    : t("Is filter par koi item nahi mila.")}
                 </TableCell>
               </TableRow>
             )}

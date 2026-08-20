@@ -30,6 +30,8 @@ import {
 } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
 import DateRangeFilter from "./date-range-filter";
+import { getT } from "@/lib/i18n/server";
+import type { Translator } from "@/lib/i18n";
 
 const SERIES = [
   "var(--chart-series-1)",
@@ -73,6 +75,7 @@ export default async function Analytics({
   from?: string;
   to?: string;
 }) {
+  const t = await getT();
   const range = resolveRange(rangeKey, from, to);
   const access = session.access;
 
@@ -106,56 +109,59 @@ export default async function Analytics({
       <DateRangeFilter active={range} presets={RANGE_PRESETS} from={from} to={to} />
 
       <Section
-        title="Mera kaam"
+        title={t("Mera kaam")}
         description={`${range.label} — aapko assign hue tasks.`}
       >
         <ChartFrame
-          title="Result ka batwara"
-          hint="Har rang ke saath uski ginti bhi likhi hai — sirf rang par nahi jaana padta."
+          title={t("Result ka batwara")}
+          hint={t("Har rang ke saath uski ginti bhi likhi hai — sirf rang par nahi jaana padta.")}
         >
           <DonutChart
             data={outcomeSlices}
             centerValue={String(totals.onTime + totals.delay + totals.overdue)}
             centerLabel="evaluated"
-            emptyMessage="Is period me koi task evaluate nahi hua."
+            emptyMessage={t("Is period me koi task evaluate nahi hua.")}
           />
         </ChartFrame>
 
-        <ChartFrame title="Tasks kab bane" hint="Aapko assign hue tasks, samay ke saath.">
-          <TimelineChart points={bucketByDate(myTasks.map((t) => t.Created_At), range)} />
+        <ChartFrame title={t("Tasks kab bane")} hint={t("Aapko assign hue tasks, samay ke saath.")}>
+          <TimelineChart
+            points={bucketByDate(myTasks.map((task) => task.Created_At), range)}
+            emptyMessage={t("Is period me koi data nahi.")}
+          />
         </ChartFrame>
       </Section>
 
       {access.includes("TASK_DELEGATE") && (
         <Section
           title="Delegation"
-          description="Jo tasks aapne doosron ko diye."
+          description={t("Jo tasks aapne doosron ko diye.")}
         >
-          <ChartFrame title="Kisko kitne tasks diye">
+          <ChartFrame title={t("Kisko kitne tasks diye")}>
             <BarChart
               data={countBy(
                 tasks.filter((t) => t.Assigned_By === session.userId),
                 (t) => users.find((u) => u.User_ID === t.Assigned_To)?.Full_Name ?? t.Assigned_To
               ).map((b, i) => ({ ...b, color: seriesColor(i) }))}
-              emptyMessage="Is period me aapne koi task assign nahi kiya."
+              emptyMessage={t("Is period me aapne koi task assign nahi kiya.")}
             />
           </ChartFrame>
 
-          <ChartFrame title="Priority ke hisaab se">
+          <ChartFrame title={t("Priority ke hisaab se")}>
             <BarChart
               data={countBy(
                 tasks.filter((t) => t.Assigned_By === session.userId),
                 (t) => t.Priority
               ).map((b, i) => ({ ...b, color: seriesColor(i) }))}
-              emptyMessage="Is period me aapne koi task assign nahi kiya."
+              emptyMessage={t("Is period me aapne koi task assign nahi kiya.")}
             />
           </ChartFrame>
         </Section>
       )}
 
       {access.includes("RECURRING_ASSIGN") && (
-        <Section title="Recurring" description="Repeating rules aur unki haalat.">
-          <ChartFrame title="Active vs Paused">
+        <Section title="Recurring" description={t("Repeating rules aur unki haalat.")}>
+          <ChartFrame title={t("Active vs Paused")}>
             <DonutChart
               data={[
                 {
@@ -171,16 +177,16 @@ export default async function Analytics({
               ]}
               centerValue={String((rules ?? []).length)}
               centerLabel="rules"
-              emptyMessage="Koi recurring rule nahi hai."
+              emptyMessage={t("Koi recurring rule nahi hai.")}
             />
           </ChartFrame>
 
-          <ChartFrame title="Frequency ke hisaab se">
+          <ChartFrame title={t("Frequency ke hisaab se")}>
             <BarChart
               data={countBy(rules ?? [], (r) => getFrequencyLabel(r.Frequency)).map(
                 (b, i) => ({ ...b, color: seriesColor(i) })
               )}
-              emptyMessage="Koi recurring rule nahi hai."
+              emptyMessage={t("Koi recurring rule nahi hai.")}
             />
           </ChartFrame>
         </Section>
@@ -206,12 +212,13 @@ export default async function Analytics({
                   color: "var(--chart-warning)",
                 },
               ]}
-              emptyMessage="Is period me koi inward entry nahi."
+              emptyMessage={t("Is period me koi inward entry nahi.")}
             />
           </ChartFrame>
 
-          <ChartFrame title="Entries kab aayi">
+          <ChartFrame title={t("Entries kab aayi")}>
             <TimelineChart
+              emptyMessage={t("Is period me koi inward entry nahi.")}
               points={bucketByDate(
                 inward.filter((e) => inRange(e.Timestamp, range)).map((e) => e.Timestamp),
                 range
@@ -222,10 +229,10 @@ export default async function Analytics({
       )}
 
       {access.includes("IQC_CHECK") && failures && ims && (
-        <Section title="IQC" description="Quality check ka nateeja.">
+        <Section title="IQC" description={t("Quality check ka nateeja.")}>
           <ChartFrame
-            title="Pass vs Fail quantity"
-            hint="Quantity, entries ki ginti nahi."
+            title={t("Pass vs Fail quantity")}
+            hint={t("Quantity, entries ki ginti nahi.")}
           >
             <DonutChart
               data={[
@@ -244,37 +251,38 @@ export default async function Analytics({
                   color: "var(--chart-critical)",
                 },
               ]}
-              emptyMessage="Is period me koi quality check nahi hua."
+              emptyMessage={t("Is period me koi quality check nahi hua.")}
             />
           </ChartFrame>
 
-          <ChartFrame title="Rejection ke kaaran">
+          <ChartFrame title={t("Rejection ke kaaran")}>
             <BarChart
               data={countBy(
                 failures.filter((r) => inRange(r.Timestamp, range)),
                 (r) => r.Fail_Reason
               ).map((b) => ({ ...b, color: "var(--chart-critical)" }))}
-              emptyMessage="Koi rejection nahi — achhi baat hai."
+              emptyMessage={t("Koi rejection nahi — achhi baat hai.")}
             />
           </ChartFrame>
         </Section>
       )}
 
       {access.includes("IMS_VIEW") && ims && (
-        <Section title="IMS" description="Verified stock jo andar aaya.">
-          <ChartFrame title="Party ke hisaab se accepted qty">
+        <Section title="IMS" description={t("Verified stock jo andar aaya.")}>
+          <ChartFrame title={t("Party ke hisaab se accepted qty")}>
             <BarChart
               data={countBy(
                 ims.filter((r) => inRange(r.Timestamp, range)),
                 (r) => r.Party_Name
               ).map((b, i) => ({ ...b, color: seriesColor(i) }))}
               valueSuffix=" entry"
-              emptyMessage="Is period me koi verified stock nahi."
+              emptyMessage={t("Is period me koi verified stock nahi.")}
             />
           </ChartFrame>
 
-          <ChartFrame title="Stock kab aaya">
+          <ChartFrame title={t("Stock kab aaya")}>
             <TimelineChart
+              emptyMessage={t("Is period me koi verified stock nahi.")}
               points={bucketByDate(
                 ims.filter((r) => inRange(r.Timestamp, range)).map((r) => r.Timestamp),
                 range
@@ -286,7 +294,7 @@ export default async function Analytics({
       )}
 
       {access.includes("PERFORMANCE_VIEW") && (
-        <PerformanceSection tasks={tasks} users={users} range={range} />
+        <PerformanceSection tasks={tasks} users={users} range={range} t={t} />
       )}
     </div>
   );
@@ -296,10 +304,13 @@ function PerformanceSection({
   tasks,
   users,
   range,
+  t,
 }: {
   tasks: TaskRecord[];
   users: Awaited<ReturnType<typeof listUsers>>;
   range: DateRange;
+  /** Passed down: this is a plain function, so it cannot await the request's locale. */
+  t: Translator;
 }) {
   const rows = perUserScores(users, tasks);
   const scored = rows.filter((r) => r.summary.score !== null);
@@ -324,8 +335,8 @@ function PerformanceSection({
 
       <div className="grid gap-4 lg:grid-cols-2">
         <ChartFrame
-          title="Har user ka score"
-          hint="Bar jitna lamba, penalty utni zyada. Har bar par uska score likha hai."
+          title={t("Har user ka score")}
+          hint={t("Bar jitna lamba, penalty utni zyada. Har bar par uska score likha hai.")}
         >
           <BarChart
             data={scored.map((r) => ({
@@ -340,11 +351,11 @@ function PerformanceSection({
                     : "var(--chart-critical)",
             }))}
             valueSuffix="%"
-            emptyMessage="Is period me kisi ka score evaluate nahi hua."
+            emptyMessage={t("Is period me kisi ka score evaluate nahi hua.")}
           />
         </ChartFrame>
 
-        <ChartFrame title="Team ka batwara" hint="Kitne log kis haalat me hain.">
+        <ChartFrame title={t("Team ka batwara")} hint={t("Kitne log kis haalat me hain.")}>
           <DonutChart
             data={[
               {
@@ -367,7 +378,7 @@ function PerformanceSection({
             ]}
             centerValue={String(scored.length)}
             centerLabel="users"
-            emptyMessage="Is period me kisi ka score evaluate nahi hua."
+            emptyMessage={t("Is period me kisi ka score evaluate nahi hua.")}
           />
         </ChartFrame>
       </div>
@@ -389,9 +400,7 @@ function PerformanceSection({
           <TableBody>
             {rows.length === 0 && (
               <TableRow>
-                <TableCell colSpan={7} className="py-8 text-center text-muted-foreground">
-                  Koi active user nahi mila.
-                </TableCell>
+                <TableCell colSpan={7} className="py-8 text-center text-muted-foreground">{t("Koi active user nahi mila.")}</TableCell>
               </TableRow>
             )}
             {rows.map((r) => (

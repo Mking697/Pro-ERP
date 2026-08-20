@@ -52,11 +52,12 @@ function Legend({ items }: { items: Slice[] }) {
  */
 export function BarChart({
   data,
-  emptyMessage = "Abhi koi data nahi.",
+  emptyMessage,
   valueSuffix = "",
 }: {
   data: Slice[];
-  emptyMessage?: string;
+  /** Required: the caller holds the translator, this file does not. */
+  emptyMessage: string;
   valueSuffix?: string;
 }) {
   const rows = data.filter((d) => Number.isFinite(d.value));
@@ -110,12 +111,13 @@ export function DonutChart({
   data,
   centerLabel,
   centerValue,
-  emptyMessage = "Abhi koi data nahi.",
+  emptyMessage,
 }: {
   data: Slice[];
   centerLabel?: string;
   centerValue?: string;
-  emptyMessage?: string;
+  /** Required: the caller holds the translator, this file does not. */
+  emptyMessage: string;
 }) {
   const slices = data.filter((d) => d.value > 0);
   const total = slices.reduce((sum, s) => sum + s.value, 0);
@@ -219,11 +221,12 @@ export interface TimelinePoint {
 export function TimelineChart({
   points,
   color = "var(--chart-series-1)",
-  emptyMessage = "Is period me koi data nahi.",
+  emptyMessage,
 }: {
   points: TimelinePoint[];
   color?: string;
-  emptyMessage?: string;
+  /** Required: the caller holds the translator, this file does not. */
+  emptyMessage: string;
 }) {
   if (points.length === 0) return <EmptyChart message={emptyMessage} />;
 

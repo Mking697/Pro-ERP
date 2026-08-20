@@ -42,7 +42,7 @@ export default function SignupForm({ serviceAccountEmail }: { serviceAccountEmai
       const data = await res.json();
 
       if (!res.ok) {
-        toast.error(data.error ?? "Account nahi ban paya.");
+        toast.error(t(data.error ?? "Account nahi ban paya."));
         return;
       }
 

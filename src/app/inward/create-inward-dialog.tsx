@@ -72,7 +72,7 @@ export default function CreateInwardDialog({
       const data = await res.json();
 
       if (!res.ok) {
-        toast.error(data.error ?? "Entry create nahi ho payi.");
+        toast.error(t(data.error ?? "Entry create nahi ho payi."));
         return;
       }
 

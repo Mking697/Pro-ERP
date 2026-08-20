@@ -103,7 +103,7 @@ export default function ReorderBoard({ canRaise }: { canRaise: boolean }) {
       const data = await res.json().catch(() => null);
 
       if (!res.ok) {
-        toast.error(data?.error ?? "Indent nahi ban paye.");
+        toast.error(t(data?.error ?? "Indent nahi ban paye."));
         return;
       }
 

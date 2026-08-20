@@ -293,6 +293,79 @@ export const EN: Record<string, string> = {
   "Logo save ho gaya — page refresh karke header me dekhein.":
     "Logo saved — refresh the page to see it in the header.",
 
+  // --- messages raised on the server ------------------------------------------------
+  //
+  // These come back to the browser as an error string and are shown in a toast, so the
+  // client translates them at the point it displays them. The server has no locale of
+  // its own — a cron run belongs to no reader.
+  "Is email se pehle se ek user maujood hai.":
+    "A user with this email already exists.",
+  "ChatXFlow abhi Settings me configure nahi hua hai.":
+    "ChatXFlow is not configured in Settings yet.",
+  "Ye link kisi folder ka nahi hai.": "That link does not point to a folder.",
+  "Is folder tak access nahi mil paya. Folder ko service account email ke saath Editor access se share karein.":
+    "Could not reach that folder. Share it with the service account email, with Editor access.",
+  "Ye folder ek personal Google Drive me hai. Service account personal Drive me file nahi rakh sakta (Google ki limitation), isliye attachments yahan upload nahi honge. Folder ko ek Shared Drive ke andar banayein aur service account ko Content Manager access dein.":
+    "That folder is in a personal Google Drive. A service account cannot store files in a personal Drive — this is Google's own limitation, not ours — so attachments will not upload there. Create the folder inside a Shared Drive and give the service account Content Manager access.",
+  "Is folder me file upload nahi ho payi.":
+    "The file could not be uploaded to that folder.",
+  "File storage abhi configure nahi hui hai. Admin > Settings me apna Drive folder connect karein, ya platform administrator se kahein ki blob storage set karein.":
+    "File storage is not configured yet. Connect your Drive folder under Admin > Settings, or ask the platform administrator to set up blob storage.",
+  "Ye Drive folder ek personal Google Drive me hai, isliye file upload nahi ho sakti. Folder ko Shared Drive me banayein, ya platform administrator se blob storage set karwayein.":
+    "This Drive folder is in a personal Google Drive, so files cannot be uploaded to it. Create the folder in a Shared Drive, or ask the platform administrator to set up blob storage.",
+  "Logo storage abhi configure nahi hui hai. Platform administrator se kahein.":
+    "Logo storage is not configured yet. Please ask the platform administrator.",
+
+  "Product ka naam zaroori hai.": "A product name is required.",
+  "Har line me ek item chunna zaroori hai.": "Every line needs an item.",
+  "Har line me product chunein.": "Choose a product on every line.",
+  "Received indent cancel nahi ho sakta.":
+    "An indent that has been received cannot be cancelled.",
+  "Sirf Ready ya Shortage plan dobara check ho sakta hai.":
+    "Only a Ready or Shortage plan can be checked again.",
+  "Production shuru ho chuka hai — ab cancel nahi ho sakta.":
+    "Production has already started — it cannot be cancelled now.",
+  "Ye plan pehle hi band ho chuka hai.": "This plan is already closed.",
+  "Sirf chal raha plan complete ho sakta hai.":
+    "Only a plan that is running can be completed.",
+  "Ye plan production ke liye taiyar nahi hai.":
+    "This plan is not ready for production.",
+  "Yeh entry pehle se verify ho chuki hai.":
+    "This entry has already been verified.",
+  "Ye recurring rule nahi mila.": "That recurring rule was not found.",
+  "Aap sirf apne assigned tasks complete kar sakte hain.":
+    "You can only complete tasks assigned to you.",
+  "Yeh task pehle se complete ho chuka hai.": "This task is already complete.",
+
+  "Due date se pehle complete hua — koi penalty nahi.":
+    "Completed before the due date — no penalty.",
+  "Due date nikal chuki hai aur task abhi bhi pending hai — poori penalty.":
+    "The due date has passed and the task is still pending — full penalty.",
+
+  // --- module access grants (src/lib/moduleAccess.ts) ------------------------------
+  "Doosron ko one-time task assign kar sakta hai":
+    "Can assign one-off tasks to other people",
+  "Repeating task rules bana sakta hai": "Can create repeating task rules",
+  "Nayi inward entry daal sakta hai": "Can record new inward entries",
+  "Inward entries ka quality check kar sakta hai":
+    "Can run the quality check on inward entries",
+  "Verified stock aur failure records dekh sakta hai":
+    "Can view verified stock and failure records",
+  "Items aur unka live stock dekh sakta hai": "Can view items and their live stock",
+  "Material andar-bahar ki entry kar sakta hai": "Can record stock in and out",
+  "Naye items bana sakta hai aur Max Level, Lead Time jaise settings bhar sakta hai":
+    "Can create items and fill in settings such as Max Level and Lead Time",
+  "Product ki Bill of Materials bana aur badal sakta hai":
+    "Can create and change a product's Bill of Materials",
+  "Production plan bana sakta hai aur material reserve kar sakta hai":
+    "Can create production plans and reserve material",
+  "Purchase indents approve aur receive kar sakta hai":
+    "Can approve and receive purchase indents",
+  "Poori team ka MIS score dekh sakta hai": "Can view the whole team's MIS score",
+
+  // --- analytics -------------------------------------------------------------------
+  "Aapko assign hue tasks, samay ke saath.": "Tasks assigned to you, over time.",
+
   // --- shared UI -------------------------------------------------------------------
   "Chunein...": "Select...",
   "Poora": "Full",

@@ -2,6 +2,7 @@
 
 import { Checkbox } from "@/components/ui/checkbox";
 import { MODULE_ACCESS } from "@/lib/moduleAccess";
+import { useT } from "@/components/preferences-provider";
 
 /**
  * The checkboxes an Admin uses to decide which parts of the system a person works in.
@@ -21,6 +22,7 @@ export default function ModuleAccessPicker({
   isAdmin?: boolean;
   disabled?: boolean;
 }) {
+  const t = useT();
   function toggle(key: string, checked: boolean) {
     onChange(checked ? [...value, key] : value.filter((k) => k !== key));
   }
@@ -30,8 +32,8 @@ export default function ModuleAccessPicker({
       <legend className="text-sm font-medium">System Access</legend>
       <p className="text-xs text-muted-foreground">
         {isAdmin
-          ? "Admin ke paas har module ka access apne aap hota hai."
-          : "Jo modules tick karenge, wahi is user ke dashboard par dikhenge."}
+          ? t("Admin ke paas har module ka access apne aap hota hai.")
+          : t("Jo modules tick karenge, wahi is user ke dashboard par dikhenge.")}
       </p>
 
       <div className="grid gap-2 pt-1 sm:grid-cols-2">
@@ -49,9 +51,9 @@ export default function ModuleAccessPicker({
                 className="mt-0.5"
               />
               <span className="min-w-0">
-                <span className="block font-medium leading-tight">{m.label}</span>
+                <span className="block font-medium leading-tight">{t(m.label)}</span>
                 <span className="block text-xs leading-tight text-muted-foreground">
-                  {m.description}
+                  {t(m.description)}
                 </span>
               </span>
             </label>

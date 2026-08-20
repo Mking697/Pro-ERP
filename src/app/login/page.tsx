@@ -36,7 +36,7 @@ export default function LoginPage() {
       const data = await res.json();
 
       if (!res.ok) {
-        toast.error(data.error ?? "Login failed.");
+        toast.error(t(data.error ?? "Login failed."));
         return;
       }
 

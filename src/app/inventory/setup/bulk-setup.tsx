@@ -105,7 +105,7 @@ export default function BulkSetup() {
       const data = await res.json().catch(() => null);
 
       if (!res.ok) {
-        toast.error(data?.error ?? "Save nahi ho paya.");
+        toast.error(t(data?.error ?? "Save nahi ho paya."));
         return;
       }
 
@@ -206,8 +206,8 @@ export default function BulkSetup() {
               <TableRow>
                 <TableCell colSpan={FIELDS.length + 2} className="py-10 text-center text-muted-foreground">
                   {onlyIncomplete
-                    ? "Sab items ke planning fields bhare hue hain."
-                    : "Koi item nahi mila."}
+                    ? t("Sab items ke planning fields bhare hue hain.")
+                    : t("Koi item nahi mila.")}
                 </TableCell>
               </TableRow>
             )}

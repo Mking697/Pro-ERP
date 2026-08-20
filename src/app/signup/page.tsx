@@ -8,8 +8,10 @@ import {
 } from "@/components/ui/card";
 import { getServiceAccountEmail } from "@/lib/platform/provisioning";
 import SignupForm from "./signup-form";
+import { getT } from "@/lib/i18n/server";
 
-export default function SignupPage() {
+export default async function SignupPage() {
+  const t = await getT();
   let serviceAccountEmail: string;
   try {
     serviceAccountEmail = getServiceAccountEmail();
@@ -33,7 +35,7 @@ export default function SignupPage() {
     <div className="flex min-h-screen items-center justify-center bg-muted/40 p-4">
       <Card className="w-full max-w-xl">
         <CardHeader>
-          <CardTitle>Apne organization ka Pro ERP shuru karein</CardTitle>
+          <CardTitle>{t("Apne organization ka Pro ERP shuru karein")}</CardTitle>
           <CardDescription>
             Aapka data aapke apne Google Sheet me rehta hai — hum sirf usse padhte-likhte hain.
           </CardDescription>
@@ -42,9 +44,7 @@ export default function SignupPage() {
           <SignupForm serviceAccountEmail={serviceAccountEmail} />
           <p className="text-center text-sm text-muted-foreground">
             Pehle se account hai?{" "}
-            <Link href="/login" className="font-medium text-foreground underline">
-              Login karein
-            </Link>
+            <Link href="/login" className="font-medium text-foreground underline">{t("Login karein")}</Link>
           </p>
         </CardContent>
       </Card>

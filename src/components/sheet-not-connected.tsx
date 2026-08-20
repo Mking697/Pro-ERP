@@ -29,7 +29,7 @@ export default function SheetNotConnected({
       title={`"${what}" sheet connect nahi hui`}
       description={
         hint ??
-        "Ye page usi sheet se padhta hai. Settings me uska URL paste karte hi yahan data aane lagega."
+        t("Ye page usi sheet se padhta hai. Settings me uska URL paste karte hi yahan data aane lagega.")
       }
       action={
         <Button
