@@ -29,13 +29,16 @@ import { parseModuleAccess } from "@/lib/moduleAccess";
 import { generateRandomPassword } from "@/lib/generatePassword";
 import type { SafeUser } from "./types";
 import { useT } from "@/components/preferences-provider";
+import { useConfirm } from "@/components/confirm-dialog";
 
 export default function ManageUserDialog({
   user,
   onUpdated,
+  onDeleted,
 }: {
   user: SafeUser;
   onUpdated: (user: SafeUser) => void;
+  onDeleted: (userId: string) => void;
 }) {
   const t = useT();
   const [open, setOpen] = useState(false);
@@ -50,6 +53,27 @@ export default function ManageUserDialog({
 
   const [newPassword, setNewPassword] = useState("");
   const [resetting, setResetting] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const confirm = useConfirm();
+
+  async function handleDelete() {
+    setDeleting(true);
+    try {
+      const res = await fetch(`/api/admin/users/${user.User_ID}`, { method: "DELETE" });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) {
+        toast.error(t(data?.error ?? "User delete nahi ho paya."));
+        return;
+      }
+      toast.success(`${user.Full_Name} ${t("delete ho gaya.")}`);
+      setOpen(false);
+      onDeleted(user.User_ID);
+    } catch {
+      toast.error(t("User delete nahi ho paya."));
+    } finally {
+      setDeleting(false);
+    }
+  }
 
   async function handleSaveDetails() {
     setSavingDetails(true);
@@ -193,6 +217,38 @@ export default function ManageUserDialog({
             {resetting ? "Resetting..." : "Reset Password"}
           </Button>
         </div>
+
+        <Separator />
+
+        {/* Set apart from the rest, and the only destructive control in the dialog —
+            so it is never the button somebody hits while aiming for Save. */}
+        <div className="space-y-2">
+          <Label>{t("User delete karein")}</Label>
+          <p className="text-xs text-muted-foreground">
+            {t(
+              "User hat jaayega aur uska email dobara istemaal ho sakega. Uske purane tasks aur records waise ke waise rahenge."
+            )}
+          </p>
+          <Button
+            variant="destructive"
+            className="w-full"
+            disabled={deleting}
+            onClick={() =>
+              confirm.ask({
+                title: `${user.Full_Name} ${t("ko delete karein?")}`,
+                description: t(
+                  "Ye user hat jaayega aur uska email dobara istemaal ho sakega. Wo turant login nahi kar payega. Uske purane tasks aur records nahi mitenge — wo record hain ki kya hua tha."
+                ),
+                confirmLabel: t("Haan, delete karein"),
+                onConfirm: handleDelete,
+              })
+            }
+          >
+            {deleting ? t("Delete ho raha hai...") : t("Delete User")}
+          </Button>
+        </div>
+
+        {confirm.dialog}
       </DialogContent>
     </Dialog>
   );

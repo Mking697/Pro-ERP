@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { requireRole } from "@/lib/auth/guard";
-import { updateUser, toSafeUser } from "@/lib/auth/users";
+import { deleteUser, updateUser, toSafeUser, UserDeletionError } from "@/lib/auth/users";
 import { ROLES } from "@/lib/roles";
 import { MODULE_ACCESS_KEYS } from "@/lib/moduleAccess";
 
@@ -35,6 +35,29 @@ export async function PATCH(
     return NextResponse.json({ user: toSafeUser(user) });
   } catch (err) {
     const message = err instanceof Error ? err.message : "User update nahi ho paya.";
+    return NextResponse.json({ error: message }, { status: 400 });
+  }
+}
+
+export async function DELETE(
+  request: Request,
+  { params }: { params: Promise<{ userId: string }> }
+) {
+  const guard = await requireRole(["Admin"]);
+  if (!guard.ok) return guard.response;
+
+  const { userId } = await params;
+
+  try {
+    // The acting user is passed in so the library can refuse self-deletion — an Admin
+    // removing their own account would be locked out mid-request.
+    await deleteUser(userId, guard.session.userId);
+    return NextResponse.json({ ok: true });
+  } catch (err) {
+    if (err instanceof UserDeletionError) {
+      return NextResponse.json({ error: err.message }, { status: 400 });
+    }
+    const message = err instanceof Error ? err.message : "User delete nahi ho paya.";
     return NextResponse.json({ error: message }, { status: 400 });
   }
 }

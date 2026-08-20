@@ -372,6 +372,33 @@ export const EN: Record<string, string> = {
   "Aapka access badlega to ye guide bhi apne aap badal jaayegi.":
     "As your access changes, this guide changes with it.",
 
+  // --- user and organization deletion -----------------------------------------------
+  "User delete karein": "Delete this user",
+  "User delete nahi ho paya.": "Could not delete the user.",
+  "delete ho gaya.": "has been deleted.",
+  "delete ho gayi.": "has been deleted.",
+  "ko delete karein?": "— delete?",
+  "Delete ho raha hai...": "Deleting...",
+  "Delete User": "Delete user",
+  "Delete karein": "Delete",
+  "Delete nahi ho paya.": "Could not delete.",
+  "Aap khud ko delete nahi kar sakte.": "You cannot delete your own account.",
+  "Ye organization ka aakhri Admin hai. Pehle kisi aur ko Admin banayein.":
+    "This is the organization's last Admin. Make somebody else an Admin first.",
+  "Organization nahi mili.": "That organization was not found.",
+  "Organization ka naam theek se likhein.":
+    "Type the organization's name exactly.",
+  "User hat jaayega aur uska email dobara istemaal ho sakega. Uske purane tasks aur records waise ke waise rahenge.":
+    "The user is removed and their email becomes available again. Their past tasks and records are left exactly as they are.",
+  "Ye user hat jaayega aur uska email dobara istemaal ho sakega. Wo turant login nahi kar payega. Uske purane tasks aur records nahi mitenge — wo record hain ki kya hua tha.":
+    "This user will be removed and their email freed for reuse. They will not be able to sign in from now on. Their past tasks and records are not deleted — those are a record of what happened.",
+  "Is organization ki tenancy khatam ho jaayegi: uske users login nahi kar payenge aur unke email dobara istemaal ho sakenge. Unki apni Google Sheets ko haath nahi lagaya jaata — wo data unka hai.":
+    "This ends the organization's tenancy: its users can no longer sign in and their emails become available again. Its own Google Sheets are left untouched — that data belongs to them.",
+  "Pakka karne ke liye organization ka naam likhein":
+    "Type the organization's name to confirm",
+  "MIS score timestamps se calculate hota hai. 0% sabse achha, −100% sabse kharab — late aur chhoote hue tasks penalty banate hain.":
+    "The MIS score is calculated from timestamps. 0% is the best and −100% the worst — late and missed tasks build the penalty.",
+
   // --- shared UI -------------------------------------------------------------------
   "Chunein...": "Select...",
   "Poora": "Full",

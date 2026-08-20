@@ -35,6 +35,10 @@ export default function UserManagement() {
     setUsers((prev) => [...prev, user]);
   }
 
+  function handleDeleted(userId: string) {
+    setUsers((prev) => prev.filter((u) => u.User_ID !== userId));
+  }
+
   function handleUpdated(updated: SafeUser) {
     setUsers((prev) => prev.map((u) => (u.User_ID === updated.User_ID ? updated : u)));
   }
@@ -102,7 +106,11 @@ export default function UserManagement() {
                   </Badge>
                 </TableCell>
                 <TableCell className="text-right">
-                  <ManageUserDialog user={user} onUpdated={handleUpdated} />
+                  <ManageUserDialog
+                    user={user}
+                    onUpdated={handleUpdated}
+                    onDeleted={handleDeleted}
+                  />
                 </TableCell>
               </TableRow>
             ))}

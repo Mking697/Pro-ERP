@@ -5,6 +5,7 @@ import {
   appendRow,
   updateRow,
   rowsToObjects,
+  deleteRow,
 } from "@/lib/googleSheets";
 import { cached, invalidateCache } from "@/lib/cache";
 import { generateId, slugify } from "@/lib/id";
@@ -174,6 +175,57 @@ export async function updateIndexedUserStatus(email: string, status: string): Pr
     status,
   ]);
   invalidateCache(INDEX_CACHE_KEY);
+}
+
+/**
+ * Removes an email from the platform index, freeing it for reuse.
+ *
+ * Sign-in looks up which organization an email belongs to here, so an entry left behind
+ * would keep that address claimed across the whole platform even though the user is gone.
+ */
+export async function removeIndexedUser(email: string): Promise<void> {
+  const spreadsheetId = getPlatformSheetId();
+  const rows = await readRows(spreadsheetId, USERS_INDEX_TAB);
+  const normalized = email.trim().toLowerCase();
+  const rowIndex = rows.findIndex(
+    (row, i) => i > 0 && row[0]?.trim().toLowerCase() === normalized
+  );
+  if (rowIndex === -1) return;
+
+  await deleteRow(spreadsheetId, USERS_INDEX_TAB, rowIndex + 1);
+  invalidateCache(INDEX_CACHE_KEY);
+}
+
+/**
+ * Removes an organization from the registry, along with every email it had claimed.
+ *
+ * Nothing in the organization's own Google Sheets is touched — those belong to them, and
+ * this platform has no business deleting a customer's records. What this does is end the
+ * tenancy: the org can no longer be resolved, so nobody can sign in to it, and its emails
+ * become available again.
+ */
+export async function deleteOrganization(orgId: string): Promise<void> {
+  const spreadsheetId = getPlatformSheetId();
+
+  // Emails first. If this half fails, the organization is still reachable and can be
+  // retried; doing it the other way round would strand entries pointing at nothing.
+  const indexRows = await readRows(spreadsheetId, USERS_INDEX_TAB);
+  for (let i = indexRows.length - 1; i > 0; i--) {
+    if (indexRows[i]?.[1] === orgId) {
+      // Deleting bottom-up keeps the rows above at the numbers already read.
+      await deleteRow(spreadsheetId, USERS_INDEX_TAB, i + 1);
+    }
+  }
+
+  const orgRows = await readRows(spreadsheetId, ORGANIZATIONS_TAB);
+  const rowIndex = orgRows.findIndex((row, i) => i > 0 && row[0] === orgId);
+  if (rowIndex === -1) {
+    throw new Error("Organization nahi mili.");
+  }
+  await deleteRow(spreadsheetId, ORGANIZATIONS_TAB, rowIndex + 1);
+
+  invalidateCache(INDEX_CACHE_KEY);
+  invalidateCache(ORGS_CACHE_KEY);
 }
 
 interface CreateOrganizationInput {

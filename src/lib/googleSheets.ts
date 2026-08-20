@@ -201,6 +201,52 @@ export async function updateCells(
   );
 }
 
+/**
+ * Removes one row from a tab, closing the gap behind it.
+ *
+ * Deleting a dimension needs the tab's numeric id, not its name, so the tab is looked up
+ * first. Every row below the deleted one shifts up by one — which is why callers must
+ * resolve the row number and delete in the same breath, never hold one across a write.
+ */
+export async function deleteRow(
+  spreadsheetId: string,
+  tabName: string,
+  rowNumber: number
+): Promise<void> {
+  const sheets = getSheetsClient();
+
+  const meta = await withRetry(() =>
+    sheets.spreadsheets.get({ spreadsheetId, fields: "sheets.properties(sheetId,title)" })
+  );
+  const tab = meta.data.sheets?.find((s) => s.properties?.title === tabName);
+  const sheetId = tab?.properties?.sheetId;
+  if (sheetId === undefined || sheetId === null) {
+    throw new Error(`Tab "${tabName}" nahi mila.`);
+  }
+
+  await withRetry(() =>
+    sheets.spreadsheets.batchUpdate({
+      spreadsheetId,
+      requestBody: {
+        requests: [
+          {
+            deleteDimension: {
+              range: {
+                sheetId,
+                dimension: "ROWS",
+                // The API counts from 0 and excludes the end, where a sheet row number
+                // counts from 1 — so row 5 is the half-open range [4, 5).
+                startIndex: rowNumber - 1,
+                endIndex: rowNumber,
+              },
+            },
+          },
+        ],
+      },
+    })
+  );
+}
+
 /** Verifies the service account can actually reach a spreadsheet. */
 export async function verifySheetAccess(spreadsheetId: string): Promise<boolean> {
   try {

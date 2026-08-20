@@ -16,6 +16,9 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { getT } from "@/lib/i18n/server";
+import { Download } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import PageHeader from "@/components/page-header";
 
 export default async function PerformancePage() {
   const t = await getT();
@@ -51,12 +54,25 @@ export default async function PerformancePage() {
   return (
     <AppShell session={session}>
       <div className="space-y-6">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Team Performance</h1>
-          <p className="mt-1 text-sm text-muted-foreground">{t("MIS score timestamps se calculate hota hai.")}<strong>0% sabse achha</strong>,
-            −100% sabse kharab — late aur chhoote hue tasks penalty banate hain.
-          </p>
-        </div>
+        <PageHeader
+          title={t("Team Performance")}
+          description={t(
+            "MIS score timestamps se calculate hota hai. 0% sabse achha, −100% sabse kharab — late aur chhoote hue tasks penalty banate hain."
+          )}
+        >
+          {/* Downloads exactly the doer-wise list on screen, through the same
+              perUserScores calculation — so the file can never disagree with the page. */}
+          <Button
+            variant="outline"
+            size="sm"
+            render={
+              <a href="/api/analytics/export?range=all" download>
+                <Download />
+                {t("Excel export")}
+              </a>
+            }
+          />
+        </PageHeader>
 
       <div className="overflow-x-auto rounded-lg border">
         <Table>

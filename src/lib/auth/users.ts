@@ -2,8 +2,13 @@ import bcrypt from "bcryptjs";
 import { getSheetRows, appendSheetRow, updateSheetRow, rowsToObjects } from "@/lib/tenantSheets";
 import { getTenantOrgId } from "@/lib/tenant";
 import { generateId } from "@/lib/id";
-import { indexUser, isEmailTaken, updateIndexedUserStatus } from "@/lib/platform/registry";
-import { getSheetsClient } from "@/lib/googleSheets";
+import {
+  indexUser,
+  isEmailTaken,
+  removeIndexedUser,
+  updateIndexedUserStatus,
+} from "@/lib/platform/registry";
+import { deleteRow, getSheetsClient } from "@/lib/googleSheets";
 import { getTenantSheetId } from "@/lib/tenant";
 import { serializeModuleAccess } from "@/lib/moduleAccess";
 
@@ -218,6 +223,50 @@ export async function updateUser(userId: string, patch: UpdateUserInput): Promis
   }
 
   return updated;
+}
+
+export class UserDeletionError extends Error {}
+
+/**
+ * Removes a user from the organization, and frees their email across the platform.
+ *
+ * The row is genuinely removed rather than flagged, because that is what "delete" is
+ * taken to mean — and because an email left in the platform index stays claimed for ever,
+ * so the same person could never be added back.
+ *
+ * Their past work is not deleted with them: tasks carry the user id they were assigned
+ * to, and those rows stay exactly as they are. That is deliberate — a completed task is a
+ * record of something that happened, and it should not disappear because somebody left.
+ * The screens fall back to showing the stored id where the name can no longer be resolved.
+ */
+export async function deleteUser(userId: string, actingUserId: string): Promise<void> {
+  if (userId === actingUserId) {
+    throw new UserDeletionError("Aap khud ko delete nahi kar sakte.");
+  }
+
+  await ensureUsersHeaders();
+  const found = await findUserRow(userId);
+  if (!found) {
+    throw new UserDeletionError("User nahi mila.");
+  }
+
+  // An organization with no Admin cannot be administered again — there would be nobody
+  // left who can create users or connect sheets.
+  if (found.user.Role === "Admin") {
+    const admins = (await listUsers()).filter(
+      (u) => u.Role === "Admin" && u.Status === "Active"
+    );
+    if (admins.length <= 1) {
+      throw new UserDeletionError(
+        "Ye organization ka aakhri Admin hai. Pehle kisi aur ko Admin banayein."
+      );
+    }
+  }
+
+  // The index entry goes first: if the second half fails, the user still exists and the
+  // action can simply be retried. The other order would leave an email pointing nowhere.
+  await removeIndexedUser(found.user.Email);
+  await deleteRow(await getTenantSheetId(), USERS_TAB, found.rowNumber);
 }
 
 export async function resetUserPassword(userId: string, newPassword: string): Promise<void> {
