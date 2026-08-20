@@ -18,6 +18,7 @@ import TaskBoard from "@/app/tasks/task-board";
 import InwardBoard from "@/app/inward/inward-board";
 import ScoreBreakdown from "./score-breakdown";
 import Analytics from "./analytics";
+import ShareReport from "./share-report";
 import { getT } from "@/lib/i18n/server";
 
 function StatCard({
@@ -128,7 +129,7 @@ export default async function DashboardPage({
         <Tabs defaultValue={one("tab") ?? "overview"}>
           <TabsList>
             <TabsTrigger value="overview">Overview</TabsTrigger>
-            <TabsTrigger value="analytics">Dashboard</TabsTrigger>
+            <TabsTrigger value="analytics">{t("Reports")}</TabsTrigger>
             <TabsTrigger value="tasks">Tasks</TabsTrigger>
             {showInward && <TabsTrigger value="inward">Inward &amp; IQC</TabsTrigger>}
             <TabsTrigger value="performance">Performance</TabsTrigger>
@@ -231,7 +232,15 @@ export default async function DashboardPage({
             </Card>
           </TabsContent>
 
-          <TabsContent value="analytics" className="mt-4">
+          <TabsContent value="analytics" className="mt-4 space-y-4">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <p className="text-sm text-muted-foreground">
+                {t("Har module ki report, aapke access ke hisaab se.")}
+              </p>
+              {/* The share link carries the range chosen here, so what the recipient
+                  opens is the report the sharer was looking at. */}
+              <ShareReport rangeKey={one("range") ?? "month"} />
+            </div>
             <Analytics
               session={session}
               rangeKey={one("range") ?? "month"}

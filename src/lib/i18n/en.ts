@@ -399,6 +399,60 @@ export const EN: Record<string, string> = {
   "MIS score timestamps se calculate hota hai. 0% sabse achha, −100% sabse kharab — late aur chhoote hue tasks penalty banate hain.":
     "The MIS score is calculated from timestamps. 0% is the best and −100% the worst — late and missed tasks build the penalty.",
 
+  // --- reports and public share links -----------------------------------------------
+  "Har module ki report, aapke access ke hisaab se.":
+    "A report for each module, according to your access.",
+  "Report share karein": "Share this report",
+  "Is link ka naam": "Name this link",
+  "Jaise: Supplier ke liye monthly report": "e.g. Monthly report for the supplier",
+  "Link banayein": "Create link",
+  "Ban raha hai...": "Creating...",
+  "Chalu links": "Active links",
+  "Link band karein": "Revoke this link",
+  "Ye link band karein?": "Revoke this link?",
+  "Haan, band karein": "Yes, revoke it",
+  "Link ban gaya aur copy ho gaya.": "Link created and copied.",
+  "Link nahi ban paya.": "Could not create the link.",
+  "Link band ho gaya.": "Link revoked.",
+  "Link band nahi ho paya.": "Could not revoke the link.",
+  "Links load nahi ho paye.": "Could not load the links.",
+  "Copy nahi ho paya.": "Could not copy.",
+  "Copy ho gaya": "Copied",
+  "Link jiske paas hoga wo ye report bina login ke dekh sakega, aur data hamesha taaza rehta hai. Wo sirf dekh sakta hai — kuch badal nahi sakta.":
+    "Anyone with the link can read this report without signing in, and the data stays live. They can only read it — nothing can be changed.",
+  "Link me wahi sections aayenge jo aap khud dekh sakte hain. Baad me aapko naya access mile to purane link nahi badlenge.":
+    "The link shows the sections you can see yourself. If you are given more access later, links you already shared do not widen.",
+  "Jis kisi ke paas ye link hai, uske liye ye turant kaam karna band kar dega. Ye wapas nahi aayega — naya link banana padega.":
+    "It stops working immediately for anyone holding it. This cannot be undone — a new link would have to be created.",
+  "Ye link ab kaam nahi karta.": "This link no longer works.",
+  "Live report — sirf padhne ke liye": "Live report — read only",
+  "Ye report live hai — page refresh karne par taaza data aata hai.":
+    "This report is live — refreshing the page shows the latest data.",
+
+  // --- new report sections ----------------------------------------------------------
+  "Aaj ka stock — ye period filter par nahi badalta.":
+    "Stock as it stands today — this does not follow the period filter.",
+  "Stock status": "Stock status",
+  "Free stock ko reorder point se tolkar.":
+    "Free stock weighed against the reorder point.",
+  "Reorder point se sabse neeche": "Furthest below the reorder point",
+  "Jo apne reorder point se sabse zyada neeche gir chuka hai.":
+    "Whichever has fallen furthest below its own reorder point.",
+  "purchase requests.": "purchase requests.",
+  "Indent status": "Indent status",
+  "Indents kab bane": "When indents were raised",
+  "Is period me koi indent nahi.": "No indents in this period.",
+  "Kis product me kitne item lagte hain — aaj ki active BOMs.":
+    "How many items each product takes — today's active BOMs.",
+  "Product me kitne item": "Items per product",
+  "Sirf active version ginti me hai.": "Only the active version is counted.",
+  "Active vs Archived": "Active vs archived",
+  "production plans aur unki haalat.": "production plans and their state.",
+  "Plan status": "Plan status",
+  "Is period me koi plan nahi bana.": "No plan was created in this period.",
+  "Production kab honi hai": "When production is due",
+  "Plan ki production date ke hisaab se.": "By the plan's production date.",
+
   // --- shared UI -------------------------------------------------------------------
   "Chunein...": "Select...",
   "Poora": "Full",

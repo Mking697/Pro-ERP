@@ -2,7 +2,9 @@ import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { verifySession, SESSION_COOKIE } from "@/lib/auth/session";
 
-const PUBLIC_PATHS = ["/login", "/signup"];
+// /share/<token> is deliberately public: the token is the credential, and the page
+// resolves its tenant from that token alone rather than from any session cookie.
+const PUBLIC_PATHS = ["/login", "/signup", "/share"];
 
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;

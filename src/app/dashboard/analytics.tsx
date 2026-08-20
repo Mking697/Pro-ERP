@@ -32,12 +32,44 @@ import { cn } from "@/lib/utils";
 import DateRangeFilter from "./date-range-filter";
 import { getT } from "@/lib/i18n/server";
 import type { Translator } from "@/lib/i18n";
+import { getInventorySnapshot, itemsNeedingReorder } from "@/lib/inventory/service";
+import { listIndents } from "@/lib/inventory/indents";
+import { listBoms } from "@/lib/inventory/bom";
+import { listPlans } from "@/lib/inventory/plans";
+import { tenantCached } from "@/lib/cache";
 
 const SERIES = [
   "var(--chart-series-1)",
   "var(--chart-series-2)",
   "var(--chart-series-3)",
 ] as const;
+
+/**
+ * Runs a read and turns any failure into `null`.
+ *
+ * A report is made of independent sections. Letting one failed sheet read take the whole
+ * page down means an exhausted quota or a single disconnected sheet hides nine other
+ * modules' charts that were perfectly readable.
+ */
+async function safe<T>(fn: () => Promise<T>): Promise<T | null> {
+  try {
+    return await fn();
+  } catch {
+    return null;
+  }
+}
+
+function statusCount(items: { status: string }[], status: string): number {
+  return items.filter((i) => i.status === status).length;
+}
+
+function planCount(
+  plans: { status: string; timestamp: string }[],
+  range: DateRange,
+  status: string
+): number {
+  return plans.filter((p) => p.status === status && inRange(p.timestamp, range)).length;
+}
 
 /** Identity colours are assigned in fixed order and folded past three, never cycled. */
 function seriesColor(i: number): string {
@@ -69,11 +101,14 @@ export default async function Analytics({
   rangeKey,
   from,
   to,
+  hidePersonal = false,
 }: {
   session: SessionPayload;
   rangeKey: string;
   from?: string;
   to?: string;
+  /** Drops the "my work" section, which means nothing on a link with no viewer. */
+  hidePersonal?: boolean;
 }) {
   const t = await getT();
   const range = resolveRange(rangeKey, from, to);
@@ -81,18 +116,39 @@ export default async function Analytics({
 
   // Only read the sheets this viewer is actually allowed to see — every extra read
   // spends the shared Sheets quota for no one's benefit.
-  const [allTasks, users, rules, inward, failures, ims] = await Promise.all([
-    tryModule(() => listTasks()),
-    access.includes("PERFORMANCE_VIEW") || access.includes("TASK_DELEGATE")
-      ? listUsers().catch(() => [])
-      : Promise.resolve([]),
-    access.includes("RECURRING_ASSIGN") ? tryModule(() => listRecurringTasks()) : null,
-    access.includes("INWARD_ENTRY") || access.includes("IQC_CHECK") || access.includes("IMS_VIEW")
-      ? tryModule(() => listInwardEntries())
-      : null,
-    access.includes("IMS_VIEW") ? tryModule(() => listFailureLog()) : null,
-    access.includes("IMS_VIEW") ? tryModule(() => listImsInward()) : null,
-  ]);
+  //
+  // Cached briefly, per organization. Reports now span ten modules, so one render can
+  // fire well over a dozen sheet reads, and a public share link puts that behind a URL
+  // anybody may refresh. A chart covering a date range is not stock on a shelf: half a
+  // minute of staleness costs a reader nothing, where an out-of-date free-stock figure
+  // would let two people promise the same material. That is why this caches and the
+  // inventory screens do not.
+  //
+  // Each read degrades to null on its own rather than throwing, so one exhausted quota
+  // or one disconnected sheet leaves the rest of the report standing.
+  const [allTasks, users, rules, inward, failures, ims, stock, indents, boms, plans] =
+    await tenantCached(session.orgId, `analytics:${access.join(",")}`, 30_000, () =>
+      Promise.all([
+        safe(() => tryModule(() => listTasks())),
+        access.includes("PERFORMANCE_VIEW") || access.includes("TASK_DELEGATE")
+          ? listUsers().catch(() => [])
+          : Promise.resolve([]),
+        access.includes("RECURRING_ASSIGN")
+          ? safe(() => tryModule(() => listRecurringTasks()))
+          : null,
+        access.includes("INWARD_ENTRY") ||
+        access.includes("IQC_CHECK") ||
+        access.includes("IMS_VIEW")
+          ? safe(() => tryModule(() => listInwardEntries()))
+          : null,
+        access.includes("IMS_VIEW") ? safe(() => tryModule(() => listFailureLog())) : null,
+        access.includes("IMS_VIEW") ? safe(() => tryModule(() => listImsInward())) : null,
+        access.includes("INVENTORY_VIEW") ? safe(() => getInventorySnapshot()) : null,
+        access.includes("INVENTORY_VIEW") ? safe(() => tryModule(() => listIndents())) : null,
+        access.includes("BOM_MANAGE") ? safe(() => tryModule(() => listBoms())) : null,
+        access.includes("PPC_PLAN") ? safe(() => tryModule(() => listPlans())) : null,
+      ])
+    );
 
   const tasks = filterTasks(allTasks ?? [], range);
   const myTasks = tasks.filter((t) => t.Assigned_To === session.userId);
@@ -108,6 +164,7 @@ export default async function Analytics({
     <div className="space-y-8">
       <DateRangeFilter active={range} presets={RANGE_PRESETS} from={from} to={to} />
 
+      {!hidePersonal && (
       <Section
         title={t("Mera kaam")}
         description={`${range.label} — aapko assign hue tasks.`}
@@ -131,6 +188,7 @@ export default async function Analytics({
           />
         </ChartFrame>
       </Section>
+      )}
 
       {access.includes("TASK_DELEGATE") && (
         <Section
@@ -288,6 +346,147 @@ export default async function Analytics({
                 range
               )}
               color="var(--chart-series-3)"
+            />
+          </ChartFrame>
+        </Section>
+      )}
+
+      {access.includes("INVENTORY_VIEW") && stock && stock.items.length > 0 && (
+        <Section
+          title={t("Inventory")}
+          description={t("Aaj ka stock — ye period filter par nahi badalta.")}
+        >
+          <ChartFrame
+            title={t("Stock status")}
+            hint={t("Free stock ko reorder point se tolkar.")}
+          >
+            <DonutChart
+              data={[
+                { label: "Healthy", value: statusCount(stock.items, "Healthy"), color: "var(--chart-good)" },
+                { label: "Low", value: statusCount(stock.items, "Low"), color: "var(--chart-warning)" },
+                { label: "Critical", value: statusCount(stock.items, "Critical"), color: "var(--chart-critical)" },
+                { label: "Out of Stock", value: statusCount(stock.items, "Out of Stock"), color: "var(--chart-critical)" },
+                { label: "Not Set Up", value: statusCount(stock.items, "Not Set Up"), color: "var(--chart-axis)" },
+              ]}
+              emptyMessage={t("Abhi koi item nahi hai.")}
+            />
+          </ChartFrame>
+
+          <ChartFrame
+            title={t("Reorder point se sabse neeche")}
+            hint={t("Jo apne reorder point se sabse zyada neeche gir chuka hai.")}
+          >
+            <BarChart
+              data={itemsNeedingReorder(stock.items)
+                .slice(0, 8)
+                .map((i) => ({
+                  label: i.item.Item_Name || i.item.SKU,
+                  value: Math.round((i.rop ?? 0) - i.projected),
+                  color: "var(--chart-critical)",
+                }))}
+              emptyMessage={t("Abhi kisi item ko order ki zaroorat nahi")}
+            />
+          </ChartFrame>
+        </Section>
+      )}
+
+      {access.includes("INVENTORY_VIEW") && indents && (
+        <Section
+          title={t("Indents")}
+          description={`${range.label} — ${t("purchase requests.")}`}
+        >
+          <ChartFrame title={t("Indent status")}>
+            <DonutChart
+              data={countBy(
+                indents.filter((i) => inRange(i.Timestamp, range)),
+                (i) => i.Status
+              ).map((b, idx) => ({ ...b, color: seriesColor(idx) }))}
+              emptyMessage={t("Is period me koi indent nahi.")}
+            />
+          </ChartFrame>
+
+          <ChartFrame title={t("Indents kab bane")}>
+            <TimelineChart
+              emptyMessage={t("Is period me koi indent nahi.")}
+              points={bucketByDate(
+                indents.filter((i) => inRange(i.Timestamp, range)).map((i) => i.Timestamp),
+                range
+              )}
+            />
+          </ChartFrame>
+        </Section>
+      )}
+
+      {access.includes("BOM_MANAGE") && boms && (
+        <Section
+          title={t("BOM")}
+          description={t("Kis product me kitne item lagte hain — aaj ki active BOMs.")}
+        >
+          <ChartFrame
+            title={t("Product me kitne item")}
+            hint={t("Sirf active version ginti me hai.")}
+          >
+            <BarChart
+              data={boms
+                .filter((b) => b.status === "Active")
+                .slice(0, 10)
+                .map((b, idx) => ({
+                  label: b.productName,
+                  value: b.lines.length,
+                  color: seriesColor(idx),
+                }))}
+              emptyMessage={t("Abhi koi BOM nahi hai")}
+            />
+          </ChartFrame>
+
+          <ChartFrame title={t("Active vs Archived")}>
+            <DonutChart
+              data={[
+                {
+                  label: "Active",
+                  value: boms.filter((b) => b.status === "Active").length,
+                  color: "var(--chart-good)",
+                },
+                {
+                  label: "Archived",
+                  value: boms.filter((b) => b.status !== "Active").length,
+                  color: "var(--chart-axis)",
+                },
+              ]}
+              emptyMessage={t("Abhi koi BOM nahi hai")}
+            />
+          </ChartFrame>
+        </Section>
+      )}
+
+      {access.includes("PPC_PLAN") && plans && (
+        <Section
+          title={t("Production Planning")}
+          description={`${range.label} — ${t("production plans aur unki haalat.")}`}
+        >
+          <ChartFrame title={t("Plan status")}>
+            <DonutChart
+              data={[
+                { label: "Ready", value: planCount(plans, range, "Ready"), color: "var(--chart-good)" },
+                { label: "Shortage", value: planCount(plans, range, "Shortage"), color: "var(--chart-critical)" },
+                { label: "In Production", value: planCount(plans, range, "In_Production"), color: "var(--chart-series-1)" },
+                { label: "Completed", value: planCount(plans, range, "Completed"), color: "var(--chart-series-3)" },
+                { label: "Cancelled", value: planCount(plans, range, "Cancelled"), color: "var(--chart-axis)" },
+              ]}
+              emptyMessage={t("Is period me koi plan nahi bana.")}
+            />
+          </ChartFrame>
+
+          <ChartFrame
+            title={t("Production kab honi hai")}
+            hint={t("Plan ki production date ke hisaab se.")}
+          >
+            <TimelineChart
+              emptyMessage={t("Is period me koi plan nahi bana.")}
+              points={bucketByDate(
+                plans.filter((p) => inRange(p.timestamp, range)).map((p) => p.productionDate),
+                range
+              )}
             />
           </ChartFrame>
         </Section>
