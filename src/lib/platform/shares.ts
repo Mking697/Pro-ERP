@@ -8,6 +8,7 @@ import {
 } from "@/lib/googleSheets";
 import { cached, invalidateCache } from "@/lib/cache";
 import { getPlatformSheetId } from "@/lib/platform/registry";
+import { byNewest, nowStamp } from "@/lib/timestamp";
 
 /**
  * Public, read-only report links.
@@ -167,7 +168,7 @@ export async function createReportShare(input: CreateShareInput): Promise<Report
     To_Date: input.to ?? "",
     Access: [...input.access].join(","),
     Created_By: input.createdBy,
-    Created_At: new Date().toISOString(),
+    Created_At: nowStamp(),
     Status: "Active",
   };
 
@@ -209,7 +210,7 @@ export async function listReportShares(orgId: string): Promise<ReportShare[]> {
   const shares = await allShares();
   return shares
     .filter((s) => s.Org_ID === orgId && s.Status === "Active")
-    .sort((a, b) => b.Created_At.localeCompare(a.Created_At));
+    .sort((a, b) => byNewest(a.Created_At, b.Created_At));
 }
 
 /**

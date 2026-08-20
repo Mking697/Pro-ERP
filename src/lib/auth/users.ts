@@ -11,6 +11,7 @@ import {
 import { deleteRow, getSheetsClient } from "@/lib/googleSheets";
 import { getTenantSheetId } from "@/lib/tenant";
 import { serializeModuleAccess } from "@/lib/moduleAccess";
+import { nowStamp } from "@/lib/timestamp";
 
 const USERS_TAB = "Users";
 
@@ -161,7 +162,7 @@ export async function createUser(input: CreateUserInput): Promise<SheetUser> {
     Department: input.department,
     Phone_Number: input.phoneNumber,
     Status: "Active",
-    Created_At: new Date().toISOString(),
+    Created_At: nowStamp(),
     Created_By: input.createdBy,
     Module_Access: serializeModuleAccess(input.moduleAccess ?? []),
   };

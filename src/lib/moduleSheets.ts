@@ -247,6 +247,7 @@ export const MODULE_SHEETS: ModuleDefinition[] = [
       "Shortage_Qty",
       "Consumed_Qty",
       "Status",
+      "Created_At",
     ],
   },
 ];

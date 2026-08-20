@@ -9,6 +9,7 @@ import {
 } from "@/lib/googleSheets";
 import { cached, invalidateCache } from "@/lib/cache";
 import { generateId, slugify } from "@/lib/id";
+import { nowStamp } from "@/lib/timestamp";
 
 /**
  * The platform registry is the one spreadsheet Pro ERP itself owns — it holds no
@@ -256,7 +257,7 @@ export async function createOrganization(
     Owner_Email: input.ownerEmail.trim().toLowerCase(),
     Plan: "Free",
     Status: "Active",
-    Created_At: new Date().toISOString(),
+    Created_At: nowStamp(),
   };
 
   await appendRow(

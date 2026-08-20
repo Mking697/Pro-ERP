@@ -22,6 +22,7 @@ import CompleteTaskDialog from "./complete-task-dialog";
 import type { TaskRecord, UserOption } from "./types";
 import { CardListSkeleton } from "@/components/loading-states";
 import { useT } from "@/components/preferences-provider";
+import { parseStamp } from "@/lib/timestamp";
 
 function completionText(task: TaskRecord): string {
   const date = formatDueDisplay(task.Due_Date);
@@ -29,7 +30,8 @@ function completionText(task: TaskRecord): string {
 }
 
 function statusBadge(task: TaskRecord) {
-  if (task.Status === "Pending" && task.Due_Date && new Date() > new Date(task.Due_Date)) {
+  const due = parseStamp(task.Due_Date);
+  if (task.Status === "Pending" && due && new Date() > due) {
     return { label: "Overdue", variant: "destructive" as const };
   }
   if (task.Status === "Done on Time") return { label: task.Status, variant: "default" as const };

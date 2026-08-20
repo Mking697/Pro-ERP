@@ -6,6 +6,7 @@ import {
   recordToRow,
 } from "@/lib/moduleSheets";
 import { generateId } from "@/lib/id";
+import { nowStamp, parseStamp } from "@/lib/timestamp";
 
 const MODULE_KEY = "TASKS";
 
@@ -68,7 +69,7 @@ export async function createTask(input: CreateTaskInput): Promise<TaskRecord> {
     Completed_At: "",
     Completion_Proof_URL: "",
     Remark: input.remark,
-    Created_At: new Date().toISOString(),
+    Created_At: nowStamp(),
     On_Time_Count: "0",
     Delay_Count: "0",
     Recurring_ID: "",
@@ -106,7 +107,7 @@ export async function createRecurringOccurrence(
     Completed_At: "",
     Completion_Proof_URL: "",
     Remark: "",
-    Created_At: new Date().toISOString(),
+    Created_At: nowStamp(),
     On_Time_Count: "0",
     Delay_Count: "0",
     Recurring_ID: input.recurringId,
@@ -133,7 +134,7 @@ export async function markTaskDone(
   }
 
   const now = new Date();
-  const dueDate = found.record.Due_Date ? new Date(found.record.Due_Date) : null;
+  const dueDate = parseStamp(found.record.Due_Date);
   const isOnTime = !dueDate || now <= dueDate;
 
   const updated: TaskRecord = {

@@ -1,6 +1,7 @@
 import type { TaskRecord } from "@/lib/tasks";
 import type { SheetUser } from "@/lib/auth/users";
 import { computeMisSummary, isOverdue, type MisSummary } from "@/lib/mis";
+import { parseStamp } from "@/lib/timestamp";
 
 /**
  * Date filtering and aggregation for the analytics dashboard.
@@ -85,10 +86,14 @@ export function resolveRange(key: string, from?: string, to?: string): DateRange
   }
 }
 
-export function inRange(iso: string | undefined, range: DateRange): boolean {
-  if (!iso) return false;
-  const t = new Date(iso).getTime();
-  if (Number.isNaN(t)) return false;
+export function inRange(value: string | undefined, range: DateRange): boolean {
+  if (!value) return false;
+  // Through parseStamp, never `new Date` — sheets now hold DD/MM/YYYY HH:MM:SS, which
+  // `new Date` cannot read. Left as it was, every report would quietly filter its whole
+  // data set away and show "no data in this period".
+  const parsed = parseStamp(value);
+  if (!parsed) return false;
+  const t = parsed.getTime();
   return t >= range.from.getTime() && t <= range.to.getTime();
 }
 
@@ -130,8 +135,8 @@ function bucketLabel(key: string, grain: "day" | "week" | "month"): string {
 /** Picks a grain that keeps the axis readable rather than emitting 365 daily points. */
 export function bucketByDate(isoDates: string[], range: DateRange): Bucket[] {
   const dates = isoDates
-    .map((s) => new Date(s))
-    .filter((d) => !Number.isNaN(d.getTime()));
+    .map((s) => parseStamp(s))
+    .filter((d): d is Date => d !== null);
   if (dates.length === 0) return [];
 
   const from = range.key === "all" ? new Date(Math.min(...dates.map((d) => d.getTime()))) : range.from;

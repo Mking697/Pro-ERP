@@ -6,6 +6,7 @@ import {
   updateModuleRow,
 } from "@/lib/moduleSheets";
 import { generateId } from "@/lib/id";
+import { nowStamp } from "@/lib/timestamp";
 
 const MODULE_KEY = "RECURRING_TASKS";
 
@@ -48,7 +49,7 @@ export async function createRecurringTask(
     Frequency: input.frequency,
     Assign_Date: input.assignDate,
     Status: "Active",
-    Created_At: new Date().toISOString(),
+    Created_At: nowStamp(),
   };
 
   await appendModuleRow(MODULE_KEY, recordToRow(MODULE_KEY, record));

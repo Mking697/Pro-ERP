@@ -1,4 +1,5 @@
 import type { TaskRecord } from "@/lib/tasks";
+import { parseStamp } from "@/lib/timestamp";
 
 export interface MisSummary {
   onTime: number;
@@ -27,7 +28,8 @@ const NOT_DONE_PENALTY = 1;
  * this is a live, timestamp-derived classification, never a status stored in the sheet. */
 export function isOverdue(task: TaskRecord): boolean {
   if (task.Status !== "Pending" || !task.Due_Date) return false;
-  return new Date() > new Date(task.Due_Date);
+  const due = parseStamp(task.Due_Date);
+  return due !== null && new Date() > due;
 }
 
 export function computeMisSummary(tasks: TaskRecord[]): MisSummary {

@@ -12,6 +12,7 @@ import {
   type ItemStock,
   type LedgerRecord,
 } from "@/lib/inventory/ledger";
+import { byNewest } from "@/lib/timestamp";
 
 /**
  * The joins every inventory screen needs, done once.
@@ -90,7 +91,7 @@ export async function getItemDetail(
 
   const movements = snapshot.ledger
     .filter((r) => r.SKU === sku)
-    .sort((a, b) => b.Timestamp.localeCompare(a.Timestamp));
+    .sort((a, b) => byNewest(a.Timestamp, b.Timestamp));
 
   return { stock, movements };
 }

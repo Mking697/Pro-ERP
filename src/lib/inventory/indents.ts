@@ -9,6 +9,7 @@ import {
 import { generateId } from "@/lib/id";
 import { num, numOr0, type ItemRecord } from "@/lib/inventory/items";
 import { recordMovement } from "@/lib/inventory/ledger";
+import { nowStamp } from "@/lib/timestamp";
 
 const MODULE_KEY = "INDENTS";
 
@@ -128,7 +129,7 @@ export async function createIndent(input: CreateIndentInput): Promise<IndentReco
 
   const record: IndentRecord = {
     Indent_ID: generateId("IND"),
-    Timestamp: new Date().toISOString(),
+    Timestamp: nowStamp(),
     SKU: input.sku,
     Item_Name: input.itemName,
     Suggested_Qty: String(input.suggestedQty),
@@ -172,7 +173,7 @@ export async function approveIndent(
     ...found.record,
     Status: "Approved",
     Approved_By: approvedBy,
-    Approved_At: new Date().toISOString(),
+    Approved_At: nowStamp(),
     Final_Qty: finalQty !== undefined ? String(finalQty) : found.record.Final_Qty,
   };
 
@@ -233,7 +234,7 @@ export async function receiveIndent(
   }
 
   const total = round3(already + receivedNow);
-  const now = new Date().toISOString();
+  const now = nowStamp();
 
   const updated: IndentRecord = {
     ...indent,

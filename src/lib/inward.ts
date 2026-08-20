@@ -9,6 +9,7 @@ import {
 import { recordMovement } from "@/lib/inventory/ledger";
 import { findItem } from "@/lib/inventory/items";
 import { generateId } from "@/lib/id";
+import { nowStamp } from "@/lib/timestamp";
 
 const MODULE_KEY = "INWARD_IQC_FMS";
 const FAILURE_LOG_KEY = "FAILURE_LOG";
@@ -91,7 +92,7 @@ export async function createInwardEntry(input: CreateInwardInput): Promise<Inwar
 
   const record: InwardRecord = {
     Entry_ID: generateId("INW"),
-    Timestamp: new Date().toISOString(),
+    Timestamp: nowStamp(),
     Party_Name: input.partyName,
     Invoice_No: input.invoiceNo,
     Inward_Type: input.inwardType,
@@ -131,7 +132,7 @@ export async function submitQualityCheck(input: QualityCheckInput): Promise<Inwa
     throw new Error("Yeh entry pehle se verify ho chuki hai.");
   }
 
-  const now = new Date().toISOString();
+  const now = nowStamp();
   const updated: InwardRecord = {
     ...found.record,
     IQC_Status: "Verified",

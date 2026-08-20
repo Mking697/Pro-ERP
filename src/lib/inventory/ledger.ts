@@ -12,6 +12,7 @@ export {
   type LedgerSource,
   type StockStatus,
 } from "@/lib/inventory/constants";
+import { nowStamp, stampMs } from "@/lib/timestamp";
 
 export interface LedgerRecord {
   Txn_ID: string;
@@ -102,7 +103,7 @@ export function adcFromLedger(
 
   for (const row of ledger) {
     if (row.SKU !== sku || row.Direction !== "Out") continue;
-    const t = new Date(row.Timestamp).getTime();
+    const t = stampMs(row.Timestamp);
     if (Number.isNaN(t) || t < since) continue;
     total += numOr0(row.Quantity);
     sawAny = true;
@@ -225,7 +226,7 @@ export async function recordMovement(
 
   const record: LedgerRecord = {
     Txn_ID: generateId("TXN"),
-    Timestamp: new Date().toISOString(),
+    Timestamp: nowStamp(),
     SKU: input.sku,
     Direction: input.direction,
     Quantity: String(input.quantity),

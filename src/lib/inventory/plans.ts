@@ -27,6 +27,7 @@ export type {
   AllocatedMaterial,
   AllocationResult,
 } from "@/lib/inventory/allocation";
+import { byNewest, nowStamp } from "@/lib/timestamp";
 
 const PLANS_KEY = "PRODUCTION_PLANS";
 const MATERIALS_KEY = "PLAN_MATERIALS";
@@ -82,6 +83,8 @@ export interface PlanMaterialRow {
   Shortage_Qty: string;
   Consumed_Qty: string;
   Status: string;
+  /** Every row carries when it was written — a plan's materials are an audit trail too. */
+  Created_At: string;
 }
 
 export interface PlanMaterial {
@@ -167,7 +170,7 @@ export function joinPlans(plans: PlanRow[], materials: PlanMaterialRow[]): Plan[
     .sort(
       (a, b) =>
         a.productionDate.localeCompare(b.productionDate) ||
-        b.timestamp.localeCompare(a.timestamp)
+        byNewest(a.timestamp, b.timestamp)
     );
 }
 
@@ -367,7 +370,7 @@ export async function createPlans(
   );
   const byKey = new Map(results.map((r) => [r.key, r]));
 
-  const now = new Date().toISOString();
+  const now = nowStamp();
   const planRows: string[][] = [];
   const materialRows: string[][] = [];
   const created: Plan[] = [];
@@ -408,6 +411,7 @@ export async function createPlans(
         Shortage_Qty: String(m.shortageQty),
         Consumed_Qty: "",
         Status: m.shortageQty > 0 ? "Shortage" : "Allocated",
+        Created_At: now,
       };
       materialRows.push(recordToRow(MATERIALS_KEY, materialRow));
     }
@@ -637,7 +641,7 @@ export async function startProduction(
   }
   if (updates.length > 0) await updateModuleCells(MATERIALS_KEY, updates);
 
-  const startedAt = new Date().toISOString();
+  const startedAt = nowStamp();
   await setPlanFields(planId, {
     Status: "In_Production",
     Actual_Qty: String(actualQty),

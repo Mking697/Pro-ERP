@@ -19,6 +19,7 @@ import { TimelineChart, ChartFrame } from "@/components/charts";
 import { formatDueDisplay } from "@/lib/formatDate";
 import { qty, statusVariant } from "../types";
 import { getT } from "@/lib/i18n/server";
+import { parseStamp } from "@/lib/timestamp";
 
 /**
  * Balance after each movement, oldest first — the same derivation the totals use, kept
@@ -33,7 +34,7 @@ function runningBalance(movements: { Timestamp: string; Direction: string; Quant
     const q = Number(m.Quantity) || 0;
     balance += m.Direction === "Out" ? -q : q;
     points.push({
-      label: new Date(m.Timestamp).toLocaleDateString("en-IN", {
+      label: (parseStamp(m.Timestamp) ?? new Date(0)).toLocaleDateString("en-IN", {
         day: "numeric",
         month: "short",
       }),

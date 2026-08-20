@@ -8,6 +8,7 @@ import {
   updateModuleRow,
 } from "@/lib/moduleSheets";
 import { generateId } from "@/lib/id";
+import { nowStamp } from "@/lib/timestamp";
 
 const MODULE_KEY = "ITEMS";
 
@@ -126,7 +127,7 @@ export async function createItem(input: CreateItemInput): Promise<ItemRecord> {
     Max_Level: optional(input.maxLevel),
     Location: input.location?.trim() ?? "",
     Status: "Active",
-    Created_At: new Date().toISOString(),
+    Created_At: nowStamp(),
     Created_By: input.createdBy,
   };
 

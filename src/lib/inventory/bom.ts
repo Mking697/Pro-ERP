@@ -7,6 +7,7 @@ import {
 import { generateId } from "@/lib/id";
 import { numOr0 } from "@/lib/inventory/items";
 import { suggestProductSku } from "@/lib/inventory/constants";
+import { byNewest, nowStamp } from "@/lib/timestamp";
 
 const MODULE_KEY = "BOM";
 
@@ -101,7 +102,7 @@ export function groupBoms(rows: BomRow[]): Bom[] {
   }
 
   return [...byId.values()].sort(
-    (a, b) => b.createdAt.localeCompare(a.createdAt) || b.version - a.version
+    (a, b) => byNewest(a.createdAt, b.createdAt) || b.version - a.version
   );
 }
 
@@ -213,7 +214,7 @@ export async function createBom(input: CreateBomInput): Promise<Bom> {
   }
 
   const bomId = generateId("BOM");
-  const now = new Date().toISOString();
+  const now = nowStamp();
 
   const rows = input.lines.map((line, i) => {
     const row: BomRow = {
