@@ -92,7 +92,7 @@ export default function TaskBoard({ currentUserId }: { currentUserId: string }) 
   }
 
   const myTasksTable = (
-    <div className="rounded-lg border">
+    <div className="overflow-x-auto rounded-lg border">
       <Table>
         <TableHeader>
           <TableRow>
@@ -170,7 +170,7 @@ export default function TaskBoard({ currentUserId }: { currentUserId: string }) 
       </TabsContent>
 
       <TabsContent value="delegated" className="mt-4">
-        <div className="rounded-lg border">
+        <div className="overflow-x-auto rounded-lg border">
           <Table>
             <TableHeader>
               <TableRow>

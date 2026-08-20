@@ -49,7 +49,7 @@ export default function InwardBoard({ canVerify }: { canVerify: boolean }) {
       <div className="flex justify-end">
         <CreateInwardDialog onCreated={handleCreated} />
       </div>
-      <div className="rounded-lg border">
+      <div className="overflow-x-auto rounded-lg border">
         <Table>
           <TableHeader>
             <TableRow>

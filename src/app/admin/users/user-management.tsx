@@ -48,7 +48,7 @@ export default function UserManagement() {
       <div className="flex justify-end">
         <CreateUserDialog onCreated={handleCreated} />
       </div>
-      <div className="rounded-lg border">
+      <div className="overflow-x-auto rounded-lg border">
         <Table>
           <TableHeader>
             <TableRow>
