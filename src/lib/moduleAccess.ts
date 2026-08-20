@@ -43,6 +43,24 @@ export const MODULE_ACCESS = [
     href: "/inward",
   },
   {
+    key: "INVENTORY_VIEW",
+    label: "Inventory",
+    description: "Items aur unka live stock dekh sakta hai",
+    href: "/inventory",
+  },
+  {
+    key: "INVENTORY_TXN",
+    label: "Stock In / Out",
+    description: "Material andar-bahar ki entry kar sakta hai",
+    href: "/inventory",
+  },
+  {
+    key: "INVENTORY_SETUP",
+    label: "Item Master Setup",
+    description: "Naye items bana sakta hai aur Max Level, Lead Time jaise settings bhar sakta hai",
+    href: "/inventory/setup",
+  },
+  {
     key: "PERFORMANCE_VIEW",
     label: "Team Performance",
     description: "Poori team ka MIS score dekh sakta hai",
