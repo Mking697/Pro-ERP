@@ -271,6 +271,10 @@ export async function deleteUser(userId: string, actingUserId: string): Promise<
 }
 
 export async function resetUserPassword(userId: string, newPassword: string): Promise<void> {
+  // Its siblings all migrate the header first; this one did not, so on a sheet still
+  // missing a column the rewritten row would be laid out against the old header — and
+  // this is the row that carries the password hash.
+  await ensureUsersHeaders();
   const found = await findUserRow(userId);
   if (!found) {
     throw new Error("User nahi mila.");

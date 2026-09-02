@@ -1,11 +1,14 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { requireModule, requireSession } from "@/lib/auth/guard";
+import { requireAnyModule, requireModule } from "@/lib/auth/guard";
 import { listInwardEntries, createInwardEntry } from "@/lib/inward";
 import { tryModule } from "@/lib/moduleSheets";
 
+// Reading inward entries is not a public-to-the-org fact: party names, invoice numbers
+// and attachment URLs are commercial information. Any one of the three inward grants is
+// enough, which is the same test the nav and the inward report already apply.
 export async function GET() {
-  const guard = await requireSession();
+  const guard = await requireAnyModule(["INWARD_ENTRY", "IQC_CHECK", "IMS_VIEW"]);
   if (!guard.ok) return guard.response;
 
   const entries = await tryModule(() => listInwardEntries());
@@ -41,7 +44,10 @@ export async function POST(request: Request) {
   }
 
   try {
-    const entry = await createInwardEntry(parsed.data);
+    const entry = await createInwardEntry({
+      ...parsed.data,
+      createdBy: guard.session.userId,
+    });
     return NextResponse.json({ entry });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Entry create nahi ho payi.";

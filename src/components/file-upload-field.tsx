@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState, type ChangeEvent } from "react";
+import { useId, useRef, useState, type ChangeEvent } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -21,6 +21,9 @@ export default function FileUploadField({
   onChange: (url: string) => void;
 }) {
   const t = useT();
+  // The label was rendered but never associated, so this announced as an unnamed file
+  // button — on the task-completion flow, where the proof upload lives.
+  const inputId = useId();
   const [uploading, setUploading] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -72,7 +75,7 @@ export default function FileUploadField({
 
   return (
     <div className="space-y-2">
-      <Label>{label}</Label>
+      <Label htmlFor={inputId}>{label}</Label>
       {value ? (
         <div className="flex items-center justify-between gap-2 rounded-lg border p-2 text-sm">
           <a
@@ -89,6 +92,7 @@ export default function FileUploadField({
         </div>
       ) : (
         <Input
+          id={inputId}
           ref={inputRef}
           type="file"
           accept={ACCEPTED_TYPES}
@@ -96,7 +100,12 @@ export default function FileUploadField({
           disabled={uploading}
         />
       )}
-      {uploading && <p className="text-xs text-muted-foreground">Uploading...</p>}
+      {/* A 4MB upload is otherwise entirely silent for a screen-reader user. */}
+      {uploading && (
+        <p role="status" className="text-xs text-muted-foreground">
+          Uploading...
+        </p>
+      )}
     </div>
   );
 }

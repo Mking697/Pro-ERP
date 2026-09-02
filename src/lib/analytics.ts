@@ -1,7 +1,13 @@
 import type { TaskRecord } from "@/lib/tasks";
 import type { SheetUser } from "@/lib/auth/users";
 import { computeMisSummary, isOverdue, type MisSummary } from "@/lib/mis";
-import { parseStamp } from "@/lib/timestamp";
+import {
+  endOfIstDay,
+  istDayKey,
+  parseStamp,
+  shiftIstDays,
+  startOfIstDay,
+} from "@/lib/timestamp";
 
 /**
  * Date filtering and aggregation for the analytics dashboard.
@@ -28,20 +34,14 @@ export interface DateRange {
   label: string;
 }
 
-function startOfDay(d: Date): Date {
-  const c = new Date(d);
-  c.setHours(0, 0, 0, 0);
-  return c;
-}
-
-function endOfDay(d: Date): Date {
-  const c = new Date(d);
-  c.setHours(23, 59, 59, 999);
-  return c;
-}
-
 /**
  * Turns a preset (or an explicit from/to) into a concrete window.
+ *
+ * Every boundary is an **IST** day boundary, not a server-local one. `setHours(0,0,0,0)`
+ * asks the process's own timezone, which is UTC on Vercel — so "Aaj" began at 5:30am IST
+ * and silently dropped everything anybody did before breakfast, while quietly including
+ * the small hours of the next morning. The timestamps being filtered are all IST, so the
+ * window has to be too.
  *
  * An unparseable custom date falls back to "all" rather than to an empty window —
  * showing nothing looks identical to having no data, which sends people hunting for a
@@ -49,14 +49,16 @@ function endOfDay(d: Date): Date {
  */
 export function resolveRange(key: string, from?: string, to?: string): DateRange {
   const now = new Date();
+  const today = istDayKey(now);
+  const endOfToday = endOfIstDay(today);
 
   if (key === "custom" && from && to) {
-    const f = new Date(from);
-    const t = new Date(to);
-    if (!Number.isNaN(f.getTime()) && !Number.isNaN(t.getTime())) {
+    const f = parseStamp(from);
+    const t = parseStamp(to);
+    if (f && t) {
       return {
-        from: startOfDay(f),
-        to: endOfDay(t),
+        from: startOfIstDay(f),
+        to: endOfIstDay(t),
         key: "custom",
         label: `${from} se ${to}`,
       };
@@ -65,24 +67,34 @@ export function resolveRange(key: string, from?: string, to?: string): DateRange
 
   switch (key) {
     case "today":
-      return { from: startOfDay(now), to: endOfDay(now), key: "today", label: "Aaj" };
-    case "week": {
-      const f = startOfDay(now);
-      f.setDate(f.getDate() - 6);
-      return { from: f, to: endOfDay(now), key: "week", label: "Pichle 7 din" };
-    }
-    case "month": {
-      const f = startOfDay(now);
-      f.setDate(f.getDate() - 29);
-      return { from: f, to: endOfDay(now), key: "month", label: "Pichle 30 din" };
-    }
+      return { from: startOfIstDay(today), to: endOfToday, key: "today", label: "Aaj" };
+    case "week":
+      return {
+        from: shiftIstDays(now, -6),
+        to: endOfToday,
+        key: "week",
+        label: "Pichle 7 din",
+      };
+    case "month":
+      return {
+        from: shiftIstDays(now, -29),
+        to: endOfToday,
+        key: "month",
+        label: "Pichle 30 din",
+      };
     case "year": {
-      const f = startOfDay(now);
-      f.setFullYear(f.getFullYear() - 1);
-      return { from: f, to: endOfDay(now), key: "year", label: "Pichle 1 saal" };
+      // A calendar year back, not 365 days — "Pichle 1 saal" means the same date last
+      // year. A 29 February rolls forward to 1 March rather than failing to parse.
+      const [y, m, d] = today.split("-");
+      return {
+        from: startOfIstDay(`${Number(y) - 1}-${m}-${d}`),
+        to: endOfToday,
+        key: "year",
+        label: "Pichle 1 saal",
+      };
     }
     default:
-      return { from: new Date(0), to: endOfDay(now), key: "all", label: "Sab" };
+      return { from: new Date(0), to: endOfToday, key: "all", label: "Sab" };
   }
 }
 
@@ -111,25 +123,40 @@ export interface Bucket {
   value: number;
 }
 
+/**
+ * Which bar an instant belongs in — decided in IST, for the same reason the range is.
+ *
+ * `toISOString().slice(0, 10)` is the UTC day, so an entry made at 2am IST was drawn on
+ * the previous day's bar while the row itself displayed today's date. A chart that
+ * disagrees with the table beside it is worse than no chart.
+ */
 function bucketKey(d: Date, grain: "day" | "week" | "month"): string {
-  if (grain === "month") return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+  const day = istDayKey(d);
+  if (grain === "month") return day.slice(0, 7);
   if (grain === "week") {
-    const c = new Date(d);
-    c.setDate(c.getDate() - c.getDay());
-    return c.toISOString().slice(0, 10);
+    // Weekday of that IST calendar date, read as UTC so no local timezone can shift it.
+    const weekday = new Date(`${day}T00:00:00Z`).getUTCDay();
+    return istDayKey(shiftIstDays(d, -weekday));
   }
-  return d.toISOString().slice(0, 10);
+  return day;
 }
 
 function bucketLabel(key: string, grain: "day" | "week" | "month"): string {
+  // Both branches build a UTC instant and read it back in UTC, so the label always names
+  // the same calendar date the key does, whatever timezone the server runs in.
   if (grain === "month") {
     const [y, m] = key.split("-");
-    return new Date(Number(y), Number(m) - 1, 1).toLocaleDateString("en-IN", {
+    return new Date(Date.UTC(Number(y), Number(m) - 1, 1)).toLocaleDateString("en-IN", {
       month: "short",
       year: "2-digit",
+      timeZone: "UTC",
     });
   }
-  return new Date(key).toLocaleDateString("en-IN", { day: "numeric", month: "short" });
+  return new Date(`${key}T00:00:00Z`).toLocaleDateString("en-IN", {
+    day: "numeric",
+    month: "short",
+    timeZone: "UTC",
+  });
 }
 
 /** Picks a grain that keeps the axis readable rather than emitting 365 daily points. */

@@ -53,11 +53,11 @@ export default function ShareReport({
 
   useEffect(() => {
     if (!open) return;
-    fetch("/api/reports/shares")
+    fetch(`/api/reports/shares?report=${encodeURIComponent(reportId)}`)
       .then((res) => res.json())
       .then((data: { shares?: Share[] }) =>
-        // Only this report's links: a page that listed every link would make it easy
-        // to revoke the wrong one.
+        // The server returns only this report's links, and only when the caller may
+        // see that report. Filtering again here is belt and braces.
         setShares((data.shares ?? []).filter((s) => s.report === reportId))
       )
       .catch(() => toast.error(t("Links load nahi ho paye.")));

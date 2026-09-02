@@ -66,6 +66,40 @@ export async function requireModule(key: ModuleAccessKey): Promise<GuardResult> 
 }
 
 /**
+ * The same check, but any one of several grants is enough.
+ *
+ * Some screens are shared by people holding different grants: inward is worked by whoever
+ * makes entries, whoever runs the quality check, and whoever only reads the verified
+ * records. Guarding such a route with a single `requireModule` would lock out two of the
+ * three, so before this existed it was guarded with `requireSession` alone — which let
+ * anybody with a login read every party name, invoice number and attachment URL in the
+ * organization. Mirrors `canSeeReport`, which asks the same question for reports.
+ */
+export async function requireAnyModule(
+  keys: readonly ModuleAccessKey[]
+): Promise<GuardResult> {
+  const guard = await requireSession();
+  if (!guard.ok) return guard;
+
+  if (!keys.some((key) => guard.session.access.includes(key))) {
+    const labels = keys
+      .map((key) => getModuleAccessDefinition(key)?.label ?? key)
+      .join(" / ");
+    return {
+      ok: false,
+      response: NextResponse.json(
+        {
+          error: `Aapke paas "${labels}" me se kisi ka access nahi hai. Apne Admin se kahein.`,
+        },
+        { status: 403 }
+      ),
+    };
+  }
+
+  return guard;
+}
+
+/**
  * For platform-operator routes that span every organization.
  *
  * Deliberately not derived from Role: an organization's Admin is an admin *of that

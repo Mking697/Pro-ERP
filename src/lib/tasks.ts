@@ -6,7 +6,7 @@ import {
   recordToRow,
 } from "@/lib/moduleSheets";
 import { generateId } from "@/lib/id";
-import { nowStamp, parseStamp } from "@/lib/timestamp";
+import { formatStamp, nowStamp, parseStamp } from "@/lib/timestamp";
 
 const MODULE_KEY = "TASKS";
 
@@ -140,7 +140,9 @@ export async function markTaskDone(
   const updated: TaskRecord = {
     ...found.record,
     Status: isOnTime ? "Done on Time" : "Delay Done",
-    Completed_At: now.toISOString(),
+    // The same IST format every other timestamp column uses — these sheets are read by
+    // people, and one ISO row in a column of DD/MM/YYYY is both unreadable and unsortable.
+    Completed_At: formatStamp(now),
     Completion_Proof_URL: proofUrl,
     On_Time_Count: String(Number(found.record.On_Time_Count || 0) + (isOnTime ? 1 : 0)),
     Delay_Count: String(Number(found.record.Delay_Count || 0) + (isOnTime ? 0 : 1)),

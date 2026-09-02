@@ -93,6 +93,10 @@ export const MODULE_SHEETS: ModuleDefinition[] = [
       "Fail_Reason",
       "SKU",
       "Item_Name",
+      // Who made the entry. Added after the fact: the sheet recorded who *verified* an
+      // entry but never who raised it, so an inward report could not be narrowed to a
+      // person's own work. ensureModuleHeaders() appends it to sheets already connected.
+      "Created_By",
     ],
   },
   {

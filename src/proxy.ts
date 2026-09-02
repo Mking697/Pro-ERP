@@ -37,7 +37,12 @@ export async function proxy(request: NextRequest) {
     return NextResponse.next();
   }
 
-  const isPublicPath = PUBLIC_PATHS.some((path) => pathname.startsWith(path));
+  // Segment-aware matching: a plain startsWith would also let a future "/shareholders"
+  // or "/login-help" through as public, which is a hard bug to spot because it fails open.
+  const matches = (paths: string[]) =>
+    paths.some((path) => pathname === path || pathname.startsWith(`${path}/`));
+
+  const isPublicPath = matches(PUBLIC_PATHS);
   const token = request.cookies.get(SESSION_COOKIE)?.value;
   const session = token ? await verifySession(token) : null;
 
@@ -47,7 +52,7 @@ export async function proxy(request: NextRequest) {
     return NextResponse.redirect(loginUrl);
   }
 
-  if (session && AUTH_PATHS.some((path) => pathname.startsWith(path))) {
+  if (session && matches(AUTH_PATHS)) {
     return NextResponse.redirect(new URL("/dashboard", request.url));
   }
 

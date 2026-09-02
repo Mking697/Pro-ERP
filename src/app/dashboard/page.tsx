@@ -2,7 +2,7 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { verifySession, SESSION_COOKIE } from "@/lib/auth/session";
-import { listTasks } from "@/lib/tasks";
+import { listTasks, type TaskRecord } from "@/lib/tasks";
 import { tryModule } from "@/lib/moduleSheets";
 import { MODULE_ACCESS } from "@/lib/moduleAccess";
 import SetupRequired from "@/components/setup-required";
@@ -10,6 +10,7 @@ import AppShell from "@/components/app-shell";
 import { computeMisSummary, isOverdue, getScoreColorClass, formatScore } from "@/lib/mis";
 import { priorityVariant } from "@/lib/priority";
 import { formatDueDisplay } from "@/lib/formatDate";
+import { stampMs } from "@/lib/timestamp";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -86,9 +87,12 @@ export default async function DashboardPage({
   const mis = computeMisSummary(myTasks);
   const overdueCount = pending.filter(isOverdue).length;
 
-  const upcoming = [...pending]
-    .sort((a, b) => (a.Due_Date || "9999").localeCompare(b.Due_Date || "9999"))
-    .slice(0, 5);
+  // Soonest first, through stampMs rather than a text compare: a sheet holds both
+  // `2026-09-05T18:00` and `05/09/2026 18:00:00`, and sorting those as strings puts
+  // September before August. A task with no date has nothing to be due by, so it sorts
+  // last instead of first, which is where a 0 timestamp would have put it.
+  const dueAt = (task: TaskRecord) => stampMs(task.Due_Date) || Number.POSITIVE_INFINITY;
+  const upcoming = [...pending].sort((a, b) => dueAt(a) - dueAt(b)).slice(0, 5);
 
   // Whatever an Admin granted this person shows up here as somewhere they can go.
   const myModules = MODULE_ACCESS.filter((m) => session.access.includes(m.key));
@@ -238,10 +242,14 @@ export default async function DashboardPage({
               {reportsFor(session.access).map((report) => (
                 <Card
                   key={report.id}
-                  className="transition-colors duration-150 hover:border-foreground/20"
+                  className="relative transition-shadow duration-150 hover:ring-foreground/25"
                 >
                   <CardHeader>
                     <CardTitle className="text-base">
+                      {/* The card stays `relative` on purpose: this link stretches over the whole
+                          card with `after:inset-0`, and with no positioned ancestor that overlay
+                          resolves against the viewport instead — every card then covers the whole
+                          page, and the last one drawn swallows every click on all the others. */}
                       <Link
                         href={`/reports/${report.id}`}
                         className="after:absolute after:inset-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"

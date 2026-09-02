@@ -110,6 +110,7 @@ export default function InventoryBoard({
         <Input
           value={search}
           onChange={(e) => setSearch(e.target.value)}
+          aria-label={t("Item ya SKU search karein")}
           placeholder={t("Item ya SKU search karein...")}
           className="h-9 max-w-xs"
         />

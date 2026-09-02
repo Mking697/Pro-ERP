@@ -66,7 +66,11 @@
   --destructive: oklch(0.577 0.245 27.325);
   --border: oklch(0.922 0 0);
   --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
+  /* 4.9:1 on white. At the old oklch(0.708) this measured 2.58:1 — under the 3:1 that
+     WCAG 1.4.11 asks of a focus indicator, so on the default neutral theme a keyboard
+     user had no reliable way to see which control they were on. The accent themes were
+     already fine; the default, which is what a new organization gets, was not. */
+  --ring: oklch(0.55 0 0);
   --chart-1: oklch(0.87 0 0);
   --chart-2: oklch(0.556 0 0);
   --chart-3: oklch(0.439 0 0);

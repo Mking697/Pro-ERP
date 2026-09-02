@@ -37,8 +37,15 @@ import { listIndents } from "@/lib/inventory/indents";
 import { listBoms } from "@/lib/inventory/bom";
 import { listPlans } from "@/lib/inventory/plans";
 import { tenantCached } from "@/lib/cache";
-import { canSeeReport, getReport } from "@/lib/reports";
+import {
+  canSeeReport,
+  getReport,
+  scopeRows,
+  type ReportScope,
+  type ReportViewer,
+} from "@/lib/reports";
 import { runWithTenant, type TenantContext } from "@/lib/tenant";
+import { istDayKey } from "@/lib/timestamp";
 
 const SERIES = [
   "var(--chart-series-1)",
@@ -59,6 +66,24 @@ async function safe<T>(fn: () => Promise<T>): Promise<T | null> {
   } catch {
     return null;
   }
+}
+
+/**
+ * Narrows one module's rows to the reader's own work.
+ *
+ * `null` means the sheet is not connected or the read failed, and must stay `null` — the
+ * section renders a "not set up" state from it, which is a different thing from "you have
+ * nothing here".
+ */
+function scopeFor<T>(
+  rows: T[] | null,
+  reportId: string,
+  scope: ReportScope,
+  viewer: ReportViewer
+): T[] | null {
+  if (rows === null) return null;
+  const definition = getReport(reportId);
+  return definition ? scopeRows(rows, definition, scope, viewer) : rows;
 }
 
 function statusCount(items: { status: string }[], status: string): number {
@@ -106,6 +131,7 @@ export default async function Analytics({
   only,
   hideFilter = false,
   tenant,
+  scope = "mine",
 }: {
   session: SessionPayload;
   rangeKey: string;
@@ -130,6 +156,16 @@ export default async function Analytics({
    */
   only?: string;
   hideFilter?: boolean;
+  /**
+   * Whose work to show.
+   *
+   * A grant says which reports a person may open; it never said whose rows they would see
+   * inside one, and the answer used to be everybody's — so anyone who could run a quality
+   * check could also read every party name and invoice number the company held. The
+   * caller resolves this against the reader's privileges (see `resolveReportScope`); by
+   * the time it arrives here it is already what the reader is entitled to.
+   */
+  scope?: ReportScope;
 }) {
   const t = await getT();
   const range = resolveRange(rangeKey, from, to);
@@ -179,8 +215,33 @@ export default async function Analytics({
       ])
     );
 
-  const [allTasks, users, rules, inward, failures, ims, stock, indents, boms, plans] =
-    tenant ? await runWithTenant(tenant, read) : await read();
+  const [
+    allTasks,
+    users,
+    allRules,
+    allInward,
+    allFailures,
+    allIms,
+    stock,
+    allIndents,
+    allBoms,
+    allPlans,
+  ] = tenant ? await runWithTenant(tenant, read) : await read();
+
+  // Scoped after the cached read, never inside it. The cache holds the organization's raw
+  // rows, so two people with the same grants still share one set of sheet reads while
+  // seeing different slices — narrowing before the cache would have made the cache key
+  // per-person and multiplied the reads this page costs against a shared quota.
+  //
+  // Inventory is deliberately absent: stock on a shelf is a fact about the warehouse, not
+  // anybody's work, so there is no "my stock" to narrow it to.
+  const rules = scopeFor(allRules, "recurring", scope, session);
+  const inward = scopeFor(allInward, "inward", scope, session);
+  const failures = scopeFor(allFailures, "iqc", scope, session);
+  const ims = scopeFor(allIms, "ims", scope, session);
+  const indents = scopeFor(allIndents, "indents", scope, session);
+  const boms = scopeFor(allBoms, "bom", scope, session);
+  const plans = scopeFor(allPlans, "ppc", scope, session);
 
 
   const tasks = filterTasks(allTasks ?? [], range);
@@ -549,9 +610,12 @@ function PerformanceSection({
   const rows = perUserScores(users, tasks);
   const scored = rows.filter((r) => r.summary.score !== null);
 
+  // The dates go back out as IST days, the same way they came in. `toISOString()` would
+  // render an IST midnight as the previous day in UTC, so the downloaded CSV would cover
+  // a window one day off from the screen it was exported from.
   const exportHref = `/api/analytics/export?range=${range.key}${
     range.key === "custom"
-      ? `&from=${range.from.toISOString().slice(0, 10)}&to=${range.to.toISOString().slice(0, 10)}`
+      ? `&from=${istDayKey(range.from)}&to=${istDayKey(range.to)}`
       : ""
   }`;
 

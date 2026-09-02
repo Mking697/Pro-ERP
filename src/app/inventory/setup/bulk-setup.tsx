@@ -151,6 +151,7 @@ export default function BulkSetup() {
         <Input
           value={search}
           onChange={(e) => setSearch(e.target.value)}
+          aria-label={t("Item ya SKU search karein")}
           placeholder={t("Item ya SKU...")}
           className="h-9 max-w-xs"
         />

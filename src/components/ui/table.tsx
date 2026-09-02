@@ -4,11 +4,30 @@ import * as React from "react"
 
 import { cn } from "@/lib/utils"
 
-function Table({ className, ...props }: React.ComponentProps<"table">) {
+/**
+ * `label` names the scroll region for a screen reader.
+ *
+ * The wrapper scrolls horizontally, and a table's cells are not focusable — so there was
+ * no keyboard gesture that could bring the right-hand columns into view at all. Someone
+ * working by keyboard, switch or screen reader simply could not reach them, and on the
+ * bulk-setup grid those columns are the reorder inputs. `tabIndex={0}` gives the region a
+ * focus stop, which is what makes the arrow keys scroll it (WCAG 2.1.1).
+ *
+ * The region is only given a `role` when it is given a name: an unnamed region announced
+ * on every table in the app is noise, not help.
+ */
+function Table({
+  className,
+  label,
+  ...props
+}: React.ComponentProps<"table"> & { label?: string }) {
   return (
     <div
       data-slot="table-container"
-      className="relative w-full overflow-x-auto"
+      className="relative w-full overflow-x-auto rounded-[inherit] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+      tabIndex={0}
+      role={label ? "region" : undefined}
+      aria-label={label}
     >
       <table
         data-slot="table"

@@ -6,7 +6,12 @@ import { verifySession, SESSION_COOKIE } from "@/lib/auth/session";
 import AppShell from "@/components/app-shell";
 import PageHeader from "@/components/page-header";
 import { Button } from "@/components/ui/button";
-import { canSeeReport, getReport } from "@/lib/reports";
+import {
+  canSeeEveryone,
+  canSeeReport,
+  getReport,
+  resolveReportScope,
+} from "@/lib/reports";
 import { RANGE_PRESETS, resolveRange } from "@/lib/analytics";
 import DateRangeFilter from "@/app/dashboard/date-range-filter";
 import Analytics from "@/app/dashboard/analytics";
@@ -42,6 +47,13 @@ export default async function ReportPage({
   const rangeKey = one("range") ?? "month";
   const range = resolveRange(rangeKey, one("from"), one("to"));
 
+  // Everybody sees their own work by default. Someone trusted with the whole team's MIS
+  // score — an Admin, or the holder of PERFORMANCE_VIEW — can ask for the organization's,
+  // and resolveReportScope quietly narrows the request for anyone else rather than
+  // refusing it, because these URLs get passed around.
+  const scope = resolveReportScope(one("scope"), session);
+  const seesEveryone = canSeeEveryone(session);
+
   return (
     <AppShell session={session}>
       <div className="space-y-6">
@@ -60,7 +72,12 @@ export default async function ReportPage({
           <PageHeader title={t(definition.label)} description={t(definition.description)}>
             {/* Personal reports carry no share button: a public link has no reader to
                 be personal to, so it would be empty or, worse, somebody else's. */}
-            {!definition.personal && (
+            {/* A public link carries the whole organization's rows, not the creator's
+                own slice — a supplier sent an inward report wants the shipments, not one
+                clerk's share of them. That makes creating a link a way of publishing
+                everybody's work, so it is offered only to someone already entitled to see
+                everybody's work. The API enforces the same rule. */}
+            {!definition.personal && seesEveryone && (
               <ShareReport
                 reportId={definition.id}
                 reportLabel={t(definition.label)}
@@ -75,6 +92,10 @@ export default async function ReportPage({
           presets={RANGE_PRESETS}
           from={one("from")}
           to={one("to")}
+          // A personal report is already only ever about the reader — offering to widen
+          // it would promise something the report cannot do.
+          scope={definition.personal ? undefined : scope}
+          canSeeEveryone={seesEveryone}
         />
 
         <Analytics
@@ -84,6 +105,7 @@ export default async function ReportPage({
           to={one("to")}
           only={definition.id}
           hideFilter
+          scope={scope}
         />
       </div>
     </AppShell>

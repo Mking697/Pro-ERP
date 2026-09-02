@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useId, useMemo, useState } from "react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
@@ -37,6 +37,10 @@ export default function ItemPicker({
   required?: boolean;
 }) {
   const t = useT();
+  // A BOM form renders one picker per line — up to a hundred of them. A hardcoded id
+  // meant every one of those inputs shared it, so the first field collected every label
+  // and the rest had no accessible name at all, while clicking "Item 7" focused row 1.
+  const inputId = useId();
   const [items, setItems] = useState<PickerItem[]>([]);
   const [configured, setConfigured] = useState(true);
   const [query, setQuery] = useState("");
@@ -73,7 +77,9 @@ export default function ItemPicker({
   if (value) {
     return (
       <div className="space-y-2">
-        <Label>{label}</Label>
+        {/* Not a <Label>: in this state there is no form control for it to name, and an
+            orphan label promises assistive technology something nothing keeps. */}
+        <span className="block text-sm font-medium">{label}</span>
         <div className="flex items-center gap-2 rounded-lg border p-2.5 text-sm">
           <span className="min-w-0 flex-1">
             <span className="block font-medium">{value.name}</span>
@@ -98,10 +104,10 @@ export default function ItemPicker({
 
   return (
     <div className="space-y-2">
-      <Label htmlFor="item-search">{label}</Label>
+      <Label htmlFor={inputId}>{label}</Label>
       <div className="relative">
         <Input
-          id="item-search"
+          id={inputId}
           value={query}
           onChange={(e) => {
             setQuery(e.target.value);

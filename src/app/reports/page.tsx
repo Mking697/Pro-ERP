@@ -50,10 +50,14 @@ export default async function ReportsPage() {
             {reports.map((report) => (
               <Card
                 key={report.id}
-                className="transition-colors duration-150 hover:border-foreground/20"
+                className="relative transition-shadow duration-150 hover:ring-foreground/25"
               >
                 <CardHeader>
                   <CardTitle className="text-base">
+                    {/* The card stays `relative` on purpose: this link stretches over the whole
+                        card with `after:inset-0`, and with no positioned ancestor that overlay
+                        resolves against the viewport instead — every card then covers the whole
+                        page, and the last one drawn swallows every click on all the others. */}
                     <Link
                       href={`/reports/${report.id}`}
                       className="after:absolute after:inset-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"

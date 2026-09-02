@@ -43,7 +43,12 @@ async function uploadToBlob(
 
   // Keyed by org so one tenant's uploads can never collide with or overwrite another's,
   // and a random id keeps two files of the same name apart.
-  const key = `orgs/${orgId}/${generateId("ATT")}-${fileName}`;
+  // The name comes from the uploader's machine. Vercel Blob treats a pathname as an
+  // opaque key, so traversal is not known to be exploitable — but nothing here depends on
+  // the original name being preserved exactly, and an untested assumption on a storage
+  // path is not worth keeping.
+  const safeName = fileName.replace(/[^a-zA-Z0-9._-]/g, "_").slice(0, 100) || "file";
+  const key = `orgs/${orgId}/${generateId("ATT")}-${safeName}`;
 
   const blob = await put(key, buffer, {
     access: "public",

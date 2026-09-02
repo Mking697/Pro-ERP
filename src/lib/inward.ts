@@ -33,6 +33,8 @@ export interface InwardRecord {
   /** Optional link to an inventory item — set, a passed check adds to stock. */
   SKU: string;
   Item_Name: string;
+  /** Who raised this entry. Blank on rows written before the column existed. */
+  Created_By: string;
 }
 
 export interface FailureLogRecord {
@@ -84,6 +86,8 @@ interface CreateInwardInput {
   /** Optional: naming an item is what lets the passed quantity reach stock. */
   sku?: string;
   itemName?: string;
+  /** The user id of whoever raised it — matches what the quality check stores. */
+  createdBy: string;
 }
 
 export async function createInwardEntry(input: CreateInwardInput): Promise<InwardRecord> {
@@ -107,6 +111,7 @@ export async function createInwardEntry(input: CreateInwardInput): Promise<Inwar
     Fail_Reason: "",
     SKU: input.sku ?? "",
     Item_Name: input.itemName ?? "",
+    Created_By: input.createdBy,
   };
 
   await appendModuleRow(MODULE_KEY, recordToRow(MODULE_KEY, record));

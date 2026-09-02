@@ -2,6 +2,9 @@ import { appendModuleRow, getModuleRows, recordToRow } from "@/lib/moduleSheets"
 import { generateId } from "@/lib/id";
 import { num, numOr0, type ItemRecord } from "@/lib/inventory/items";
 import type { Direction, LedgerSource, StockStatus } from "@/lib/inventory/constants";
+// round3 lives with the allocation, which imports nothing at all — so a shared rounding
+// rule costs this module no extra dependency.
+import { round3 } from "@/lib/inventory/allocation";
 
 const MODULE_KEY = "STOCK_LEDGER";
 
@@ -43,6 +46,13 @@ export async function listLedgerForSku(sku: string): Promise<LedgerRecord[]> {
  *
  * Stock is never stored. Every screen recomputes it from the movements, so there is no
  * cached total that can drift out of step with the rows that produced it.
+ *
+ * Rounded to three places at every step, because quantities are decimal by design (kg, m,
+ * litre) and binary floating point does not add them exactly: 3.3 in and 1.1 out leaves
+ * 2.1999999999999997. The screen rounds that to "2.2", so issuing 2.2 was refused with
+ * "free stock 2.2 hai, aur aap 2.2 nikaal rahe hain" — an error that contradicts itself
+ * and that nobody can act on. Three places is the same precision every quantity is
+ * displayed and allocated at, so rounding here loses nothing real.
  */
 export function onHandBySku(ledger: LedgerRecord[]): Map<string, number> {
   const stock = new Map<string, number>();
@@ -50,7 +60,7 @@ export function onHandBySku(ledger: LedgerRecord[]): Map<string, number> {
     if (!row.SKU) continue;
     const qty = numOr0(row.Quantity);
     const delta = row.Direction === "Out" ? -qty : qty;
-    stock.set(row.SKU, (stock.get(row.SKU) ?? 0) + delta);
+    stock.set(row.SKU, round3((stock.get(row.SKU) ?? 0) + delta));
   }
   return stock;
 }
@@ -75,13 +85,16 @@ export function positionFor(
   const oh = onHand.get(sku) ?? 0;
   const cm = committed.get(sku) ?? 0;
   const it = inTransit.get(sku) ?? 0;
+  // Rounded for the same reason the ledger sum is: `free` is what an Out is checked
+  // against, so a trailing 0.0000000000003 here becomes a refused, self-contradicting
+  // error on screen.
   return {
     sku,
     onHand: oh,
     committed: cm,
-    free: oh - cm,
+    free: round3(oh - cm),
     inTransit: it,
-    projected: oh - cm + it,
+    projected: round3(oh - cm + it),
   };
 }
 

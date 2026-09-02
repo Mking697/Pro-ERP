@@ -16,6 +16,17 @@ export default async function InwardPage() {
 
   if (!session) redirect("/login");
 
+  // The nav only offers this page to someone holding one of the three inward grants, but
+  // the nav is not a guard — typing the URL reached the full inward list regardless. The
+  // same test now runs here, matching the API and the inward report.
+  if (
+    !session.access.includes("INWARD_ENTRY") &&
+    !session.access.includes("IQC_CHECK") &&
+    !session.access.includes("IMS_VIEW")
+  ) {
+    redirect("/dashboard");
+  }
+
   const canVerify = session.access.includes("IQC_CHECK");
   // The two sheets a quality check routes into are a separate grant from doing the check.
   const canViewRecords = session.access.includes("IMS_VIEW");

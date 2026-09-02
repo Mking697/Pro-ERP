@@ -25,10 +25,8 @@ import { getT } from "@/lib/i18n/server";
  */
 export default async function SharedReportPage({
   params,
-  searchParams,
 }: PageProps<"/share/[token]">) {
   const { token } = await params;
-  const sp = await searchParams;
   const t = await getT();
 
   const share = await getReportShare(token);
@@ -49,9 +47,14 @@ export default async function SharedReportPage({
       getSetting("ORG_LOGO_URL").catch(() => null),
     ]);
 
-    const range = typeof sp.range === "string" ? sp.range : share.Range_Key;
-    const from = typeof sp.from === "string" ? sp.from : share.From_Date || undefined;
-    const to = typeof sp.to === "string" ? sp.to : share.To_Date || undefined;
+    // The window comes from the link and from nothing else. Reading `?range=` off the
+    // URL let a visitor type `?range=all` and turn a link scoped to "today" into the
+    // organization's entire history — `resolveRange` answers an unknown key with
+    // `from: new Date(0)`. What was shared has to stay what was shared: the dates on the
+    // row are a limit, not a default for whoever holds the link to override.
+    const range = share.Range_Key;
+    const from = share.From_Date || undefined;
+    const to = share.To_Date || undefined;
 
     return (
       <div className="flex min-h-dvh flex-col bg-muted/30">
@@ -93,6 +96,10 @@ export default async function SharedReportPage({
             // carries no report name; those fall back to the inward report rather than
             // showing everything, since showing more than was meant is the worse error.
             only={share.Report || "inward"}
+            // Organization-wide, always. There is no reader on the other end of a public
+            // link for "my work" to mean anything about, and the link's stored grants are
+            // what bound it.
+            scope="all"
             // Handed down explicitly. The runWithTenant wrapped around this JSX has
             // already gone out of scope by the time React renders this child, so
             // without it the reads would resolve against the visitor's own session.

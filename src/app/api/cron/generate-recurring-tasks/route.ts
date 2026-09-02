@@ -30,7 +30,14 @@ export async function POST(request: Request) {
   return NextResponse.json({ scope: "organization", result });
 }
 
-// Vercel Cron sends a GET request to the scheduled path.
+// Vercel Cron sends a GET request to the scheduled path — and only Vercel Cron may use
+// it. A session cookie is SameSite=Lax, which browsers *do* send on a cross-site top-level
+// navigation, so aliasing GET straight to POST meant a crafted link an Admin merely
+// clicked would fire recurring generation. The secret is
+// required on this verb; the session-authenticated trigger stays POST-only.
 export async function GET(request: Request) {
+  if (!isCronCall(request)) {
+    return NextResponse.json({ error: "Not found." }, { status: 404 });
+  }
   return POST(request);
 }
