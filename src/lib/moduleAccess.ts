@@ -84,6 +84,12 @@ export const MODULE_ACCESS = [
     description: "Poori team ka MIS score dekh sakta hai",
     href: "/performance",
   },
+  {
+    key: "FMS_ADMIN",
+    label: "Flow Templates",
+    description: "FMS templates bana aur badal sakta hai",
+    href: "/fms/templates",
+  },
 ] as const;
 
 export type ModuleAccessKey = (typeof MODULE_ACCESS)[number]["key"];

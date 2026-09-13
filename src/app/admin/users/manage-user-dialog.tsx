@@ -45,6 +45,7 @@ export default function ManageUserDialog({
   const [role, setRole] = useState(user.Role);
   const [department, setDepartment] = useState(user.Department);
   const [phoneNumber, setPhoneNumber] = useState(user.Phone_Number);
+  const [shift, setShift] = useState(user.Shift || "1");
   const [active, setActive] = useState(user.Status === "Active");
   const [moduleAccess, setModuleAccess] = useState<string[]>(
     parseModuleAccess(user.Module_Access)
@@ -85,6 +86,7 @@ export default function ManageUserDialog({
           role,
           department,
           phoneNumber,
+          shift,
           status: active ? "Active" : "Inactive",
           moduleAccess,
         }),
@@ -171,6 +173,21 @@ export default function ManageUserDialog({
                 onChange={(e) => setPhoneNumber(e.target.value)}
               />
             </div>
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="edit-shift">{t("FMS Shift")}</Label>
+            <Select value={shift} onValueChange={(value) => value && setShift(value)}>
+              <SelectTrigger id="edit-shift" className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {["1", "2", "3", "4"].map((s) => (
+                  <SelectItem key={s} value={s}>
+                    {t("Shift")} {s}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
           <ModuleAccessPicker
             value={moduleAccess}

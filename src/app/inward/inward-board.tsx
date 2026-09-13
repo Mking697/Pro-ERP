@@ -12,12 +12,21 @@ import {
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { formatDueDisplay } from "@/lib/formatDate";
+import { parseStamp } from "@/lib/timestamp";
 import AttachmentLink from "@/components/attachment-link";
 import CreateInwardDialog from "./create-inward-dialog";
 import QualityCheckDialog from "./quality-check-dialog";
 import type { InwardRecord } from "./types";
 import { TableSkeleton } from "@/components/loading-states";
 import { useT } from "@/components/preferences-provider";
+
+/** An entry's IQC check is only "Not Done" while it's still Pending and past its
+ * deadline — a live label, never stored, mirroring isIqcOverdue() in src/lib/inward.ts. */
+function isIqcOverdue(entry: InwardRecord): boolean {
+  if (entry.IQC_Status !== "Pending" || !entry.IQC_Deadline) return false;
+  const deadline = parseStamp(entry.IQC_Deadline);
+  return deadline !== null && new Date() > deadline;
+}
 
 export default function InwardBoard({ canVerify }: { canVerify: boolean }) {
   const t = useT();
@@ -41,7 +50,7 @@ export default function InwardBoard({ canVerify }: { canVerify: boolean }) {
   }
 
   if (loading) {
-    return <TableSkeleton columns={5} label={t("Inward entries load ho rahi hain")} />;
+    return <TableSkeleton columns={6} label={t("Inward entries load ho rahi hain")} />;
   }
 
   return (
@@ -58,6 +67,7 @@ export default function InwardBoard({ canVerify }: { canVerify: boolean }) {
               <TableHead>Type</TableHead>
               <TableHead>Timestamp</TableHead>
               <TableHead>Attachment</TableHead>
+              <TableHead>{t("IQC Deadline")}</TableHead>
               <TableHead>Status</TableHead>
               {canVerify && <TableHead className="text-right">Actions</TableHead>}
             </TableRow>
@@ -65,7 +75,7 @@ export default function InwardBoard({ canVerify }: { canVerify: boolean }) {
           <TableBody>
             {entries.length === 0 && (
               <TableRow>
-                <TableCell colSpan={canVerify ? 7 : 6} className="text-center text-muted-foreground">{t("Koi inward entry nahi hai.")}</TableCell>
+                <TableCell colSpan={canVerify ? 8 : 7} className="text-center text-muted-foreground">{t("Koi inward entry nahi hai.")}</TableCell>
               </TableRow>
             )}
             {entries.map((entry) => (
@@ -77,9 +87,18 @@ export default function InwardBoard({ canVerify }: { canVerify: boolean }) {
                 <TableCell>
                   <AttachmentLink url={entry.Attachment_URL} />
                 </TableCell>
+                <TableCell>{formatDueDisplay(entry.IQC_Deadline)}</TableCell>
                 <TableCell>
-                  <Badge variant={entry.IQC_Status === "Verified" ? "default" : "secondary"}>
-                    {entry.IQC_Status}
+                  <Badge
+                    variant={
+                      isIqcOverdue(entry)
+                        ? "destructive"
+                        : entry.IQC_Status === "Verified"
+                          ? "default"
+                          : "secondary"
+                    }
+                  >
+                    {isIqcOverdue(entry) ? "Not Done" : entry.IQC_Status}
                     {entry.IQC_Status === "Verified" &&
                       Number(entry.IQC_Fail_Qty) > 0 &&
                       " (Fail Qty found)"}

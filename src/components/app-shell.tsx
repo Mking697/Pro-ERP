@@ -32,6 +32,9 @@ export default async function AppShell({
   // Everyone has tasks assigned to them, so Tasks is always reachable.
   items.push({ icon: "tasks", href: "/tasks", label: "Tasks" });
 
+  // Anyone can be the assignee of an FMS step, same tier as Tasks.
+  items.push({ icon: "fms", href: "/fms", label: "Flows" });
+
   // Every person has at least their own tasks report.
   items.push({ icon: "performance", href: "/reports", label: "Reports" });
 

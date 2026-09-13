@@ -42,6 +42,7 @@ export default function CreateUserDialog({
   const [role, setRole] = useState<string>("Employee");
   const [department, setDepartment] = useState("");
   const [phoneNumber, setPhoneNumber] = useState("");
+  const [shift, setShift] = useState("1");
   const [moduleAccess, setModuleAccess] = useState<string[]>([]);
 
   function resetForm() {
@@ -51,6 +52,7 @@ export default function CreateUserDialog({
     setRole("Employee");
     setDepartment("");
     setPhoneNumber("");
+    setShift("1");
     setModuleAccess([]);
   }
 
@@ -68,6 +70,7 @@ export default function CreateUserDialog({
           role,
           department,
           phoneNumber,
+          shift,
           moduleAccess,
         }),
       });
@@ -169,6 +172,21 @@ export default function CreateUserDialog({
                 placeholder="+91..."
               />
             </div>
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="shift">{t("FMS Shift")}</Label>
+            <Select value={shift} onValueChange={(value) => value && setShift(value)}>
+              <SelectTrigger id="shift" className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {["1", "2", "3", "4"].map((s) => (
+                  <SelectItem key={s} value={s}>
+                    {t("Shift")} {s}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
           <ModuleAccessPicker
             value={moduleAccess}

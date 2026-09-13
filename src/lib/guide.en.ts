@@ -930,4 +930,68 @@ export const GUIDE_EN: GuideChapter[] = [
       },
     ],
   },
+
+  {
+    id: "fms",
+    title: "Flows (FMS) — multi-step processes",
+    description: "Work with more than one step, where each step has its own deadline and its own person.",
+    sections: [
+      {
+        id: "fms-idea",
+        title: "How a flow works",
+        audience: "everyone",
+        summary:
+          "A Flow is started from a template made of several steps — each step is assigned to a user and has its own turnaround time (TAT).",
+        how: [
+          "The moment a step is assigned to you, its deadline starts. The deadline only counts the company's actual working hours — night, lunch, tea break, weekly-offs and holidays are never counted.",
+          "Finished within the deadline: \"On Time\". Finished after it: \"Delay Done\". Still pending after the deadline has passed: shown as \"Not Done\" — this is never stored either, it's worked out live every time, the same way an MIS score is.",
+          "If you already have another step open when a new one is assigned to you, the new step's deadline starts only after your existing one's deadline arrives — you can only hold one open clock at a time.",
+        ],
+        notes: [
+          "A step's outcome (e.g. Pass/Fail) decides which step runs next — the next step isn't the same for everyone.",
+        ],
+      },
+      {
+        id: "fms-complete",
+        title: "Completing your step",
+        audience: "everyone",
+        summary: "See and complete your pending steps on the Flows page.",
+        steps: [
+          "Open the Flows page — every step assigned to you shows up here.",
+          "Press Complete on whichever step you've finished.",
+          "Choose an outcome (e.g. Pass or Fail) and add a remark if you'd like.",
+        ],
+      },
+      {
+        id: "fms-shifts",
+        title: "Setting Company Running Time",
+        audience: "FMS_ADMIN",
+        summary:
+          "Set shift hours, lunch, tea (optional) and weekly-off in Settings — this is what every step's deadline is worked out from.",
+        how: [
+          "Each user has their own shift (set when creating or editing a user). Setting a shift's start/end, lunch and tea break (if any) is what makes that shift's people's TAT count correctly.",
+          "A weekly-off (Sunday by default) pushes every new step's deadline past that day. To open a specific date back up — say, running production on one particular Sunday — add a Week-off Override in Settings: for everyone, for one Department, or for one user.",
+        ],
+        notes: [
+          "Changing shift/lunch/tea/weekly-off only affects steps created afterwards — a step already in progress keeps its existing deadline.",
+        ],
+      },
+      {
+        id: "fms-template",
+        title: "Building a new Flow Template",
+        audience: "FMS_ADMIN",
+        summary: "Define a multi-step process once — it can then run as many times as needed.",
+        steps: [
+          "On the Templates tab of the Flows page, press \"New Flow Template\".",
+          "For each step, fill in its name, who it's assigned to, and its TAT (in Hours or Days).",
+          "Write the step's outcomes (e.g. \"Pass,Fail\", comma-separated), then choose which step runs next for each outcome, or that the flow ends there.",
+          "Press Create Template.",
+        ],
+        notes: [
+          "Leaving the trigger as \"MANUAL\" means the flow only starts by hand. Giving it a module's event key instead (e.g. INWARD_ENTRY_CREATED), or another flow's outcome key, starts it automatically when that happens — avoiding a trigger loop is on whoever builds the template.",
+          "Archiving a template doesn't affect its steps already in progress — only new instances stop being created from it.",
+        ],
+      },
+    ],
+  },
 ];

@@ -11,6 +11,7 @@ const updateSchema = z.object({
   phoneNumber: z.string().optional(),
   status: z.enum(["Active", "Inactive"]).optional(),
   moduleAccess: z.array(z.enum(MODULE_ACCESS_KEYS)).optional(),
+  shift: z.string().optional(),
 });
 
 export async function PATCH(

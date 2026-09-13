@@ -972,6 +972,70 @@ export const GUIDE: GuideChapter[] = [
       },
     ],
   },
+
+  {
+    id: "fms",
+    title: "Flows (FMS) — multi-step process",
+    description: "Ek se zyada steps wala kaam, jisme har step ki apni deadline aur apna aadmi hota hai.",
+    sections: [
+      {
+        id: "fms-idea",
+        title: "Flow kaam kaise karta hai",
+        audience: "everyone",
+        summary:
+          "Ek Flow ek template se banta hai jisme kai steps hote hain — har step ek user ko assign hota hai aur har step ki apni turnaround time (TAT) hoti hai.",
+        how: [
+          "Jaise hi koi step aapko assign hota hai, uski deadline shuru ho jaati hai. Deadline sirf company ke working hours ke andar ginti hai — raat, lunch, tea break, weekly-off aur holiday ka time is ginti me nahi aata.",
+          "Deadline ke andar complete kiya to 'On Time'. Deadline ke baad complete kiya to 'Delay Done'. Abhi tak pending hai aur deadline nikal chuki hai to 'Not Done' dikhta hai — ye bhi kahin store nahi hota, MIS score jaisa hi hamesha live nikala jaata hai.",
+          "Agar aapke paas pehle se koi step khula (pending) hai aur usi waqt aapko doosra step assign ho raha hai, to naye step ki deadline aapke pehle wale step ke khatam hone ke baad se shuru hogi — ek waqt me ek hi step ka clock chalta hai.",
+        ],
+        notes: [
+          "Ek step ka outcome (jaise Pass/Fail) decide karta hai ki agla kaunsa step chalega — sabke liye agla step ek jaisa nahi hota.",
+        ],
+      },
+      {
+        id: "fms-complete",
+        title: "Apna step complete karna",
+        audience: "everyone",
+        summary: "Flows page par apne pending steps dekhein aur complete karein.",
+        steps: [
+          "Flows page kholein — apne naam assign saare pending steps yahan dikhte hain.",
+          "Jis step ka kaam ho gaya, uske saamne Complete dabayein.",
+          "Outcome chunein (jaise Pass ya Fail) aur chahen to remark likhein.",
+        ],
+      },
+      {
+        id: "fms-shifts",
+        title: "Company Running Time set karna",
+        audience: "FMS_ADMIN",
+        summary:
+          "Settings me shift ke ghante, lunch, tea (optional) aur weekly-off set karna — isi se har step ki deadline nikalti hai.",
+        how: [
+          "Har user ki apni shift hoti hai (User banate/badalte waqt). Ek shift ke start-end, lunch aur (agar ho to) tea break set karne se us shift ke logon ki TAT sahi ginti hai.",
+          "Weekly-off (default Sunday) us din har naye step ki deadline aage badha deta hai. Kisi khaas date ko kholna ho — jaise ek Sunday production chalani ho — to Settings me Week-off Override daalein: sabke liye, ek Department ke liye, ya ek user ke liye.",
+        ],
+        notes: [
+          "Shift/lunch/tea/weekly-off badalne ka asar sirf aage banne wale steps par padta hai — jo step pehle se chal raha hai uski deadline nahi badalti.",
+        ],
+      },
+      {
+        id: "fms-template",
+        title: "Naya Flow Template banana",
+        audience: "FMS_ADMIN",
+        summary: "Ek multi-step process ko ek baar define karna — phir wo baar-baar chal sakta hai.",
+        steps: [
+          "Flows page ke Templates tab me 'Naya Flow Template' dabayein.",
+          "Har step ka naam, kise assign hoga, aur TAT (Hours ya Days me) bharein.",
+          "Step ke outcomes likhein (jaise 'Pass,Fail' — comma se alag), phir har outcome ke aage decide karein agla kaunsa step chalega, ya flow yahin khatam ho.",
+          "Template banayein dabayein.",
+        ],
+        notes: [
+          "Trigger 'MANUAL' rakhne par flow sirf haath se start hota hai. Iski jagah kisi module ka event key (jaise INWARD_ENTRY_CREATED) ya kisi doosre flow ka outcome key dene se wo flow uske hote hi khud shuru ho jaata hai — koi loop na bane iska dhyan template banate waqt khud rakhna hai.",
+          "Template Archive karne se uske purane chal rahe steps par asar nahi padta, sirf naye instance us se nahi bante.",
+        ],
+      },
+    ],
+  },
 ];
 
 /**

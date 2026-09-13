@@ -9,7 +9,13 @@ import {
 import { recordMovement } from "@/lib/inventory/ledger";
 import { findItem } from "@/lib/inventory/items";
 import { generateId } from "@/lib/id";
-import { nowStamp } from "@/lib/timestamp";
+import { formatStamp, nowStamp, parseStamp } from "@/lib/timestamp";
+import { emitFmsEvent } from "@/lib/fms/engine";
+import { computeDefaultTatDeadline } from "@/lib/fms/calendar";
+import { getSetting } from "@/lib/settings";
+
+const DEFAULT_IQC_TAT_VALUE = 24;
+const DEFAULT_IQC_TAT_UNIT = "Hours";
 
 const MODULE_KEY = "INWARD_IQC_FMS";
 const FAILURE_LOG_KEY = "FAILURE_LOG";
@@ -35,6 +41,12 @@ export interface InwardRecord {
   Item_Name: string;
   /** Who raised this entry. Blank on rows written before the column existed. */
   Created_By: string;
+  /** TAT/deadline the IQC check should finish within — computed once at creation from
+   * Settings ("INWARD_IQC_TAT_VALUE"/"_UNIT"), working-hours-aware. Purely additive:
+   * IQC_Status, Verified_By and the Pass/Fail routing below are unchanged by this. */
+  IQC_TAT_Value: string;
+  IQC_TAT_Unit: string;
+  IQC_Deadline: string;
 }
 
 export interface FailureLogRecord {
@@ -63,6 +75,15 @@ export interface ImsInwardRecord {
 
 export async function listInwardEntries(): Promise<InwardRecord[]> {
   return getModuleRows<InwardRecord>(MODULE_KEY);
+}
+
+/** An entry's IQC check counts as "Not Done" only while it is still Pending and its
+ * deadline has passed — a live, timestamp-derived classification, never a status stored
+ * in the sheet. Mirrors isOverdue() in src/lib/mis.ts. */
+export function isIqcOverdue(entry: InwardRecord): boolean {
+  if (entry.IQC_Status !== "Pending" || !entry.IQC_Deadline) return false;
+  const deadline = parseStamp(entry.IQC_Deadline);
+  return deadline !== null && new Date() > deadline;
 }
 
 /** Rejected quantities routed here by submitQualityCheck, newest first. */
@@ -94,6 +115,17 @@ export async function createInwardEntry(input: CreateInwardInput): Promise<Inwar
   // The SKU columns were added after some organizations connected this sheet.
   await ensureModuleHeaders(MODULE_KEY);
 
+  // How long IQC has to verify this entry — an Admin-configured company default (Settings),
+  // not per-user, since nobody in particular is assigned an inward entry. Computed once
+  // here, working-hours-aware, exactly like an FMS step's deadline — see computeDefaultTatDeadline.
+  const [tatValueRaw, tatUnitRaw] = await Promise.all([
+    getSetting("INWARD_IQC_TAT_VALUE"),
+    getSetting("INWARD_IQC_TAT_UNIT"),
+  ]);
+  const tatValue = Number(tatValueRaw) > 0 ? Number(tatValueRaw) : DEFAULT_IQC_TAT_VALUE;
+  const tatUnit = tatUnitRaw === "Days" ? "Days" : DEFAULT_IQC_TAT_UNIT;
+  const deadlineMs = await computeDefaultTatDeadline(Date.now(), tatValue, tatUnit);
+
   const record: InwardRecord = {
     Entry_ID: generateId("INW"),
     Timestamp: nowStamp(),
@@ -112,9 +144,22 @@ export async function createInwardEntry(input: CreateInwardInput): Promise<Inwar
     SKU: input.sku ?? "",
     Item_Name: input.itemName ?? "",
     Created_By: input.createdBy,
+    IQC_TAT_Value: String(tatValue),
+    IQC_TAT_Unit: tatUnit,
+    IQC_Deadline: formatStamp(new Date(deadlineMs)),
   };
 
   await appendModuleRow(MODULE_KEY, recordToRow(MODULE_KEY, record));
+
+  // Best-effort: lets an org-defined FMS template react to a new inward entry without
+  // touching this module's own IQC flow at all. Mirrors the IQC stock-In write below — a
+  // chaining failure must never undo or block the entry that has already saved.
+  try {
+    await emitFmsEvent("INWARD_ENTRY_CREATED", `${MODULE_KEY}:${record.Entry_ID}`);
+  } catch (error) {
+    console.error(`[inward] FMS event emit failed for ${record.Entry_ID}:`, error);
+  }
+
   return record;
 }
 

@@ -97,6 +97,12 @@ export const MODULE_SHEETS: ModuleDefinition[] = [
       // entry but never who raised it, so an inward report could not be narrowed to a
       // person's own work. ensureModuleHeaders() appends it to sheets already connected.
       "Created_By",
+      // TAT/deadline for the IQC check — added after the fact, same as Created_By above.
+      // No column here changes what IQC_Status/Verified_By/routing already mean; these
+      // three are purely additive, computed once at entry creation.
+      "IQC_TAT_Value",
+      "IQC_TAT_Unit",
+      "IQC_Deadline",
     ],
   },
   {
@@ -253,6 +259,61 @@ export const MODULE_SHEETS: ModuleDefinition[] = [
       "Status",
       "Created_At",
     ],
+  },
+  {
+    key: "FMS_TEMPLATES",
+    label: "FMS Templates",
+    settingKey: "SHEET_URL_FMS_TEMPLATES",
+    headers: [
+      // One row per step, grouped by Template_ID — same flat-rows-by-group shape as BOM,
+      // so a template's metadata (name, trigger, status) repeats on every one of its rows
+      // rather than living in a separate header sheet.
+      "Template_ID",
+      "Template_Name",
+      "Trigger_Event",
+      "Status",
+      "Created_By",
+      "Created_At",
+      "Step_No",
+      "Step_Name",
+      "Assigned_To",
+      "TAT_Value",
+      "TAT_Unit",
+      "Outcome_Options",
+      "Next_Step_Map",
+    ],
+  },
+  {
+    key: "FMS_RUNS",
+    label: "FMS Runs",
+    settingKey: "SHEET_URL_FMS_RUNS",
+    headers: [
+      // One row per step execution, grouped by Instance_ID.
+      "Run_ID",
+      "Instance_ID",
+      "Template_ID",
+      "Template_Name",
+      "Context_Ref",
+      "Started_By",
+      "Started_At",
+      "Step_No",
+      "Step_Name",
+      "Assigned_To",
+      "Created_At",
+      "TAT_Start",
+      "TAT_Deadline",
+      "Completed_At",
+      "Completed_By",
+      "Outcome",
+      "Status",
+      "Remark",
+    ],
+  },
+  {
+    key: "FMS_WEEKOFF_OVERRIDES",
+    label: "FMS Week-off Overrides",
+    settingKey: "SHEET_URL_FMS_WEEKOFF_OVERRIDES",
+    headers: ["Override_ID", "Date", "Scope", "Scope_Value", "Created_By", "Created_At"],
   },
 ];
 

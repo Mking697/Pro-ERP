@@ -21,6 +21,7 @@ const createSchema = z.object({
   department: z.string().optional().default(""),
   phoneNumber: z.string().optional().default(""),
   moduleAccess: z.array(z.enum(MODULE_ACCESS_KEYS)).optional().default([]),
+  shift: z.string().optional().default("1"),
 });
 
 export async function POST(request: Request) {

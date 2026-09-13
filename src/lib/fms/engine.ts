@@ -1,0 +1,277 @@
+import { appendModuleRow, getModuleRows, updateModuleCells, recordToRow } from "@/lib/moduleSheets";
+import { generateId } from "@/lib/id";
+import { formatStamp, nowStamp, parseStamp } from "@/lib/timestamp";
+import {
+  getFmsTemplateStep,
+  listFmsTemplates,
+  parseNextStepMap,
+  parseOutcomeOptions,
+  type FmsTatUnit,
+} from "@/lib/fms/templates";
+import { computeNextWorkingInstant, computeTatDeadline } from "@/lib/fms/calendar";
+
+const MODULE_KEY = "FMS_RUNS";
+
+export interface FmsRunRecord {
+  Run_ID: string;
+  Instance_ID: string;
+  Template_ID: string;
+  Template_Name: string;
+  Context_Ref: string;
+  Started_By: string;
+  Started_At: string;
+  Step_No: string;
+  Step_Name: string;
+  Assigned_To: string;
+  Created_At: string;
+  TAT_Start: string;
+  TAT_Deadline: string;
+  Completed_At: string;
+  Completed_By: string;
+  Outcome: string;
+  Status: string;
+  Remark: string;
+}
+
+function runToRow(run: FmsRunRecord): string[] {
+  return recordToRow(MODULE_KEY, run);
+}
+
+/** A step is only "Not Done" while it's still open and past its deadline — a live label,
+ * never stored, mirroring isOverdue() in src/lib/mis.ts. */
+export function isFmsStepOverdue(run: FmsRunRecord): boolean {
+  if (run.Status !== "Pending" || !run.TAT_Deadline) return false;
+  const deadline = parseStamp(run.TAT_Deadline);
+  return deadline !== null && new Date() > deadline;
+}
+
+/**
+ * A user can hold only one open TAT at a time. If they already have another Pending step,
+ * the new one's clock starts only once the furthest-out existing deadline arrives — pushed
+ * forward through the working calendar, never added on top of "now" naively.
+ */
+async function queueOpenTatStart(assignedTo: string, naturalStartEpochMs: number): Promise<number> {
+  const runs = await getModuleRows<FmsRunRecord>(MODULE_KEY);
+  const openDeadlines = runs
+    .filter((r) => r.Assigned_To === assignedTo && r.Status === "Pending")
+    .map((r) => parseStamp(r.TAT_Deadline)?.getTime())
+    .filter((ms): ms is number => typeof ms === "number");
+
+  const snappedNatural = await computeNextWorkingInstant(assignedTo, naturalStartEpochMs);
+  if (openDeadlines.length === 0) return snappedNatural;
+
+  const latestOpenDeadline = Math.max(...openDeadlines);
+  if (latestOpenDeadline <= snappedNatural) return snappedNatural;
+  return computeNextWorkingInstant(assignedTo, latestOpenDeadline);
+}
+
+interface AppendStepRunInput {
+  instanceId: string;
+  templateId: string;
+  templateName: string;
+  contextRef: string;
+  startedBy: string;
+  startedAt: string;
+  stepNo: number;
+  stepName: string;
+  assignedTo: string;
+  tatValue: number;
+  tatUnit: FmsTatUnit;
+}
+
+async function appendStepRun(input: AppendStepRunInput): Promise<FmsRunRecord> {
+  const tatStartMs = await queueOpenTatStart(input.assignedTo, Date.now());
+  const tatDeadlineMs = await computeTatDeadline(
+    input.assignedTo,
+    tatStartMs,
+    input.tatValue,
+    input.tatUnit
+  );
+
+  const run: FmsRunRecord = {
+    Run_ID: generateId("RUN"),
+    Instance_ID: input.instanceId,
+    Template_ID: input.templateId,
+    Template_Name: input.templateName,
+    Context_Ref: input.contextRef,
+    Started_By: input.startedBy,
+    Started_At: input.startedAt,
+    Step_No: String(input.stepNo),
+    Step_Name: input.stepName,
+    Assigned_To: input.assignedTo,
+    Created_At: nowStamp(),
+    TAT_Start: formatStamp(new Date(tatStartMs)),
+    TAT_Deadline: formatStamp(new Date(tatDeadlineMs)),
+    Completed_At: "",
+    Completed_By: "",
+    Outcome: "",
+    Status: "Pending",
+    Remark: "",
+  };
+
+  await appendModuleRow(MODULE_KEY, runToRow(run));
+  return run;
+}
+
+interface StartFmsInstanceInput {
+  templateId: string;
+  /** Freeform link back to whatever caused this — e.g. "INWARD_IQC_FMS:INW-K3M9QX7A". */
+  contextRef: string;
+  /** A user id, or "SYSTEM" when started by an emitted event rather than a person. */
+  startedBy: string;
+}
+
+export async function startFmsInstance(input: StartFmsInstanceInput): Promise<FmsRunRecord> {
+  const firstStep = await getFmsTemplateStep(input.templateId, 1);
+  if (!firstStep) {
+    throw new Error("Is template ka pehla step nahi mila.");
+  }
+
+  return appendStepRun({
+    instanceId: generateId("INS"),
+    templateId: input.templateId,
+    templateName: firstStep.Template_Name,
+    contextRef: input.contextRef,
+    startedBy: input.startedBy,
+    startedAt: nowStamp(),
+    stepNo: 1,
+    stepName: firstStep.Step_Name,
+    assignedTo: firstStep.Assigned_To,
+    tatValue: Number(firstStep.TAT_Value),
+    tatUnit: firstStep.TAT_Unit as FmsTatUnit,
+  });
+}
+
+interface CompleteFmsStepInput {
+  runId: string;
+  outcome: string;
+  completedBy: string;
+  remark?: string;
+}
+
+export async function completeFmsStep(
+  input: CompleteFmsStepInput
+): Promise<{ completed: FmsRunRecord; next: FmsRunRecord | null }> {
+  const runs = await getModuleRows<FmsRunRecord>(MODULE_KEY);
+  const index = runs.findIndex((r) => r.Run_ID === input.runId);
+  if (index === -1) throw new Error("Step nahi mila.");
+
+  const run = runs[index];
+  const rowNumber = index + 2; // data starts at sheet row 2, header is row 1
+
+  if (run.Status !== "Pending") {
+    throw new Error("Yeh step pehle se complete ho chuka hai.");
+  }
+  if (run.Assigned_To !== input.completedBy) {
+    throw new Error("Aap sirf apne assigned step complete kar sakte hain.");
+  }
+
+  const step = await getFmsTemplateStep(run.Template_ID, Number(run.Step_No));
+  if (!step) {
+    throw new Error("Is step ki template definition nahi mili — template edit/delete ho chuka hoga.");
+  }
+  const validOutcomes = parseOutcomeOptions(step.Outcome_Options);
+  if (!validOutcomes.includes(input.outcome)) {
+    throw new Error(`Outcome "${input.outcome}" is step ke liye valid nahi hai.`);
+  }
+
+  const now = new Date();
+  const deadline = parseStamp(run.TAT_Deadline);
+  const isOnTime = !deadline || now <= deadline;
+  const completedAt = formatStamp(now);
+  const status = isOnTime ? "On Time" : "Delay Done";
+  const remark = input.remark ?? "";
+
+  await updateModuleCells(MODULE_KEY, [
+    {
+      rowNumber,
+      fields: {
+        Completed_At: completedAt,
+        Completed_By: input.completedBy,
+        Outcome: input.outcome,
+        Status: status,
+        Remark: remark,
+      },
+    },
+  ]);
+
+  const completed: FmsRunRecord = {
+    ...run,
+    Completed_At: completedAt,
+    Completed_By: input.completedBy,
+    Outcome: input.outcome,
+    Status: status,
+    Remark: remark,
+  };
+
+  const nextMap = parseNextStepMap(step.Next_Step_Map);
+  const target = nextMap[input.outcome];
+
+  let next: FmsRunRecord | null = null;
+  if (target && target !== "END") {
+    const nextStepNo = Number(target);
+    const nextStep = await getFmsTemplateStep(run.Template_ID, nextStepNo);
+    if (nextStep) {
+      next = await appendStepRun({
+        instanceId: run.Instance_ID,
+        templateId: run.Template_ID,
+        templateName: run.Template_Name,
+        contextRef: run.Context_Ref,
+        startedBy: run.Started_By,
+        startedAt: run.Started_At,
+        stepNo: nextStepNo,
+        stepName: nextStep.Step_Name,
+        assignedTo: nextStep.Assigned_To,
+        tatValue: Number(nextStep.TAT_Value),
+        tatUnit: nextStep.TAT_Unit as FmsTatUnit,
+      });
+    }
+  }
+
+  // Best-effort chaining: a broken or archived downstream template must never undo the
+  // step completion that has already saved above. No loop guard — trusted to the admin
+  // who wires up triggers, per the confirmed scope of this build.
+  try {
+    await emitFmsEvent(`FMS:${run.Template_ID}:${run.Step_No}:${input.outcome}`, run.Context_Ref);
+  } catch (error) {
+    console.error(`[fms] chained event emit failed for run ${run.Run_ID}:`, error);
+  }
+
+  return { completed, next };
+}
+
+/**
+ * The one generic chaining primitive. Both a completed FMS step (above) and another
+ * module's own code (e.g. src/lib/inward.ts after saving an entry) call this the same
+ * way — it doesn't know or care which.
+ */
+export async function emitFmsEvent(sourceKey: string, contextRef: string): Promise<void> {
+  const allSteps = await listFmsTemplates();
+  const matchingFirstSteps = allSteps.filter(
+    (s) => Number(s.Step_No) === 1 && s.Trigger_Event === sourceKey && s.Status === "Active"
+  );
+
+  for (const step of matchingFirstSteps) {
+    try {
+      await startFmsInstance({ templateId: step.Template_ID, contextRef, startedBy: "SYSTEM" });
+    } catch (error) {
+      console.error(`[fms] emitFmsEvent failed to start template ${step.Template_ID}:`, error);
+    }
+  }
+}
+
+export async function listMyPendingFmsSteps(userId: string): Promise<FmsRunRecord[]> {
+  const runs = await getModuleRows<FmsRunRecord>(MODULE_KEY);
+  return runs.filter((r) => r.Assigned_To === userId && r.Status === "Pending");
+}
+
+export async function listFmsInstanceHistory(instanceId: string): Promise<FmsRunRecord[]> {
+  const runs = await getModuleRows<FmsRunRecord>(MODULE_KEY);
+  return runs
+    .filter((r) => r.Instance_ID === instanceId)
+    .sort((a, b) => Number(a.Step_No) - Number(b.Step_No));
+}
+
+export async function listAllFmsRuns(): Promise<FmsRunRecord[]> {
+  return getModuleRows<FmsRunRecord>(MODULE_KEY);
+}

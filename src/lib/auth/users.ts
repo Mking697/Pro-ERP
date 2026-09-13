@@ -28,6 +28,8 @@ export interface SheetUser {
   Created_By: string;
   /** Comma-separated module keys — see src/lib/moduleAccess.ts. */
   Module_Access: string;
+  /** FMS shift id (e.g. "1", "2") — see src/lib/fms/calendar.ts. Blank defaults to "1". */
+  Shift: string;
 }
 
 export type SafeSheetUser = Omit<SheetUser, "Password_Hash">;
@@ -44,6 +46,7 @@ export function toSafeUser(user: SheetUser): SafeSheetUser {
     Created_At: user.Created_At,
     Created_By: user.Created_By,
     Module_Access: user.Module_Access ?? "",
+    Shift: user.Shift ?? "",
   };
 }
 
@@ -59,6 +62,7 @@ export const USERS_HEADERS: (keyof SheetUser)[] = [
   "Created_At",
   "Created_By",
   "Module_Access",
+  "Shift",
 ];
 
 function userToRow(user: SheetUser): string[] {
@@ -137,6 +141,7 @@ interface CreateUserInput {
   phoneNumber: string;
   createdBy: string;
   moduleAccess?: readonly string[];
+  shift?: string;
 }
 
 export async function createUser(input: CreateUserInput): Promise<SheetUser> {
@@ -165,6 +170,7 @@ export async function createUser(input: CreateUserInput): Promise<SheetUser> {
     Created_At: nowStamp(),
     Created_By: input.createdBy,
     Module_Access: serializeModuleAccess(input.moduleAccess ?? []),
+    Shift: input.shift?.trim() || "1",
   };
 
   await appendSheetRow(USERS_TAB, userToRow(newUser));
@@ -196,6 +202,7 @@ interface UpdateUserInput {
   phoneNumber?: string;
   status?: string;
   moduleAccess?: readonly string[];
+  shift?: string;
 }
 
 export async function updateUser(userId: string, patch: UpdateUserInput): Promise<SheetUser> {
@@ -215,6 +222,7 @@ export async function updateUser(userId: string, patch: UpdateUserInput): Promis
       patch.moduleAccess !== undefined
         ? serializeModuleAccess(patch.moduleAccess)
         : found.user.Module_Access,
+    Shift: patch.shift?.trim() || found.user.Shift,
   };
 
   await updateSheetRow(USERS_TAB, found.rowNumber, userToRow(updated));

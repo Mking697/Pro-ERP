@@ -14,6 +14,7 @@ import {
   Settings,
   Truck,
   Users,
+  Workflow,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -31,6 +32,7 @@ const ICONS = {
   bom: ClipboardList,
   ppc: Factory,
   inward: Truck,
+  fms: Workflow,
   performance: BarChart3,
   users: Users,
   settings: Settings,

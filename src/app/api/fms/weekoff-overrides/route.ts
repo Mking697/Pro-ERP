@@ -1,0 +1,53 @@
+import { NextResponse } from "next/server";
+import { z } from "zod";
+import { requireRole } from "@/lib/auth/guard";
+import { tryModule } from "@/lib/moduleSheets";
+import { addWeekoffOverride, listWeekoffOverrides } from "@/lib/fms/weekoffOverrides";
+
+export async function GET() {
+  const guard = await requireRole(["Admin"]);
+  if (!guard.ok) return guard.response;
+
+  const overrides = await tryModule(() => listWeekoffOverrides());
+  return NextResponse.json({
+    overrides: overrides ?? [],
+    setupRequired: overrides === null ? "FMS Week-off Overrides" : null,
+  });
+}
+
+const bodySchema = z.object({
+  date: z
+    .string()
+    .trim()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, "Date YYYY-MM-DD format me honi chahiye."),
+  scope: z.enum(["ALL", "DEPARTMENT", "USER"]),
+  scopeValue: z.string().trim().optional().default(""),
+});
+
+export async function POST(request: Request) {
+  const guard = await requireRole(["Admin"]);
+  if (!guard.ok) return guard.response;
+
+  const body = await request.json().catch(() => null);
+  const parsed = bodySchema.safeParse(body);
+  if (!parsed.success) {
+    return NextResponse.json(
+      { error: parsed.error.issues[0]?.message ?? "Invalid input." },
+      { status: 400 }
+    );
+  }
+  if (parsed.data.scope !== "ALL" && !parsed.data.scopeValue) {
+    return NextResponse.json(
+      { error: "Department ya User chunein." },
+      { status: 400 }
+    );
+  }
+
+  const override = await addWeekoffOverride({
+    date: parsed.data.date,
+    scope: parsed.data.scope,
+    scopeValue: parsed.data.scopeValue,
+    createdBy: guard.session.userId,
+  });
+  return NextResponse.json({ override });
+}
