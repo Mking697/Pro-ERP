@@ -6,6 +6,7 @@ import { completeFmsStep } from "@/lib/fms/engine";
 const bodySchema = z.object({
   outcome: z.string().trim().min(1, "Outcome chunein."),
   remark: z.string().optional().default(""),
+  formData: z.record(z.string(), z.string()).optional().default({}),
 });
 
 export async function POST(request: Request, { params }: { params: Promise<{ runId: string }> }) {
@@ -28,6 +29,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ run
       outcome: parsed.data.outcome,
       completedBy: guard.session.userId,
       remark: parsed.data.remark,
+      formData: parsed.data.formData,
     });
     return NextResponse.json(result);
   } catch (err) {

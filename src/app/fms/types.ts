@@ -19,6 +19,7 @@ export interface FmsRunRecord {
   Outcome: string;
   Status: string;
   Remark: string;
+  Form_Data?: string;
   /** Joined in by /api/fms/my-steps from the step's template definition — comma list. */
   Outcome_Options?: string;
 }
@@ -38,4 +39,8 @@ export interface FmsTemplateStepRecord {
   TAT_Unit: string;
   Outcome_Options: string;
   Next_Step_Map: string;
+  Data_Source_Type: string;
+  Data_Source_Config: string;
+  Action_Type: string;
+  Action_Config: string;
 }

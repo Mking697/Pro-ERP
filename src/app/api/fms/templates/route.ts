@@ -65,6 +65,10 @@ const stepSchema = z
     tatUnit: z.enum(["Hours", "Days"]),
     outcomeOptions: z.array(z.string().trim().min(1)).min(1, "Kam se kam ek outcome chahiye."),
     nextStepMap: z.record(z.string(), z.union([z.literal("END"), z.coerce.number().int().positive()])),
+    dataSourceType: z.enum(["", "FORM", "EXISTING_FMS"]).default(""),
+    dataSourceConfig: z.string().trim().default(""),
+    actionType: z.enum(["", "LEDGER_MOVEMENT"]).default(""),
+    actionConfig: z.string().trim().default(""),
   })
   .refine((step) => step.outcomeOptions.every((o) => o in step.nextStepMap), {
     message: "Har outcome ke liye agla step (ya END) chunein.",

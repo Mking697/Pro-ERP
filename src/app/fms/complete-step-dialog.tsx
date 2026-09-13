@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import {
   Dialog,
@@ -12,6 +12,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -23,6 +24,14 @@ import {
 } from "@/components/ui/select";
 import { useT } from "@/components/preferences-provider";
 import type { FmsRunRecord } from "./types";
+import type { DataSourceType, FormDataSourceConfig } from "@/lib/fms/dataSource";
+
+interface StepContext {
+  outcomeOptions: string[];
+  dataSourceType: DataSourceType;
+  formConfig: FormDataSourceConfig | null;
+  referenceRows: Record<string, string>[];
+}
 
 export default function CompleteStepDialog({
   run,
@@ -32,27 +41,55 @@ export default function CompleteStepDialog({
   onCompleted: () => void;
 }) {
   const t = useT();
-  const outcomes = (run.Outcome_Options ?? "")
-    .split(",")
-    .map((s) => s.trim())
-    .filter(Boolean);
-
   const [open, setOpen] = useState(false);
-  const [outcome, setOutcome] = useState(outcomes[0] ?? "");
+  const [context, setContext] = useState<StepContext | null>(null);
+  const [outcome, setOutcome] = useState("");
   const [remark, setRemark] = useState("");
+  const [formValues, setFormValues] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(false);
+
+  // `context` starting null (and staying null until the fetch resolves) is itself the
+  // loading signal — no separate boolean to keep in sync with it.
+  const loadingContext = open && context === null;
+  const fallbackOutcomes = (run.Outcome_Options ?? "").split(",").map((s) => s.trim()).filter(Boolean);
+
+  useEffect(() => {
+    if (!open || context) return;
+    fetch(`/api/fms/steps/${run.Run_ID}`)
+      .then((res) => res.json())
+      .then((data: StepContext) => {
+        setContext(data);
+        setOutcome(data.outcomeOptions?.[0] ?? "");
+      })
+      .catch(() => {
+        toast.error(t("Step ki details load nahi ho payi."));
+        // Fall back to a plain Outcome/Remark dialog rather than staying stuck loading.
+        setContext({ outcomeOptions: fallbackOutcomes, dataSourceType: "", formConfig: null, referenceRows: [] });
+        setOutcome(fallbackOutcomes[0] ?? "");
+      });
+  }, [open, context, run.Run_ID, t, fallbackOutcomes]);
 
   async function handleComplete() {
     if (!outcome) {
       toast.error(t("Outcome chunein."));
       return;
     }
+    if (context?.dataSourceType === "FORM") {
+      const missing = (context.formConfig?.fields ?? []).filter(
+        (f) => f.required && !formValues[f.key]?.trim()
+      );
+      if (missing.length > 0) {
+        toast.error(`${t("Ye fields zaroori hain")}: ${missing.map((f) => f.label).join(", ")}`);
+        return;
+      }
+    }
+
     setLoading(true);
     try {
       const res = await fetch(`/api/fms/steps/${run.Run_ID}/complete`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ outcome, remark }),
+        body: JSON.stringify({ outcome, remark, formData: formValues }),
       });
       const data = await res.json().catch(() => null);
 
@@ -69,6 +106,8 @@ export default function CompleteStepDialog({
     }
   }
 
+  const outcomes = context?.outcomeOptions ?? fallbackOutcomes;
+
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger render={<Button size="sm">{t("Complete")}</Button>} />
@@ -78,30 +117,87 @@ export default function CompleteStepDialog({
           <DialogDescription>{run.Template_Name}</DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="outcome">Outcome</Label>
-            <Select value={outcome} onValueChange={(value) => value && setOutcome(value)}>
-              <SelectTrigger id="outcome" className="w-full">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {outcomes.map((o) => (
-                  <SelectItem key={o} value={o}>
-                    {o}
-                  </SelectItem>
+        {loadingContext ? (
+          <p className="text-sm text-muted-foreground">{t("Load ho raha hai...")}</p>
+        ) : (
+          <div className="space-y-4">
+            {context?.dataSourceType === "EXISTING_FMS" && context.referenceRows.length > 0 && (
+              <div className="space-y-1 rounded-md bg-muted/40 p-3 text-sm">
+                {context.referenceRows.map((row, i) => (
+                  <div key={i} className="space-y-0.5">
+                    {Object.entries(row).map(([key, value]) => (
+                      <div key={key} className="flex justify-between gap-2">
+                        <span className="text-muted-foreground">{key}</span>
+                        <span className="font-medium">{value || "—"}</span>
+                      </div>
+                    ))}
+                  </div>
                 ))}
-              </SelectContent>
-            </Select>
+              </div>
+            )}
+
+            {context?.dataSourceType === "FORM" &&
+              context.formConfig?.fields.map((field) => (
+                <div key={field.key} className="space-y-2">
+                  <Label htmlFor={`field-${field.key}`}>
+                    {field.label}
+                    {field.required && <span className="ml-1 text-destructive">*</span>}
+                  </Label>
+                  {field.type === "dropdown" ? (
+                    <Select
+                      value={formValues[field.key] ?? ""}
+                      onValueChange={(value) =>
+                        value && setFormValues((prev) => ({ ...prev, [field.key]: value }))
+                      }
+                    >
+                      <SelectTrigger id={`field-${field.key}`} className="w-full">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {(field.options ?? []).map((o) => (
+                          <SelectItem key={o} value={o}>
+                            {o}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  ) : (
+                    <Input
+                      id={`field-${field.key}`}
+                      type={field.type === "number" ? "number" : field.type === "date" ? "date" : "text"}
+                      value={formValues[field.key] ?? ""}
+                      onChange={(e) =>
+                        setFormValues((prev) => ({ ...prev, [field.key]: e.target.value }))
+                      }
+                    />
+                  )}
+                </div>
+              ))}
+
+            <div className="space-y-2">
+              <Label htmlFor="outcome">Outcome</Label>
+              <Select value={outcome} onValueChange={(value) => value && setOutcome(value)}>
+                <SelectTrigger id="outcome" className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {outcomes.map((o) => (
+                    <SelectItem key={o} value={o}>
+                      {o}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="remark">{t("Remark (optional)")}</Label>
+              <Textarea id="remark" value={remark} onChange={(e) => setRemark(e.target.value)} />
+            </div>
           </div>
-          <div className="space-y-2">
-            <Label htmlFor="remark">{t("Remark (optional)")}</Label>
-            <Textarea id="remark" value={remark} onChange={(e) => setRemark(e.target.value)} />
-          </div>
-        </div>
+        )}
 
         <DialogFooter>
-          <Button onClick={handleComplete} disabled={loading || !outcome}>
+          <Button onClick={handleComplete} disabled={loading || loadingContext || !outcome}>
             {loading ? "Saving..." : t("Complete karein")}
           </Button>
         </DialogFooter>

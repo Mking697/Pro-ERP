@@ -5,7 +5,7 @@ import {
   updateModuleCells,
 } from "@/lib/moduleSheets";
 import { generateId } from "@/lib/id";
-import { numOr0 } from "@/lib/inventory/items";
+import { numOr0, findItem } from "@/lib/inventory/items";
 import { listBoms, type Bom } from "@/lib/inventory/bom";
 import {
   allocateAcrossPool,
@@ -551,11 +551,41 @@ export async function cancelPlan(planId: string): Promise<Plan> {
   return { ...plan, status: "Cancelled" };
 }
 
-export async function completePlan(planId: string): Promise<Plan> {
+/**
+ * Completing a plan is what actually creates its stock — "Start Production" only issues
+ * raw material, it never produces anything, so until this write a plan's own product
+ * never appeared anywhere on the ledger. One `In` movement, `Production_Output`-sourced,
+ * for the quantity that was actually made (never the planned quantity) — a hardcoded,
+ * type-checked write, not something a template can misconfigure, because "complete a
+ * plan" already means exactly this and always has, this is just the first time it's
+ * implemented (see docs/INVENTORY-PPC-PLAN.md's "Room left for Semi-FG").
+ */
+export async function completePlan(planId: string, completedBy: string): Promise<Plan> {
   const plan = await loadPlan(planId);
   if (plan.status !== "In_Production") {
     throw new PlanError("Sirf chal raha plan complete ho sakta hai.");
   }
+
+  const quantity = plan.actualQty ?? plan.plannedQty;
+  const item = await findItem(plan.productSku);
+  if (!item) {
+    throw new PlanError(
+      `"${plan.productName}" (${plan.productSku}) Items master me nahi hai — pehle ise ek item (Category: FG ya Semi-FG) ke roop me add karein, phir plan complete karein.`
+    );
+  }
+
+  await recordMovement({
+    sku: plan.productSku,
+    direction: "In",
+    quantity,
+    uom: item.UOM,
+    source: "Production_Output",
+    referenceId: plan.planId,
+    location: item.Location,
+    remark: `Production complete — ${plan.productName}`,
+    userId: completedBy,
+  });
+
   await setPlanFields(planId, { Status: "Completed" });
   return { ...plan, status: "Completed" };
 }

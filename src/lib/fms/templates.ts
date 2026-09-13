@@ -1,6 +1,7 @@
 import { appendModuleRows, getModuleRows, updateModuleCells, recordToRow } from "@/lib/moduleSheets";
 import { generateId } from "@/lib/id";
 import { nowStamp } from "@/lib/timestamp";
+import type { DataSourceType } from "@/lib/fms/dataSource";
 
 const MODULE_KEY = "FMS_TEMPLATES";
 
@@ -18,6 +19,14 @@ export interface FmsTemplateStepRecord {
   TAT_Unit: string;
   Outcome_Options: string;
   Next_Step_Map: string;
+  /** "" | "FORM" | "EXISTING_FMS" — see src/lib/fms/dataSource.ts. */
+  Data_Source_Type: string;
+  /** JSON — FormDataSourceConfig or ExistingFmsDataSourceConfig, matching Data_Source_Type. */
+  Data_Source_Config: string;
+  /** "" | "LEDGER_MOVEMENT" — see src/lib/fms/actions.ts. */
+  Action_Type: string;
+  /** JSON — LedgerMovementActionConfig, matching Action_Type. */
+  Action_Config: string;
 }
 
 export type FmsTatUnit = "Hours" | "Days";
@@ -31,6 +40,12 @@ export interface FmsTemplateStepInput {
   outcomeOptions: string[];
   /** outcome -> next Step_No, or "END" to finish the flow. */
   nextStepMap: Record<string, number | "END">;
+  dataSourceType: DataSourceType;
+  /** Already-serialized JSON (or "" when dataSourceType is ""). */
+  dataSourceConfig: string;
+  actionType: "" | "LEDGER_MOVEMENT";
+  /** Already-serialized JSON (or "" when actionType is ""). */
+  actionConfig: string;
 }
 
 export interface CreateFmsTemplateInput {
@@ -109,6 +124,10 @@ export async function createFmsTemplate(input: CreateFmsTemplateInput): Promise<
       TAT_Unit: step.tatUnit,
       Outcome_Options: step.outcomeOptions.join(","),
       Next_Step_Map: serializeNextStepMap(step.nextStepMap),
+      Data_Source_Type: step.dataSourceType,
+      Data_Source_Config: step.dataSourceConfig,
+      Action_Type: step.actionType,
+      Action_Config: step.actionConfig,
     };
     return recordToRow(MODULE_KEY, record);
   });

@@ -10,6 +10,7 @@ import {
   PlanError,
 } from "@/lib/inventory/plans";
 import { InsufficientStockError } from "@/lib/inventory/ledger";
+import { emitFmsEvent } from "@/lib/fms/engine";
 
 const bodySchema = z.discriminatedUnion("action", [
   z.object({
@@ -61,8 +62,21 @@ export async function PATCH(
         );
         return NextResponse.json({ plan });
       }
-      case "complete":
-        return NextResponse.json({ plan: await completePlan(planId) });
+      case "complete": {
+        const plan = await completePlan(planId, guard.session.email);
+
+        // Best-effort: lets an org-defined FMS template (e.g. IPQC -> PDI -> Packing ->
+        // Dispatch) react to production finishing, without this route depending on the
+        // FMS engine's own module graph — completePlan() itself never imports it, to
+        // avoid a circular import back through the Action engine's own use of plans.ts.
+        try {
+          await emitFmsEvent("PRODUCTION_COMPLETED", `PRODUCTION_PLANS:${planId}`);
+        } catch (error) {
+          console.error(`[ppc] FMS event emit failed for ${planId}:`, error);
+        }
+
+        return NextResponse.json({ plan });
+      }
       case "cancel":
         return NextResponse.json({ plan: await cancelPlan(planId) });
       case "recheck":

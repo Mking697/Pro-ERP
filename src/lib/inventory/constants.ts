@@ -7,7 +7,7 @@
  * bundle — and fail the build.
  */
 
-export const ITEM_CATEGORIES = ["Raw Material", "Consumable"] as const;
+export const ITEM_CATEGORIES = ["Raw Material", "Consumable", "Semi-FG", "FG"] as const;
 export type ItemCategory = (typeof ITEM_CATEGORIES)[number];
 
 export const DIRECTIONS = ["In", "Out"] as const;
@@ -23,6 +23,10 @@ export const LEDGER_SOURCES = [
   "Production_Output",
   "Indent_Receipt",
   "Adjustment",
+  // One generic source for every admin-configured FMS step action — which template/step
+  // caused it lives in Reference_ID/Remark, not here, so this never needs extending
+  // again per new template. See src/lib/fms/actionRunner.ts.
+  "FMS",
 ] as const;
 export type LedgerSource = (typeof LEDGER_SOURCES)[number];
 

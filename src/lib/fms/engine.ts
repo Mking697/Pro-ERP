@@ -7,8 +7,20 @@ import {
   parseNextStepMap,
   parseOutcomeOptions,
   type FmsTatUnit,
+  type FmsTemplateStepRecord,
 } from "@/lib/fms/templates";
 import { computeNextWorkingInstant, computeTatDeadline } from "@/lib/fms/calendar";
+import {
+  parseDataSourceType,
+  parseFormDataSourceConfig,
+  parseExistingFmsDataSourceConfig,
+  missingRequiredFields,
+  type DataSourceType,
+  type FormDataSourceConfig,
+} from "@/lib/fms/dataSource";
+import { resolveExistingFmsData } from "@/lib/fms/dataSourceResolver";
+import { parseActionType, parseLedgerMovementActionConfig } from "@/lib/fms/actions";
+import { runLedgerMovementAction } from "@/lib/fms/actionRunner";
 
 const MODULE_KEY = "FMS_RUNS";
 
@@ -31,6 +43,8 @@ export interface FmsRunRecord {
   Outcome: string;
   Status: string;
   Remark: string;
+  /** Whatever the completer typed into this step's Data Source form, JSON-encoded. */
+  Form_Data: string;
 }
 
 function runToRow(run: FmsRunRecord): string[] {
@@ -107,6 +121,7 @@ async function appendStepRun(input: AppendStepRunInput): Promise<FmsRunRecord> {
     Outcome: "",
     Status: "Pending",
     Remark: "",
+    Form_Data: "",
   };
 
   await appendModuleRow(MODULE_KEY, runToRow(run));
@@ -147,6 +162,8 @@ interface CompleteFmsStepInput {
   outcome: string;
   completedBy: string;
   remark?: string;
+  /** Values typed into this step's own Data Source form, when it has one. */
+  formData?: Record<string, string>;
 }
 
 export async function completeFmsStep(
@@ -175,12 +192,44 @@ export async function completeFmsStep(
     throw new Error(`Outcome "${input.outcome}" is step ke liye valid nahi hai.`);
   }
 
+  const formValues = input.formData ?? {};
+  const dataSourceType = parseDataSourceType(step.Data_Source_Type);
+  if (dataSourceType === "FORM") {
+    const formConfig = parseFormDataSourceConfig(step.Data_Source_Config);
+    const missing = missingRequiredFields(formConfig, formValues);
+    if (missing.length > 0) {
+      throw new Error(`Ye fields zaroori hain: ${missing.map((f) => f.label).join(", ")}`);
+    }
+  }
+
+  // An Action needs every field this step's Data Source can offer, not just what a Form
+  // asked for — an Existing-FMS pull (e.g. the plan's own SKU/Qty) is just as valid a
+  // binding target as something the completer typed.
+  let referenceFields: Record<string, string> = {};
+  if (dataSourceType === "EXISTING_FMS") {
+    const config = parseExistingFmsDataSourceConfig(step.Data_Source_Config);
+    if (config) {
+      const rows = await resolveExistingFmsData(config, run.Context_Ref, run.Instance_ID);
+      referenceFields = rows[0] ?? {};
+    }
+  }
+  const resolvedFields = { ...referenceFields, ...formValues };
+
+  // Runs before anything is written: the movement it promises is the whole point of this
+  // outcome, so a failure here must leave the step Pending, not complete it half-done.
+  const actionType = parseActionType(step.Action_Type);
+  if (actionType === "LEDGER_MOVEMENT") {
+    const actionConfig = parseLedgerMovementActionConfig(step.Action_Config);
+    await runLedgerMovementAction(actionConfig, input.outcome, resolvedFields, run.Run_ID, input.completedBy);
+  }
+
   const now = new Date();
   const deadline = parseStamp(run.TAT_Deadline);
   const isOnTime = !deadline || now <= deadline;
   const completedAt = formatStamp(now);
   const status = isOnTime ? "On Time" : "Delay Done";
   const remark = input.remark ?? "";
+  const formDataJson = JSON.stringify(formValues);
 
   await updateModuleCells(MODULE_KEY, [
     {
@@ -191,6 +240,7 @@ export async function completeFmsStep(
         Outcome: input.outcome,
         Status: status,
         Remark: remark,
+        Form_Data: formDataJson,
       },
     },
   ]);
@@ -202,6 +252,7 @@ export async function completeFmsStep(
     Outcome: input.outcome,
     Status: status,
     Remark: remark,
+    Form_Data: formDataJson,
   };
 
   const nextMap = parseNextStepMap(step.Next_Step_Map);
@@ -258,6 +309,53 @@ export async function emitFmsEvent(sourceKey: string, contextRef: string): Promi
       console.error(`[fms] emitFmsEvent failed to start template ${step.Template_ID}:`, error);
     }
   }
+}
+
+export interface FmsStepContext {
+  run: FmsRunRecord;
+  step: FmsTemplateStepRecord;
+  dataSourceType: DataSourceType;
+  /** Populated only when dataSourceType === "FORM". */
+  formConfig: FormDataSourceConfig | null;
+  /** Populated only when dataSourceType === "EXISTING_FMS" — live-pulled, read-only. */
+  referenceRows: Record<string, string>[];
+}
+
+/**
+ * Everything the Complete-step dialog needs before the user submits: the step's own
+ * definition, its Data Source shape, and — for an Existing-FMS source — the actual
+ * pulled reference row(s), resolved fresh on every call (never cached; see
+ * resolveExistingFmsData's own reasoning).
+ */
+export async function getFmsStepContext(runId: string): Promise<FmsStepContext | null> {
+  const runs = await getModuleRows<FmsRunRecord>(MODULE_KEY);
+  const run = runs.find((r) => r.Run_ID === runId);
+  if (!run) return null;
+
+  const step = await getFmsTemplateStep(run.Template_ID, Number(run.Step_No));
+  if (!step) return null;
+
+  const dataSourceType = parseDataSourceType(step.Data_Source_Type);
+
+  if (dataSourceType === "FORM") {
+    return {
+      run,
+      step,
+      dataSourceType,
+      formConfig: parseFormDataSourceConfig(step.Data_Source_Config),
+      referenceRows: [],
+    };
+  }
+
+  if (dataSourceType === "EXISTING_FMS") {
+    const config = parseExistingFmsDataSourceConfig(step.Data_Source_Config);
+    const referenceRows = config
+      ? await resolveExistingFmsData(config, run.Context_Ref, run.Instance_ID)
+      : [];
+    return { run, step, dataSourceType, formConfig: null, referenceRows };
+  }
+
+  return { run, step, dataSourceType: "", formConfig: null, referenceRows: [] };
 }
 
 export async function listMyPendingFmsSteps(userId: string): Promise<FmsRunRecord[]> {

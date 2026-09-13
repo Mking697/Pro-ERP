@@ -281,6 +281,13 @@ export const MODULE_SHEETS: ModuleDefinition[] = [
       "TAT_Unit",
       "Outcome_Options",
       "Next_Step_Map",
+      // Where this step's data comes from (a custom form, or a live pull from another
+      // connected sheet) and what its outcome should do (e.g. write a stock movement) —
+      // both optional, both JSON. ensureModuleHeaders() migrates sheets connected earlier.
+      "Data_Source_Type",
+      "Data_Source_Config",
+      "Action_Type",
+      "Action_Config",
     ],
   },
   {
@@ -307,6 +314,8 @@ export const MODULE_SHEETS: ModuleDefinition[] = [
       "Outcome",
       "Status",
       "Remark",
+      // Whatever the completer typed into the step's own Data Source form, JSON-encoded.
+      "Form_Data",
     ],
   },
   {
