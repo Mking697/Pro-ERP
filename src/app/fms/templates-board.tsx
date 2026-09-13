@@ -41,6 +41,7 @@ export default function TemplatesBoard() {
   const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [startingId, setStartingId] = useState<string | null>(null);
   const [version, setVersion] = useState(0);
 
   useEffect(() => {
@@ -86,6 +87,25 @@ export default function TemplatesBoard() {
       );
     } finally {
       setBusyId(null);
+    }
+  }
+
+  async function startInstance(template: TemplateSummary) {
+    setStartingId(template.templateId);
+    try {
+      const res = await fetch("/api/fms/instances", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ templateId: template.templateId }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) {
+        toast.error(t(data?.error ?? "Instance start nahi ho paya."));
+        return;
+      }
+      toast.success(t("Flow start ho gaya — pehla step assign ho gaya."));
+    } finally {
+      setStartingId(null);
     }
   }
 
@@ -140,6 +160,15 @@ export default function TemplatesBoard() {
                       >
                         {isOpen ? t("Chhupayein") : t("Steps dekhein")}
                       </Button>
+                      {template.status === "Active" && template.triggerEvent === "MANUAL" && (
+                        <Button
+                          size="sm"
+                          disabled={startingId === template.templateId}
+                          onClick={() => startInstance(template)}
+                        >
+                          {startingId === template.templateId ? "Starting..." : t("Start")}
+                        </Button>
+                      )}
                       <Button
                         variant={template.status === "Active" ? "outline" : "default"}
                         size="sm"

@@ -612,4 +612,9 @@ export const EN: Record<string, string> = {
   "Qty field": "Qty field",
   "UOM field (optional)": "UOM field (optional)",
   "Item ka UOM use karein": "Use the Item's own UOM",
+  "Instance start nahi ho paya.": "Instance could not be started.",
+  "Flow start ho gaya — pehla step assign ho gaya.": "Flow started — the first step has been assigned.",
+  "Start": "Start",
+  "Dono ek saath chuna ja sakta hai — jaise ek step apna Pass/Fail khud type kare, aur saath me pichle step ka data bhi dekhe.":
+    "Both can be turned on together — e.g. a step types its own Pass/Fail while also seeing the previous step's data.",
 };

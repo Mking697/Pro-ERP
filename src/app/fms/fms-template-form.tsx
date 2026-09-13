@@ -27,8 +27,7 @@ import { parseOutcomeOptions } from "./template-format";
 import { slugify } from "@/lib/id";
 import {
   THIS_FLOW_SOURCE,
-  serializeDataSourceConfig,
-  type DataSourceType,
+  serializeStepDataSourceConfig,
   type FormField,
   type FormFieldType,
 } from "@/lib/fms/dataSource";
@@ -62,7 +61,10 @@ interface DraftStep {
   outcomesText: string;
   /** outcome -> "END" or a 1-based step index as a string, keyed by the outcome text. */
   nextStepMap: Record<string, string>;
-  dataSourceType: DataSourceType;
+  /** Independent, not exclusive — a step can type a Form answer and see pulled reference
+   * data at the same time (e.g. this stage's own Pass/Fail qty, plus the product's SKU). */
+  useForm: boolean;
+  useExisting: boolean;
   formFields: DraftFormField[];
   existingSourceModule: string; // a ModuleOption key, or THIS_FLOW_SOURCE
   existingSourceStepNo: string; // 1-based step index as a string, only for THIS_FLOW_SOURCE
@@ -83,7 +85,8 @@ function blankStep(): DraftStep {
     tatUnit: "Hours",
     outcomesText: "Done",
     nextStepMap: { Done: "END" },
-    dataSourceType: "",
+    useForm: false,
+    useExisting: false,
     formFields: [],
     existingSourceModule: "",
     existingSourceStepNo: "",
@@ -122,16 +125,14 @@ function reconcileActionByOutcome(
   return next;
 }
 
-/** Field keys an Action can bind to — this step's own Form fields, or the columns its
- * Existing-FMS source pulls. Never a free-typed name, so a typo can't mis-wire a movement. */
+/** Field keys an Action can bind to — this step's own Form fields, plus whatever columns
+ * its Existing-FMS pull brings in, whichever of the two (or both) are turned on. Never a
+ * free-typed name, so a typo can't mis-wire a movement. */
 function fieldKeyOptionsFor(step: DraftStep): string[] {
-  if (step.dataSourceType === "FORM") {
-    return step.formFields.map((f) => slugify(f.label)).filter(Boolean);
-  }
-  if (step.dataSourceType === "EXISTING_FMS") {
-    return step.existingColumns;
-  }
-  return [];
+  const keys: string[] = [];
+  if (step.useForm) keys.push(...step.formFields.map((f) => slugify(f.label)).filter(Boolean));
+  if (step.useExisting) keys.push(...step.existingColumns);
+  return keys;
 }
 
 /** The columns an "Existing FMS" source can offer to pick from — a module's real sheet
@@ -143,6 +144,16 @@ function columnOptionsFor(step: DraftStep, allSteps: DraftStep[], modules: Modul
     return [...target.formFields.map((f) => slugify(f.label)).filter(Boolean), "Outcome", "Step_Name"];
   }
   return modules.find((m) => m.key === step.existingSourceModule)?.headers ?? [];
+}
+
+function buildExistingConfig(step: DraftStep) {
+  return {
+    sourceModule: step.existingSourceModule,
+    sourceStepNo:
+      step.existingSourceModule === THIS_FLOW_SOURCE ? Number(step.existingSourceStepNo) : undefined,
+    columns: step.existingColumns,
+    filterByContext: step.existingFilterByContext,
+  };
 }
 
 export default function FmsTemplateForm({
@@ -221,8 +232,8 @@ export default function FmsTemplateForm({
         nextStepMap[o] = target === "END" ? "END" : Number(target);
       }
 
-      let dataSourceConfig = "";
-      if (s.dataSourceType === "FORM") {
+      const dataSource: { form?: { fields: FormField[] }; existing?: ReturnType<typeof buildExistingConfig> } = {};
+      if (s.useForm) {
         const fields: FormField[] = s.formFields
           .filter((f) => f.label.trim())
           .map((f) => ({
@@ -235,16 +246,12 @@ export default function FmsTemplateForm({
                 ? f.optionsText.split(",").map((o) => o.trim()).filter(Boolean)
                 : undefined,
           }));
-        dataSourceConfig = serializeDataSourceConfig({ fields });
-      } else if (s.dataSourceType === "EXISTING_FMS" && s.existingSourceModule) {
-        dataSourceConfig = serializeDataSourceConfig({
-          sourceModule: s.existingSourceModule,
-          sourceStepNo:
-            s.existingSourceModule === THIS_FLOW_SOURCE ? Number(s.existingSourceStepNo) : undefined,
-          columns: s.existingColumns,
-          filterByContext: s.existingFilterByContext,
-        });
+        dataSource.form = { fields };
       }
+      if (s.useExisting && s.existingSourceModule) {
+        dataSource.existing = buildExistingConfig(s);
+      }
+      const dataSourceConfig = serializeStepDataSourceConfig(dataSource);
 
       let actionConfig = "";
       if (s.actionType === "LEDGER_MOVEMENT") {
@@ -267,7 +274,6 @@ export default function FmsTemplateForm({
         tatUnit: s.tatUnit,
         outcomeOptions,
         nextStepMap,
-        dataSourceType: s.dataSourceType,
         dataSourceConfig,
         actionType: s.actionType,
         actionConfig,
@@ -469,25 +475,28 @@ export default function FmsTemplateForm({
                   )}
 
                   <div className="space-y-2 rounded-md border p-2">
-                    <Label htmlFor={`step-datasource-${step.id}`}>{t("Data Source")}</Label>
-                    <Select
-                      value={step.dataSourceType || "NONE"}
-                      onValueChange={(value) =>
-                        value &&
-                        setStep(step.id, { dataSourceType: value === "NONE" ? "" : (value as DataSourceType) })
-                      }
-                    >
-                      <SelectTrigger id={`step-datasource-${step.id}`} className="w-full">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="NONE">{t("Koi nahi (sirf Outcome/Remark)")}</SelectItem>
-                        <SelectItem value="FORM">{t("Naya Form")}</SelectItem>
-                        <SelectItem value="EXISTING_FMS">{t("Existing FMS se")}</SelectItem>
-                      </SelectContent>
-                    </Select>
+                    <Label>{t("Data Source")}</Label>
+                    <p className="text-xs text-muted-foreground">
+                      {t("Dono ek saath chuna ja sakta hai — jaise ek step apna Pass/Fail khud type kare, aur saath me pichle step ka data bhi dekhe.")}
+                    </p>
+                    <div className="flex flex-wrap gap-4 pt-1">
+                      <label className="flex items-center gap-2 text-sm">
+                        <Checkbox
+                          checked={step.useForm}
+                          onCheckedChange={(checked) => setStep(step.id, { useForm: checked === true })}
+                        />
+                        {t("Naya Form")}
+                      </label>
+                      <label className="flex items-center gap-2 text-sm">
+                        <Checkbox
+                          checked={step.useExisting}
+                          onCheckedChange={(checked) => setStep(step.id, { useExisting: checked === true })}
+                        />
+                        {t("Existing FMS se")}
+                      </label>
+                    </div>
 
-                    {step.dataSourceType === "FORM" && (
+                    {step.useForm && (
                       <div className="space-y-2 pt-2">
                         {step.formFields.map((field) => (
                           <div key={field.id} className="space-y-2 rounded-md bg-muted/40 p-2">
@@ -562,7 +571,7 @@ export default function FmsTemplateForm({
                       </div>
                     )}
 
-                    {step.dataSourceType === "EXISTING_FMS" && (
+                    {step.useExisting && (
                       <div className="space-y-2 pt-2">
                         <Select
                           value={step.existingSourceModule}

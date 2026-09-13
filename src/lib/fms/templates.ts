@@ -1,7 +1,7 @@
 import { appendModuleRows, getModuleRows, updateModuleCells, recordToRow } from "@/lib/moduleSheets";
 import { generateId } from "@/lib/id";
 import { nowStamp } from "@/lib/timestamp";
-import type { DataSourceType } from "@/lib/fms/dataSource";
+import { describeDataSourceType, parseStepDataSourceConfig } from "@/lib/fms/dataSource";
 
 const MODULE_KEY = "FMS_TEMPLATES";
 
@@ -40,8 +40,7 @@ export interface FmsTemplateStepInput {
   outcomeOptions: string[];
   /** outcome -> next Step_No, or "END" to finish the flow. */
   nextStepMap: Record<string, number | "END">;
-  dataSourceType: DataSourceType;
-  /** Already-serialized JSON (or "" when dataSourceType is ""). */
+  /** Already-serialized StepDataSourceConfig JSON (or "{}"/"" for no data source at all). */
   dataSourceConfig: string;
   actionType: "" | "LEDGER_MOVEMENT";
   /** Already-serialized JSON (or "" when actionType is ""). */
@@ -124,7 +123,9 @@ export async function createFmsTemplate(input: CreateFmsTemplateInput): Promise<
       TAT_Unit: step.tatUnit,
       Outcome_Options: step.outcomeOptions.join(","),
       Next_Step_Map: serializeNextStepMap(step.nextStepMap),
-      Data_Source_Type: step.dataSourceType,
+      // Derived from the config itself, never trusted from the client, so it can never
+      // drift out of sync with what's actually configured.
+      Data_Source_Type: describeDataSourceType(parseStepDataSourceConfig(step.dataSourceConfig)),
       Data_Source_Config: step.dataSourceConfig,
       Action_Type: step.actionType,
       Action_Config: step.actionConfig,

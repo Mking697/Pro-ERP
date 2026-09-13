@@ -60,21 +60,22 @@ export async function PATCH(
           parsed.data.actualQty,
           guard.session.email
         );
-        return NextResponse.json({ plan });
-      }
-      case "complete": {
-        const plan = await completePlan(planId, guard.session.email);
 
-        // Best-effort: lets an org-defined FMS template (e.g. IPQC -> PDI -> Packing ->
-        // Dispatch) react to production finishing, without this route depending on the
-        // FMS engine's own module graph — completePlan() itself never imports it, to
-        // avoid a circular import back through the Action engine's own use of plans.ts.
+        // Best-effort: lets an org-defined FMS "Line" (e.g. Winding -> ... -> IPQC -> PDI
+        // -> Dispatch) pick up right when the physical manufacturing actually begins —
+        // not this route depending on the FMS engine's own module graph. startProduction()
+        // itself never imports it, to avoid a circular import back through the Action
+        // engine's own use of plans.ts.
         try {
-          await emitFmsEvent("PRODUCTION_COMPLETED", `PRODUCTION_PLANS:${planId}`);
+          await emitFmsEvent("PRODUCTION_STARTED", `PRODUCTION_PLANS:${planId}`);
         } catch (error) {
           console.error(`[ppc] FMS event emit failed for ${planId}:`, error);
         }
 
+        return NextResponse.json({ plan });
+      }
+      case "complete": {
+        const plan = await completePlan(planId, guard.session.email);
         return NextResponse.json({ plan });
       }
       case "cancel":

@@ -3,6 +3,7 @@ import {
   getModuleRows,
   recordToRow,
   updateModuleCells,
+  tryModule,
 } from "@/lib/moduleSheets";
 import { generateId } from "@/lib/id";
 import { numOr0, findItem } from "@/lib/inventory/items";
@@ -552,6 +553,19 @@ export async function cancelPlan(planId: string): Promise<Plan> {
 }
 
 /**
+ * Whether an FMS "Line" is already tracking this plan — i.e. starting production fired
+ * PRODUCTION_STARTED and some Admin-built template picked it up. When one has, that
+ * Line's own last step is what writes the FG stock (via its own Ledger Movement Action,
+ * using the quantity that actually passed every stage) — completePlan() must not also
+ * write one, or the same production would double-count.
+ */
+async function hasFmsLine(planId: string): Promise<boolean> {
+  const runs = await tryModule(() => getModuleRows<{ Context_Ref: string }>("FMS_RUNS"));
+  if (!runs) return false;
+  return runs.some((r) => r.Context_Ref === `PRODUCTION_PLANS:${planId}`);
+}
+
+/**
  * Completing a plan is what actually creates its stock — "Start Production" only issues
  * raw material, it never produces anything, so until this write a plan's own product
  * never appeared anywhere on the ledger. One `In` movement, `Production_Output`-sourced,
@@ -559,6 +573,11 @@ export async function cancelPlan(planId: string): Promise<Plan> {
  * type-checked write, not something a template can misconfigure, because "complete a
  * plan" already means exactly this and always has, this is just the first time it's
  * implemented (see docs/INVENTORY-PPC-PLAN.md's "Room left for Semi-FG").
+ *
+ * Skipped when an FMS Line is already tracking this plan (see hasFmsLine) — a product
+ * with a real multi-step Line gets its FG stock from that Line's own final step instead,
+ * at whatever quantity actually survived every stage, not the plan's optimistic actual
+ * quantity from Start Production.
  */
 export async function completePlan(planId: string, completedBy: string): Promise<Plan> {
   const plan = await loadPlan(planId);
@@ -566,25 +585,27 @@ export async function completePlan(planId: string, completedBy: string): Promise
     throw new PlanError("Sirf chal raha plan complete ho sakta hai.");
   }
 
-  const quantity = plan.actualQty ?? plan.plannedQty;
-  const item = await findItem(plan.productSku);
-  if (!item) {
-    throw new PlanError(
-      `"${plan.productName}" (${plan.productSku}) Items master me nahi hai — pehle ise ek item (Category: FG ya Semi-FG) ke roop me add karein, phir plan complete karein.`
-    );
-  }
+  if (!(await hasFmsLine(planId))) {
+    const quantity = plan.actualQty ?? plan.plannedQty;
+    const item = await findItem(plan.productSku);
+    if (!item) {
+      throw new PlanError(
+        `"${plan.productName}" (${plan.productSku}) Items master me nahi hai — pehle ise ek item (Category: FG ya Semi-FG) ke roop me add karein, phir plan complete karein.`
+      );
+    }
 
-  await recordMovement({
-    sku: plan.productSku,
-    direction: "In",
-    quantity,
-    uom: item.UOM,
-    source: "Production_Output",
-    referenceId: plan.planId,
-    location: item.Location,
-    remark: `Production complete — ${plan.productName}`,
-    userId: completedBy,
-  });
+    await recordMovement({
+      sku: plan.productSku,
+      direction: "In",
+      quantity,
+      uom: item.UOM,
+      source: "Production_Output",
+      referenceId: plan.planId,
+      location: item.Location,
+      remark: `Production complete — ${plan.productName}`,
+      userId: completedBy,
+    });
+  }
 
   await setPlanFields(planId, { Status: "Completed" });
   return { ...plan, status: "Completed" };

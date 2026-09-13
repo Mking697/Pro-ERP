@@ -11,12 +11,9 @@ import {
 } from "@/lib/fms/templates";
 import { computeNextWorkingInstant, computeTatDeadline } from "@/lib/fms/calendar";
 import {
-  parseDataSourceType,
-  parseFormDataSourceConfig,
-  parseExistingFmsDataSourceConfig,
+  parseStepDataSourceConfig,
   missingRequiredFields,
-  type DataSourceType,
-  type FormDataSourceConfig,
+  type StepDataSourceConfig,
 } from "@/lib/fms/dataSource";
 import { resolveExistingFmsData } from "@/lib/fms/dataSourceResolver";
 import { parseActionType, parseLedgerMovementActionConfig } from "@/lib/fms/actions";
@@ -193,10 +190,9 @@ export async function completeFmsStep(
   }
 
   const formValues = input.formData ?? {};
-  const dataSourceType = parseDataSourceType(step.Data_Source_Type);
-  if (dataSourceType === "FORM") {
-    const formConfig = parseFormDataSourceConfig(step.Data_Source_Config);
-    const missing = missingRequiredFields(formConfig, formValues);
+  const dataSource = parseStepDataSourceConfig(step.Data_Source_Config);
+  if (dataSource.form) {
+    const missing = missingRequiredFields(dataSource.form, formValues);
     if (missing.length > 0) {
       throw new Error(`Ye fields zaroori hain: ${missing.map((f) => f.label).join(", ")}`);
     }
@@ -204,14 +200,13 @@ export async function completeFmsStep(
 
   // An Action needs every field this step's Data Source can offer, not just what a Form
   // asked for — an Existing-FMS pull (e.g. the plan's own SKU/Qty) is just as valid a
-  // binding target as something the completer typed.
+  // binding target as something the completer typed. Both halves can be present on the
+  // same step at once — a real production step routinely types a Pass/Fail qty while also
+  // needing to see the product's SKU pulled from elsewhere.
   let referenceFields: Record<string, string> = {};
-  if (dataSourceType === "EXISTING_FMS") {
-    const config = parseExistingFmsDataSourceConfig(step.Data_Source_Config);
-    if (config) {
-      const rows = await resolveExistingFmsData(config, run.Context_Ref, run.Instance_ID);
-      referenceFields = rows[0] ?? {};
-    }
+  if (dataSource.existing) {
+    const rows = await resolveExistingFmsData(dataSource.existing, run.Context_Ref, run.Instance_ID);
+    referenceFields = rows[0] ?? {};
   }
   const resolvedFields = { ...referenceFields, ...formValues };
 
@@ -314,16 +309,14 @@ export async function emitFmsEvent(sourceKey: string, contextRef: string): Promi
 export interface FmsStepContext {
   run: FmsRunRecord;
   step: FmsTemplateStepRecord;
-  dataSourceType: DataSourceType;
-  /** Populated only when dataSourceType === "FORM". */
-  formConfig: FormDataSourceConfig | null;
-  /** Populated only when dataSourceType === "EXISTING_FMS" — live-pulled, read-only. */
+  dataSource: StepDataSourceConfig;
+  /** Populated only when dataSource.existing is set — live-pulled, read-only. */
   referenceRows: Record<string, string>[];
 }
 
 /**
  * Everything the Complete-step dialog needs before the user submits: the step's own
- * definition, its Data Source shape, and — for an Existing-FMS source — the actual
+ * definition, its Data Source shape, and — when it pulls from elsewhere — the actual
  * pulled reference row(s), resolved fresh on every call (never cached; see
  * resolveExistingFmsData's own reasoning).
  */
@@ -335,27 +328,12 @@ export async function getFmsStepContext(runId: string): Promise<FmsStepContext |
   const step = await getFmsTemplateStep(run.Template_ID, Number(run.Step_No));
   if (!step) return null;
 
-  const dataSourceType = parseDataSourceType(step.Data_Source_Type);
+  const dataSource = parseStepDataSourceConfig(step.Data_Source_Config);
+  const referenceRows = dataSource.existing
+    ? await resolveExistingFmsData(dataSource.existing, run.Context_Ref, run.Instance_ID)
+    : [];
 
-  if (dataSourceType === "FORM") {
-    return {
-      run,
-      step,
-      dataSourceType,
-      formConfig: parseFormDataSourceConfig(step.Data_Source_Config),
-      referenceRows: [],
-    };
-  }
-
-  if (dataSourceType === "EXISTING_FMS") {
-    const config = parseExistingFmsDataSourceConfig(step.Data_Source_Config);
-    const referenceRows = config
-      ? await resolveExistingFmsData(config, run.Context_Ref, run.Instance_ID)
-      : [];
-    return { run, step, dataSourceType, formConfig: null, referenceRows };
-  }
-
-  return { run, step, dataSourceType: "", formConfig: null, referenceRows: [] };
+  return { run, step, dataSource, referenceRows };
 }
 
 export async function listMyPendingFmsSteps(userId: string): Promise<FmsRunRecord[]> {

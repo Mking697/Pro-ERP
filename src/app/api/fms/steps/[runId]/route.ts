@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireSession } from "@/lib/auth/guard";
 import { getFmsStepContext } from "@/lib/fms/engine";
-import { parseFormDataSourceConfig } from "@/lib/fms/dataSource";
 
 /**
  * What the Complete-step dialog needs before the user submits: the step's Data Source
@@ -23,8 +22,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ run
 
   return NextResponse.json({
     outcomeOptions: context.step.Outcome_Options.split(",").map((s) => s.trim()).filter(Boolean),
-    dataSourceType: context.dataSourceType,
-    formConfig: context.dataSourceType === "FORM" ? parseFormDataSourceConfig(context.step.Data_Source_Config) : null,
+    formConfig: context.dataSource.form ?? null,
     referenceRows: context.referenceRows,
   });
 }

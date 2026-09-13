@@ -24,11 +24,10 @@ import {
 } from "@/components/ui/select";
 import { useT } from "@/components/preferences-provider";
 import type { FmsRunRecord } from "./types";
-import type { DataSourceType, FormDataSourceConfig } from "@/lib/fms/dataSource";
+import type { FormDataSourceConfig } from "@/lib/fms/dataSource";
 
 interface StepContext {
   outcomeOptions: string[];
-  dataSourceType: DataSourceType;
   formConfig: FormDataSourceConfig | null;
   referenceRows: Record<string, string>[];
 }
@@ -64,7 +63,7 @@ export default function CompleteStepDialog({
       .catch(() => {
         toast.error(t("Step ki details load nahi ho payi."));
         // Fall back to a plain Outcome/Remark dialog rather than staying stuck loading.
-        setContext({ outcomeOptions: fallbackOutcomes, dataSourceType: "", formConfig: null, referenceRows: [] });
+        setContext({ outcomeOptions: fallbackOutcomes, formConfig: null, referenceRows: [] });
         setOutcome(fallbackOutcomes[0] ?? "");
       });
   }, [open, context, run.Run_ID, t, fallbackOutcomes]);
@@ -74,7 +73,7 @@ export default function CompleteStepDialog({
       toast.error(t("Outcome chunein."));
       return;
     }
-    if (context?.dataSourceType === "FORM") {
+    if (context?.formConfig) {
       const missing = (context.formConfig?.fields ?? []).filter(
         (f) => f.required && !formValues[f.key]?.trim()
       );
@@ -121,7 +120,7 @@ export default function CompleteStepDialog({
           <p className="text-sm text-muted-foreground">{t("Load ho raha hai...")}</p>
         ) : (
           <div className="space-y-4">
-            {context?.dataSourceType === "EXISTING_FMS" && context.referenceRows.length > 0 && (
+            {context && context.referenceRows.length > 0 && (
               <div className="space-y-1 rounded-md bg-muted/40 p-3 text-sm">
                 {context.referenceRows.map((row, i) => (
                   <div key={i} className="space-y-0.5">
@@ -136,8 +135,7 @@ export default function CompleteStepDialog({
               </div>
             )}
 
-            {context?.dataSourceType === "FORM" &&
-              context.formConfig?.fields.map((field) => (
+            {context?.formConfig?.fields.map((field) => (
                 <div key={field.key} className="space-y-2">
                   <Label htmlFor={`field-${field.key}`}>
                     {field.label}

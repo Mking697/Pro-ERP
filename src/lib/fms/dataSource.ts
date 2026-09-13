@@ -4,13 +4,11 @@
  * parsing helpers in src/lib/fms/templates.ts), so both server code and client UI can
  * import it without pulling Sheets/Google code into the browser bundle.
  *
- * Two kinds:
- *  - FORM: a small Google-Forms-style question set the completer fills in themselves.
- *  - EXISTING_FMS: columns live-pulled from another connected sheet (or an earlier step
- *    in the same flow) — read-only context, never edited by the completer.
+ * A step's `form` and `existing` pulls are independent, not exclusive — a real production
+ * step routinely needs both at once: someone types a Pass/Fail quantity into a Form
+ * *while also* seeing the product's SKU and the previous step's pass quantity pulled live
+ * from elsewhere. Either, both, or neither can be present on the same step.
  */
-
-export type DataSourceType = "" | "FORM" | "EXISTING_FMS";
 
 export type FormFieldType = "text" | "number" | "date" | "dropdown";
 
@@ -46,42 +44,51 @@ export interface ExistingFmsDataSourceConfig {
   filterByContext: boolean;
 }
 
-export function parseDataSourceType(raw: string | undefined | null): DataSourceType {
-  return raw === "FORM" || raw === "EXISTING_FMS" ? raw : "";
+/** A step's whole Data Source — both halves optional and independent. */
+export interface StepDataSourceConfig {
+  form?: FormDataSourceConfig;
+  existing?: ExistingFmsDataSourceConfig;
 }
 
-export function parseFormDataSourceConfig(raw: string | undefined | null): FormDataSourceConfig {
-  if (!raw) return { fields: [] };
+export function parseStepDataSourceConfig(raw: string | undefined | null): StepDataSourceConfig {
+  if (!raw) return {};
   try {
-    const parsed = JSON.parse(raw) as Partial<FormDataSourceConfig>;
-    return { fields: Array.isArray(parsed.fields) ? parsed.fields : [] };
+    const parsed = JSON.parse(raw) as Partial<StepDataSourceConfig>;
+    const config: StepDataSourceConfig = {};
+
+    if (parsed.form && Array.isArray(parsed.form.fields)) {
+      config.form = { fields: parsed.form.fields };
+    }
+
+    const existing = parsed.existing;
+    if (existing && existing.sourceModule && Array.isArray(existing.columns)) {
+      config.existing = {
+        sourceModule: existing.sourceModule,
+        sourceStepNo: existing.sourceStepNo,
+        columns: existing.columns,
+        filterByContext: Boolean(existing.filterByContext),
+      };
+    }
+
+    return config;
   } catch {
-    return { fields: [] };
+    return {};
   }
 }
 
-export function parseExistingFmsDataSourceConfig(
-  raw: string | undefined | null
-): ExistingFmsDataSourceConfig | null {
-  if (!raw) return null;
-  try {
-    const parsed = JSON.parse(raw) as Partial<ExistingFmsDataSourceConfig>;
-    if (!parsed.sourceModule || !Array.isArray(parsed.columns)) return null;
-    return {
-      sourceModule: parsed.sourceModule,
-      sourceStepNo: parsed.sourceStepNo,
-      columns: parsed.columns,
-      filterByContext: Boolean(parsed.filterByContext),
-    };
-  } catch {
-    return null;
-  }
-}
-
-export function serializeDataSourceConfig(
-  config: FormDataSourceConfig | ExistingFmsDataSourceConfig
-): string {
+export function serializeStepDataSourceConfig(config: StepDataSourceConfig): string {
   return JSON.stringify(config);
+}
+
+/** A short tag describing which halves of a Data Source are present — derived from the
+ * config itself rather than trusted from the client, so it can never drift out of sync
+ * with what's actually configured. Used for display only; engine logic checks the config
+ * object's own `form`/`existing` presence directly. */
+export function describeDataSourceType(config: StepDataSourceConfig): string {
+  if (config.form && config.existing) return "FORM_AND_EXISTING";
+  if (config.form) return "FORM";
+  if (config.existing) return "EXISTING_FMS";
+  return "";
 }
 
 /** Which of a form's fields are missing from a submitted values map. */
