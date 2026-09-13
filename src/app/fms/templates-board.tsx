@@ -117,13 +117,12 @@ export default function TemplatesBoard() {
     return <SheetNotConnected what={setupRequired} />;
   }
 
+  const userOptions = Object.entries(userMap).map(([userId, fullName]) => ({ userId, fullName }));
+
   return (
     <div className="space-y-4">
       <div className="flex justify-end">
-        <FmsTemplateForm
-          onCreated={() => setVersion((v) => v + 1)}
-          userOptions={Object.entries(userMap).map(([userId, fullName]) => ({ userId, fullName }))}
-        />
+        <FmsTemplateForm onCreated={() => setVersion((v) => v + 1)} userOptions={userOptions} />
       </div>
 
       {templates.length === 0 ? (
@@ -169,6 +168,16 @@ export default function TemplatesBoard() {
                           {startingId === template.templateId ? "Starting..." : t("Start")}
                         </Button>
                       )}
+                      <FmsTemplateForm
+                        onCreated={() => setVersion((v) => v + 1)}
+                        userOptions={userOptions}
+                        editing={{
+                          templateId: template.templateId,
+                          templateName: template.templateName,
+                          triggerEvent: template.triggerEvent,
+                          steps: template.steps,
+                        }}
+                      />
                       <Button
                         variant={template.status === "Active" ? "outline" : "default"}
                         size="sm"

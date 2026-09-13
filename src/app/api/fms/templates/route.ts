@@ -1,5 +1,4 @@
 import { NextResponse } from "next/server";
-import { z } from "zod";
 import { requireModule } from "@/lib/auth/guard";
 import { tryModule } from "@/lib/moduleSheets";
 import { byNewest } from "@/lib/timestamp";
@@ -8,6 +7,7 @@ import {
   listFmsTemplates,
   type FmsTemplateStepRecord,
 } from "@/lib/fms/templates";
+import { templateBodySchema } from "./schema";
 
 interface TemplateSummary {
   templateId: string;
@@ -56,35 +56,12 @@ export async function GET() {
   });
 }
 
-const stepSchema = z
-  .object({
-    stepNo: z.coerce.number().int().positive(),
-    stepName: z.string().trim().min(1, "Har step ka naam zaroori hai."),
-    assignedTo: z.string().trim().min(1, "Har step kisi user ko assign hona chahiye."),
-    tatValue: z.coerce.number().positive("TAT 0 se zyada hona chahiye."),
-    tatUnit: z.enum(["Hours", "Days"]),
-    outcomeOptions: z.array(z.string().trim().min(1)).min(1, "Kam se kam ek outcome chahiye."),
-    nextStepMap: z.record(z.string(), z.union([z.literal("END"), z.coerce.number().int().positive()])),
-    dataSourceConfig: z.string().trim().default(""),
-    actionType: z.enum(["", "LEDGER_MOVEMENT"]).default(""),
-    actionConfig: z.string().trim().default(""),
-  })
-  .refine((step) => step.outcomeOptions.every((o) => o in step.nextStepMap), {
-    message: "Har outcome ke liye agla step (ya END) chunein.",
-  });
-
-const bodySchema = z.object({
-  templateName: z.string().trim().min(1, "Template ka naam zaroori hai."),
-  triggerEvent: z.string().trim().min(1).default("MANUAL"),
-  steps: z.array(stepSchema).min(1, "Kam se kam ek step chahiye."),
-});
-
 export async function POST(request: Request) {
   const guard = await requireModule("FMS_ADMIN");
   if (!guard.ok) return guard.response;
 
   const body = await request.json().catch(() => null);
-  const parsed = bodySchema.safeParse(body);
+  const parsed = templateBodySchema.safeParse(body);
   if (!parsed.success) {
     return NextResponse.json(
       { error: parsed.error.issues[0]?.message ?? "Invalid input." },

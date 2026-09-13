@@ -617,4 +617,10 @@ export const EN: Record<string, string> = {
   "Start": "Start",
   "Dono ek saath chuna ja sakta hai — jaise ek step apna Pass/Fail khud type kare, aur saath me pichle step ka data bhi dekhe.":
     "Both can be turned on together — e.g. a step types its own Pass/Fail while also seeing the previous step's data.",
+  "Edit": "Edit",
+  "Template Edit karein": "Edit Template",
+  "Save karne par ek naya version banega aur purana version Archive ho jaayega — jo instance abhi chal raha hai wo purane version se hi chalta rahega, kisi ke beech me kuch nahi badlega.":
+    "Saving creates a new version and archives the old one — any instance already running keeps running against the old version; nothing changes underneath it mid-flow.",
+  "Naya version ban gaya, purana Archive ho gaya.": "New version created, the old one archived.",
+  "Naya version save karein": "Save new version",
 };

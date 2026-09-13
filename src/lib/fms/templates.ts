@@ -138,6 +138,26 @@ export async function createFmsTemplate(input: CreateFmsTemplateInput): Promise<
 }
 
 /**
+ * Edits a template by writing a new version and archiving the old one — never rewriting
+ * rows in place, the same way BOM handles a re-save. Any instance already running against
+ * the old Template_ID keeps resolving its steps from it (getFmsTemplateStep doesn't filter
+ * by Status), so an in-flight flow is never disturbed by an edit made while it's open; only
+ * a *new* instance (manual Start, or an event trigger) ever sees the edited version.
+ *
+ * Creates the new version first and archives the old one second — if archiving fails, the
+ * org is briefly left with two Active versions (harmless, easy to notice and fix by hand)
+ * rather than zero (which would silently stop anything from starting).
+ */
+export async function updateFmsTemplate(
+  oldTemplateId: string,
+  input: CreateFmsTemplateInput
+): Promise<string> {
+  const newTemplateId = await createFmsTemplate(input);
+  await setFmsTemplateStatus(oldTemplateId, "Archived");
+  return newTemplateId;
+}
+
+/**
  * Flips every row of a template to a new Status in one batch write.
  *
  * A template is many rows (one per step), so this can't go through updateModuleRow —

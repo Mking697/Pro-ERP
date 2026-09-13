@@ -23,15 +23,23 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useT } from "@/components/preferences-provider";
-import { parseOutcomeOptions } from "./template-format";
+import { parseNextStepMap, parseOutcomeOptions } from "./template-format";
 import { slugify } from "@/lib/id";
 import {
   THIS_FLOW_SOURCE,
   serializeStepDataSourceConfig,
+  parseStepDataSourceConfig,
   type FormField,
   type FormFieldType,
 } from "@/lib/fms/dataSource";
-import { serializeActionConfig, type ActionType, type LedgerMovementOutcomeAction } from "@/lib/fms/actions";
+import {
+  serializeActionConfig,
+  parseActionType,
+  parseLedgerMovementActionConfig,
+  type ActionType,
+  type LedgerMovementOutcomeAction,
+} from "@/lib/fms/actions";
+import type { FmsTemplateStepRecord } from "./types";
 
 interface UserOption {
   userId: string;
@@ -146,6 +154,53 @@ function columnOptionsFor(step: DraftStep, allSteps: DraftStep[], modules: Modul
   return modules.find((m) => m.key === step.existingSourceModule)?.headers ?? [];
 }
 
+/** The reverse of handleSubmit's payload building — turns a saved template's rows back
+ * into editable draft state, for the Edit dialog. */
+function hydrateSteps(records: FmsTemplateStepRecord[]): DraftStep[] {
+  return records.map((r) => {
+    const dataSource = parseStepDataSourceConfig(r.Data_Source_Config);
+    const outcomeOptions = parseOutcomeOptions(r.Outcome_Options);
+    const nextMap = parseNextStepMap(r.Next_Step_Map);
+    const actionType = parseActionType(r.Action_Type);
+    const actionConfigParsed = parseLedgerMovementActionConfig(r.Action_Config);
+
+    const actionByOutcome: Record<string, LedgerMovementOutcomeAction & { uomField: string }> = {};
+    for (const o of outcomeOptions) {
+      const a = actionConfigParsed[o];
+      actionByOutcome[o] = a
+        ? { direction: a.direction, skuField: a.skuField, qtyField: a.qtyField, uomField: a.uomField ?? "" }
+        : { direction: "In", skuField: "", qtyField: "", uomField: "" };
+    }
+
+    return {
+      id: nextId++,
+      stepName: r.Step_Name,
+      assignedTo: r.Assigned_To,
+      tatValue: r.TAT_Value,
+      tatUnit: r.TAT_Unit === "Days" ? "Days" : "Hours",
+      outcomesText: outcomeOptions.join(","),
+      nextStepMap: nextMap,
+      useForm: Boolean(dataSource.form),
+      useExisting: Boolean(dataSource.existing),
+      formFields: (dataSource.form?.fields ?? []).map((f) => ({
+        id: nextId++,
+        label: f.label,
+        type: f.type,
+        required: f.required,
+        optionsText: (f.options ?? []).join(","),
+      })),
+      existingSourceModule: dataSource.existing?.sourceModule ?? "",
+      existingSourceStepNo: dataSource.existing?.sourceStepNo
+        ? String(dataSource.existing.sourceStepNo)
+        : "",
+      existingColumns: dataSource.existing?.columns ?? [],
+      existingFilterByContext: dataSource.existing?.filterByContext ?? true,
+      actionType,
+      actionByOutcome,
+    };
+  });
+}
+
 function buildExistingConfig(step: DraftStep) {
   return {
     sourceModule: step.existingSourceModule,
@@ -156,18 +211,31 @@ function buildExistingConfig(step: DraftStep) {
   };
 }
 
+export interface EditingTemplate {
+  templateId: string;
+  templateName: string;
+  triggerEvent: string;
+  steps: FmsTemplateStepRecord[];
+}
+
 export default function FmsTemplateForm({
   onCreated,
   userOptions,
+  editing,
 }: {
   onCreated: () => void;
   userOptions: UserOption[];
+  /** When set, the dialog edits this template instead of creating a new one — saving
+   * writes a new version and archives the old one (see updateFmsTemplate). */
+  editing?: EditingTemplate;
 }) {
   const t = useT();
   const [open, setOpen] = useState(false);
-  const [templateName, setTemplateName] = useState("");
-  const [triggerEvent, setTriggerEvent] = useState("MANUAL");
-  const [steps, setSteps] = useState<DraftStep[]>(() => [blankStep()]);
+  const [templateName, setTemplateName] = useState(editing?.templateName ?? "");
+  const [triggerEvent, setTriggerEvent] = useState(editing?.triggerEvent ?? "MANUAL");
+  const [steps, setSteps] = useState<DraftStep[]>(() =>
+    editing ? hydrateSteps(editing.steps) : [blankStep()]
+  );
   const [saving, setSaving] = useState(false);
   const [moduleOptions, setModuleOptions] = useState<ModuleOption[]>([]);
 
@@ -179,9 +247,15 @@ export default function FmsTemplateForm({
   }, [t]);
 
   function reset() {
-    setTemplateName("");
-    setTriggerEvent("MANUAL");
-    setSteps([blankStep()]);
+    if (editing) {
+      setTemplateName(editing.templateName);
+      setTriggerEvent(editing.triggerEvent);
+      setSteps(hydrateSteps(editing.steps));
+    } else {
+      setTemplateName("");
+      setTriggerEvent("MANUAL");
+      setSteps([blankStep()]);
+    }
   }
 
   function setStep(id: number, patch: Partial<DraftStep>) {
@@ -287,11 +361,14 @@ export default function FmsTemplateForm({
 
     setSaving(true);
     try {
-      const res = await fetch("/api/fms/templates", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ templateName, triggerEvent, steps: payloadSteps }),
-      });
+      const res = await fetch(
+        editing ? `/api/fms/templates/${editing.templateId}` : "/api/fms/templates",
+        {
+          method: editing ? "PUT" : "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ templateName, triggerEvent, steps: payloadSteps }),
+        }
+      );
       const data = await res.json().catch(() => null);
 
       if (!res.ok) {
@@ -299,7 +376,11 @@ export default function FmsTemplateForm({
         return;
       }
 
-      toast.success(t("Flow template ban gaya."));
+      toast.success(
+        editing
+          ? t("Naya version ban gaya, purana Archive ho gaya.")
+          : t("Flow template ban gaya.")
+      );
       reset();
       setOpen(false);
       onCreated();
@@ -310,14 +391,28 @@ export default function FmsTemplateForm({
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger render={<Button>{t("Naya Flow Template")}</Button>} />
+      <DialogTrigger
+        render={
+          editing ? (
+            <Button variant="outline" size="sm">
+              {t("Edit")}
+            </Button>
+          ) : (
+            <Button>{t("Naya Flow Template")}</Button>
+          )
+        }
+      />
       <DialogContent className="max-h-[85vh] max-w-3xl overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>{t("Naya Flow Template")}</DialogTitle>
+          <DialogTitle>{editing ? t("Template Edit karein") : t("Naya Flow Template")}</DialogTitle>
           <DialogDescription>
-            {t(
-              "Ek step ka outcome decide karta hai agla kaunsa step chalega. \"MANUAL\" trigger sirf haath se start hota hai — koi module-event ya doosre flow ka outcome key (e.g. INWARD_ENTRY_CREATED) bhi de sakte hain."
-            )}
+            {editing
+              ? t(
+                  "Save karne par ek naya version banega aur purana version Archive ho jaayega — jo instance abhi chal raha hai wo purane version se hi chalta rahega, kisi ke beech me kuch nahi badlega."
+                )
+              : t(
+                  "Ek step ka outcome decide karta hai agla kaunsa step chalega. \"MANUAL\" trigger sirf haath se start hota hai — koi module-event ya doosre flow ka outcome key (e.g. INWARD_ENTRY_CREATED) bhi de sakte hain."
+                )}
           </DialogDescription>
         </DialogHeader>
 
@@ -787,7 +882,7 @@ export default function FmsTemplateForm({
 
           <DialogFooter>
             <Button type="submit" disabled={saving}>
-              {saving ? "Saving..." : t("Template banayein")}
+              {saving ? "Saving..." : editing ? t("Naya version save karein") : t("Template banayein")}
             </Button>
           </DialogFooter>
         </form>
