@@ -4,10 +4,16 @@ import { ITEM_CATEGORIES } from "@/lib/inventory/items";
 import { buildCsv, csvResponseHeaders } from "@/lib/csv";
 
 /**
- * The blank spreadsheet a bulk import starts from — same column labels as the New Item
- * dialog, so filling this in feels like the same form, just wider. Header text is matched
- * loosely on import (see itemsImport.ts), so renaming or reordering these columns still
- * works; this is only the friendliest starting point, not the only accepted shape.
+ * The blank spreadsheet a bulk import starts from — the same column labels as the New
+ * Item dialog, so filling this in feels like the same form, just wider, plus one column
+ * the dialog doesn't have: Opening Stock. A single item created from the dialog starts at
+ * zero and needs a separate Stock In afterwards; a bulk import of, say, an existing
+ * warehouse's full item list would otherwise need one manual Stock In per row right after
+ * the import, which is exactly the kind of one-at-a-time work this feature exists to
+ * avoid — so a row with a positive Opening Stock gets one "Opening" ledger entry for free.
+ * Header text is matched loosely on import (see itemsImport.ts), so renaming or
+ * reordering these columns still works; this is only the friendliest starting point, not
+ * the only accepted shape.
  */
 export async function GET() {
   const guard = await requireModule("INVENTORY_SETUP");
@@ -26,6 +32,7 @@ export async function GET() {
       "MOQ",
       "Max Level",
       "Location",
+      "Opening Stock",
     ],
     // One example row shows the expected shape. Its name says to remove it outright, so
     // a person who forgets ends up with an obviously-named junk row, not a silent one.
@@ -38,6 +45,7 @@ export async function GET() {
       "",
       "",
       "1",
+      "",
       "",
       "",
       "",

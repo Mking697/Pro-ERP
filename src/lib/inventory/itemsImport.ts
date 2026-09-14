@@ -26,6 +26,10 @@ const HEADER_ALIASES: Record<string, keyof BulkCreateRowInput> = {
   moq: "moq",
   maxlevel: "maxLevel",
   location: "location",
+  openingstock: "openingStock",
+  availablestock: "openingStock",
+  currentstock: "openingStock",
+  stock: "openingStock",
 };
 
 function normalizeHeader(header: string): string {
@@ -130,6 +134,7 @@ export async function parseItemsFile(
       safetyFactor: toNumberOrNull(byField.safetyFactor),
       moq: toNumberOrNull(byField.moq),
       maxLevel: toNumberOrNull(byField.maxLevel),
+      openingStock: toNumberOrNull(byField.openingStock),
     });
   });
 

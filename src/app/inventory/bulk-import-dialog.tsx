@@ -24,6 +24,7 @@ interface ImportError {
 
 interface ImportResult {
   created: number;
+  openingStockRecorded: number;
   errors: ImportError[];
 }
 
@@ -57,8 +58,9 @@ export default function BulkImportDialog({ onImported }: { onImported: () => voi
       }
 
       const created: number = data.created ?? 0;
+      const openingStockRecorded: number = data.openingStockRecorded ?? 0;
       const errors: ImportError[] = data.errors ?? [];
-      setResult({ created, errors });
+      setResult({ created, openingStockRecorded, errors });
 
       if (created > 0) {
         toast.success(`${created} ${t("item ban gaye")}.`);
@@ -85,7 +87,7 @@ export default function BulkImportDialog({ onImported }: { onImported: () => voi
           <DialogTitle>{t("Bulk Import — Items")}</DialogTitle>
           <DialogDescription>
             {t(
-              "Template download karein, usi format me apna data bharein, phir upload karein — sab items ek baar me ban jaayenge."
+              "Template download karein, usi format me apna data bharein, phir upload karein — sab items ek baar me ban jaayenge. Opening Stock column me kuch likhenge to us item ka stock bhi turant record ho jaayega."
             )}
           </DialogDescription>
         </DialogHeader>
@@ -123,6 +125,12 @@ export default function BulkImportDialog({ onImported }: { onImported: () => voi
               <p>
                 <strong className="text-foreground">{result.created}</strong>{" "}
                 {t("item ban gaye")}
+                {result.openingStockRecorded > 0 && (
+                  <>
+                    {" "}
+                    ({result.openingStockRecorded} {t("me Opening Stock bhi record ho gaya")})
+                  </>
+                )}
                 {result.errors.length > 0 && (
                   <>
                     , <strong className="text-destructive">{result.errors.length}</strong>{" "}

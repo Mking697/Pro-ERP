@@ -1,4 +1,4 @@
-import { appendModuleRow, getModuleRows, recordToRow } from "@/lib/moduleSheets";
+import { appendModuleRow, appendModuleRows, getModuleRows, recordToRow } from "@/lib/moduleSheets";
 import { generateId } from "@/lib/id";
 import { num, numOr0, type ItemRecord } from "@/lib/inventory/items";
 import type { Direction, LedgerSource, StockStatus } from "@/lib/inventory/constants";
@@ -254,4 +254,49 @@ export async function recordMovement(
 
   await appendModuleRow(MODULE_KEY, recordToRow(MODULE_KEY, record));
   return record;
+}
+
+export interface BulkMovementInput {
+  sku: string;
+  direction: Direction;
+  quantity: number;
+  uom: string;
+  source: LedgerSource;
+  location?: string;
+  remark?: string;
+  userId: string;
+}
+
+/**
+ * Appends many movements in one Sheets write — bulk item import uses this for every row's
+ * Opening Stock, so importing hundreds of new items costs one extra write, not one per
+ * item the way calling recordMovement() in a loop would.
+ *
+ * No availability check: every caller today is an `In` (Opening stock for a brand-new
+ * item can't be short against anything), so the negative-stock guard recordMovement()
+ * applies to `Out` never comes into play. If an `Out` direction is ever needed here too,
+ * that check would need to move into this function rather than being skipped silently.
+ */
+export async function recordMovementsBulk(inputs: BulkMovementInput[]): Promise<void> {
+  if (inputs.length === 0) return;
+
+  const rows = inputs.map((input) => {
+    const record: LedgerRecord = {
+      Txn_ID: generateId("TXN"),
+      Timestamp: nowStamp(),
+      SKU: input.sku,
+      Direction: input.direction,
+      Quantity: String(input.quantity),
+      UOM: input.uom,
+      Source: input.source,
+      Reference_ID: "",
+      Location: input.location ?? "",
+      Issued_To: "",
+      Remark: input.remark ?? "",
+      User_ID: input.userId,
+    };
+    return recordToRow(MODULE_KEY, record);
+  });
+
+  await appendModuleRows(MODULE_KEY, rows);
 }

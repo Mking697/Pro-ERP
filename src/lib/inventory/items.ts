@@ -151,10 +151,17 @@ export interface BulkCreateRowInput {
   moq?: number | null;
   maxLevel?: number | null;
   location?: string;
+  /** Written as one "Opening" ledger entry per item after all items are created — see
+   * the API route, which is what actually calls recordMovementsBulk() (items.ts never
+   * imports the ledger, to avoid a circular import: ledger.ts already imports items.ts
+   * for ItemRecord/num/numOr0). */
+  openingStock?: number | null;
 }
 
 export interface BulkCreateResult {
-  created: ItemRecord[];
+  /** Paired with the input row number so a caller can look up e.g. its openingStock
+   * value (auto-generated SKUs mean the item's own SKU can't be used for that lookup). */
+  created: { row: number; item: ItemRecord }[];
   errors: { row: number; message: string }[];
 }
 
@@ -177,7 +184,7 @@ export async function createItemsBulk(
   const existing = await listItems();
   const usedSkus = new Set(existing.map((i) => i.SKU.trim().toLowerCase()));
 
-  const created: ItemRecord[] = [];
+  const created: { row: number; item: ItemRecord }[] = [];
   const errors: { row: number; message: string }[] = [];
   const rows: (string | number)[][] = [];
 
@@ -227,7 +234,7 @@ export async function createItemsBulk(
       Created_By: createdBy,
     };
 
-    created.push(record);
+    created.push({ row: input.row, item: record });
     rows.push(recordToRow(MODULE_KEY, record));
   }
 

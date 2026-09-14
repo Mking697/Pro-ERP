@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { requireModule } from "@/lib/auth/guard";
 import { createItemsBulk } from "@/lib/inventory/items";
 import { parseItemsFile } from "@/lib/inventory/itemsImport";
+import { recordMovementsBulk, type BulkMovementInput } from "@/lib/inventory/ledger";
 
 // Same ceiling as the generic attachment upload — Vercel's Hobby serverless functions cap
 // a request body around 4.5MB. A spreadsheet of item rows is plain text/XML and tiny per
@@ -71,8 +72,33 @@ export async function POST(request: Request) {
 
   const result = await createItemsBulk(parsed.rows, guard.session.email);
 
+  // A row's Opening Stock is written as one ledger entry per item, in the same batch —
+  // looked up by row number (not SKU) because a blank-SKU row's real SKU only exists on
+  // the created record, not on what the file itself said.
+  const inputByRow = new Map(parsed.rows.map((r) => [r.row, r]));
+  const movements: BulkMovementInput[] = [];
+  for (const { row, item } of result.created) {
+    const openingStock = inputByRow.get(row)?.openingStock;
+    if (openingStock && openingStock > 0) {
+      movements.push({
+        sku: item.SKU,
+        direction: "In",
+        quantity: openingStock,
+        uom: item.UOM,
+        source: "Opening",
+        location: item.Location,
+        remark: "Bulk import",
+        userId: guard.session.userId,
+      });
+    }
+  }
+  if (movements.length > 0) {
+    await recordMovementsBulk(movements);
+  }
+
   return NextResponse.json({
     created: result.created.length,
+    openingStockRecorded: movements.length,
     errors: result.errors,
   });
 }
