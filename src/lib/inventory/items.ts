@@ -1,5 +1,6 @@
 import {
   appendModuleRow,
+  appendModuleRows,
   findModuleRow,
   getModuleRows,
   getModuleRowNumbers,
@@ -9,6 +10,7 @@ import {
 } from "@/lib/moduleSheets";
 import { generateId } from "@/lib/id";
 import { nowStamp } from "@/lib/timestamp";
+import { ITEM_CATEGORIES, type ItemCategory } from "@/lib/inventory/constants";
 
 const MODULE_KEY = "ITEMS";
 
@@ -133,6 +135,107 @@ export async function createItem(input: CreateItemInput): Promise<ItemRecord> {
 
   await appendModuleRow(MODULE_KEY, recordToRow(MODULE_KEY, record));
   return record;
+}
+
+export interface BulkCreateRowInput {
+  /** 1-based row number in the uploaded file (header row is 1), only for error messages. */
+  row: number;
+  sku?: string;
+  itemName: string;
+  category: string;
+  sizeUnit?: string;
+  uom: string;
+  rate?: number | null;
+  leadTimeDays?: number | null;
+  safetyFactor?: number | null;
+  moq?: number | null;
+  maxLevel?: number | null;
+  location?: string;
+}
+
+export interface BulkCreateResult {
+  created: ItemRecord[];
+  errors: { row: number; message: string }[];
+}
+
+/**
+ * Creates many items from one uploaded spreadsheet in a single Sheets write.
+ *
+ * Reads the existing item list once (not once per row, the way calling createItem() in a
+ * loop would) and tracks SKUs — both already on the sheet and already claimed earlier in
+ * this same file — in one in-memory set, so two rows of the same upload can't collide with
+ * each other the way a duplicate-only-against-the-sheet check would miss. A bad row (no
+ * name, an unknown category, a SKU already taken) is skipped and reported rather than
+ * failing the whole import — a 400-row upload with one typo should still create the other
+ * 399, the same way the rest of this app prefers a partial, reported result (see
+ * bulkUpdatePlanningFields's unknownSkus) over an all-or-nothing failure.
+ */
+export async function createItemsBulk(
+  inputs: BulkCreateRowInput[],
+  createdBy: string
+): Promise<BulkCreateResult> {
+  const existing = await listItems();
+  const usedSkus = new Set(existing.map((i) => i.SKU.trim().toLowerCase()));
+
+  const created: ItemRecord[] = [];
+  const errors: { row: number; message: string }[] = [];
+  const rows: (string | number)[][] = [];
+
+  for (const input of inputs) {
+    if (!input.itemName.trim()) {
+      errors.push({ row: input.row, message: "Item ka naam zaroori hai." });
+      continue;
+    }
+    if (!input.uom.trim()) {
+      errors.push({ row: input.row, message: "UOM zaroori hai." });
+      continue;
+    }
+    if (!ITEM_CATEGORIES.includes(input.category as ItemCategory)) {
+      errors.push({
+        row: input.row,
+        message: `Category "${input.category}" invalid hai — ${ITEM_CATEGORIES.join(", ")} me se ek honi chahiye.`,
+      });
+      continue;
+    }
+
+    let sku = (input.sku ?? "").trim();
+    if (!sku) {
+      do {
+        sku = generateId("SKU");
+      } while (usedSkus.has(sku.toLowerCase()));
+    } else if (usedSkus.has(sku.toLowerCase())) {
+      errors.push({ row: input.row, message: `SKU "${sku}" pehle se maujood hai.` });
+      continue;
+    }
+    usedSkus.add(sku.toLowerCase());
+
+    const record: ItemRecord = {
+      SKU: sku,
+      Item_Name: input.itemName.trim(),
+      Category: input.category,
+      Size_Unit: input.sizeUnit?.trim() ?? "",
+      UOM: input.uom.trim(),
+      Rate: optional(input.rate),
+      ADC_Manual: "",
+      Lead_Time_Days: optional(input.leadTimeDays),
+      Safety_Factor: optional(input.safetyFactor),
+      MOQ: optional(input.moq),
+      Max_Level: optional(input.maxLevel),
+      Location: input.location?.trim() ?? "",
+      Status: "Active",
+      Created_At: nowStamp(),
+      Created_By: createdBy,
+    };
+
+    created.push(record);
+    rows.push(recordToRow(MODULE_KEY, record));
+  }
+
+  if (rows.length > 0) {
+    await appendModuleRows(MODULE_KEY, rows);
+  }
+
+  return { created, errors };
 }
 
 export interface UpdateItemInput {

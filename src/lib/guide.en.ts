@@ -327,6 +327,24 @@ export const GUIDE_EN: GuideChapter[] = [
         ],
       },
       {
+        id: "bulk-import-items",
+        title: "Creating many new items at once",
+        audience: "INVENTORY_SETUP",
+        summary:
+          "Creating items one at a time doesn't scale for a long list — Bulk Import creates them all in one go from an Excel/CSV file.",
+        steps: [
+          "Press Bulk Import on the Inventory page.",
+          "Download Template — it has the same columns as the New Item form.",
+          "Remove the template's example row, fill in your data in the same format, then save the file (CSV or Excel both work).",
+          "Upload that same file back in the Bulk Import dialog and press Import.",
+        ],
+        notes: [
+          "SKU can be left blank — just like the New Item form, one is generated for you.",
+          "If a row has a problem (blank name, an invalid category, or a SKU that already exists), only that row is skipped and the reason is shown — every other item is still created.",
+          "Column headers can be slightly off in spelling or spacing (e.g. 'Item_Name' or 'Item Name' both work), but the easiest path is still the one the template gives you.",
+        ],
+      },
+      {
         id: "stock-in-out",
         title: "Recording stock in and out",
         audience: "INVENTORY_TXN",

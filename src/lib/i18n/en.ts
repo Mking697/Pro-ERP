@@ -99,6 +99,26 @@ export const EN: Record<string, string> = {
   "Department, machine, ya vyakti": "Department, machine or person",
   "Manually set": "Set manually",
   "Kisko / Remark": "Issued to / remark",
+  "Bulk Import": "Bulk Import",
+  "Bulk Import — Items": "Bulk Import — Items",
+  "Template download karein, usi format me apna data bharein, phir upload karein — sab items ek baar me ban jaayenge.":
+    "Download the template, fill in your data in the same format, then upload it — every item is created in one go.",
+  "Template Download karein": "Download Template",
+  "Filled-in file (CSV ya Excel)": "Filled-in file (CSV or Excel)",
+  "item ban gaye": "items created",
+  "row skip ho gayi(n) errors ki wajah se": "row(s) skipped due to errors",
+  "Import karein": "Import",
+  "Import nahi ho paya.": "Import failed.",
+  "Koi file nahi mili.": "No file was found.",
+  "Sirf .csv, .xlsx ya .xls file upload karein.": "Only .csv, .xlsx or .xls files can be uploaded.",
+  "File padhi nahi ja saki — sahi template download karke dobara try karein.":
+    "The file could not be read — download the correct template and try again.",
+  "File me koi row nahi mili.": "No rows were found in the file.",
+  "File khaali hai.": "The file is empty.",
+  "File ke headers pehchane nahi gaye — 'Item Name' column nahi mila. Template download karke usi format me data bharein.":
+    "The file's headers were not recognized — no 'Item Name' column was found. Download the template and fill it in in the same format.",
+  "Item ka naam zaroori hai.": "Item name is required.",
+  "UOM zaroori hai.": "UOM is required.",
 
   // --- reorder and indents ---------------------------------------------------------
   "Abhi kisi item ko order ki zaroorat nahi": "Nothing needs ordering right now",

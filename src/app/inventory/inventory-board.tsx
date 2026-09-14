@@ -16,6 +16,7 @@ import {
 } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
 import CreateItemDialog from "./create-item-dialog";
+import BulkImportDialog from "./bulk-import-dialog";
 import StockMovementDialog from "./stock-movement-dialog";
 import { qty, statusVariant, type ItemRow, type StockStatus } from "./types";
 import { TableSkeleton } from "@/components/loading-states";
@@ -133,6 +134,7 @@ export default function InventoryBoard({
               size="sm"
               render={<Link href="/inventory/setup">Bulk Setup</Link>}
             />
+            <BulkImportDialog onImported={() => setVersion((v) => v + 1)} />
             <CreateItemDialog onCreated={() => setVersion((v) => v + 1)} />
           </div>
         )}

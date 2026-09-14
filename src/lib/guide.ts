@@ -369,6 +369,24 @@ export const GUIDE: GuideChapter[] = [
         ],
       },
       {
+        id: "bulk-import-items",
+        title: "Bahut saare naye item ek saath banana",
+        audience: "INVENTORY_SETUP",
+        summary:
+          "Ek-ek karke item banana lambi list ke liye theek nahi — Bulk Import se Excel/CSV se ek baar me sab ban jaate hain.",
+        steps: [
+          "Inventory page par Bulk Import dabayein.",
+          "Template Download karein — isme wahi columns hain jo New Item form me hain.",
+          "Template ki example row hata dein, apna data usi format me bhar dein, phir file save karein (CSV ya Excel dono chalte hain).",
+          "Wapas Bulk Import dialog me wahi file upload karein aur Import karein dabayein.",
+        ],
+        notes: [
+          "SKU khaali chhoda ja sakta hai — New Item form ki tarah, khud ban jaata hai.",
+          "Kisi row me galti ho (naam khaali, galat Category, ya SKU pehle se maujood) to sirf wahi row skip hoti hai aur wajah dikhai jaati hai — baaki saare items ban jaate hain.",
+          "Column headers ka spelling/spacing thoda idhar-udhar ho to bhi chalega (jaise 'Item_Name' ya 'Item Name' dono), lekin sabse aasan raasta wahi hai jo template deta hai.",
+        ],
+      },
+      {
         id: "stock-in-out",
         title: "Stock In aur Out karna",
         audience: "INVENTORY_TXN",
