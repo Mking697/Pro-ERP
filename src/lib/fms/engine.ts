@@ -9,7 +9,7 @@ import {
   type FmsTatUnit,
   type FmsTemplateStepRecord,
 } from "@/lib/fms/templates";
-import { computeNextWorkingInstant, computeTatDeadline } from "@/lib/fms/calendar";
+import { computeNextWorkingInstant, computeTatDeadline, computeUserDayEnd } from "@/lib/fms/calendar";
 import {
   parseStepDataSourceConfig,
   missingRequiredFields,
@@ -472,9 +472,48 @@ export async function getFmsStepContext(runId: string): Promise<FmsStepContext |
   return { run, step, dataSource, referenceRows };
 }
 
+/** Every FMS_RUNS row ever assigned to this user, any status — what MIS scoring (see
+ * src/lib/mis.ts's fmsMisCounts) and the score-breakdown table evaluate. */
+export async function listFmsRunsForUser(userId: string): Promise<FmsRunRecord[]> {
+  const runs = await getModuleRows<FmsRunRecord>(MODULE_KEY);
+  return runs.filter((r) => r.Assigned_To === userId);
+}
+
 export async function listMyPendingFmsSteps(userId: string): Promise<FmsRunRecord[]> {
   const runs = await getModuleRows<FmsRunRecord>(MODULE_KEY);
   return runs.filter((r) => r.Assigned_To === userId && r.Status === "Pending");
+}
+
+/**
+ * Everything the Dashboard should still show a user today: every step still Pending, plus
+ * anything they completed today that hasn't rolled past the end of their working day yet —
+ * a step finished five minutes ago should not vanish from the screen the instant it's
+ * done, only once that working day is actually over. Rolls into FMS History (see
+ * src/lib/fms/history.ts) after that, same as it always could.
+ *
+ * Separate from listMyPendingFmsSteps() on purpose: /fms's own "My Steps" tab keeps its
+ * simpler, unconditional Pending-only contract; only the Dashboard gets the lingering
+ * behaviour, so this is additive rather than a change to already-relied-on behaviour.
+ */
+export async function listMyDashboardFmsSteps(userId: string): Promise<FmsRunRecord[]> {
+  const runs = await getModuleRows<FmsRunRecord>(MODULE_KEY);
+  const mine = runs.filter((r) => r.Assigned_To === userId);
+
+  const pending = mine.filter((r) => r.Status === "Pending");
+
+  const completedToday: FmsRunRecord[] = [];
+  for (const run of mine) {
+    if (run.Status === "Pending" || !run.Completed_At) continue;
+    const completedAt = parseStamp(run.Completed_At);
+    if (!completedAt) continue;
+    const dayEnd = await computeUserDayEnd(userId, completedAt.getTime());
+    // No working windows that day (shouldn't normally happen for a real completion, but
+    // guards against a since-changed calendar) — treat it as already rolled into history
+    // rather than showing it forever.
+    if (dayEnd !== null && Date.now() < dayEnd) completedToday.push(run);
+  }
+
+  return [...pending, ...completedToday];
 }
 
 export async function listFmsInstanceHistory(instanceId: string): Promise<FmsRunRecord[]> {

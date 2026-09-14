@@ -4,10 +4,17 @@ import { tryModule } from "@/lib/moduleSheets";
 import { listFmsTemplates, type FmsTemplateStepRecord } from "@/lib/fms/templates";
 
 /**
- * The "Production Line" picker on the plan form needs only Active templates meant to run
- * on PRODUCTION_STARTED, by name — not the full step configuration FMS_ADMIN's own
- * /api/fms/templates returns. A planner (PPC_PLAN) usually doesn't hold FMS_ADMIN, so this
- * is a separate, narrower endpoint rather than widening that one's guard.
+ * The "Production Line" picker on the plan form needs only Active templates, by name —
+ * not the full step configuration FMS_ADMIN's own /api/fms/templates returns. A planner
+ * (PPC_PLAN) usually doesn't hold FMS_ADMIN, so this is a separate, narrower endpoint
+ * rather than widening that one's guard.
+ *
+ * Every Active template is offered, regardless of its own Trigger_Event — picking one
+ * here starts it with a direct startFmsInstance() call (see the "start" action in
+ * api/ppc/plans/[planId]/route.ts), which never consults Trigger_Event at all. Filtering
+ * to only Trigger_Event === "PRODUCTION_STARTED" templates was tried first and was wrong:
+ * a template's default trigger is "MANUAL", so a Line built without deliberately retyping
+ * that field would silently never appear in this list.
  */
 function firstSteps(rows: FmsTemplateStepRecord[]): FmsTemplateStepRecord[] {
   const byId = new Map<string, FmsTemplateStepRecord>();
@@ -24,7 +31,7 @@ export async function GET() {
 
   const rows = await tryModule(() => listFmsTemplates());
   const lines = firstSteps(rows ?? [])
-    .filter((s) => s.Status === "Active" && s.Trigger_Event === "PRODUCTION_STARTED")
+    .filter((s) => s.Status === "Active")
     .map((s) => ({ templateId: s.Template_ID, templateName: s.Template_Name }));
 
   return NextResponse.json({ lines });

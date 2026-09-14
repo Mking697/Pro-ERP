@@ -1,6 +1,7 @@
 import type { TaskRecord } from "@/lib/tasks";
 import type { SheetUser } from "@/lib/auth/users";
-import { computeMisSummary, isOverdue, type MisSummary } from "@/lib/mis";
+import type { FmsRunRecord } from "@/lib/fms/engine";
+import { computeCombinedMisSummary, isOverdue, type MisSummary } from "@/lib/mis";
 import {
   endOfIstDay,
   istDayKey,
@@ -118,6 +119,11 @@ export function filterTasks(tasks: TaskRecord[], range: DateRange): TaskRecord[]
   return tasks.filter((t) => inRange(t.Created_At, range));
 }
 
+export function filterFmsRuns(runs: FmsRunRecord[], range: DateRange): FmsRunRecord[] {
+  if (range.key === "all") return runs;
+  return runs.filter((r) => inRange(r.Created_At, range));
+}
+
 export interface Bucket {
   label: string;
   value: number;
@@ -190,10 +196,12 @@ export interface UserScoreRow {
   summary: MisSummary;
 }
 
-/** One row per active user, worst score first — the people who need attention. */
+/** One row per active user, worst score first — the people who need attention. FMS runs
+ * are optional (an org that hasn't connected FMS yet just gets a Task-only score). */
 export function perUserScores(
   users: SheetUser[],
-  tasks: TaskRecord[]
+  tasks: TaskRecord[],
+  fmsRuns: FmsRunRecord[] = []
 ): UserScoreRow[] {
   return users
     .filter((u) => u.Status === "Active")
@@ -202,7 +210,10 @@ export function perUserScores(
       name: u.Full_Name,
       role: u.Role,
       department: u.Department,
-      summary: computeMisSummary(tasks.filter((t) => t.Assigned_To === u.User_ID)),
+      summary: computeCombinedMisSummary(
+        tasks.filter((t) => t.Assigned_To === u.User_ID),
+        fmsRuns.filter((r) => r.Assigned_To === u.User_ID)
+      ),
     }))
     .sort((a, b) => (a.summary.score ?? 1) - (b.summary.score ?? 1));
 }

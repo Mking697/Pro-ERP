@@ -6,7 +6,8 @@ import { listTasks } from "@/lib/tasks";
 import { tryModule } from "@/lib/moduleSheets";
 import SetupRequired from "@/components/setup-required";
 import AppShell from "@/components/app-shell";
-import { computeMisSummary, getScoreColorClass, formatScore } from "@/lib/mis";
+import { computeCombinedMisSummary, getScoreColorClass, formatScore } from "@/lib/mis";
+import { listAllFmsRuns } from "@/lib/fms/engine";
 import {
   Table,
   TableBody,
@@ -31,9 +32,10 @@ export default async function PerformancePage() {
     redirect("/dashboard");
   }
 
-  const [users, allTasks] = await Promise.all([
+  const [users, allTasks, allFmsRuns] = await Promise.all([
     listUsers(),
     tryModule(() => listTasks()),
+    tryModule(() => listAllFmsRuns()),
   ]);
   if (allTasks === null) {
     return (
@@ -42,11 +44,16 @@ export default async function PerformancePage() {
       </AppShell>
     );
   }
+  // FMS is optional per organization — folded in when connected, Task-only score otherwise.
+  const fmsRuns = allFmsRuns ?? [];
 
   const rows = users
     .filter((u) => u.Status === "Active")
     .map((u) => {
-      const summary = computeMisSummary(allTasks.filter((t) => t.Assigned_To === u.User_ID));
+      const summary = computeCombinedMisSummary(
+        allTasks.filter((t) => t.Assigned_To === u.User_ID),
+        fmsRuns.filter((r) => r.Assigned_To === u.User_ID)
+      );
       return { user: u, summary };
     })
     .sort((a, b) => (b.summary.score ?? -1) - (a.summary.score ?? -1));

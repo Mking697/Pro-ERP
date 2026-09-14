@@ -1,4 +1,6 @@
 import type { TaskRecord } from "@/lib/tasks";
+import type { FmsRunRecord } from "@/lib/fms/engine";
+import { isFmsStepOverdue } from "@/lib/fms/engine";
 import { parseStamp } from "@/lib/timestamp";
 
 export interface MisSummary {
@@ -16,13 +18,38 @@ export interface MisSummary {
  * Scoring is a penalty scale: 0% is a clean record, -100% is the worst possible.
  *
  * Finishing on time costs nothing, finishing late costs half a mark, and letting a task
- * go past its date without finishing costs a full mark. Because every penalty is between
- * 0 and 1 per evaluated task, the total can never exceed the count — so the score cannot
- * go past -100% by construction, with no clamp to enforce it.
+ * (or an FMS step — see fmsMisCounts) go past its date without finishing costs a full
+ * mark. Because every penalty is between 0 and 1 per evaluated item, the total can never
+ * exceed the count — so the score cannot go past -100% by construction, with no clamp to
+ * enforce it.
  */
 const ON_TIME_PENALTY = 0;
 const DELAY_PENALTY = 0.5;
 const NOT_DONE_PENALTY = 1;
+
+export interface MisCounts {
+  onTime: number;
+  delay: number;
+  notDone: number;
+}
+
+/** The one place the penalty formula actually runs — both computeMisSummary (Tasks alone)
+ * and computeCombinedMisSummary (Tasks + FMS) build a MisCounts and hand it here, so the
+ * two can never drift into computing a score two different ways. */
+function scoreFromCounts(counts: MisCounts): MisSummary {
+  const { onTime, delay, notDone } = counts;
+  const totalEvaluated = onTime + delay + notDone;
+  const penalty =
+    onTime * ON_TIME_PENALTY + delay * DELAY_PENALTY + notDone * NOT_DONE_PENALTY;
+  const score =
+    totalEvaluated === 0 ? null : -Math.round((penalty / totalEvaluated) * 100);
+
+  return { onTime, delay, notDone, totalEvaluated, penalty, score };
+}
+
+function addCounts(a: MisCounts, b: MisCounts): MisCounts {
+  return { onTime: a.onTime + b.onTime, delay: a.delay + b.delay, notDone: a.notDone + b.notDone };
+}
 
 /** A task counts as "Not Done" (for scoring) only while it's overdue and still pending —
  * this is a live, timestamp-derived classification, never a status stored in the sheet. */
@@ -32,7 +59,7 @@ export function isOverdue(task: TaskRecord): boolean {
   return due !== null && new Date() > due;
 }
 
-export function computeMisSummary(tasks: TaskRecord[]): MisSummary {
+function taskMisCounts(tasks: TaskRecord[]): MisCounts {
   let onTime = 0;
   let delay = 0;
   let notDone = 0;
@@ -43,13 +70,42 @@ export function computeMisSummary(tasks: TaskRecord[]): MisSummary {
     if (isOverdue(task)) notDone += 1;
   }
 
-  const totalEvaluated = onTime + delay + notDone;
-  const penalty =
-    onTime * ON_TIME_PENALTY + delay * DELAY_PENALTY + notDone * NOT_DONE_PENALTY;
-  const score =
-    totalEvaluated === 0 ? null : -Math.round((penalty / totalEvaluated) * 100);
+  return { onTime, delay, notDone };
+}
 
-  return { onTime, delay, notDone, totalEvaluated, penalty, score };
+/**
+ * FMS's counterpart to taskMisCounts. Unlike Tasks (which store cumulative On_Time_Count/
+ * Delay_Count columns because a recurring task used to roll one row forward), every
+ * FMS_RUNS row is already exactly one occurrence, so its own Status is read directly —
+ * "On Time" / "Delay Done" are written once, at completion, by completeFmsStep().
+ */
+export function fmsMisCounts(runs: FmsRunRecord[]): MisCounts {
+  let onTime = 0;
+  let delay = 0;
+  let notDone = 0;
+
+  for (const run of runs) {
+    if (run.Status === "On Time") onTime += 1;
+    else if (run.Status === "Delay Done") delay += 1;
+    else if (isFmsStepOverdue(run)) notDone += 1;
+  }
+
+  return { onTime, delay, notDone };
+}
+
+export function computeMisSummary(tasks: TaskRecord[]): MisSummary {
+  return scoreFromCounts(taskMisCounts(tasks));
+}
+
+/** The one score a person actually sees — Tasks and FMS steps both count toward the same
+ * number, so "my score" means everything they're accountable for, not just Tasks. Used
+ * everywhere a user's MIS score is shown (Dashboard, Performance, the Performance
+ * report/export) so it can never read differently in two places. */
+export function computeCombinedMisSummary(
+  tasks: TaskRecord[],
+  fmsRuns: FmsRunRecord[]
+): MisSummary {
+  return scoreFromCounts(addCounts(taskMisCounts(tasks), fmsMisCounts(fmsRuns)));
 }
 
 /** 0 is best, -100 worst — so the thresholds run the other way from a credit score. */
@@ -69,7 +125,14 @@ export function formatScore(score: number | null): string {
 export type MisOutcome = "On Time" | "Delay Done" | "Not Done";
 
 export interface MisRow {
-  task: TaskRecord;
+  /** Stable key for a list — a task's own ID plus outcome, or an FMS run's Run_ID. */
+  id: string;
+  source: "task" | "fms";
+  /** Task title, or "Step Name — Flow Name" for an FMS row. */
+  label: string;
+  /** Due date (task) or the step's own deadline/completion stamp (FMS) — raw, rendered
+   * with formatDueDisplay by the caller. */
+  when: string;
   outcome: MisOutcome;
   /** How many evaluated units this row contributes to the denominator. */
   evaluated: number;
@@ -80,13 +143,16 @@ export interface MisRow {
 }
 
 /**
- * Explains a score instead of just stating it: one row per task that actually moved the
- * number, with the credit it earned and why.
+ * Explains a score instead of just stating it: one row per task or FMS step that actually
+ * moved the number, with the credit it earned and why.
  *
- * A recurring task can carry both an on-time and a delayed completion in its counters,
- * so a single task may produce two rows.
+ * A recurring task can carry both an on-time and a delayed completion in its counters, so
+ * a single task may produce two rows.
  */
-export function computeMisBreakdown(tasks: TaskRecord[]): MisRow[] {
+export function computeMisBreakdown(
+  tasks: TaskRecord[],
+  fmsRuns: FmsRunRecord[] = []
+): MisRow[] {
   const rows: MisRow[] = [];
 
   for (const task of tasks) {
@@ -95,7 +161,10 @@ export function computeMisBreakdown(tasks: TaskRecord[]): MisRow[] {
 
     if (onTime > 0) {
       rows.push({
-        task,
+        id: `${task.Task_ID}-on-time`,
+        source: "task",
+        label: task.Title,
+        when: task.Due_Date,
         outcome: "On Time",
         evaluated: onTime,
         penalty: onTime * ON_TIME_PENALTY,
@@ -108,7 +177,10 @@ export function computeMisBreakdown(tasks: TaskRecord[]): MisRow[] {
 
     if (delay > 0) {
       rows.push({
-        task,
+        id: `${task.Task_ID}-delay`,
+        source: "task",
+        label: task.Title,
+        when: task.Due_Date,
         outcome: "Delay Done",
         evaluated: delay,
         penalty: delay * DELAY_PENALTY,
@@ -121,11 +193,52 @@ export function computeMisBreakdown(tasks: TaskRecord[]): MisRow[] {
 
     if (isOverdue(task)) {
       rows.push({
-        task,
+        id: `${task.Task_ID}-not-done`,
+        source: "task",
+        label: task.Title,
+        when: task.Due_Date,
         outcome: "Not Done",
         evaluated: 1,
         penalty: NOT_DONE_PENALTY,
         reason: "Due date nikal chuki hai aur task abhi bhi pending hai — poori penalty.",
+      });
+    }
+  }
+
+  for (const run of fmsRuns) {
+    const label = `${run.Step_Name} — ${run.Template_Name}`;
+    if (run.Status === "On Time") {
+      rows.push({
+        id: `${run.Run_ID}-on-time`,
+        source: "fms",
+        label,
+        when: run.Completed_At,
+        outcome: "On Time",
+        evaluated: 1,
+        penalty: ON_TIME_PENALTY,
+        reason: "Deadline se pehle complete hua — koi penalty nahi.",
+      });
+    } else if (run.Status === "Delay Done") {
+      rows.push({
+        id: `${run.Run_ID}-delay`,
+        source: "fms",
+        label,
+        when: run.Completed_At,
+        outcome: "Delay Done",
+        evaluated: 1,
+        penalty: DELAY_PENALTY,
+        reason: "Deadline ke baad complete hua — aadhi penalty.",
+      });
+    } else if (isFmsStepOverdue(run)) {
+      rows.push({
+        id: `${run.Run_ID}-not-done`,
+        source: "fms",
+        label,
+        when: run.TAT_Deadline,
+        outcome: "Not Done",
+        evaluated: 1,
+        penalty: NOT_DONE_PENALTY,
+        reason: "Deadline nikal chuki hai aur step abhi bhi pending hai — poori penalty.",
       });
     }
   }

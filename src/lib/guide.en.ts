@@ -985,6 +985,22 @@ export const GUIDE_EN: GuideChapter[] = [
         ],
       },
       {
+        id: "fms-dashboard-history",
+        title: "Steps, MIS score, and History on the Dashboard",
+        audience: "everyone",
+        summary:
+          "Your pending FMS steps now show up on the Dashboard too, not just the FMS page — and their TAT counts toward your MIS score as well.",
+        how: [
+          "The moment a step is assigned to you (say, a Production Line's step 1, as soon as a plan starts), it shows up right away on your Dashboard, inside the \"FMS Steps\" card on the Overview tab.",
+          "Even after you complete it, that step keeps showing on the Dashboard until the end of that working day — it doesn't vanish the instant it's done. The next day it moves into History.",
+          "Every step's outcome (On Time / Delay Done / Not Done) counts toward the same single MIS score you already have — Tasks and FMS together, not two separate scores.",
+        ],
+        notes: [
+          "How your MIS score was built shows line by line in the Dashboard's \"Your score\" tab — Task and FMS rows in one table, with an \"(FMS)\" tag on the FMS ones.",
+          "The FMS page's \"History\" tab shows every completed step with its Doer, Job No, Order No and Product — who did what, and when, all in one place. You only see your own history unless you have Team Performance access.",
+        ],
+      },
+      {
         id: "fms-shifts",
         title: "Setting Company Running Time",
         audience: "FMS_ADMIN",

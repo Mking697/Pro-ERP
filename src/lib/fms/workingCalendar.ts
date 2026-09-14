@@ -117,6 +117,28 @@ export function nextWorkingInstant(
 }
 
 /**
+ * The end of the working day that `epochMs` falls in — the end of the last open window on
+ * that calendar day, or null when the day has no working windows at all (a weekly-off or
+ * holiday with no override). Used to decide when something completed today should stop
+ * counting as "still today" and roll into history instead.
+ */
+export function endOfWorkingDay(
+  epochMs: number,
+  schedule: WeekSchedule,
+  overrides: CalendarOverrides
+): number | null {
+  const istMs = toIst(epochMs);
+  const dayStart = startOfIstDay(istMs);
+  const dayKey = istDayKey(istMs);
+  const weekday = istWeekday(istMs);
+  const windows = sortedWindows(windowsForDate(dayKey, weekday, schedule, overrides));
+  if (windows.length === 0) return null;
+
+  const lastWindow = windows[windows.length - 1];
+  return fromIst(dayStart + lastWindow.endMin * MINUTE_MS);
+}
+
+/**
  * Walks forward from `startEpochMs`, consuming `minutes` of working time only — off-days,
  * holidays and excluded breaks don't count. The start point is snapped to a working
  * instant first.

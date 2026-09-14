@@ -6,6 +6,7 @@ import { tryModule } from "@/lib/moduleSheets";
 import {
   nextWorkingInstant as pureNextWorkingInstant,
   addWorkingMinutes as pureAddWorkingMinutes,
+  endOfWorkingDay as pureEndOfWorkingDay,
   type WeekSchedule,
   type CalendarOverrides,
   type DayWindow,
@@ -164,6 +165,18 @@ export async function computeTatDeadline(
   const { schedule, overrides, minutesPerDay } = await getUserWorkingSchedule(userId);
   const minutes = tatUnit === "Days" ? tatValue * minutesPerDay : tatValue * 60;
   return pureAddWorkingMinutes(startEpochMs, minutes, schedule, overrides);
+}
+
+/**
+ * The end of this user's working day containing `epochMs` — null if that calendar day has
+ * no working windows for them at all (a weekly-off/holiday with no override). Lets a
+ * dashboard decide when a step completed today should stop showing as "today's" and roll
+ * into history instead, without duplicating the shift/holiday/week-off resolution that
+ * computeTatDeadline already does.
+ */
+export async function computeUserDayEnd(userId: string, epochMs: number): Promise<number | null> {
+  const { schedule, overrides } = await getUserWorkingSchedule(userId);
+  return pureEndOfWorkingDay(epochMs, schedule, overrides);
 }
 
 /**

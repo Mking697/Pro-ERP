@@ -7,10 +7,12 @@ import { listRecurringTasks } from "@/lib/recurringTasks";
 import { listInwardEntries, listFailureLog, listImsInward } from "@/lib/inward";
 import { getFrequencyLabel } from "@/lib/frequency";
 import { formatScore, getScoreColorClass } from "@/lib/mis";
+import { listAllFmsRuns, type FmsRunRecord } from "@/lib/fms/engine";
 import {
   RANGE_PRESETS,
   resolveRange,
   filterTasks,
+  filterFmsRuns,
   inRange,
   bucketByDate,
   countBy,
@@ -212,6 +214,7 @@ export default async function Analytics({
         needs("indents") ? safe(() => tryModule(() => listIndents())) : null,
         needs("bom") ? safe(() => tryModule(() => listBoms())) : null,
         needs("ppc") ? safe(() => tryModule(() => listPlans())) : null,
+        needs("performance") ? safe(() => tryModule(() => listAllFmsRuns())) : null,
       ])
     );
 
@@ -226,6 +229,7 @@ export default async function Analytics({
     allIndents,
     allBoms,
     allPlans,
+    allFmsRuns,
   ] = tenant ? await runWithTenant(tenant, read) : await read();
 
   // Scoped after the cached read, never inside it. The cache holds the organization's raw
@@ -589,7 +593,13 @@ export default async function Analytics({
       )}
 
       {shows("performance") && (
-        <PerformanceSection tasks={tasks} users={users} range={range} t={t} />
+        <PerformanceSection
+          tasks={tasks}
+          fmsRuns={filterFmsRuns(allFmsRuns ?? [], range)}
+          users={users}
+          range={range}
+          t={t}
+        />
       )}
     </div>
   );
@@ -597,17 +607,19 @@ export default async function Analytics({
 
 function PerformanceSection({
   tasks,
+  fmsRuns,
   users,
   range,
   t,
 }: {
   tasks: TaskRecord[];
+  fmsRuns: FmsRunRecord[];
   users: Awaited<ReturnType<typeof listUsers>>;
   range: DateRange;
   /** Passed down: this is a plain function, so it cannot await the request's locale. */
   t: Translator;
 }) {
-  const rows = perUserScores(users, tasks);
+  const rows = perUserScores(users, tasks, fmsRuns);
   const scored = rows.filter((r) => r.summary.score !== null);
 
   // The dates go back out as IST days, the same way they came in. `toISOString()` would

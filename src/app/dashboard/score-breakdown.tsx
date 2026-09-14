@@ -15,24 +15,27 @@ import {
   type MisSummary,
 } from "@/lib/mis";
 import type { TaskRecord } from "@/lib/tasks";
+import type { FmsRunRecord } from "@/lib/fms/engine";
 import { getT } from "@/lib/i18n/server";
 
 /**
  * Shows where a MIS score came from, row by row.
  *
  * A bare percentage invites the question "why is it that?" and gives no way to answer it.
- * Each row names the task, what happened to it, and the credit that produced — so the
- * score reads as a consequence of specific work rather than an opaque grade.
+ * Each row names the task or FMS step, what happened to it, and the credit that produced —
+ * so the score reads as a consequence of specific work rather than an opaque grade.
  */
 export default async function ScoreBreakdown({
   tasks,
+  fmsRuns = [],
   summary,
 }: {
   tasks: TaskRecord[];
+  fmsRuns?: FmsRunRecord[];
   summary: MisSummary;
 }) {
   const t = await getT();
-  const rows = computeMisBreakdown(tasks);
+  const rows = computeMisBreakdown(tasks, fmsRuns);
 
   if (rows.length === 0) {
     return (
@@ -62,7 +65,7 @@ export default async function ScoreBreakdown({
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Task</TableHead>
+              <TableHead>{t("Task / Step")}</TableHead>
               <TableHead>{t("Completion due")}</TableHead>
               <TableHead>Result</TableHead>
               <TableHead className="text-right">Penalty</TableHead>
@@ -70,11 +73,18 @@ export default async function ScoreBreakdown({
             </TableRow>
           </TableHeader>
           <TableBody>
-            {rows.map((row, i) => (
-              <TableRow key={`${row.task.Task_ID}-${row.outcome}-${i}`}>
-                <TableCell className="font-medium">{row.task.Title}</TableCell>
+            {rows.map((row) => (
+              <TableRow key={row.id}>
+                <TableCell className="font-medium">
+                  {row.label}
+                  {row.source === "fms" && (
+                    <span className="ml-1.5 text-xs font-normal text-muted-foreground">
+                      (FMS)
+                    </span>
+                  )}
+                </TableCell>
                 <TableCell className="whitespace-nowrap text-muted-foreground">
-                  {formatDueDisplay(row.task.Due_Date)}
+                  {formatDueDisplay(row.when)}
                 </TableCell>
                 <TableCell>
                   <Badge variant={misOutcomeVariant(row.outcome)}>{row.outcome}</Badge>

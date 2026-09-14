@@ -1027,6 +1027,22 @@ export const GUIDE: GuideChapter[] = [
         ],
       },
       {
+        id: "fms-dashboard-history",
+        title: "Dashboard par steps, MIS score, aur History",
+        audience: "everyone",
+        summary:
+          "Aapke pending FMS steps ab Dashboard par bhi dikhte hain — sirf FMS page par nahi — aur unka TAT aapke MIS score me bhi ginta hai.",
+        how: [
+          "Jaise hi koi step assign hota hai (jaise Production Line ka Step 1, plan start hote hi), wo turant aapke Dashboard par dikhne lagta hai — Overview tab me 'FMS Steps' card ke andar.",
+          "Complete karne ke baad bhi wo step us din working hours khatam hone tak Dashboard par dikhta rehta hai — turant gayab nahi hota. Agle din wo History me chala jaata hai.",
+          "Har step ka Outcome (On Time / Delay Done / Not Done) aapke ek hi MIS score me ginta hai — Tasks aur FMS dono ek saath, alag-alag score nahi.",
+        ],
+        notes: [
+          "Aapka MIS score kaise bana, ye Dashboard ke 'Aapka score' tab me line-by-line dikhta hai — Task aur FMS dono rows ek hi table me, FMS wali row ke aage '(FMS)' likha hota hai.",
+          "FMS page ke 'History' tab me har complete hua step Doer, Job No, Order No aur Product ke saath dikhta hai — kisne, kab, kya kiya, sab ek jagah. Sirf apna history dikhta hai, jab tak Team Performance dekhne ka access na ho.",
+        ],
+      },
+      {
         id: "fms-shifts",
         title: "Company Running Time set karna",
         audience: "FMS_ADMIN",

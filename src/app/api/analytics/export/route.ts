@@ -1,9 +1,10 @@
 import { requireModule } from "@/lib/auth/guard";
 import { listUsers } from "@/lib/auth/users";
 import { listTasks } from "@/lib/tasks";
+import { listAllFmsRuns } from "@/lib/fms/engine";
 import { tryModule } from "@/lib/moduleSheets";
 import { NextResponse } from "next/server";
-import { resolveRange, filterTasks, perUserScores } from "@/lib/analytics";
+import { resolveRange, filterTasks, filterFmsRuns, perUserScores } from "@/lib/analytics";
 import { buildCsv, csvResponseHeaders } from "@/lib/csv";
 
 export async function GET(request: Request) {
@@ -17,12 +18,17 @@ export async function GET(request: Request) {
     url.searchParams.get("to") ?? undefined
   );
 
-  const [allTasks, users] = await Promise.all([
+  const [allTasks, allFmsRuns, users] = await Promise.all([
     tryModule(() => listTasks()),
+    tryModule(() => listAllFmsRuns()),
     listUsers(),
   ]);
 
-  const rows = perUserScores(users, filterTasks(allTasks ?? [], range));
+  const rows = perUserScores(
+    users,
+    filterTasks(allTasks ?? [], range),
+    filterFmsRuns(allFmsRuns ?? [], range)
+  );
 
   const csv = buildCsv([
     ["Name", "Role", "Department", "On Time", "Delay Done", "Not Done", "Evaluated", "Score %"],

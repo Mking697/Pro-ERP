@@ -7,6 +7,7 @@ import PageHeader from "@/components/page-header";
 import { getT } from "@/lib/i18n/server";
 import MyStepsBoard from "./my-steps-board";
 import TemplatesBoard from "./templates-board";
+import FmsHistoryBoard from "./fms-history-board";
 
 export default async function FmsPage() {
   const t = await getT();
@@ -26,23 +27,25 @@ export default async function FmsPage() {
           description={t("Multi-step FMS processes — apne pending steps dekhein, ya (agar authorized hain) naya FMS template banayein.")}
         />
 
-        {canManage ? (
-          <Tabs defaultValue="my-steps">
-            <TabsList>
-              <TabsTrigger value="my-steps">{t("Mere Steps")}</TabsTrigger>
-              <TabsTrigger value="templates">{t("Templates")}</TabsTrigger>
-            </TabsList>
+        <Tabs defaultValue="my-steps">
+          <TabsList>
+            <TabsTrigger value="my-steps">{t("Mere Steps")}</TabsTrigger>
+            <TabsTrigger value="history">{t("History")}</TabsTrigger>
+            {canManage && <TabsTrigger value="templates">{t("Templates")}</TabsTrigger>}
+          </TabsList>
 
-            <TabsContent value="my-steps" className="mt-4">
-              <MyStepsBoard />
-            </TabsContent>
+          <TabsContent value="my-steps" className="mt-4">
+            <MyStepsBoard />
+          </TabsContent>
+          <TabsContent value="history" className="mt-4">
+            <FmsHistoryBoard />
+          </TabsContent>
+          {canManage && (
             <TabsContent value="templates" className="mt-4">
               <TemplatesBoard />
             </TabsContent>
-          </Tabs>
-        ) : (
-          <MyStepsBoard />
-        )}
+          )}
+        </Tabs>
       </div>
     </AppShell>
   );

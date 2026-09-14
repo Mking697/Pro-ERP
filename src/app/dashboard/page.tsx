@@ -7,7 +7,9 @@ import { tryModule } from "@/lib/moduleSheets";
 import { MODULE_ACCESS } from "@/lib/moduleAccess";
 import SetupRequired from "@/components/setup-required";
 import AppShell from "@/components/app-shell";
-import { computeMisSummary, isOverdue, getScoreColorClass, formatScore } from "@/lib/mis";
+import { computeCombinedMisSummary, isOverdue, getScoreColorClass, formatScore } from "@/lib/mis";
+import { listFmsRunsForUser } from "@/lib/fms/engine";
+import FmsStepsWidget from "./fms-steps-widget";
 import { priorityVariant } from "@/lib/priority";
 import { formatDueDisplay } from "@/lib/formatDate";
 import { stampMs } from "@/lib/timestamp";
@@ -84,7 +86,11 @@ export default async function DashboardPage({
   const myTasks = allTasks.filter((t) => t.Assigned_To === session.userId);
   const pending = myTasks.filter((t) => t.Status === "Pending");
   const completed = myTasks.filter((t) => t.Status !== "Pending");
-  const mis = computeMisSummary(myTasks);
+  // FMS is optional per organization — an org that hasn't connected it yet still gets a
+  // Task-only score rather than an error, the same way SetupRequired above only guards
+  // Tasks (which every org needs from day one).
+  const myFmsRuns = (await tryModule(() => listFmsRunsForUser(session.userId))) ?? [];
+  const mis = computeCombinedMisSummary(myTasks, myFmsRuns);
   const overdueCount = pending.filter(isOverdue).length;
 
   // Soonest first, through stampMs rather than a text compare: a sheet holds both
@@ -171,6 +177,15 @@ export default async function DashboardPage({
                   size="sm"
                   render={<Link href="/guide">{t("Guidebook kholein")}</Link>}
                 />
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle>{t("FMS Steps")}</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <FmsStepsWidget />
               </CardContent>
             </Card>
 
@@ -270,7 +285,7 @@ export default async function DashboardPage({
                 <CardTitle>{t("Aapka score kaise bana")}</CardTitle>
               </CardHeader>
               <CardContent>
-                <ScoreBreakdown tasks={myTasks} summary={mis} />
+                <ScoreBreakdown tasks={myTasks} fmsRuns={myFmsRuns} summary={mis} />
               </CardContent>
             </Card>
           </TabsContent>
