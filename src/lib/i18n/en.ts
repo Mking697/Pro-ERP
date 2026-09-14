@@ -486,18 +486,17 @@ export const EN: Record<string, string> = {
   "Sab select karein ": "Select all ",
 
   // --- fms (flows) -------------------------------------------------------------------
-  "Flows": "Flows",
-  "Multi-step process flows — apne pending steps dekhein, ya (agar authorized hain) naya flow template banayein.":
-    "Multi-step process flows — see your pending steps, or (if authorized) build a new flow template.",
+  "FMS": "FMS",
+  "Multi-step FMS processes — apne pending steps dekhein, ya (agar authorized hain) naya FMS template banayein.":
+    "Multi-step FMS processes — see your pending steps, or (if authorized) build a new FMS template.",
   "Mere Steps": "My Steps",
   "Templates": "Templates",
   "Steps load nahi ho paye.": "Steps could not be loaded.",
   "Steps load ho rahe hain": "Loading steps",
   "Koi pending step nahi hai": "No pending steps",
-  "Kisi flow ka step aapko assign hote hi yahan dikhega.":
-    "A step will show up here as soon as a flow assigns one to you.",
+  "Kisi FMS ka step aapko assign hote hi yahan dikhega.":
+    "A step will show up here as soon as an FMS assigns one to you.",
   "Step": "Step",
-  "Flow": "Flow",
   "Deadline": "Deadline",
   "Complete": "Complete",
   "Outcome chunein.": "Choose an outcome.",
@@ -512,20 +511,31 @@ export const EN: Record<string, string> = {
   "Steps dekhein": "View steps",
   "Archive": "Archive",
   "Activate": "Activate",
+  "Delete": "Delete",
+  "delete karein?": "— delete?",
+  "Ye template permanently mit jaayegi. Isko koi Pending step abhi use nahi kar raha ho tabhi ye delete hogi — agar koi step abhi bhi chal raha hai, delete refuse ho jaayegi.":
+    "This template will be permanently deleted. It only deletes while no Pending step is still using it — if a step is still running, the delete is refused.",
+  "Template delete nahi ho payi.": "Template could not be deleted.",
+  "Template delete ho gayi.": "Template deleted.",
+  "Template nahi mila.": "Template not found.",
+  "Sirf Archived template delete ki ja sakti hai — pehle Archive karein.":
+    "Only an Archived template can be deleted — archive it first.",
+  "Is template ke against abhi bhi ek Pending step chal raha hai — pehle use complete hone dein, phir delete karein.":
+    "A Pending step is still running against this template — let it complete first, then delete.",
   "Trigger": "Trigger",
   "Assigned To": "Assigned To",
   "Next step per outcome": "Next step per outcome",
-  "Abhi koi flow template nahi hai": "No flow templates yet",
-  "Naya template banayein taaki multi-step flows run ho sakein.":
-    "Create a template so multi-step flows can run.",
-  "Naya Flow Template": "New Flow Template",
-  "Ek step ka outcome decide karta hai agla kaunsa step chalega. \"MANUAL\" trigger sirf haath se start hota hai — koi module-event ya doosre flow ka outcome key (e.g. INWARD_ENTRY_CREATED) bhi de sakte hain.":
-    "A step's outcome decides which step runs next. The \"MANUAL\" trigger only starts by hand — you can also give it a module event or another flow's outcome key (e.g. INWARD_ENTRY_CREATED).",
+  "Abhi koi FMS template nahi hai": "No FMS templates yet",
+  "Naya template banayein taaki multi-step FMS run ho sakein.":
+    "Create a template so multi-step FMS can run.",
+  "Naya FMS Template": "New FMS Template",
+  "Ek step ka outcome decide karta hai agla kaunsa step chalega. \"MANUAL\" trigger sirf haath se start hota hai — koi module-event ya doosre FMS template ka outcome key (e.g. INWARD_ENTRY_CREATED) bhi de sakte hain.":
+    "A step's outcome decides which step runs next. The \"MANUAL\" trigger only starts by hand — you can also give it a module event or another FMS template's outcome key (e.g. INWARD_ENTRY_CREATED).",
   "Template ka naam": "Template name",
   "Template ka naam zaroori hai.": "Template name is required.",
   "Har step ka naam, assignee, aur TAT bharein.": "Fill in every step's name, assignee, and TAT.",
   "Template save nahi hui.": "Template could not be saved.",
-  "Flow template ban gaya.": "Flow template created.",
+  "FMS template ban gaya.": "FMS template created.",
   "Step ka naam": "Step name",
   "User chunein": "Select a user",
   "Unit": "Unit",
@@ -533,7 +543,7 @@ export const EN: Record<string, string> = {
   "Days": "Days",
   "Outcomes (comma se alag)": "Outcomes (comma-separated)",
   "Har outcome ke baad agla step": "Next step for each outcome",
-  "Flow khatam": "End flow",
+  "FMS khatam": "End FMS",
   "Ek aur step": "Add another step",
   "Template banayein": "Create template",
   "Company Running Time (FMS)": "Company Running Time (FMS)",
@@ -609,7 +619,7 @@ export const EN: Record<string, string> = {
   "Zaroori": "Required",
   "Ek aur question": "Add another question",
   "Source chunein": "Choose a source",
-  "Isi flow ka pehle wala step": "An earlier step of this flow",
+  "Isi FMS ka pehle wala step": "An earlier step of this FMS",
   "Kaunsa step": "Which step",
   "Columns": "Columns",
   "Sirf isi instance ka record (condition)": "Only this instance's own record (condition)",
@@ -622,7 +632,7 @@ export const EN: Record<string, string> = {
   "UOM field (optional)": "UOM field (optional)",
   "Item ka UOM use karein": "Use the Item's own UOM",
   "Instance start nahi ho paya.": "Instance could not be started.",
-  "Flow start ho gaya — pehla step assign ho gaya.": "Flow started — the first step has been assigned.",
+  "FMS start ho gaya — pehla step assign ho gaya.": "FMS started — the first step has been assigned.",
   "Start": "Start",
   "Dono ek saath chuna ja sakta hai — jaise ek step apna Pass/Fail khud type kare, aur saath me pichle step ka data bhi dekhe.":
     "Both can be turned on together — e.g. a step types its own Pass/Fail while also seeing the previous step's data.",

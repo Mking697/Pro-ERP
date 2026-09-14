@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireModule } from "@/lib/auth/guard";
-import { updateFmsTemplate } from "@/lib/fms/templates";
+import { updateFmsTemplate, deleteFmsTemplate } from "@/lib/fms/templates";
+import { hasPendingFmsRunsForTemplate } from "@/lib/fms/engine";
 import { templateBodySchema } from "../schema";
 
 /**
@@ -35,6 +36,39 @@ export async function PUT(
     return NextResponse.json({ templateId: newTemplateId });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Template update nahi ho payi.";
+    return NextResponse.json({ error: message }, { status: 400 });
+  }
+}
+
+/**
+ * Permanently deletes one template version — only an Archived one with no Pending step
+ * still running against it (deleteFmsTemplate itself refuses a non-Archived template;
+ * the Pending-run check lives here since it needs FMS_RUNS, which templates.ts never
+ * touches).
+ */
+export async function DELETE(
+  _request: Request,
+  { params }: { params: Promise<{ templateId: string }> }
+) {
+  const guard = await requireModule("FMS_ADMIN");
+  if (!guard.ok) return guard.response;
+
+  const { templateId } = await params;
+
+  try {
+    if (await hasPendingFmsRunsForTemplate(templateId)) {
+      return NextResponse.json(
+        {
+          error:
+            "Is template ke against abhi bhi ek Pending step chal raha hai — pehle use complete hone dein, phir delete karein.",
+        },
+        { status: 400 }
+      );
+    }
+    await deleteFmsTemplate(templateId);
+    return NextResponse.json({ success: true });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Template delete nahi ho payi.";
     return NextResponse.json({ error: message }, { status: 400 });
   }
 }

@@ -22,8 +22,8 @@ export default async function FmsPage() {
     <AppShell session={session}>
       <div className="space-y-6">
         <PageHeader
-          title={t("Flows")}
-          description={t("Multi-step process flows — apne pending steps dekhein, ya (agar authorized hain) naya flow template banayein.")}
+          title={t("FMS")}
+          description={t("Multi-step FMS processes — apne pending steps dekhein, ya (agar authorized hain) naya FMS template banayein.")}
         />
 
         {canManage ? (

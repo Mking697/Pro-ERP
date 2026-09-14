@@ -19,6 +19,7 @@ import SheetNotConnected from "@/components/sheet-not-connected";
 import EmptyState from "@/components/empty-state";
 import { Workflow } from "lucide-react";
 import { useT } from "@/components/preferences-provider";
+import { useConfirm } from "@/components/confirm-dialog";
 import FmsTemplateForm from "./fms-template-form";
 import { parseNextStepMap, parseOutcomeOptions } from "./template-format";
 import { outcomeTypeDef, parseOutcomeType } from "@/lib/fms/outcomeType";
@@ -44,6 +45,7 @@ export default function TemplatesBoard() {
   const [busyId, setBusyId] = useState<string | null>(null);
   const [startingId, setStartingId] = useState<string | null>(null);
   const [version, setVersion] = useState(0);
+  const confirm = useConfirm();
 
   useEffect(() => {
     Promise.all([
@@ -91,6 +93,17 @@ export default function TemplatesBoard() {
     }
   }
 
+  async function handleDelete(template: TemplateSummary) {
+    const res = await fetch(`/api/fms/templates/${template.templateId}`, { method: "DELETE" });
+    const data = await res.json().catch(() => null);
+    if (!res.ok) {
+      toast.error(t(data?.error ?? "Template delete nahi ho payi."));
+      return;
+    }
+    toast.success(t("Template delete ho gayi."));
+    setTemplates((prev) => prev.filter((tpl) => tpl.templateId !== template.templateId));
+  }
+
   async function startInstance(template: TemplateSummary) {
     setStartingId(template.templateId);
     try {
@@ -104,7 +117,7 @@ export default function TemplatesBoard() {
         toast.error(t(data?.error ?? "Instance start nahi ho paya."));
         return;
       }
-      toast.success(t("Flow start ho gaya — pehla step assign ho gaya."));
+      toast.success(t("FMS start ho gaya — pehla step assign ho gaya."));
     } finally {
       setStartingId(null);
     }
@@ -129,8 +142,8 @@ export default function TemplatesBoard() {
       {templates.length === 0 ? (
         <EmptyState
           icon={<Workflow />}
-          title={t("Abhi koi flow template nahi hai")}
-          description={t("Naya template banayein taaki multi-step flows run ho sakein.")}
+          title={t("Abhi koi FMS template nahi hai")}
+          description={t("Naya template banayein taaki multi-step FMS run ho sakein.")}
         />
       ) : (
         <div className="space-y-3">
@@ -187,6 +200,24 @@ export default function TemplatesBoard() {
                       >
                         {template.status === "Active" ? t("Archive") : t("Activate")}
                       </Button>
+                      {template.status === "Archived" && (
+                        <Button
+                          variant="destructive"
+                          size="sm"
+                          onClick={() =>
+                            confirm.ask({
+                              title: `"${template.templateName}" ${t("delete karein?")}`,
+                              description: t(
+                                "Ye template permanently mit jaayegi. Isko koi Pending step abhi use nahi kar raha ho tabhi ye delete hogi — agar koi step abhi bhi chal raha hai, delete refuse ho jaayegi."
+                              ),
+                              confirmLabel: t("Haan, delete karein"),
+                              onConfirm: () => handleDelete(template),
+                            })
+                          }
+                        >
+                          {t("Delete")}
+                        </Button>
+                      )}
                     </div>
                   </div>
                 </CardHeader>
@@ -248,6 +279,8 @@ export default function TemplatesBoard() {
           })}
         </div>
       )}
+
+      {confirm.dialog}
     </div>
   );
 }

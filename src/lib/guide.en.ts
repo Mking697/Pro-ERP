@@ -933,15 +933,15 @@ export const GUIDE_EN: GuideChapter[] = [
 
   {
     id: "fms",
-    title: "Flows (FMS) — multi-step processes",
+    title: "FMS — multi-step processes",
     description: "Work with more than one step, where each step has its own deadline and its own person.",
     sections: [
       {
         id: "fms-idea",
-        title: "How a flow works",
+        title: "How FMS works",
         audience: "everyone",
         summary:
-          "A Flow is started from a template made of several steps — each step is assigned to a user and has its own turnaround time (TAT).",
+          "An FMS is started from a template made of several steps — each step is assigned to a user and has its own turnaround time (TAT).",
         how: [
           "The moment a step is assigned to you, its deadline starts. The deadline only counts the company's actual working hours — night, lunch, tea break, weekly-offs and holidays are never counted.",
           "Finished within the deadline: \"On Time\". Finished after it: \"Delay Done\". Still pending after the deadline has passed: shown as \"Not Done\" — this is never stored either, it's worked out live every time, the same way an MIS score is.",
@@ -955,9 +955,9 @@ export const GUIDE_EN: GuideChapter[] = [
         id: "fms-complete",
         title: "Completing your step",
         audience: "everyone",
-        summary: "See and complete your pending steps on the Flows page.",
+        summary: "See and complete your pending steps on the FMS page.",
         steps: [
-          "Open the Flows page — every step assigned to you shows up here.",
+          "Open the FMS page — every step assigned to you shows up here.",
           "Press Complete on whichever step you've finished.",
           "Choose an outcome (e.g. Pass or Fail) and add a remark if you'd like.",
         ],
@@ -978,18 +978,18 @@ export const GUIDE_EN: GuideChapter[] = [
       },
       {
         id: "fms-template",
-        title: "Building a new Flow Template",
+        title: "Building a new FMS Template",
         audience: "FMS_ADMIN",
         summary: "Define a multi-step process once — it can then run as many times as needed.",
         steps: [
-          "On the Templates tab of the Flows page, press \"New Flow Template\".",
+          "On the Templates tab of the FMS page, press \"New FMS Template\".",
           "For each step, fill in its name, who it's assigned to, and its TAT (in Hours or Days).",
-          "Write the step's outcomes (e.g. \"Pass,Fail\", comma-separated), then choose which step runs next for each outcome, or that the flow ends there.",
+          "Choose the step's Outcome Type — Done, Pass and Fail, Pass Qty and Fail Qty, Number, Text, Attachment, or Custom (type your own outcomes). Then choose which step runs next for each outcome, or that the FMS ends there.",
           "Press Create Template.",
         ],
         notes: [
-          "Leaving the trigger as \"MANUAL\" means the flow only starts by hand. Giving it a module's event key instead (e.g. INWARD_ENTRY_CREATED), or another flow's outcome key, starts it automatically when that happens — avoiding a trigger loop is on whoever builds the template.",
-          "Archiving a template doesn't affect its steps already in progress — only new instances stop being created from it.",
+          "Leaving the trigger as \"MANUAL\" means the FMS only starts by hand. Giving it a module's event key instead (e.g. INWARD_ENTRY_CREATED), or another FMS template's outcome key, starts it automatically when that happens — avoiding a trigger loop is on whoever builds the template.",
+          "Archiving a template doesn't affect its steps already in progress — only new instances stop being created from it. An Archived template that no step is currently running can also be permanently deleted from the Templates list.",
         ],
       },
     ],

@@ -51,11 +51,12 @@ export async function updateSheetRow(
   return updateRow(spreadsheetId ?? (await getTenantSheetId()), tabName, rowNumber, row);
 }
 
-// updateCells always takes an explicit spreadsheet id, so it stays a raw primitive —
-// re-exported here only so module code has one import site for sheet access.
+// updateCells and deleteRow always take an explicit spreadsheet id, so they stay raw
+// primitives — re-exported here only so module code has one import site for sheet access.
 export {
   rowsToObjects,
   getSheetsClient,
   verifySheetAccess,
   updateCells,
+  deleteRow,
 } from "@/lib/googleSheets";

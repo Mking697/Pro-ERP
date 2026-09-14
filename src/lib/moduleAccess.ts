@@ -86,7 +86,7 @@ export const MODULE_ACCESS = [
   },
   {
     key: "FMS_ADMIN",
-    label: "Flow Templates",
+    label: "FMS Templates",
     description: "FMS templates bana aur badal sakta hai",
     href: "/fms/templates",
   },

@@ -33,7 +33,7 @@ export default async function AppShell({
   items.push({ icon: "tasks", href: "/tasks", label: "Tasks" });
 
   // Anyone can be the assignee of an FMS step, same tier as Tasks.
-  items.push({ icon: "fms", href: "/fms", label: "Flows" });
+  items.push({ icon: "fms", href: "/fms", label: "FMS" });
 
   // Every person has at least their own tasks report.
   items.push({ icon: "performance", href: "/reports", label: "Reports" });

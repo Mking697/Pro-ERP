@@ -367,3 +367,15 @@ export async function listFmsInstanceHistory(instanceId: string): Promise<FmsRun
 export async function listAllFmsRuns(): Promise<FmsRunRecord[]> {
   return getModuleRows<FmsRunRecord>(MODULE_KEY);
 }
+
+/**
+ * Whether any instance is still mid-flow against this exact template version — the guard
+ * a template Delete needs. Archiving alone never disturbs an already-running instance (it
+ * keeps resolving steps from the archived version, on purpose); actually removing that
+ * version's rows would leave a Pending step with no template left to resolve against, so
+ * the API route checks this before calling deleteFmsTemplate.
+ */
+export async function hasPendingFmsRunsForTemplate(templateId: string): Promise<boolean> {
+  const runs = await getModuleRows<FmsRunRecord>(MODULE_KEY);
+  return runs.some((r) => r.Template_ID === templateId && r.Status === "Pending");
+}

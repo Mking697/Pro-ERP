@@ -64,7 +64,7 @@ export default function MyStepsBoard() {
       <EmptyState
         icon={<Workflow />}
         title={t("Koi pending step nahi hai")}
-        description={t("Kisi flow ka step aapko assign hote hi yahan dikhega.")}
+        description={t("Kisi FMS ka step aapko assign hote hi yahan dikhega.")}
       />
     );
   }
@@ -75,7 +75,7 @@ export default function MyStepsBoard() {
         <TableHeader>
           <TableRow>
             <TableHead>{t("Step")}</TableHead>
-            <TableHead>{t("Flow")}</TableHead>
+            <TableHead>{t("FMS")}</TableHead>
             <TableHead>{t("Deadline")}</TableHead>
             <TableHead>Status</TableHead>
             <TableHead className="text-right">Actions</TableHead>

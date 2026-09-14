@@ -5,6 +5,7 @@ import {
   appendSheetRow,
   appendSheetRows,
   updateSheetRow,
+  deleteRow,
   rowsToObjects,
 } from "@/lib/tenantSheets";
 import { getSetting } from "@/lib/settings";
@@ -516,6 +517,21 @@ export async function updateModuleRow(
 ): Promise<void> {
   const target = await resolveModuleTarget(moduleKey);
   await updateSheetRow(target.sheetTitle, rowNumber, row, target.spreadsheetId);
+}
+
+/**
+ * Permanently removes specific rows (1-indexed, including header) from a module's
+ * connected sheet — highest row number first, since deleting one shifts every row below
+ * it up by one, and resolving row numbers fresh after each delete would cost one Sheets
+ * read per row for no reason.
+ */
+export async function deleteModuleRows(moduleKey: string, rowNumbers: number[]): Promise<void> {
+  if (rowNumbers.length === 0) return;
+  const target = await resolveModuleTarget(moduleKey);
+  const sorted = [...rowNumbers].sort((a, b) => b - a);
+  for (const rowNumber of sorted) {
+    await deleteRow(target.spreadsheetId, target.sheetTitle, rowNumber);
+  }
 }
 
 /**

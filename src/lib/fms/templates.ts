@@ -1,4 +1,10 @@
-import { appendModuleRows, getModuleRows, updateModuleCells, recordToRow } from "@/lib/moduleSheets";
+import {
+  appendModuleRows,
+  getModuleRows,
+  updateModuleCells,
+  deleteModuleRows,
+  recordToRow,
+} from "@/lib/moduleSheets";
 import { generateId } from "@/lib/id";
 import { nowStamp } from "@/lib/timestamp";
 import { describeDataSourceType, parseStepDataSourceConfig } from "@/lib/fms/dataSource";
@@ -186,4 +192,31 @@ export async function setFmsTemplateStatus(
   }
 
   await updateModuleCells(MODULE_KEY, updates);
+}
+
+/**
+ * Permanently removes every row of one template version — only ever an Archived one.
+ * Deleting an Active template out from under a running instance, or a trigger that still
+ * routes to it, would break it invisibly; Archive is what actually retires a template from
+ * new use, and Delete is only for tidying old versions nobody needs any more. The caller
+ * (the API route) is expected to also refuse this when a Pending FMS_RUNS step still
+ * references the template — this function only knows about FMS_TEMPLATES.
+ */
+export async function deleteFmsTemplate(templateId: string): Promise<void> {
+  const rows = await getModuleRows<FmsTemplateStepRecord>(MODULE_KEY);
+  const matches = rows
+    .map((record, i) => ({ record, rowNumber: i + 2 }))
+    .filter(({ record }) => record.Template_ID === templateId);
+
+  if (matches.length === 0) {
+    throw new Error("Template nahi mila.");
+  }
+  if (matches.some(({ record }) => record.Status !== "Archived")) {
+    throw new Error("Sirf Archived template delete ki ja sakti hai — pehle Archive karein.");
+  }
+
+  await deleteModuleRows(
+    MODULE_KEY,
+    matches.map(({ rowNumber }) => rowNumber)
+  );
 }

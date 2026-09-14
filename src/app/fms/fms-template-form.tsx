@@ -430,7 +430,7 @@ export default function FmsTemplateForm({
       toast.success(
         editing
           ? t("Naya version ban gaya, purana Archive ho gaya.")
-          : t("Flow template ban gaya.")
+          : t("FMS template ban gaya.")
       );
       reset();
       setOpen(false);
@@ -449,20 +449,20 @@ export default function FmsTemplateForm({
               {t("Edit")}
             </Button>
           ) : (
-            <Button>{t("Naya Flow Template")}</Button>
+            <Button>{t("Naya FMS Template")}</Button>
           )
         }
       />
       <DialogContent className="max-h-[85vh] max-w-3xl overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>{editing ? t("Template Edit karein") : t("Naya Flow Template")}</DialogTitle>
+          <DialogTitle>{editing ? t("Template Edit karein") : t("Naya FMS Template")}</DialogTitle>
           <DialogDescription>
             {editing
               ? t(
                   "Save karne par ek naya version banega aur purana version Archive ho jaayega — jo instance abhi chal raha hai wo purane version se hi chalta rahega, kisi ke beech me kuch nahi badlega."
                 )
               : t(
-                  "Ek step ka outcome decide karta hai agla kaunsa step chalega. \"MANUAL\" trigger sirf haath se start hota hai — koi module-event ya doosre flow ka outcome key (e.g. INWARD_ENTRY_CREATED) bhi de sakte hain."
+                  "Ek step ka outcome decide karta hai agla kaunsa step chalega. \"MANUAL\" trigger sirf haath se start hota hai — koi module-event ya doosre FMS template ka outcome key (e.g. INWARD_ENTRY_CREATED) bhi de sakte hain."
                 )}
           </DialogDescription>
         </DialogHeader>
@@ -625,7 +625,7 @@ export default function FmsTemplateForm({
                               <SelectValue />
                             </SelectTrigger>
                             <SelectContent>
-                              <SelectItem value="END">{t("Flow khatam")}</SelectItem>
+                              <SelectItem value="END">{t("FMS khatam")}</SelectItem>
                               {steps.map((_, targetIndex) => (
                                 <SelectItem key={targetIndex} value={String(targetIndex + 1)}>
                                   {t("Step")} {targetIndex + 1}
@@ -766,7 +766,7 @@ export default function FmsTemplateForm({
                           <SelectContent>
                             {index > 0 && (
                               <SelectItem value={THIS_FLOW_SOURCE}>
-                                {t("Isi flow ka pehle wala step")}
+                                {t("Isi FMS ka pehle wala step")}
                               </SelectItem>
                             )}
                             {moduleOptions.map((m) => (
