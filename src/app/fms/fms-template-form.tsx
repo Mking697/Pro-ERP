@@ -75,6 +75,11 @@ interface DraftStep {
   assignedTo: string;
   tatValue: string;
   tatUnit: "Hours" | "Days";
+  /** "" keeps tatValue fixed; a 1-based step index sources the deadline from that
+   * earlier step's own field instead (see outcomeType-independent TAT_Source_* columns). */
+  tatSourceStepNo: string;
+  tatSourceFieldKey: string;
+  tatOffset: string;
   /** "" (Custom) keeps the original free-typed comma list; any other value is a preset
    * that fixes both outcomesText and the built-in fields below — see outcomeType.ts. */
   outcomeType: OutcomeType;
@@ -103,6 +108,9 @@ function blankStep(): DraftStep {
     assignedTo: "",
     tatValue: "",
     tatUnit: "Hours",
+    tatSourceStepNo: "",
+    tatSourceFieldKey: "",
+    tatOffset: "0",
     outcomeType: "DONE",
     outcomesText: "Done",
     nextStepMap: { Done: "END" },
@@ -198,6 +206,9 @@ function hydrateSteps(records: FmsTemplateStepRecord[]): DraftStep[] {
       assignedTo: r.Assigned_To,
       tatValue: r.TAT_Value,
       tatUnit: r.TAT_Unit === "Days" ? "Days" : "Hours",
+      tatSourceStepNo: r.TAT_Source_Step_No || "",
+      tatSourceFieldKey: r.TAT_Source_Field_Key || "",
+      tatOffset: r.TAT_Offset || "0",
       outcomeType,
       outcomesText: outcomeOptions.join(","),
       nextStepMap: nextMap,
@@ -407,6 +418,9 @@ export default function FmsTemplateForm({
         actionType: s.actionType,
         actionConfig,
         outcomeType: s.outcomeType,
+        tatSourceStepNo: s.tatSourceStepNo,
+        tatSourceFieldKey: s.tatSourceFieldKey,
+        tatOffset: Number(s.tatOffset) || 0,
       };
     });
 
@@ -578,6 +592,82 @@ export default function FmsTemplateForm({
                       </Select>
                     </div>
                   </div>
+
+                  {index > 0 && (
+                    <div className="space-y-2 rounded-md border p-2">
+                      <label className="flex items-center gap-2 text-sm">
+                        <Checkbox
+                          checked={step.tatSourceStepNo !== ""}
+                          onCheckedChange={(checked) =>
+                            setStep(step.id, {
+                              tatSourceStepNo: checked === true ? "1" : "",
+                              tatSourceFieldKey: checked === true ? step.tatSourceFieldKey : "",
+                            })
+                          }
+                        />
+                        {t("Deadline pichle step ke field se nikaale (TAT ke bajaye)")}
+                      </label>
+
+                      {step.tatSourceStepNo !== "" && (
+                        <div className="grid gap-2 pt-1 sm:grid-cols-3">
+                          <Select
+                            value={step.tatSourceStepNo}
+                            onValueChange={(value) =>
+                              value &&
+                              setStep(step.id, { tatSourceStepNo: value, tatSourceFieldKey: "" })
+                            }
+                          >
+                            <SelectTrigger className="w-full">
+                              <SelectValue placeholder={t("Kaunsa step")} />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {steps.slice(0, index).map((_, i) => (
+                                <SelectItem key={i} value={String(i + 1)}>
+                                  {t("Step")} {i + 1}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          <Select
+                            value={step.tatSourceFieldKey || "NONE"}
+                            onValueChange={(value) =>
+                              value &&
+                              setStep(step.id, {
+                                tatSourceFieldKey: value === "NONE" ? "" : value,
+                              })
+                            }
+                          >
+                            <SelectTrigger className="w-full">
+                              <SelectValue placeholder={t("Kaunsa field")} />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="NONE">{t("Kaunsa field")}</SelectItem>
+                              {(steps[Number(step.tatSourceStepNo) - 1]?.formFields ?? [])
+                                .map((f) => slugify(f.label))
+                                .filter(Boolean)
+                                .map((key) => (
+                                  <SelectItem key={key} value={key}>
+                                    {key}
+                                  </SelectItem>
+                                ))}
+                            </SelectContent>
+                          </Select>
+                          <Input
+                            type="number"
+                            step="any"
+                            value={step.tatOffset}
+                            onChange={(e) => setStep(step.id, { tatOffset: e.target.value })}
+                            placeholder={t("Offset (+/-)")}
+                          />
+                        </div>
+                      )}
+                      <p className="text-xs text-muted-foreground">
+                        {t(
+                          "Jaise: Step 1 me 'Lead Days' bhara, is step ka offset -1 rakhne se deadline (Lead Days − 1) ban jaati hai — TAT box sirf fallback hai agar value na mile."
+                        )}
+                      </p>
+                    </div>
+                  )}
 
                   <div className="space-y-2">
                     <Label htmlFor={`step-outcome-type-${step.id}`}>{t("Outcome Type")}</Label>

@@ -13,6 +13,7 @@ import { computeNextWorkingInstant, computeTatDeadline } from "@/lib/fms/calenda
 import {
   parseStepDataSourceConfig,
   missingRequiredFields,
+  parseFormData,
   type StepDataSourceConfig,
 } from "@/lib/fms/dataSource";
 import { resolveExistingFmsData } from "@/lib/fms/dataSourceResolver";
@@ -85,6 +86,36 @@ async function queueOpenTatStart(assignedTo: string, naturalStartEpochMs: number
   const latestOpenDeadline = Math.max(...openDeadlines);
   if (latestOpenDeadline <= snappedNatural) return snappedNatural;
   return computeNextWorkingInstant(assignedTo, latestOpenDeadline);
+}
+
+/**
+ * A step's TAT is normally just its fixed TAT_Value — this is what makes it computable
+ * instead, from a number typed into an *earlier* step of the same running instance. A
+ * purchase flow's step 1 types "Lead Days" once; step 2 ("follow up") sources it with
+ * offset -1, step 3 ("received") sources it with offset 0 — one number driving two
+ * deadlines, rather than the admin guessing a fixed follow-up window that has nothing to
+ * do with what this particular vendor actually promised.
+ *
+ * Falls back to the fixed TAT_Value whenever the source can't be resolved (blank config,
+ * the source step hasn't run yet, or its field wasn't a number) — a step must always get
+ * *some* deadline, never none.
+ */
+async function resolveTatValue(step: FmsTemplateStepRecord, instanceId: string): Promise<number> {
+  const sourceStepNo = Number(step.TAT_Source_Step_No);
+  if (!sourceStepNo || !step.TAT_Source_Field_Key) {
+    return Number(step.TAT_Value);
+  }
+
+  const runs = await getModuleRows<FmsRunRecord>(MODULE_KEY);
+  const sourceRun = runs.find(
+    (r) => r.Instance_ID === instanceId && Number(r.Step_No) === sourceStepNo
+  );
+  if (!sourceRun) return Number(step.TAT_Value);
+
+  const sourced = Number(parseFormData(sourceRun.Form_Data)[step.TAT_Source_Field_Key]);
+  if (!Number.isFinite(sourced)) return Number(step.TAT_Value);
+
+  return sourced + (Number(step.TAT_Offset) || 0);
 }
 
 interface AppendStepRunInput {
@@ -332,7 +363,7 @@ export async function completeFmsStep(
       stepNo,
       stepName: target.Step_Name,
       assignedTo: target.Assigned_To,
-      tatValue: Number(target.TAT_Value),
+      tatValue: await resolveTatValue(target, run.Instance_ID),
       tatUnit: target.TAT_Unit as FmsTatUnit,
       quantity,
     });

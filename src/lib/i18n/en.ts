@@ -650,6 +650,13 @@ export const EN: Record<string, string> = {
   "Source chunein": "Choose a source",
   "Isi FMS ka pehle wala step": "An earlier step of this FMS",
   "Kaunsa step": "Which step",
+  "Deadline pichle step ke field se nikaale (TAT ke bajaye)":
+    "Take the deadline from an earlier step's field (instead of TAT)",
+  "Kaunsa field": "Which field",
+  "ka field": "'s field",
+  "Offset (+/-)": "Offset (+/-)",
+  "Jaise: Step 1 me 'Lead Days' bhara, is step ka offset -1 rakhne se deadline (Lead Days − 1) ban jaati hai — TAT box sirf fallback hai agar value na mile.":
+    "For example: Step 1 captured 'Lead Days'; setting this step's offset to -1 makes its deadline (Lead Days − 1) — the TAT box is only a fallback if the value can't be found.",
   "Columns": "Columns",
   "Sirf isi instance ka record (condition)": "Only this instance's own record (condition)",
   "Action": "Action",

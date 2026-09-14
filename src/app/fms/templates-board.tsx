@@ -259,7 +259,13 @@ export default function TemplatesBoard() {
                                   {userMap[step.Assigned_To] ?? step.Assigned_To}
                                 </TableCell>
                                 <TableCell>
-                                  {step.TAT_Value} {step.TAT_Unit}
+                                  {step.TAT_Source_Step_No ? (
+                                    <span title={t("Step")+ " " + step.TAT_Source_Step_No + " ke field se, offset " + step.TAT_Offset}>
+                                      {t("Step")} {step.TAT_Source_Step_No} {t("ka field")} ({step.TAT_Offset || 0})
+                                    </span>
+                                  ) : (
+                                    `${step.TAT_Value} ${step.TAT_Unit}`
+                                  )}
                                 </TableCell>
                                 <TableCell className="text-xs">
                                   {outcomes

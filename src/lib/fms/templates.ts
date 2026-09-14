@@ -37,6 +37,12 @@ export interface FmsTemplateStepRecord {
    * see src/lib/fms/outcomeType.ts. "" means Outcome_Options was hand-typed (a template
    * built before this existed, or a genuinely custom outcome list). */
   Outcome_Type: string;
+  /** Blank keeps TAT_Value/TAT_Unit fixed. Set (an earlier Step_No of the same template)
+   * and the deadline is read from that step's own Form_Data field (TAT_Source_Field_Key)
+   * plus TAT_Offset instead — see src/lib/fms/engine.ts's resolveTatValue(). */
+  TAT_Source_Step_No: string;
+  TAT_Source_Field_Key: string;
+  TAT_Offset: string;
 }
 
 export type FmsTatUnit = "Hours" | "Days";
@@ -57,6 +63,11 @@ export interface FmsTemplateStepInput {
   actionConfig: string;
   /** Already-validated OutcomeType (or "" for Custom) — see src/lib/fms/outcomeType.ts. */
   outcomeType: string;
+  /** "" keeps tatValue/tatUnit fixed; a Step_No sources the deadline from that earlier
+   * step's own field instead — see FmsTemplateStepRecord.TAT_Source_Step_No. */
+  tatSourceStepNo: string;
+  tatSourceFieldKey: string;
+  tatOffset: number;
 }
 
 export interface CreateFmsTemplateInput {
@@ -142,6 +153,9 @@ export async function createFmsTemplate(input: CreateFmsTemplateInput): Promise<
       Action_Type: step.actionType,
       Action_Config: step.actionConfig,
       Outcome_Type: step.outcomeType,
+      TAT_Source_Step_No: step.tatSourceStepNo,
+      TAT_Source_Field_Key: step.tatSourceFieldKey,
+      TAT_Offset: step.tatSourceStepNo ? String(step.tatOffset) : "",
     };
     return recordToRow(MODULE_KEY, record);
   });

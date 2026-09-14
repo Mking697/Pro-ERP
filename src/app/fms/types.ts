@@ -45,4 +45,7 @@ export interface FmsTemplateStepRecord {
   Action_Type: string;
   Action_Config: string;
   Outcome_Type: string;
+  TAT_Source_Step_No: string;
+  TAT_Source_Field_Key: string;
+  TAT_Offset: string;
 }

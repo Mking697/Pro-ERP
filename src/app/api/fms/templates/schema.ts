@@ -17,6 +17,9 @@ export const stepSchema = z
     outcomeType: z
       .enum(["", "DONE", "PASS_FAIL", "PASS_FAIL_QTY", "NUMBER", "TEXT", "ATTACHMENT"])
       .default(""),
+    tatSourceStepNo: z.string().trim().default(""),
+    tatSourceFieldKey: z.string().trim().default(""),
+    tatOffset: z.coerce.number().default(0),
   })
   .refine((step) => step.outcomeOptions.every((o) => o in step.nextStepMap), {
     message: "Har outcome ke liye agla step (ya END) chunein.",

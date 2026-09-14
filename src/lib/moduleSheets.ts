@@ -307,6 +307,16 @@ export const MODULE_SHEETS: ModuleDefinition[] = [
       // Appended at the end, never inserted mid-header — see the REPORT_SHARES_HEADERS
       // lesson: a header appended anywhere else breaks every sheet connected earlier.
       "Outcome_Type",
+      // A step's deadline is normally just TAT_Value/TAT_Unit, fixed at template-build
+      // time. These three make it computable instead: blank TAT_Source_Step_No keeps the
+      // fixed behaviour; set, and the deadline is read from that earlier step's own
+      // Form_Data field (TAT_Source_Field_Key) plus TAT_Offset, in TAT_Unit — e.g. a
+      // purchase flow's "Lead Days" typed into step 1 driving a "follow up" step at
+      // Lead Days − 1 and a "received" step at Lead Days, from one number typed once.
+      // TAT_Value stays as the fallback if the source can't be resolved.
+      "TAT_Source_Step_No",
+      "TAT_Source_Field_Key",
+      "TAT_Offset",
     ],
   },
   {
