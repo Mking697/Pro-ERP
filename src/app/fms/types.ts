@@ -43,4 +43,5 @@ export interface FmsTemplateStepRecord {
   Data_Source_Config: string;
   Action_Type: string;
   Action_Config: string;
+  Outcome_Type: string;
 }

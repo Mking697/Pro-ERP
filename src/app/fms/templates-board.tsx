@@ -21,6 +21,7 @@ import { Workflow } from "lucide-react";
 import { useT } from "@/components/preferences-provider";
 import FmsTemplateForm from "./fms-template-form";
 import { parseNextStepMap, parseOutcomeOptions } from "./template-format";
+import { outcomeTypeDef, parseOutcomeType } from "@/lib/fms/outcomeType";
 import type { FmsTemplateStepRecord } from "./types";
 
 interface TemplateSummary {
@@ -212,7 +213,17 @@ export default function TemplatesBoard() {
                                 <TableCell className="text-muted-foreground">
                                   {step.Step_No}
                                 </TableCell>
-                                <TableCell className="font-medium">{step.Step_Name}</TableCell>
+                                <TableCell className="font-medium">
+                                  {step.Step_Name}
+                                  {(() => {
+                                    const def = outcomeTypeDef(parseOutcomeType(step.Outcome_Type));
+                                    return def ? (
+                                      <Badge variant="outline" className="ml-2 font-normal">
+                                        {t(def.label)}
+                                      </Badge>
+                                    ) : null;
+                                  })()}
+                                </TableCell>
                                 <TableCell>
                                   {userMap[step.Assigned_To] ?? step.Assigned_To}
                                 </TableCell>

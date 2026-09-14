@@ -288,6 +288,12 @@ export const MODULE_SHEETS: ModuleDefinition[] = [
       "Data_Source_Config",
       "Action_Type",
       "Action_Config",
+      // Which built-in response preset (Done/Pass-Fail/Pass Qty & Fail Qty/Number/Text/
+      // Attachment) the step's Outcome_Options and Data Source form were generated from —
+      // "" for a template built before this existed, or a genuinely custom outcome list.
+      // Appended at the end, never inserted mid-header — see the REPORT_SHARES_HEADERS
+      // lesson: a header appended anywhere else breaks every sheet connected earlier.
+      "Outcome_Type",
     ],
   },
   {

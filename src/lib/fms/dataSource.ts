@@ -10,7 +10,7 @@
  * from elsewhere. Either, both, or neither can be present on the same step.
  */
 
-export type FormFieldType = "text" | "number" | "date" | "dropdown";
+export type FormFieldType = "text" | "number" | "date" | "dropdown" | "attachment";
 
 export interface FormField {
   /** Stable key this field's value is stored under in Form_Data, and the key an Action

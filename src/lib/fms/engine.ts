@@ -18,6 +18,7 @@ import {
 import { resolveExistingFmsData } from "@/lib/fms/dataSourceResolver";
 import { parseActionType, parseLedgerMovementActionConfig } from "@/lib/fms/actions";
 import { runLedgerMovementAction } from "@/lib/fms/actionRunner";
+import { parseOutcomeType, deriveOutcomeFromQty, PASS_QTY_KEY, FAIL_QTY_KEY } from "@/lib/fms/outcomeType";
 
 const MODULE_KEY = "FMS_RUNS";
 
@@ -184,10 +185,6 @@ export async function completeFmsStep(
   if (!step) {
     throw new Error("Is step ki template definition nahi mili — template edit/delete ho chuka hoga.");
   }
-  const validOutcomes = parseOutcomeOptions(step.Outcome_Options);
-  if (!validOutcomes.includes(input.outcome)) {
-    throw new Error(`Outcome "${input.outcome}" is step ke liye valid nahi hai.`);
-  }
 
   const formValues = input.formData ?? {};
   const dataSource = parseStepDataSourceConfig(step.Data_Source_Config);
@@ -196,6 +193,25 @@ export async function completeFmsStep(
     if (missing.length > 0) {
       throw new Error(`Ye fields zaroori hain: ${missing.map((f) => f.label).join(", ")}`);
     }
+  }
+
+  // PASS_FAIL_QTY has no Outcome dropdown for the completer to pick — whatever the client
+  // sent is ignored, and the branch always follows the numbers actually typed in, so a
+  // tampered request can't claim "Pass" while reporting a nonzero Fail Qty.
+  const outcomeType = parseOutcomeType(step.Outcome_Type);
+  let outcome = input.outcome;
+  if (outcomeType === "PASS_FAIL_QTY") {
+    const passQty = Number(formValues[PASS_QTY_KEY]);
+    const failQty = Number(formValues[FAIL_QTY_KEY]);
+    if (!Number.isFinite(passQty) || passQty < 0 || !Number.isFinite(failQty) || failQty < 0) {
+      throw new Error("Pass Qty aur Fail Qty non-negative number honi chahiye.");
+    }
+    outcome = deriveOutcomeFromQty(formValues);
+  }
+
+  const validOutcomes = parseOutcomeOptions(step.Outcome_Options);
+  if (!validOutcomes.includes(outcome)) {
+    throw new Error(`Outcome "${outcome}" is step ke liye valid nahi hai.`);
   }
 
   // An Action needs every field this step's Data Source can offer, not just what a Form
@@ -215,7 +231,7 @@ export async function completeFmsStep(
   const actionType = parseActionType(step.Action_Type);
   if (actionType === "LEDGER_MOVEMENT") {
     const actionConfig = parseLedgerMovementActionConfig(step.Action_Config);
-    await runLedgerMovementAction(actionConfig, input.outcome, resolvedFields, run.Run_ID, input.completedBy);
+    await runLedgerMovementAction(actionConfig, outcome, resolvedFields, run.Run_ID, input.completedBy);
   }
 
   const now = new Date();
@@ -232,7 +248,7 @@ export async function completeFmsStep(
       fields: {
         Completed_At: completedAt,
         Completed_By: input.completedBy,
-        Outcome: input.outcome,
+        Outcome: outcome,
         Status: status,
         Remark: remark,
         Form_Data: formDataJson,
@@ -244,14 +260,14 @@ export async function completeFmsStep(
     ...run,
     Completed_At: completedAt,
     Completed_By: input.completedBy,
-    Outcome: input.outcome,
+    Outcome: outcome,
     Status: status,
     Remark: remark,
     Form_Data: formDataJson,
   };
 
   const nextMap = parseNextStepMap(step.Next_Step_Map);
-  const target = nextMap[input.outcome];
+  const target = nextMap[outcome];
 
   let next: FmsRunRecord | null = null;
   if (target && target !== "END") {
@@ -278,7 +294,7 @@ export async function completeFmsStep(
   // step completion that has already saved above. No loop guard — trusted to the admin
   // who wires up triggers, per the confirmed scope of this build.
   try {
-    await emitFmsEvent(`FMS:${run.Template_ID}:${run.Step_No}:${input.outcome}`, run.Context_Ref);
+    await emitFmsEvent(`FMS:${run.Template_ID}:${run.Step_No}:${outcome}`, run.Context_Ref);
   } catch (error) {
     console.error(`[fms] chained event emit failed for run ${run.Run_ID}:`, error);
   }

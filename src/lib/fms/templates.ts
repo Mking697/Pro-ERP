@@ -27,6 +27,10 @@ export interface FmsTemplateStepRecord {
   Action_Type: string;
   /** JSON — LedgerMovementActionConfig, matching Action_Type. */
   Action_Config: string;
+  /** "" | "DONE" | "PASS_FAIL" | "PASS_FAIL_QTY" | "NUMBER" | "TEXT" | "ATTACHMENT" —
+   * see src/lib/fms/outcomeType.ts. "" means Outcome_Options was hand-typed (a template
+   * built before this existed, or a genuinely custom outcome list). */
+  Outcome_Type: string;
 }
 
 export type FmsTatUnit = "Hours" | "Days";
@@ -45,6 +49,8 @@ export interface FmsTemplateStepInput {
   actionType: "" | "LEDGER_MOVEMENT";
   /** Already-serialized JSON (or "" when actionType is ""). */
   actionConfig: string;
+  /** Already-validated OutcomeType (or "" for Custom) — see src/lib/fms/outcomeType.ts. */
+  outcomeType: string;
 }
 
 export interface CreateFmsTemplateInput {
@@ -129,6 +135,7 @@ export async function createFmsTemplate(input: CreateFmsTemplateInput): Promise<
       Data_Source_Config: step.dataSourceConfig,
       Action_Type: step.actionType,
       Action_Config: step.actionConfig,
+      Outcome_Type: step.outcomeType,
     };
     return recordToRow(MODULE_KEY, record);
   });

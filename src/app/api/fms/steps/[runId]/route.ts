@@ -22,6 +22,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ run
 
   return NextResponse.json({
     outcomeOptions: context.step.Outcome_Options.split(",").map((s) => s.trim()).filter(Boolean),
+    outcomeType: context.step.Outcome_Type || "",
     formConfig: context.dataSource.form ?? null,
     referenceRows: context.referenceRows,
   });

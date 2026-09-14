@@ -23,11 +23,14 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useT } from "@/components/preferences-provider";
+import FileUploadField from "@/components/file-upload-field";
 import type { FmsRunRecord } from "./types";
 import type { FormDataSourceConfig } from "@/lib/fms/dataSource";
+import { parseOutcomeType, deriveOutcomeFromQty } from "@/lib/fms/outcomeType";
 
 interface StepContext {
   outcomeOptions: string[];
+  outcomeType: string;
   formConfig: FormDataSourceConfig | null;
   referenceRows: Record<string, string>[];
 }
@@ -63,13 +66,18 @@ export default function CompleteStepDialog({
       .catch(() => {
         toast.error(t("Step ki details load nahi ho payi."));
         // Fall back to a plain Outcome/Remark dialog rather than staying stuck loading.
-        setContext({ outcomeOptions: fallbackOutcomes, formConfig: null, referenceRows: [] });
+        setContext({ outcomeOptions: fallbackOutcomes, outcomeType: "", formConfig: null, referenceRows: [] });
         setOutcome(fallbackOutcomes[0] ?? "");
       });
   }, [open, context, run.Run_ID, t, fallbackOutcomes]);
 
+  const outcomeType = parseOutcomeType(context?.outcomeType);
+  // PASS_FAIL_QTY has no Outcome to pick — the branch follows whatever quantities were
+  // typed in, computed the same way the server independently re-derives it.
+  const finalOutcome = outcomeType === "PASS_FAIL_QTY" ? deriveOutcomeFromQty(formValues) : outcome;
+
   async function handleComplete() {
-    if (!outcome) {
+    if (!finalOutcome) {
       toast.error(t("Outcome chunein."));
       return;
     }
@@ -88,7 +96,7 @@ export default function CompleteStepDialog({
       const res = await fetch(`/api/fms/steps/${run.Run_ID}/complete`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ outcome, remark, formData: formValues }),
+        body: JSON.stringify({ outcome: finalOutcome, remark, formData: formValues }),
       });
       const data = await res.json().catch(() => null);
 
@@ -135,7 +143,15 @@ export default function CompleteStepDialog({
               </div>
             )}
 
-            {context?.formConfig?.fields.map((field) => (
+            {context?.formConfig?.fields.map((field) =>
+              field.type === "attachment" ? (
+                <FileUploadField
+                  key={field.key}
+                  label={`${field.label}${field.required ? " *" : ""}`}
+                  value={formValues[field.key] ?? ""}
+                  onChange={(url) => setFormValues((prev) => ({ ...prev, [field.key]: url }))}
+                />
+              ) : (
                 <div key={field.key} className="space-y-2">
                   <Label htmlFor={`field-${field.key}`}>
                     {field.label}
@@ -170,23 +186,29 @@ export default function CompleteStepDialog({
                     />
                   )}
                 </div>
-              ))}
+              )
+            )}
 
-            <div className="space-y-2">
-              <Label htmlFor="outcome">Outcome</Label>
-              <Select value={outcome} onValueChange={(value) => value && setOutcome(value)}>
-                <SelectTrigger id="outcome" className="w-full">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {outcomes.map((o) => (
-                    <SelectItem key={o} value={o}>
-                      {o}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+            {/* PASS_FAIL_QTY derives its outcome from the qty fields above — no separate
+                pick. A single-outcome step (Done, Number, Text, Attachment) has nothing
+                to choose either — showing a one-item dropdown was never useful. */}
+            {outcomeType !== "PASS_FAIL_QTY" && outcomes.length > 1 && (
+              <div className="space-y-2">
+                <Label htmlFor="outcome">Outcome</Label>
+                <Select value={outcome} onValueChange={(value) => value && setOutcome(value)}>
+                  <SelectTrigger id="outcome" className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {outcomes.map((o) => (
+                      <SelectItem key={o} value={o}>
+                        {o}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
             <div className="space-y-2">
               <Label htmlFor="remark">{t("Remark (optional)")}</Label>
               <Textarea id="remark" value={remark} onChange={(e) => setRemark(e.target.value)} />
@@ -195,7 +217,7 @@ export default function CompleteStepDialog({
         )}
 
         <DialogFooter>
-          <Button onClick={handleComplete} disabled={loading || loadingContext || !outcome}>
+          <Button onClick={handleComplete} disabled={loading || loadingContext || !finalOutcome}>
             {loading ? "Saving..." : t("Complete karein")}
           </Button>
         </DialogFooter>

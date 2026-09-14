@@ -33,6 +33,12 @@ import {
   type FormFieldType,
 } from "@/lib/fms/dataSource";
 import {
+  OUTCOME_TYPE_DEFS,
+  outcomeTypeDef,
+  parseOutcomeType,
+  type OutcomeType,
+} from "@/lib/fms/outcomeType";
+import {
   serializeActionConfig,
   parseActionType,
   parseLedgerMovementActionConfig,
@@ -58,6 +64,9 @@ interface DraftFormField {
   type: FormFieldType;
   required: boolean;
   optionsText: string; // comma-separated, only used when type === "dropdown"
+  /** Auto-managed by the step's Outcome Type (e.g. Pass Qty/Fail Qty) — shown locked,
+   * not removable, and regenerated whenever the Outcome Type changes. */
+  builtIn?: boolean;
 }
 
 interface DraftStep {
@@ -66,6 +75,9 @@ interface DraftStep {
   assignedTo: string;
   tatValue: string;
   tatUnit: "Hours" | "Days";
+  /** "" (Custom) keeps the original free-typed comma list; any other value is a preset
+   * that fixes both outcomesText and the built-in fields below — see outcomeType.ts. */
+  outcomeType: OutcomeType;
   outcomesText: string;
   /** outcome -> "END" or a 1-based step index as a string, keyed by the outcome text. */
   nextStepMap: Record<string, string>;
@@ -91,6 +103,7 @@ function blankStep(): DraftStep {
     assignedTo: "",
     tatValue: "",
     tatUnit: "Hours",
+    outcomeType: "DONE",
     outcomesText: "Done",
     nextStepMap: { Done: "END" },
     useForm: false,
@@ -163,6 +176,8 @@ function hydrateSteps(records: FmsTemplateStepRecord[]): DraftStep[] {
     const nextMap = parseNextStepMap(r.Next_Step_Map);
     const actionType = parseActionType(r.Action_Type);
     const actionConfigParsed = parseLedgerMovementActionConfig(r.Action_Config);
+    const outcomeType = parseOutcomeType(r.Outcome_Type);
+    const builtInKeys = new Set((outcomeTypeDef(outcomeType)?.builtInFields ?? []).map((f) => f.key));
 
     const actionByOutcome: Record<string, LedgerMovementOutcomeAction & { uomField: string }> = {};
     for (const o of outcomeOptions) {
@@ -178,6 +193,7 @@ function hydrateSteps(records: FmsTemplateStepRecord[]): DraftStep[] {
       assignedTo: r.Assigned_To,
       tatValue: r.TAT_Value,
       tatUnit: r.TAT_Unit === "Days" ? "Days" : "Hours",
+      outcomeType,
       outcomesText: outcomeOptions.join(","),
       nextStepMap: nextMap,
       useForm: Boolean(dataSource.form),
@@ -188,6 +204,7 @@ function hydrateSteps(records: FmsTemplateStepRecord[]): DraftStep[] {
         type: f.type,
         required: f.required,
         optionsText: (f.options ?? []).join(","),
+        builtIn: builtInKeys.has(f.key),
       })),
       existingSourceModule: dataSource.existing?.sourceModule ?? "",
       existingSourceStepNo: dataSource.existing?.sourceStepNo
@@ -280,6 +297,39 @@ export default function FmsTemplateForm({
     );
   }
 
+  /** Switching Outcome Type fixes the step's Outcome_Options and swaps in whatever
+   * built-in fields that preset needs (Pass Qty/Fail Qty, a single Value, an Attachment)
+   * — any custom fields the admin already added stay put. "" (Custom) instead falls back
+   * to the original free-typed comma list. */
+  function setStepOutcomeType(id: number, outcomeType: OutcomeType) {
+    setSteps((prev) =>
+      prev.map((s) => {
+        if (s.id !== id) return s;
+        const def = outcomeTypeDef(outcomeType);
+        const outcomes = def ? def.outcomes : parseOutcomeOptions(s.outcomesText || "Done");
+        const outcomesText = outcomes.join(",");
+        const customFields = s.formFields.filter((f) => !f.builtIn);
+        const builtInFields: DraftFormField[] = (def?.builtInFields ?? []).map((f) => ({
+          id: nextId++,
+          label: f.label,
+          type: f.type,
+          required: f.required,
+          optionsText: "",
+          builtIn: true,
+        }));
+        return {
+          ...s,
+          outcomeType,
+          outcomesText,
+          nextStepMap: reconcileNextStepMap(outcomes, s.nextStepMap),
+          actionByOutcome: reconcileActionByOutcome(outcomes, s.actionByOutcome),
+          useForm: builtInFields.length > 0 ? true : s.useForm,
+          formFields: [...builtInFields, ...customFields],
+        };
+      })
+    );
+  }
+
   function setFormField(stepId: number, fieldId: number, patch: Partial<DraftFormField>) {
     setSteps((prev) =>
       prev.map((s) =>
@@ -351,6 +401,7 @@ export default function FmsTemplateForm({
         dataSourceConfig,
         actionType: s.actionType,
         actionConfig,
+        outcomeType: s.outcomeType,
       };
     });
 
@@ -524,15 +575,33 @@ export default function FmsTemplateForm({
                   </div>
 
                   <div className="space-y-2">
-                    <Label htmlFor={`step-outcomes-${step.id}`}>
-                      {t("Outcomes (comma se alag)")}
-                    </Label>
-                    <Input
-                      id={`step-outcomes-${step.id}`}
-                      value={step.outcomesText}
-                      onChange={(e) => setStepOutcomes(step.id, e.target.value)}
-                      placeholder="Pass,Fail"
-                    />
+                    <Label htmlFor={`step-outcome-type-${step.id}`}>{t("Outcome Type")}</Label>
+                    <Select
+                      value={step.outcomeType || "CUSTOM"}
+                      onValueChange={(value) =>
+                        value &&
+                        setStepOutcomeType(step.id, value === "CUSTOM" ? "" : (value as OutcomeType))
+                      }
+                    >
+                      <SelectTrigger id={`step-outcome-type-${step.id}`} className="w-full">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {OUTCOME_TYPE_DEFS.map((d) => (
+                          <SelectItem key={d.value} value={d.value}>
+                            {t(d.label)}
+                          </SelectItem>
+                        ))}
+                        <SelectItem value="CUSTOM">{t("Custom (khud likhein)")}</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    {step.outcomeType === "" && (
+                      <Input
+                        value={step.outcomesText}
+                        onChange={(e) => setStepOutcomes(step.id, e.target.value)}
+                        placeholder="Pass,Fail"
+                      />
+                    )}
                   </div>
 
                   {outcomes.length > 0 && (
@@ -578,6 +647,7 @@ export default function FmsTemplateForm({
                       <label className="flex items-center gap-2 text-sm">
                         <Checkbox
                           checked={step.useForm}
+                          disabled={step.formFields.some((f) => f.builtIn)}
                           onCheckedChange={(checked) => setStep(step.id, { useForm: checked === true })}
                         />
                         {t("Naya Form")}
@@ -593,66 +663,81 @@ export default function FmsTemplateForm({
 
                     {step.useForm && (
                       <div className="space-y-2 pt-2">
-                        {step.formFields.map((field) => (
-                          <div key={field.id} className="space-y-2 rounded-md bg-muted/40 p-2">
-                            <div className="grid gap-2 sm:grid-cols-[1fr_9rem_auto]">
-                              <Input
-                                value={field.label}
-                                onChange={(e) =>
-                                  setFormField(step.id, field.id, { label: e.target.value })
-                                }
-                                placeholder={t("Question ka naam")}
-                              />
-                              <Select
-                                value={field.type}
-                                onValueChange={(value) =>
-                                  value &&
-                                  setFormField(step.id, field.id, { type: value as FormFieldType })
-                                }
-                              >
-                                <SelectTrigger className="w-full">
-                                  <SelectValue />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  <SelectItem value="text">{t("Text")}</SelectItem>
-                                  <SelectItem value="number">{t("Number")}</SelectItem>
-                                  <SelectItem value="date">{t("Date")}</SelectItem>
-                                  <SelectItem value="dropdown">{t("Dropdown")}</SelectItem>
-                                </SelectContent>
-                              </Select>
-                              <Button
-                                type="button"
-                                variant="ghost"
-                                size="sm"
-                                onClick={() =>
-                                  setStep(step.id, {
-                                    formFields: step.formFields.filter((f) => f.id !== field.id),
-                                  })
-                                }
-                              >
-                                {t("Hatayein")}
-                              </Button>
+                        {step.formFields.map((field) =>
+                          field.builtIn ? (
+                            <div
+                              key={field.id}
+                              className="flex items-center justify-between gap-2 rounded-md bg-muted/40 p-2 text-sm"
+                            >
+                              <span>
+                                🔒 {field.label} <span className="text-muted-foreground">({t(field.type)})</span>
+                              </span>
+                              <span className="text-xs text-muted-foreground">
+                                {t("Outcome Type se auto-add hua")}
+                              </span>
                             </div>
-                            {field.type === "dropdown" && (
-                              <Input
-                                value={field.optionsText}
-                                onChange={(e) =>
-                                  setFormField(step.id, field.id, { optionsText: e.target.value })
-                                }
-                                placeholder={t("Options (comma se alag)")}
-                              />
-                            )}
-                            <label className="flex items-center gap-2 text-sm">
-                              <Checkbox
-                                checked={field.required}
-                                onCheckedChange={(checked) =>
-                                  setFormField(step.id, field.id, { required: checked === true })
-                                }
-                              />
-                              {t("Zaroori")}
-                            </label>
-                          </div>
-                        ))}
+                          ) : (
+                            <div key={field.id} className="space-y-2 rounded-md bg-muted/40 p-2">
+                              <div className="grid gap-2 sm:grid-cols-[1fr_9rem_auto]">
+                                <Input
+                                  value={field.label}
+                                  onChange={(e) =>
+                                    setFormField(step.id, field.id, { label: e.target.value })
+                                  }
+                                  placeholder={t("Question ka naam")}
+                                />
+                                <Select
+                                  value={field.type}
+                                  onValueChange={(value) =>
+                                    value &&
+                                    setFormField(step.id, field.id, { type: value as FormFieldType })
+                                  }
+                                >
+                                  <SelectTrigger className="w-full">
+                                    <SelectValue />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    <SelectItem value="text">{t("Text")}</SelectItem>
+                                    <SelectItem value="number">{t("Number")}</SelectItem>
+                                    <SelectItem value="date">{t("Date")}</SelectItem>
+                                    <SelectItem value="dropdown">{t("Dropdown")}</SelectItem>
+                                    <SelectItem value="attachment">{t("Attachment")}</SelectItem>
+                                  </SelectContent>
+                                </Select>
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() =>
+                                    setStep(step.id, {
+                                      formFields: step.formFields.filter((f) => f.id !== field.id),
+                                    })
+                                  }
+                                >
+                                  {t("Hatayein")}
+                                </Button>
+                              </div>
+                              {field.type === "dropdown" && (
+                                <Input
+                                  value={field.optionsText}
+                                  onChange={(e) =>
+                                    setFormField(step.id, field.id, { optionsText: e.target.value })
+                                  }
+                                  placeholder={t("Options (comma se alag)")}
+                                />
+                              )}
+                              <label className="flex items-center gap-2 text-sm">
+                                <Checkbox
+                                  checked={field.required}
+                                  onCheckedChange={(checked) =>
+                                    setFormField(step.id, field.id, { required: checked === true })
+                                  }
+                                />
+                                {t("Zaroori")}
+                              </label>
+                            </div>
+                          )
+                        )}
                         <Button
                           type="button"
                           variant="outline"
