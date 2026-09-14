@@ -56,16 +56,23 @@ interface PreviewLine {
   materials: PreviewMaterial[];
 }
 
+interface ProductionLine {
+  templateId: string;
+  templateName: string;
+}
+
 interface DraftLine {
   id: number;
   productName: string;
   qty: string;
   date: string;
+  orderNo: string;
+  fmsTemplateId: string;
 }
 
 let nextId = 1;
 function blankLine(): DraftLine {
-  return { id: nextId++, productName: "", qty: "", date: "" };
+  return { id: nextId++, productName: "", qty: "", date: "", orderNo: "", fmsTemplateId: "" };
 }
 
 /**
@@ -80,6 +87,7 @@ export default function PlanForm({ onCreated }: { onCreated: () => void }) {
   const t = useT();
   const [open, setOpen] = useState(false);
   const [products, setProducts] = useState<Product[]>([]);
+  const [productionLines, setProductionLines] = useState<ProductionLine[]>([]);
   const [lines, setLines] = useState<DraftLine[]>([blankLine()]);
   const [preview, setPreview] = useState<PreviewLine[] | null>(null);
   const [checking, setChecking] = useState(false);
@@ -91,6 +99,10 @@ export default function PlanForm({ onCreated }: { onCreated: () => void }) {
       .then((res) => res.json())
       .then((data: { products?: Product[] }) => setProducts(data.products ?? []))
       .catch(() => toast.error(t("Product list load nahi hui.")));
+    fetch("/api/ppc/production-lines")
+      .then((res) => res.json())
+      .then((data: { lines?: ProductionLine[] }) => setProductionLines(data.lines ?? []))
+      .catch(() => {});
   }, [open, t]);
 
   function setLine(id: number, patch: Partial<DraftLine>) {
@@ -112,6 +124,8 @@ export default function PlanForm({ onCreated }: { onCreated: () => void }) {
         productName: l.productName,
         plannedQty: Number(l.qty),
         productionDate: l.date,
+        orderNo: l.orderNo,
+        fmsTemplateId: l.fmsTemplateId,
       }));
   }
 
@@ -196,62 +210,94 @@ export default function PlanForm({ onCreated }: { onCreated: () => void }) {
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-3">
             {lines.map((line, i) => (
-              <div
-                key={line.id}
-                className="grid gap-3 rounded-lg border p-3 sm:grid-cols-[1fr_7rem_10rem_auto]"
-              >
-                <div className="space-y-2">
-                  <Label htmlFor={`product-${line.id}`}>Product {i + 1}</Label>
-                  <Select
-                    value={line.productName}
-                    onValueChange={(value) =>
-                      setLine(line.id, { productName: value ?? "" })
-                    }
-                  >
-                    <SelectTrigger id={`product-${line.id}`} className="w-full">
-                      <SelectValue placeholder={t("Chunein...")} />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {products.map((p) => (
-                        <SelectItem key={p.productName} value={p.productName}>
-                          {p.productName} (v{p.version})
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+              <div key={line.id} className="space-y-3 rounded-lg border p-3">
+                <div className="grid gap-3 sm:grid-cols-[1fr_7rem_10rem_auto]">
+                  <div className="space-y-2">
+                    <Label htmlFor={`product-${line.id}`}>Product {i + 1}</Label>
+                    <Select
+                      value={line.productName}
+                      onValueChange={(value) =>
+                        setLine(line.id, { productName: value ?? "" })
+                      }
+                    >
+                      <SelectTrigger id={`product-${line.id}`} className="w-full">
+                        <SelectValue placeholder={t("Chunein...")} />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {products.map((p) => (
+                          <SelectItem key={p.productName} value={p.productName}>
+                            {p.productName} (v{p.version})
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor={`qty-${line.id}`}>Quantity</Label>
+                    <Input
+                      id={`qty-${line.id}`}
+                      type="number"
+                      step="any"
+                      min="0"
+                      value={line.qty}
+                      onChange={(e) => setLine(line.id, { qty: e.target.value })}
+                      className="tabular-nums"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor={`date-${line.id}`}>{t("Production date")}</Label>
+                    <Input
+                      id={`date-${line.id}`}
+                      type="date"
+                      value={line.date}
+                      onChange={(e) => setLine(line.id, { date: e.target.value })}
+                    />
+                  </div>
+                  <div className="flex items-end">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      disabled={lines.length === 1}
+                      onClick={() => {
+                        setPreview(null);
+                        setLines((prev) => prev.filter((l) => l.id !== line.id));
+                      }}
+                    >{t("Hatayein")}</Button>
+                  </div>
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor={`qty-${line.id}`}>Quantity</Label>
-                  <Input
-                    id={`qty-${line.id}`}
-                    type="number"
-                    step="any"
-                    min="0"
-                    value={line.qty}
-                    onChange={(e) => setLine(line.id, { qty: e.target.value })}
-                    className="tabular-nums"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor={`date-${line.id}`}>{t("Production date")}</Label>
-                  <Input
-                    id={`date-${line.id}`}
-                    type="date"
-                    value={line.date}
-                    onChange={(e) => setLine(line.id, { date: e.target.value })}
-                  />
-                </div>
-                <div className="flex items-end">
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    disabled={lines.length === 1}
-                    onClick={() => {
-                      setPreview(null);
-                      setLines((prev) => prev.filter((l) => l.id !== line.id));
-                    }}
-                  >{t("Hatayein")}</Button>
+
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label htmlFor={`order-no-${line.id}`}>{t("Order No (optional)")}</Label>
+                    <Input
+                      id={`order-no-${line.id}`}
+                      value={line.orderNo}
+                      onChange={(e) => setLine(line.id, { orderNo: e.target.value })}
+                      placeholder={t("Customer ka PO number")}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor={`fms-line-${line.id}`}>{t("Production Line (optional)")}</Label>
+                    <Select
+                      value={line.fmsTemplateId || "NONE"}
+                      onValueChange={(value) =>
+                        setLine(line.id, { fmsTemplateId: value === "NONE" ? "" : (value ?? "") })
+                      }
+                    >
+                      <SelectTrigger id={`fms-line-${line.id}`} className="w-full">
+                        <SelectValue placeholder={t("Koi Line select nahi")} />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="NONE">{t("Koi Line select nahi")}</SelectItem>
+                        {productionLines.map((pl) => (
+                          <SelectItem key={pl.templateId} value={pl.templateId}>
+                            {pl.templateName}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
                 </div>
               </div>
             ))}

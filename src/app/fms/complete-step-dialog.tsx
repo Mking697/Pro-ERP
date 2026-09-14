@@ -26,11 +26,12 @@ import { useT } from "@/components/preferences-provider";
 import FileUploadField from "@/components/file-upload-field";
 import type { FmsRunRecord } from "./types";
 import type { FormDataSourceConfig } from "@/lib/fms/dataSource";
-import { parseOutcomeType, deriveOutcomeFromQty } from "@/lib/fms/outcomeType";
+import { parseOutcomeType, deriveOutcomeFromQty, qtySplitTotal } from "@/lib/fms/outcomeType";
 
 interface StepContext {
   outcomeOptions: string[];
   outcomeType: string;
+  quantity: string;
   formConfig: FormDataSourceConfig | null;
   referenceRows: Record<string, string>[];
 }
@@ -66,10 +67,16 @@ export default function CompleteStepDialog({
       .catch(() => {
         toast.error(t("Step ki details load nahi ho payi."));
         // Fall back to a plain Outcome/Remark dialog rather than staying stuck loading.
-        setContext({ outcomeOptions: fallbackOutcomes, outcomeType: "", formConfig: null, referenceRows: [] });
+        setContext({
+          outcomeOptions: fallbackOutcomes,
+          outcomeType: "",
+          quantity: run.Quantity ?? "",
+          formConfig: null,
+          referenceRows: [],
+        });
         setOutcome(fallbackOutcomes[0] ?? "");
       });
-  }, [open, context, run.Run_ID, t, fallbackOutcomes]);
+  }, [open, context, run.Run_ID, run.Quantity, t, fallbackOutcomes]);
 
   const outcomeType = parseOutcomeType(context?.outcomeType);
   // PASS_FAIL_QTY has no Outcome to pick — the branch follows whatever quantities were
@@ -80,6 +87,16 @@ export default function CompleteStepDialog({
     if (!finalOutcome) {
       toast.error(t("Outcome chunein."));
       return;
+    }
+    if (outcomeType === "PASS_FAIL_QTY" && context?.quantity) {
+      const runQty = Number(context.quantity);
+      const total = qtySplitTotal(formValues);
+      if (Math.abs(total - runQty) > 1e-6) {
+        toast.error(
+          `Pass + Fail + Scrap Qty milakar ${runQty} honi chahiye (is step ki Quantity) — abhi ${total} hai.`
+        );
+        return;
+      }
     }
     if (context?.formConfig) {
       const missing = (context.formConfig?.fields ?? []).filter(
@@ -121,7 +138,10 @@ export default function CompleteStepDialog({
       <DialogContent>
         <DialogHeader>
           <DialogTitle>{run.Step_Name}</DialogTitle>
-          <DialogDescription>{run.Template_Name}</DialogDescription>
+          <DialogDescription>
+            {run.Template_Name}
+            {context?.quantity && ` · Qty ${context.quantity}`}
+          </DialogDescription>
         </DialogHeader>
 
         {loadingContext ? (

@@ -20,6 +20,8 @@ const lineSchema = z.object({
   plannedQty: z.coerce.number().positive("Quantity 0 se zyada honi chahiye."),
   productionDate: z.string().trim().min(1, "Production date daalein."),
   notes: z.string().trim().optional().default(""),
+  orderNo: z.string().trim().optional().default(""),
+  fmsTemplateId: z.string().trim().optional().default(""),
 });
 
 const bodySchema = z.object({

@@ -18,7 +18,14 @@ import {
 import { resolveExistingFmsData } from "@/lib/fms/dataSourceResolver";
 import { parseActionType, parseLedgerMovementActionConfig } from "@/lib/fms/actions";
 import { runLedgerMovementAction } from "@/lib/fms/actionRunner";
-import { parseOutcomeType, deriveOutcomeFromQty, PASS_QTY_KEY, FAIL_QTY_KEY } from "@/lib/fms/outcomeType";
+import {
+  parseOutcomeType,
+  deriveOutcomeFromQty,
+  qtySplitTotal,
+  PASS_QTY_KEY,
+  FAIL_QTY_KEY,
+  SCRAP_QTY_KEY,
+} from "@/lib/fms/outcomeType";
 
 const MODULE_KEY = "FMS_RUNS";
 
@@ -43,6 +50,9 @@ export interface FmsRunRecord {
   Remark: string;
   /** Whatever the completer typed into this step's Data Source form, JSON-encoded. */
   Form_Data: string;
+  /** How many physical units this run is handling — blank for a flow that never tracks
+   * quantity. See PASS_FAIL_QTY's rework loop in completeFmsStep for why this exists. */
+  Quantity: string;
 }
 
 function runToRow(run: FmsRunRecord): string[] {
@@ -89,6 +99,8 @@ interface AppendStepRunInput {
   assignedTo: string;
   tatValue: number;
   tatUnit: FmsTatUnit;
+  /** Carried forward from whatever produced this run — blank for an untracked flow. */
+  quantity?: number;
 }
 
 async function appendStepRun(input: AppendStepRunInput): Promise<FmsRunRecord> {
@@ -120,6 +132,7 @@ async function appendStepRun(input: AppendStepRunInput): Promise<FmsRunRecord> {
     Status: "Pending",
     Remark: "",
     Form_Data: "",
+    Quantity: input.quantity !== undefined ? String(input.quantity) : "",
   };
 
   await appendModuleRow(MODULE_KEY, runToRow(run));
@@ -132,6 +145,9 @@ interface StartFmsInstanceInput {
   contextRef: string;
   /** A user id, or "SYSTEM" when started by an emitted event rather than a person. */
   startedBy: string;
+  /** Seeds the first step's Quantity — e.g. a production plan's actual quantity. Omitted
+   * for a flow that never tracks quantity. */
+  initialQuantity?: number;
 }
 
 export async function startFmsInstance(input: StartFmsInstanceInput): Promise<FmsRunRecord> {
@@ -152,6 +168,7 @@ export async function startFmsInstance(input: StartFmsInstanceInput): Promise<Fm
     assignedTo: firstStep.Assigned_To,
     tatValue: Number(firstStep.TAT_Value),
     tatUnit: firstStep.TAT_Unit as FmsTatUnit,
+    quantity: input.initialQuantity,
   });
 }
 
@@ -166,7 +183,7 @@ interface CompleteFmsStepInput {
 
 export async function completeFmsStep(
   input: CompleteFmsStepInput
-): Promise<{ completed: FmsRunRecord; next: FmsRunRecord | null }> {
+): Promise<{ completed: FmsRunRecord; next: FmsRunRecord[] }> {
   const runs = await getModuleRows<FmsRunRecord>(MODULE_KEY);
   const index = runs.findIndex((r) => r.Run_ID === input.runId);
   if (index === -1) throw new Error("Step nahi mila.");
@@ -200,12 +217,34 @@ export async function completeFmsStep(
   // tampered request can't claim "Pass" while reporting a nonzero Fail Qty.
   const outcomeType = parseOutcomeType(step.Outcome_Type);
   let outcome = input.outcome;
+  let passQty = 0;
+  let failQty = 0;
+  let scrapQty = 0;
   if (outcomeType === "PASS_FAIL_QTY") {
-    const passQty = Number(formValues[PASS_QTY_KEY]);
-    const failQty = Number(formValues[FAIL_QTY_KEY]);
-    if (!Number.isFinite(passQty) || passQty < 0 || !Number.isFinite(failQty) || failQty < 0) {
-      throw new Error("Pass Qty aur Fail Qty non-negative number honi chahiye.");
+    passQty = Number(formValues[PASS_QTY_KEY] || 0);
+    failQty = Number(formValues[FAIL_QTY_KEY] || 0);
+    scrapQty = Number(formValues[SCRAP_QTY_KEY] || 0);
+    if (
+      !Number.isFinite(passQty) || passQty < 0 ||
+      !Number.isFinite(failQty) || failQty < 0 ||
+      !Number.isFinite(scrapQty) || scrapQty < 0
+    ) {
+      throw new Error("Pass, Fail aur Scrap Qty non-negative number honi chahiye.");
     }
+
+    // Every unit this run holds has to be accounted for somewhere. Skipped when the run
+    // never got a Quantity (an untracked flow) — there is nothing to check the total
+    // against then.
+    if (run.Quantity) {
+      const runQty = Number(run.Quantity);
+      const total = qtySplitTotal(formValues);
+      if (Math.abs(total - runQty) > 1e-6) {
+        throw new Error(
+          `Pass + Fail + Scrap Qty milakar ${runQty} honi chahiye (is step ki Quantity) — abhi ${total} hai.`
+        );
+      }
+    }
+
     outcome = deriveOutcomeFromQty(formValues);
   }
 
@@ -231,7 +270,18 @@ export async function completeFmsStep(
   const actionType = parseActionType(step.Action_Type);
   if (actionType === "LEDGER_MOVEMENT") {
     const actionConfig = parseLedgerMovementActionConfig(step.Action_Config);
-    await runLedgerMovementAction(actionConfig, outcome, resolvedFields, run.Run_ID, input.completedBy);
+    if (outcomeType === "PASS_FAIL_QTY") {
+      // The derived `outcome` label is "Fail" whenever any unit failed, even if most of
+      // the batch passed — that label is for history/branching, not for gating the
+      // write. A configured "Pass" action must still fire for whatever quantity actually
+      // passed, partial fail or not; Fail Qty always loops back for rework (nothing to
+      // write yet) and Scrap Qty never should, so neither ever triggers an action here.
+      if (passQty > 0) {
+        await runLedgerMovementAction(actionConfig, "Pass", resolvedFields, run.Run_ID, input.completedBy);
+      }
+    } else {
+      await runLedgerMovementAction(actionConfig, outcome, resolvedFields, run.Run_ID, input.completedBy);
+    }
   }
 
   const now = new Date();
@@ -267,26 +317,56 @@ export async function completeFmsStep(
   };
 
   const nextMap = parseNextStepMap(step.Next_Step_Map);
-  const target = nextMap[outcome];
 
-  let next: FmsRunRecord | null = null;
-  if (target && target !== "END") {
-    const nextStepNo = Number(target);
-    const nextStep = await getFmsTemplateStep(run.Template_ID, nextStepNo);
-    if (nextStep) {
-      next = await appendStepRun({
-        instanceId: run.Instance_ID,
-        templateId: run.Template_ID,
-        templateName: run.Template_Name,
-        contextRef: run.Context_Ref,
-        startedBy: run.Started_By,
-        startedAt: run.Started_At,
-        stepNo: nextStepNo,
-        stepName: nextStep.Step_Name,
-        assignedTo: nextStep.Assigned_To,
-        tatValue: Number(nextStep.TAT_Value),
-        tatUnit: nextStep.TAT_Unit as FmsTatUnit,
-      });
+  /** Appends a run at another step of this same instance, carrying a quantity forward. */
+  async function createRun(stepNo: number, quantity: number | undefined): Promise<FmsRunRecord | null> {
+    const target = await getFmsTemplateStep(run.Template_ID, stepNo);
+    if (!target) return null;
+    return appendStepRun({
+      instanceId: run.Instance_ID,
+      templateId: run.Template_ID,
+      templateName: run.Template_Name,
+      contextRef: run.Context_Ref,
+      startedBy: run.Started_By,
+      startedAt: run.Started_At,
+      stepNo,
+      stepName: target.Step_Name,
+      assignedTo: target.Assigned_To,
+      tatValue: Number(target.TAT_Value),
+      tatUnit: target.TAT_Unit as FmsTatUnit,
+      quantity,
+    });
+  }
+
+  const next: FmsRunRecord[] = [];
+
+  if (outcomeType === "PASS_FAIL_QTY") {
+    // Pass Qty moves on to whatever the admin wired "Pass" to — same as any other
+    // outcome's branch. Fail Qty never consults Next_Step_Map at all: it always loops
+    // back to this same step, reassigned to the same doer, as its own new Pending run —
+    // that is the rework the doer sees. It can fail again (looping again, recursively)
+    // or resolve via Scrap Qty, which spawns nothing and simply removes those units from
+    // the flow — the final step's stock write only ever sees whatever quantity survived
+    // every loop, never the original count.
+    if (passQty > 0) {
+      const target = nextMap["Pass"];
+      if (target && target !== "END") {
+        const created = await createRun(Number(target), passQty);
+        if (created) next.push(created);
+      }
+    }
+    if (failQty > 0) {
+      const created = await createRun(Number(run.Step_No), failQty);
+      if (created) next.push(created);
+    }
+  } else {
+    const target = nextMap[outcome];
+    if (target && target !== "END") {
+      const created = await createRun(
+        Number(target),
+        run.Quantity ? Number(run.Quantity) : undefined
+      );
+      if (created) next.push(created);
     }
   }
 
@@ -307,7 +387,11 @@ export async function completeFmsStep(
  * module's own code (e.g. src/lib/inward.ts after saving an entry) call this the same
  * way — it doesn't know or care which.
  */
-export async function emitFmsEvent(sourceKey: string, contextRef: string): Promise<void> {
+export async function emitFmsEvent(
+  sourceKey: string,
+  contextRef: string,
+  initialQuantity?: number
+): Promise<void> {
   const allSteps = await listFmsTemplates();
   const matchingFirstSteps = allSteps.filter(
     (s) => Number(s.Step_No) === 1 && s.Trigger_Event === sourceKey && s.Status === "Active"
@@ -315,7 +399,12 @@ export async function emitFmsEvent(sourceKey: string, contextRef: string): Promi
 
   for (const step of matchingFirstSteps) {
     try {
-      await startFmsInstance({ templateId: step.Template_ID, contextRef, startedBy: "SYSTEM" });
+      await startFmsInstance({
+        templateId: step.Template_ID,
+        contextRef,
+        startedBy: "SYSTEM",
+        initialQuantity,
+      });
     } catch (error) {
       console.error(`[fms] emitFmsEvent failed to start template ${step.Template_ID}:`, error);
     }

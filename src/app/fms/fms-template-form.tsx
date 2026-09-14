@@ -162,7 +162,12 @@ function columnOptionsFor(step: DraftStep, allSteps: DraftStep[], modules: Modul
   if (step.existingSourceModule === THIS_FLOW_SOURCE) {
     const target = allSteps[Number(step.existingSourceStepNo) - 1];
     if (!target) return [];
-    return [...target.formFields.map((f) => slugify(f.label)).filter(Boolean), "Outcome", "Step_Name"];
+    return [
+      ...target.formFields.map((f) => slugify(f.label)).filter(Boolean),
+      "Outcome",
+      "Step_Name",
+      "Quantity",
+    ];
   }
   return modules.find((m) => m.key === step.existingSourceModule)?.headers ?? [];
 }
@@ -609,7 +614,17 @@ export default function FmsTemplateForm({
                       <p className="text-xs font-medium text-muted-foreground">
                         {t("Har outcome ke baad agla step")}
                       </p>
-                      {outcomes.map((outcome) => (
+                      {step.outcomeType === "PASS_FAIL_QTY" && (
+                        <p className="text-xs text-muted-foreground">
+                          {t(
+                            "Fail Qty hamesha isi step par, usi doer ke paas, rework ke liye wapas aati hai — koi step yahan select nahi hota. Sirf Pass Qty ke liye agla step chunein."
+                          )}
+                        </p>
+                      )}
+                      {(step.outcomeType === "PASS_FAIL_QTY"
+                        ? outcomes.filter((o) => o !== "Fail")
+                        : outcomes
+                      ).map((outcome) => (
                         <div key={outcome} className="flex items-center gap-2">
                           <span className="w-24 shrink-0 text-sm">{outcome}</span>
                           <Select

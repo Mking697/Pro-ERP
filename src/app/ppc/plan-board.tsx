@@ -54,6 +54,8 @@ interface Plan {
   actualQty: number | null;
   startedBy: string;
   materials: PlanMaterial[];
+  jobNo: string;
+  orderNo: string;
 }
 
 const STATUS_LABEL: Record<Plan["status"], string> = {
@@ -214,10 +216,12 @@ export default function PlanBoard({ access }: { access: string[] }) {
                         </Badge>
                       </CardTitle>
                       <p className="mt-1 text-xs text-muted-foreground">
+                        {plan.jobNo && `${t("Job")} ${plan.jobNo} · `}
                         {plan.plannedQty} unit · {plan.productionDate} · BOM v
                         {plan.bomVersion}
                         {plan.actualQty !== null && ` · bane ${plan.actualQty}`}
                         {shortQty > 0 && ` · ${shortQty} material kam`}
+                        {plan.orderNo && ` · ${t("Order No")}: ${plan.orderNo}`}
                       </p>
                     </div>
 

@@ -10,7 +10,7 @@ import {
   PlanError,
 } from "@/lib/inventory/plans";
 import { InsufficientStockError } from "@/lib/inventory/ledger";
-import { emitFmsEvent } from "@/lib/fms/engine";
+import { emitFmsEvent, startFmsInstance } from "@/lib/fms/engine";
 
 const bodySchema = z.discriminatedUnion("action", [
   z.object({
@@ -66,8 +66,27 @@ export async function PATCH(
         // not this route depending on the FMS engine's own module graph. startProduction()
         // itself never imports it, to avoid a circular import back through the Action
         // engine's own use of plans.ts.
+        //
+        // A plan with its own chosen Line (fmsTemplateId) starts only that one, directly
+        // — not the broadcast every other plan still gets. Without this, two products each
+        // needing a different Line would both have every Active PRODUCTION_STARTED
+        // template fire for them, which is exactly the ambiguity picking a Line exists to
+        // remove.
         try {
-          await emitFmsEvent("PRODUCTION_STARTED", `PRODUCTION_PLANS:${planId}`);
+          if (plan.fmsTemplateId) {
+            await startFmsInstance({
+              templateId: plan.fmsTemplateId,
+              contextRef: `PRODUCTION_PLANS:${planId}`,
+              startedBy: "SYSTEM",
+              initialQuantity: plan.actualQty ?? undefined,
+            });
+          } else {
+            await emitFmsEvent(
+              "PRODUCTION_STARTED",
+              `PRODUCTION_PLANS:${planId}`,
+              plan.actualQty ?? undefined
+            );
+          }
         } catch (error) {
           console.error(`[ppc] FMS event emit failed for ${planId}:`, error);
         }

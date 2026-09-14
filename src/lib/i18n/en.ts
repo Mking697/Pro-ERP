@@ -101,11 +101,12 @@ export const EN: Record<string, string> = {
   "Kisko / Remark": "Issued to / remark",
   "Bulk Import": "Bulk Import",
   "Bulk Import — Items": "Bulk Import — Items",
-  "Template download karein, usi format me apna data bharein, phir upload karein — sab items ek baar me ban jaayenge.":
-    "Download the template, fill in your data in the same format, then upload it — every item is created in one go.",
+  "Template download karein, usi format me apna data bharein, phir upload karein — sab items ek baar me ban jaayenge. Opening Stock column me kuch likhenge to us item ka stock bhi turant record ho jaayega.":
+    "Download the template, fill in your data in the same format, then upload it — every item is created in one go. Fill in the Opening Stock column and that item's stock is recorded right away too.",
   "Template Download karein": "Download Template",
   "Filled-in file (CSV ya Excel)": "Filled-in file (CSV or Excel)",
   "item ban gaye": "items created",
+  "me Opening Stock bhi record ho gaya": "of which also had Opening Stock recorded",
   "row skip ho gayi(n) errors ki wajah se": "row(s) skipped due to errors",
   "Import karein": "Import",
   "Import nahi ho paya.": "Import failed.",
@@ -180,6 +181,12 @@ export const EN: Record<string, string> = {
   "Milega": "Available",
   "Kam": "Short",
   "Laga": "Used",
+  "Order No (optional)": "Order No (optional)",
+  "Customer ka PO number": "Customer's PO number",
+  "Production Line (optional)": "Production Line (optional)",
+  "Koi Line select nahi": "No Line selected",
+  "Job": "Job",
+  "Order No": "Order No",
 
   // --- inward and IQC --------------------------------------------------------------
   "Naya Inward Entry": "New inward entry",
@@ -563,6 +570,8 @@ export const EN: Record<string, string> = {
   "Days": "Days",
   "Outcomes (comma se alag)": "Outcomes (comma-separated)",
   "Har outcome ke baad agla step": "Next step for each outcome",
+  "Fail Qty hamesha isi step par, usi doer ke paas, rework ke liye wapas aati hai — koi step yahan select nahi hota. Sirf Pass Qty ke liye agla step chunein.":
+    "Fail Qty always comes back to this same step, to the same doer, for rework — no step is selected here. Only choose the next step for Pass Qty.",
   "FMS khatam": "End FMS",
   "Ek aur step": "Add another step",
   "Template banayein": "Create template",
@@ -631,11 +640,11 @@ export const EN: Record<string, string> = {
   "Outcome Type": "Outcome Type",
   "Done": "Done",
   "Pass aur Fail": "Pass and Fail",
-  "Pass Qty aur Fail Qty": "Pass Qty and Fail Qty",
+  "Pass, Fail aur Scrap Qty": "Pass, Fail and Scrap Qty",
   "Custom (khud likhein)": "Custom (type your own)",
   "Outcome Type se auto-add hua": "Auto-added by Outcome Type",
-  "Pass Qty aur Fail Qty non-negative number honi chahiye.":
-    "Pass Qty and Fail Qty must be non-negative numbers.",
+  "Pass, Fail aur Scrap Qty non-negative number honi chahiye.":
+    "Pass, Fail and Scrap Qty must be non-negative numbers.",
   "Zaroori": "Required",
   "Ek aur question": "Add another question",
   "Source chunein": "Choose a source",

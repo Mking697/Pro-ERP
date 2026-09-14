@@ -382,6 +382,7 @@ export const GUIDE: GuideChapter[] = [
         ],
         notes: [
           "SKU khaali chhoda ja sakta hai — New Item form ki tarah, khud ban jaata hai.",
+          "Template me ek 'Opening Stock' column bhi hai jo New Item form me nahi hai — usme quantity likh denge to us item ka stock alag se Stock In kiye bina hi turant ban jaata hai, ek 'Opening' entry ke roop me.",
           "Kisi row me galti ho (naam khaali, galat Category, ya SKU pehle se maujood) to sirf wahi row skip hoti hai aur wajah dikhai jaati hai — baaki saare items ban jaate hain.",
           "Column headers ka spelling/spacing thoda idhar-udhar ho to bhi chalega (jaise 'Item_Name' ya 'Item Name' dono), lekin sabse aasan raasta wahi hai jo template deta hai.",
         ],
@@ -694,6 +695,7 @@ export const GUIDE: GuideChapter[] = [
         steps: [
           "PPC page par Naya plan dabayein.",
           "Jo product ek saath banane hain, sabko ek hi baar me daalein — product, quantity aur production date.",
+          "Chahein to Order No (jaise customer ka PO number) aur Production Line daal dein.",
           "Material check karein dabakar dekhein kis product ka kya material kam pad raha hai.",
           "Plan banayein dabayein.",
         ],
@@ -701,6 +703,8 @@ export const GUIDE: GuideChapter[] = [
           "'Material check karein' sirf dikhata hai, kuch likhta nahi. Wo wahi hisaab chalata hai jo asli plan banane par chalega, isliye jo dikha wahi hoga.",
           "Sirf un product ka plan ban sakta hai jinki active BOM maujood hai.",
           "Har product apna alag plan banta hai, kyunki production, shuruaat aur completion har product ki apni hoti hai. Par material sabko ek saath baanta jaata hai.",
+          "Har plan ko ek Job No khud-ba-khud mil jaata hai (paperwork ke liye) — Order No khud likhna hota hai, kisi cheez se match nahi karta, sirf record ke liye hai.",
+          "Production Line chunna optional hai — ye wahi FMS Template hai jo is product ka multi-step process chalata hai (jaise Winding se lekar Dispatch tak). Jo Line chunenge, Production shuru dabane par sirf wahi Line is plan ke liye start hogi, koi doosri Line isse touch nahi karegi.",
         ],
       },
       {
@@ -1044,12 +1048,13 @@ export const GUIDE: GuideChapter[] = [
         steps: [
           "FMS page ke Templates tab me 'Naya FMS Template' dabayein.",
           "Har step ka naam, kise assign hoga, aur TAT (Hours ya Days me) bharein.",
-          "Step ka Outcome Type chunein — Done, Pass aur Fail, Pass Qty aur Fail Qty, Number, Text, Attachment, ya Custom (khud outcomes typing karein). Phir har outcome ke aage decide karein agla kaunsa step chalega, ya FMS yahin khatam ho.",
+          "Step ka Outcome Type chunein — Done, Pass aur Fail, Pass/Fail/Scrap Qty, Number, Text, Attachment, ya Custom (khud outcomes typing karein). Phir har outcome ke aage decide karein agla kaunsa step chalega, ya FMS yahin khatam ho.",
           "Template banayein dabayein.",
         ],
         notes: [
           "Trigger 'MANUAL' rakhne par FMS sirf haath se start hota hai. Iski jagah kisi module ka event key (jaise INWARD_ENTRY_CREATED) ya kisi doosre FMS template ka outcome key dene se wo FMS uske hote hi khud shuru ho jaata hai — koi loop na bane iska dhyan template banate waqt khud rakhna hai.",
           "Template Archive karne se uske purane chal rahe steps par asar nahi padta, sirf naye instance us se nahi bante. Ek Archived template jise koi step abhi chala hi nahi raha, use Templates list se permanently Delete bhi kiya ja sakta hai.",
+          "'Pass/Fail/Scrap Qty' wale step me quantity khud aage badhti hai: 100 me se 98 Pass, 2 Fail kiye to 98 agle step pe chali jaati hai, aur 2 usi step pe usi doer ke paas ek naya pending kaam ban jaati hai — wo unhe dobara Pass/Fail kar sakta hai (jab tak resolve na ho), ya Scrap Qty likh kar unhe hamesha ke liye hata sakta hai. Final step ka stock sirf utni hi quantity se banta hai jitni sach me aakhir tak pahunchi.",
         ],
       },
     ],

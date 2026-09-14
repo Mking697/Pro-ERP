@@ -241,6 +241,18 @@ export const MODULE_SHEETS: ModuleDefinition[] = [
       "Started_At",
       "Created_By",
       "Notes",
+      // Appended at the end, never inserted mid-header (see Outcome_Type above for why).
+      // Job_No is a second, purely user-facing identifier — Plan_ID stays the real key
+      // every lookup joins on, so nothing that already reads Plan_ID had to change.
+      "Job_No",
+      // Manually typed, e.g. a customer's PO number — free text, not validated against
+      // anything, since there is no Sales Order module yet to validate it against.
+      "Order_No",
+      // Which FMS Template ("Line") Start Production should run for this plan. Blank
+      // keeps the old behaviour: every Active template triggered on PRODUCTION_STARTED
+      // fires for every plan. Set, and only this one template starts — see the "start"
+      // action in api/ppc/plans/[planId]/route.ts.
+      "FMS_Template_ID",
     ],
   },
   {
@@ -323,6 +335,12 @@ export const MODULE_SHEETS: ModuleDefinition[] = [
       "Remark",
       // Whatever the completer typed into the step's own Data Source form, JSON-encoded.
       "Form_Data",
+      // How many physical units this specific run is handling — blank for a flow that
+      // never tracks quantity. Carried forward step to step; a PASS_FAIL_QTY step's Fail
+      // Qty spawns a new run at the same step with this set to the failed quantity, so a
+      // partial rework never loses track of how many units it covers. Appended at the
+      // end, never inserted mid-header — see the Outcome_Type column above.
+      "Quantity",
     ],
   },
   {

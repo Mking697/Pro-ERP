@@ -340,6 +340,7 @@ export const GUIDE_EN: GuideChapter[] = [
         ],
         notes: [
           "SKU can be left blank — just like the New Item form, one is generated for you.",
+          "The template also has an 'Opening Stock' column the New Item form doesn't have — fill in a quantity there and that item's stock is created right away as one 'Opening' entry, with no separate Stock In needed.",
           "If a row has a problem (blank name, an invalid category, or a SKU that already exists), only that row is skipped and the reason is shown — every other item is still created.",
           "Column headers can be slightly off in spelling or spacing (e.g. 'Item_Name' or 'Item Name' both work), but the easiest path is still the one the template gives you.",
         ],
@@ -652,6 +653,7 @@ export const GUIDE_EN: GuideChapter[] = [
         steps: [
           "Press New Plan on the PPC page.",
           "Enter every product being made together in one go — product, quantity and production date.",
+          "Optionally fill in an Order No (e.g. a customer's PO number) and a Production Line.",
           "Press Check material to see what is short, product by product.",
           "Press Create plan.",
         ],
@@ -659,6 +661,8 @@ export const GUIDE_EN: GuideChapter[] = [
           "'Check material' only shows; it writes nothing. It runs exactly the same calculation that creating the plan will run, so what you see is what you get.",
           "Only products with an active BOM can be planned.",
           "Each product becomes its own plan, because production starts and finishes per product. The material, though, is shared out across all of them at once.",
+          "Every plan gets a Job No automatically (for paperwork) — Order No is typed by hand, matched against nothing, and exists purely as a record.",
+          "Choosing a Production Line is optional — it's the FMS Template that runs this product's multi-step process (say, Winding through to Dispatch). Whichever Line is chosen, pressing Start Production runs only that one Line for this plan; no other Line touches it.",
         ],
       },
       {
@@ -1002,12 +1006,13 @@ export const GUIDE_EN: GuideChapter[] = [
         steps: [
           "On the Templates tab of the FMS page, press \"New FMS Template\".",
           "For each step, fill in its name, who it's assigned to, and its TAT (in Hours or Days).",
-          "Choose the step's Outcome Type — Done, Pass and Fail, Pass Qty and Fail Qty, Number, Text, Attachment, or Custom (type your own outcomes). Then choose which step runs next for each outcome, or that the FMS ends there.",
+          "Choose the step's Outcome Type — Done, Pass and Fail, Pass/Fail/Scrap Qty, Number, Text, Attachment, or Custom (type your own outcomes). Then choose which step runs next for each outcome, or that the FMS ends there.",
           "Press Create Template.",
         ],
         notes: [
           "Leaving the trigger as \"MANUAL\" means the FMS only starts by hand. Giving it a module's event key instead (e.g. INWARD_ENTRY_CREATED), or another FMS template's outcome key, starts it automatically when that happens — avoiding a trigger loop is on whoever builds the template.",
           "Archiving a template doesn't affect its steps already in progress — only new instances stop being created from it. An Archived template that no step is currently running can also be permanently deleted from the Templates list.",
+          "A \"Pass/Fail/Scrap Qty\" step carries its quantity forward automatically: split 100 into 98 Pass and 2 Fail, and 98 moves on to the next step while the 2 become a new pending task for the same doer, on the same step — they can split it again (Pass/Fail/Scrap, looping until it resolves) or write it off with Scrap Qty. The final step's stock write only ever reflects whatever quantity actually made it all the way through.",
         ],
       },
     ],

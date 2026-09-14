@@ -71,6 +71,9 @@ export interface PlanRow {
   Started_At: string;
   Created_By: string;
   Notes: string;
+  Job_No: string;
+  Order_No: string;
+  FMS_Template_ID: string;
 }
 
 export interface PlanMaterialRow {
@@ -116,6 +119,15 @@ export interface Plan {
   createdBy: string;
   notes: string;
   materials: PlanMaterial[];
+  /** Second, purely user-facing identifier — Plan_ID stays the real key everything else
+   * joins on. */
+  jobNo: string;
+  /** Manually typed (e.g. a customer's PO number) — free text, not validated against
+   * anything, since there is no Sales Order module yet. */
+  orderNo: string;
+  /** Which FMS Template ("Line") Start Production should run for this plan — blank means
+   * the old behaviour (every Active PRODUCTION_STARTED template fires for every plan). */
+  fmsTemplateId: string;
 }
 
 export async function listPlanRows(): Promise<PlanRow[]> {
@@ -167,6 +179,9 @@ export function joinPlans(plans: PlanRow[], materials: PlanMaterialRow[]): Plan[
       createdBy: p.Created_By,
       notes: p.Notes,
       materials: byPlan.get(p.Plan_ID) ?? [],
+      jobNo: p.Job_No,
+      orderNo: p.Order_No,
+      fmsTemplateId: p.FMS_Template_ID,
     }))
     .sort(
       (a, b) =>
@@ -223,6 +238,10 @@ export interface PlanLineInput {
   plannedQty: number;
   productionDate: string;
   notes?: string;
+  /** A customer's PO number or similar — free text. */
+  orderNo?: string;
+  /** The FMS Template ("Line") Start Production should run for this plan alone. */
+  fmsTemplateId?: string;
 }
 
 interface PlanContext {
@@ -381,6 +400,7 @@ export async function createPlans(
     if (!result) continue;
 
     const planId = generateId("PLAN");
+    const jobNo = generateId("JOB");
 
     const row: PlanRow = {
       Plan_ID: planId,
@@ -397,6 +417,9 @@ export async function createPlans(
       Started_At: "",
       Created_By: createdBy,
       Notes: line.notes ?? "",
+      Job_No: jobNo,
+      Order_No: line.orderNo?.trim() ?? "",
+      FMS_Template_ID: line.fmsTemplateId?.trim() ?? "",
     };
     planRows.push(recordToRow(PLANS_KEY, row));
 
@@ -432,6 +455,9 @@ export async function createPlans(
       startedAt: "",
       createdBy,
       notes: line.notes ?? "",
+      jobNo,
+      orderNo: line.orderNo?.trim() ?? "",
+      fmsTemplateId: line.fmsTemplateId?.trim() ?? "",
       materials: result.materials.map((m) => ({
         sku: m.sku,
         itemName: m.itemName,

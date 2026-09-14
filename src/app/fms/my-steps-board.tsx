@@ -76,6 +76,7 @@ export default function MyStepsBoard() {
           <TableRow>
             <TableHead>{t("Step")}</TableHead>
             <TableHead>{t("FMS")}</TableHead>
+            <TableHead className="text-right">Qty</TableHead>
             <TableHead>{t("Deadline")}</TableHead>
             <TableHead>Status</TableHead>
             <TableHead className="text-right">Actions</TableHead>
@@ -88,6 +89,9 @@ export default function MyStepsBoard() {
               <TableRow key={run.Run_ID}>
                 <TableCell className="font-medium">{run.Step_Name}</TableCell>
                 <TableCell>{run.Template_Name}</TableCell>
+                <TableCell className="text-right tabular-nums text-muted-foreground">
+                  {run.Quantity || "—"}
+                </TableCell>
                 <TableCell>{formatDueDisplay(run.TAT_Deadline)}</TableCell>
                 <TableCell>
                   <Badge variant={overdue ? "destructive" : "secondary"}>

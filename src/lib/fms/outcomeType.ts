@@ -18,6 +18,7 @@ export type OutcomeType = "" | "DONE" | "PASS_FAIL" | "PASS_FAIL_QTY" | "NUMBER"
  * SKU/Qty field dropdown and the engine's own Pass/Fail-from-qty logic bind to these. */
 export const PASS_QTY_KEY = slugify("Pass Qty");
 export const FAIL_QTY_KEY = slugify("Fail Qty");
+export const SCRAP_QTY_KEY = slugify("Scrap Qty");
 export const VALUE_KEY = slugify("Value");
 export const ATTACHMENT_KEY = slugify("Attachment");
 
@@ -36,11 +37,15 @@ export const OUTCOME_TYPE_DEFS: OutcomeTypeDef[] = [
   { value: "PASS_FAIL", label: "Pass aur Fail", outcomes: ["Pass", "Fail"], builtInFields: [] },
   {
     value: "PASS_FAIL_QTY",
-    label: "Pass Qty aur Fail Qty",
+    label: "Pass, Fail aur Scrap Qty",
     outcomes: ["Pass", "Fail"],
     builtInFields: [
       { key: PASS_QTY_KEY, label: "Pass Qty", type: "number", required: true },
       { key: FAIL_QTY_KEY, label: "Fail Qty", type: "number", required: true },
+      // Optional — most completions have none. A run's Fail Qty always loops back to
+      // this same step for rework (see the engine); Scrap Qty is the only way a unit
+      // ever leaves that loop without passing — it just stops, nothing moves anywhere.
+      { key: SCRAP_QTY_KEY, label: "Scrap Qty", type: "number", required: false },
     ],
   },
   {
@@ -76,4 +81,15 @@ export function outcomeTypeDef(type: OutcomeType): OutcomeTypeDef | null {
  * quantity as a real failure rather than trusting a separately-picked label. */
 export function deriveOutcomeFromQty(formValues: Record<string, string>): string {
   return Number(formValues[FAIL_QTY_KEY] || 0) > 0 ? "Fail" : "Pass";
+}
+
+/** Pass + Fail + Scrap, as actually typed in. Every unit a PASS_FAIL_QTY run holds has to
+ * end up counted somewhere — moving on, back for rework, or written off — so this is what
+ * gets checked against the run's own incoming Quantity before a completion is accepted. */
+export function qtySplitTotal(formValues: Record<string, string>): number {
+  return (
+    Number(formValues[PASS_QTY_KEY] || 0) +
+    Number(formValues[FAIL_QTY_KEY] || 0) +
+    Number(formValues[SCRAP_QTY_KEY] || 0)
+  );
 }

@@ -20,6 +20,7 @@ export interface FmsRunRecord {
   Status: string;
   Remark: string;
   Form_Data?: string;
+  Quantity?: string;
   /** Joined in by /api/fms/my-steps from the step's template definition — comma list. */
   Outcome_Options?: string;
 }
