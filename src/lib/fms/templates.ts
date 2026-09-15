@@ -122,6 +122,58 @@ export async function getFmsTemplateStep(
   return steps.find((s) => Number(s.Step_No) === stepNo) ?? null;
 }
 
+export interface FmsNavTemplate {
+  templateId: string;
+  templateName: string;
+}
+
+/**
+ * Whether a user may open a template's own Flow Board — as a nav item, or the page itself.
+ * An FMS_ADMIN always may; anyone else only when the template's own step design assigns
+ * them somewhere (Assigned_To, chosen from a user dropdown at template-build time). This
+ * is a design-time check on FMS_TEMPLATES rows, not a runtime lookup of who currently
+ * holds a Pending FMS_RUNS step — a person keeps their flow's nav item even between
+ * instances, and between their own steps within one.
+ */
+export function userCanAccessTemplate(
+  steps: FmsTemplateStepRecord[],
+  userId: string,
+  isAdmin: boolean
+): boolean {
+  return isAdmin || steps.some((s) => s.Assigned_To === userId);
+}
+
+/**
+ * Every Active template that should get its own nav item for this user — every Active
+ * template for an FMS_ADMIN, or only the ones whose static step design assigns this user
+ * otherwise (see userCanAccessTemplate). A template is stored as one row per step, so this
+ * groups/dedupes by Template_ID, keeping each one's own Template_Name.
+ *
+ * Callers should wrap this in tenantCached with a short TTL — it runs on every page load
+ * via AppShell, so an uncached full FMS_TEMPLATES read here would make the project's
+ * already-documented Sheets-quota problem worse.
+ */
+export async function listNavFmsTemplates(
+  userId: string,
+  isAdmin: boolean
+): Promise<FmsNavTemplate[]> {
+  const steps = (await listFmsTemplates()).filter((s) => s.Status === "Active");
+
+  const byTemplate = new Map<string, FmsTemplateStepRecord[]>();
+  for (const step of steps) {
+    const list = byTemplate.get(step.Template_ID) ?? [];
+    list.push(step);
+    byTemplate.set(step.Template_ID, list);
+  }
+
+  const out: FmsNavTemplate[] = [];
+  for (const [templateId, templateSteps] of byTemplate) {
+    if (!userCanAccessTemplate(templateSteps, userId, isAdmin)) continue;
+    out.push({ templateId, templateName: templateSteps[0].Template_Name });
+  }
+  return out;
+}
+
 /** Mints a Template_ID and appends every step as one row each, in a single sheet write. */
 export async function createFmsTemplate(input: CreateFmsTemplateInput): Promise<string> {
   if (input.steps.length === 0) {

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import {
   Dialog,
@@ -25,8 +25,92 @@ import {
 import { useT } from "@/components/preferences-provider";
 import FileUploadField from "@/components/file-upload-field";
 import type { FmsRunRecord } from "./types";
-import type { FormDataSourceConfig } from "@/lib/fms/dataSource";
+import type { FormDataSourceConfig, FormField } from "@/lib/fms/dataSource";
 import { parseOutcomeType, deriveOutcomeFromQty, qtySplitTotal } from "@/lib/fms/outcomeType";
+import type { Translator } from "@/lib/i18n";
+
+/**
+ * A searchable picker for a "lookup" field — the doer types to filter, then picks a row
+ * from `rows`. No cmdk/Popover primitive exists yet in this project's src/components/ui,
+ * so this is a small self-contained combobox (Input + an absolutely-positioned list) built
+ * from what's already here, rather than pulling in a new dependency for one field type.
+ */
+function LookupCombobox({
+  rows,
+  loading,
+  displayField,
+  value,
+  onSelect,
+  t,
+}: {
+  rows: Record<string, string>[];
+  loading: boolean;
+  displayField: string;
+  value: string;
+  onSelect: (row: Record<string, string>) => void;
+  t: Translator;
+}) {
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState("");
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    function handleClickOutside(e: MouseEvent) {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [open]);
+
+  const filtered = rows.filter((r) =>
+    (r[displayField] ?? "").toLowerCase().includes(search.trim().toLowerCase())
+  );
+
+  return (
+    <div ref={containerRef} className="relative">
+      <Input
+        value={open ? search : value}
+        onChange={(e) => {
+          setSearch(e.target.value);
+          if (!open) setOpen(true);
+        }}
+        onFocus={() => {
+          setSearch("");
+          setOpen(true);
+        }}
+        placeholder={loading ? t("Load ho raha hai...") : t("Search karein...")}
+        autoComplete="off"
+      />
+      {open && (
+        <div className="absolute z-50 mt-1 max-h-48 w-full overflow-y-auto rounded-md border bg-popover text-popover-foreground shadow-md">
+          {loading ? (
+            <p className="p-2 text-sm text-muted-foreground">{t("Load ho raha hai...")}</p>
+          ) : filtered.length === 0 ? (
+            <p className="p-2 text-sm text-muted-foreground">{t("Koi match nahi mila.")}</p>
+          ) : (
+            filtered.map((row, i) => (
+              <button
+                key={i}
+                type="button"
+                className="block w-full px-2 py-1.5 text-left text-sm hover:bg-accent hover:text-accent-foreground"
+                onClick={() => {
+                  onSelect(row);
+                  setOpen(false);
+                  setSearch("");
+                }}
+              >
+                {row[displayField] || "—"}
+              </button>
+            ))
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
 
 interface StepContext {
   outcomeOptions: string[];
@@ -77,6 +161,51 @@ export default function CompleteStepDialog({
         setOutcome(fallbackOutcomes[0] ?? "");
       });
   }, [open, context, run.Run_ID, run.Quantity, t, fallbackOutcomes]);
+
+  // Rows for every "lookup" field's sourceModule, fetched once per module (not once per
+  // field — two lookup fields on the same step pointed at the same module share a fetch).
+  const [lookupRows, setLookupRows] = useState<Record<string, Record<string, string>[]>>({});
+  const [lookupLoading, setLookupLoading] = useState<Record<string, boolean>>({});
+  const fetchedLookupModules = useRef(new Set<string>());
+
+  useEffect(() => {
+    const lookupFields = (context?.formConfig?.fields ?? []).filter(
+      (f): f is FormField & { lookup: NonNullable<FormField["lookup"]> } =>
+        f.type === "lookup" && Boolean(f.lookup)
+    );
+    for (const field of lookupFields) {
+      const sourceModule = field.lookup.sourceModule;
+      if (fetchedLookupModules.current.has(sourceModule)) continue;
+      fetchedLookupModules.current.add(sourceModule);
+      setLookupLoading((prev) => ({ ...prev, [sourceModule]: true }));
+      fetch(`/api/fms/lookup-source?module=${encodeURIComponent(sourceModule)}`)
+        .then((res) => res.json())
+        .then((data: { rows?: Record<string, string>[] }) => {
+          setLookupRows((prev) => ({ ...prev, [sourceModule]: data.rows ?? [] }));
+        })
+        .catch(() => toast.error(t("Lookup list load nahi ho payi.")))
+        .finally(() => setLookupLoading((prev) => ({ ...prev, [sourceModule]: false })));
+    }
+  }, [context, t]);
+
+  /** A lookup field's own value autofills, and every mapped target field on this same step
+   * gets that row's mapped column value — still visible/editable afterward, not locked.
+   * The selected row's own generated id (whichever header ends in "_ID") is stashed under
+   * `${field.key}__id`, not shown as a field, so a later chained step can resolve back to
+   * the exact record instead of a fuzzy name match. */
+  function applyLookupSelection(field: FormField, row: Record<string, string>) {
+    const lookup = field.lookup;
+    if (!lookup) return;
+    setFormValues((prev) => {
+      const next = { ...prev, [field.key]: row[lookup.displayField] ?? "" };
+      for (const [targetKey, sourceColumn] of Object.entries(lookup.autofillMap)) {
+        next[targetKey] = row[sourceColumn] ?? "";
+      }
+      const idHeader = Object.keys(row).find((h) => h.endsWith("_ID"));
+      if (idHeader) next[`${field.key}__id`] = row[idHeader] ?? "";
+      return next;
+    });
+  }
 
   const outcomeType = parseOutcomeType(context?.outcomeType);
   // PASS_FAIL_QTY has no Outcome to pick — the branch follows whatever quantities were
@@ -195,6 +324,15 @@ export default function CompleteStepDialog({
                         ))}
                       </SelectContent>
                     </Select>
+                  ) : field.type === "lookup" && field.lookup ? (
+                    <LookupCombobox
+                      rows={lookupRows[field.lookup.sourceModule] ?? []}
+                      loading={Boolean(lookupLoading[field.lookup.sourceModule])}
+                      displayField={field.lookup.displayField}
+                      value={formValues[field.key] ?? ""}
+                      onSelect={(row) => applyLookupSelection(field, row)}
+                      t={t}
+                    />
                   ) : (
                     <Input
                       id={`field-${field.key}`}

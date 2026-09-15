@@ -20,6 +20,16 @@ import EmptyState from "@/components/empty-state";
 import { Workflow } from "lucide-react";
 import { useT } from "@/components/preferences-provider";
 import { useConfirm } from "@/components/confirm-dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
 import FmsTemplateForm from "./fms-template-form";
 import { parseNextStepMap, parseOutcomeOptions } from "./template-format";
 import { outcomeTypeDef, parseOutcomeType } from "@/lib/fms/outcomeType";
@@ -45,7 +55,11 @@ export default function TemplatesBoard() {
   const [busyId, setBusyId] = useState<string | null>(null);
   const [startingId, setStartingId] = useState<string | null>(null);
   const [version, setVersion] = useState(0);
+  const [resetOpen, setResetOpen] = useState(false);
+  const [resetTyped, setResetTyped] = useState("");
+  const [resetting, setResetting] = useState(false);
   const confirm = useConfirm();
+  const RESET_CONFIRM_WORD = "DELETE";
 
   useEffect(() => {
     Promise.all([
@@ -102,6 +116,26 @@ export default function TemplatesBoard() {
     }
     toast.success(t("Template delete ho gayi."));
     setTemplates((prev) => prev.filter((tpl) => tpl.templateId !== template.templateId));
+  }
+
+  async function handleResetAll() {
+    setResetting(true);
+    try {
+      const res = await fetch("/api/fms/reset", { method: "POST" });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) {
+        toast.error(t(data?.error ?? "Reset nahi ho paya."));
+        return;
+      }
+      toast.success(
+        `${data.templatesDeleted} template row(s) aur ${data.runsDeleted} run/history row(s) delete ho gaye.`
+      );
+      setResetOpen(false);
+      setResetTyped("");
+      setVersion((v) => v + 1);
+    } finally {
+      setResetting(false);
+    }
   }
 
   async function startInstance(template: TemplateSummary) {
@@ -286,7 +320,64 @@ export default function TemplatesBoard() {
         </div>
       )}
 
+      {templates.length > 0 && (
+        <div className="flex justify-end border-t pt-4">
+          <Button variant="destructive" size="sm" onClick={() => setResetOpen(true)}>
+            {t("Saare FMS Templates + Runs Reset Karein")}
+          </Button>
+        </div>
+      )}
+
       {confirm.dialog}
+
+      {/* Wipes every template (any status) and every run/instance — pending and history
+          both — for the whole org. Bigger blast radius than the per-template Delete above,
+          so this asks for a typed word a stray click cannot produce, same reasoning as
+          organization deletion in src/app/platform/organizations-table.tsx. */}
+      <Dialog
+        open={resetOpen}
+        onOpenChange={(v) => {
+          setResetOpen(v);
+          if (!v) setResetTyped("");
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{t("Saare FMS data reset karein?")}</DialogTitle>
+            <DialogDescription>
+              {t(
+                "Ye is organization ke SAARE FMS templates (jo bhi design kiye gaye hain), aur unke saare runs — pending tasks aur poori history — permanently delete kar dega. Ye Google Sheets se hi mit jaata hai, wapas nahi aata."
+              )}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-2">
+            <Label htmlFor="confirm-reset-word">
+              {t("Pakka karne ke liye likhein")} <span className="font-mono">{RESET_CONFIRM_WORD}</span>
+            </Label>
+            <Input
+              id="confirm-reset-word"
+              value={resetTyped}
+              onChange={(e) => setResetTyped(e.target.value)}
+              placeholder={RESET_CONFIRM_WORD}
+              autoComplete="off"
+            />
+          </div>
+
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => setResetOpen(false)}>
+              {t("Rehne dein")}
+            </Button>
+            <Button
+              variant="destructive"
+              disabled={resetting || resetTyped.trim() !== RESET_CONFIRM_WORD}
+              onClick={handleResetAll}
+            >
+              {resetting ? t("Reset ho raha hai...") : t("Sab Delete Karein")}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

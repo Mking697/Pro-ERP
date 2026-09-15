@@ -90,6 +90,12 @@ export const MODULE_ACCESS = [
     description: "FMS templates bana aur badal sakta hai",
     href: "/fms/templates",
   },
+  {
+    key: "PARTY_MASTER",
+    label: "Vendor & Customer Master",
+    description: "Vendor aur Customer master bana aur manage kar sakta hai",
+    href: "/parties",
+  },
 ] as const;
 
 export type ModuleAccessKey = (typeof MODULE_ACCESS)[number]["key"];

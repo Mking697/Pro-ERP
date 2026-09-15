@@ -8,6 +8,8 @@ import { isPlatformAdmin } from "@/lib/platform/admin";
 import { getSetting } from "@/lib/settings";
 import { OrgLogo } from "@/components/logo-picker";
 import SettingsMenu from "@/components/settings-menu";
+import { listNavFmsTemplates } from "@/lib/fms/templates";
+import { tenantCached } from "@/lib/cache";
 
 /**
  * The frame every signed-in page sits inside.
@@ -27,6 +29,20 @@ export default async function AppShell({
   // Settings are cached per org, so this costs nothing after the first page view.
   const logoUrl = await getSetting("ORG_LOGO_URL").catch(() => null);
 
+  const isFmsAdmin = session.access.includes("FMS_ADMIN");
+  // One extra nav item per Active FMS template this user is entitled to open as its own
+  // Flow Board — every Active template for an FMS_ADMIN, or only the ones whose static
+  // step design assigns this user otherwise (see listNavFmsTemplates). Cached per org
+  // (shared across every admin, since they all see the same set) because this runs on
+  // every single page load; a broken/unconnected FMS sheet must never break navigation
+  // for the rest of the app, same reasoning as the ORG_LOGO_URL read just above.
+  const navFmsTemplates = await tenantCached(
+    session.orgId,
+    `nav-fms-templates:${isFmsAdmin ? "admin" : session.userId}`,
+    60_000,
+    () => listNavFmsTemplates(session.userId, isFmsAdmin)
+  ).catch(() => []);
+
   const items: NavItem[] = [{ icon: "dashboard", href: "/dashboard", label: "Dashboard" }];
 
   // Everyone has tasks assigned to them, so Tasks is always reachable.
@@ -34,6 +50,13 @@ export default async function AppShell({
 
   // Anyone can be the assignee of an FMS step, same tier as Tasks.
   items.push({ icon: "fms", href: "/fms", label: "FMS" });
+
+  // Each designed flow gets its own named nav item alongside the generic FMS tabs, so a
+  // doer working an "Inward FMS" or a "Purchase FMS" reaches its operational view
+  // directly instead of hunting through every template mixed together.
+  for (const tpl of navFmsTemplates) {
+    items.push({ icon: "fms", href: `/fms/${tpl.templateId}`, label: tpl.templateName });
+  }
 
   // Every person has at least their own tasks report.
   items.push({ icon: "performance", href: "/reports", label: "Reports" });
@@ -60,6 +83,10 @@ export default async function AppShell({
     session.access.includes("IMS_VIEW")
   ) {
     items.push({ icon: "inward", href: "/inward", label: "Inward" });
+  }
+
+  if (session.access.includes("PARTY_MASTER")) {
+    items.push({ icon: "parties", href: "/parties", label: "Vendors/Customers" });
   }
 
   if (session.access.includes("PERFORMANCE_VIEW")) {

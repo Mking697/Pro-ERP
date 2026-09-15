@@ -31,6 +31,7 @@ import {
   parseStepDataSourceConfig,
   type FormField,
   type FormFieldType,
+  type FormFieldLookup,
 } from "@/lib/fms/dataSource";
 import {
   OUTCOME_TYPE_DEFS,
@@ -67,6 +68,15 @@ interface DraftFormField {
   /** Auto-managed by the step's Outcome Type (e.g. Pass Qty/Fail Qty) — shown locked,
    * not removable, and regenerated whenever the Outcome Type changes. */
   builtIn?: boolean;
+  /** Only used when type === "lookup" — a ModuleOption key. */
+  lookupSourceModule?: string;
+  /** Only used when type === "lookup" — a header of lookupSourceModule. */
+  lookupDisplayField?: string;
+  /** Only used when type === "lookup" — keyed by the *id* of another field on this same
+   * step (not its slug key, which can change while the admin is still typing the label),
+   * mapping to the source column that fills it. Resolved to real FormField keys at submit
+   * time in handleSubmit, same as everything else here is draft state until save. */
+  lookupAutofillMap?: Record<number, string>;
 }
 
 interface DraftStep {
@@ -180,6 +190,40 @@ function columnOptionsFor(step: DraftStep, allSteps: DraftStep[], modules: Modul
   return modules.find((m) => m.key === step.existingSourceModule)?.headers ?? [];
 }
 
+/** Turns a saved step's Form fields back into draft fields, resolving each saved
+ * FormFieldLookup.autofillMap (keyed by a sibling's real FormField.key / slug) back to
+ * the *id* the new draft assigns that sibling — draft state addresses fields by id so a
+ * rename mid-edit doesn't lose the mapping (see DraftFormField.lookupAutofillMap). */
+function hydrateFormFields(fields: FormField[], builtInKeys: Set<string>): DraftFormField[] {
+  const draftFields = fields.map((f) => ({
+    id: nextId++,
+    label: f.label,
+    type: f.type,
+    required: f.required,
+    optionsText: (f.options ?? []).join(","),
+    builtIn: builtInKeys.has(f.key),
+    lookupSourceModule: f.lookup?.sourceModule,
+    lookupDisplayField: f.lookup?.displayField,
+  })) satisfies DraftFormField[];
+
+  return draftFields.map((draft, i) => {
+    const savedLookup = fields[i].lookup;
+    if (!savedLookup) return draft;
+    const lookupAutofillMap: Record<number, string> = {};
+    for (const [targetKey, sourceColumn] of Object.entries(savedLookup.autofillMap)) {
+      const target = draftFields.find((other) => other.id !== draft.id && slugify(other.label) === targetKey);
+      if (target) lookupAutofillMap[target.id] = sourceColumn;
+    }
+    return { ...draft, lookupAutofillMap };
+  });
+}
+
+/** The columns a "Lookup" field's chosen source module can offer — reuses the same
+ * already-fetched `moduleOptions` list the "Existing FMS" picker uses (no second fetch). */
+function lookupModuleHeaders(sourceModule: string, modules: ModuleOption[]): string[] {
+  return modules.find((m) => m.key === sourceModule)?.headers ?? [];
+}
+
 /** The reverse of handleSubmit's payload building — turns a saved template's rows back
  * into editable draft state, for the Edit dialog. */
 function hydrateSteps(records: FmsTemplateStepRecord[]): DraftStep[] {
@@ -214,14 +258,7 @@ function hydrateSteps(records: FmsTemplateStepRecord[]): DraftStep[] {
       nextStepMap: nextMap,
       useForm: Boolean(dataSource.form),
       useExisting: Boolean(dataSource.existing),
-      formFields: (dataSource.form?.fields ?? []).map((f) => ({
-        id: nextId++,
-        label: f.label,
-        type: f.type,
-        required: f.required,
-        optionsText: (f.options ?? []).join(","),
-        builtIn: builtInKeys.has(f.key),
-      })),
+      formFields: hydrateFormFields(dataSource.form?.fields ?? [], builtInKeys),
       existingSourceModule: dataSource.existing?.sourceModule ?? "",
       existingSourceStepNo: dataSource.existing?.sourceStepNo
         ? String(dataSource.existing.sourceStepNo)
@@ -376,16 +413,38 @@ export default function FmsTemplateForm({
       if (s.useForm) {
         const fields: FormField[] = s.formFields
           .filter((f) => f.label.trim())
-          .map((f) => ({
-            key: slugify(f.label),
-            label: f.label.trim(),
-            type: f.type,
-            required: f.required,
-            options:
-              f.type === "dropdown"
-                ? f.optionsText.split(",").map((o) => o.trim()).filter(Boolean)
-                : undefined,
-          }));
+          .map((f) => {
+            const lookup: FormFieldLookup | undefined =
+              f.type === "lookup" && f.lookupSourceModule && f.lookupDisplayField
+                ? {
+                    sourceModule: f.lookupSourceModule,
+                    displayField: f.lookupDisplayField,
+                    // Draft state addresses autofill targets by id (survives a rename);
+                    // resolve back to the real FormField key (slug) only now, at save time.
+                    autofillMap: Object.fromEntries(
+                      Object.entries(f.lookupAutofillMap ?? {})
+                        .map(([targetId, sourceColumn]): [string, string] | null => {
+                          const target = s.formFields.find((o) => o.id === Number(targetId));
+                          return target && target.label.trim()
+                            ? [slugify(target.label), sourceColumn]
+                            : null;
+                        })
+                        .filter((entry): entry is [string, string] => entry !== null)
+                    ),
+                  }
+                : undefined;
+            return {
+              key: slugify(f.label),
+              label: f.label.trim(),
+              type: f.type,
+              required: f.required,
+              options:
+                f.type === "dropdown"
+                  ? f.optionsText.split(",").map((o) => o.trim()).filter(Boolean)
+                  : undefined,
+              lookup,
+            };
+          });
         dataSource.form = { fields };
       }
       if (s.useExisting && s.existingSourceModule) {
@@ -807,6 +866,7 @@ export default function FmsTemplateForm({
                                     <SelectItem value="date">{t("Date")}</SelectItem>
                                     <SelectItem value="dropdown">{t("Dropdown")}</SelectItem>
                                     <SelectItem value="attachment">{t("Attachment")}</SelectItem>
+                                    <SelectItem value="lookup">{t("Lookup (dusre module se)")}</SelectItem>
                                   </SelectContent>
                                 </Select>
                                 <Button
@@ -830,6 +890,100 @@ export default function FmsTemplateForm({
                                   }
                                   placeholder={t("Options (comma se alag)")}
                                 />
+                              )}
+                              {field.type === "lookup" && (
+                                <div className="space-y-2 rounded-md border p-2">
+                                  <Select
+                                    value={field.lookupSourceModule ?? ""}
+                                    onValueChange={(value) =>
+                                      value &&
+                                      setFormField(step.id, field.id, {
+                                        lookupSourceModule: value,
+                                        lookupDisplayField: "",
+                                        lookupAutofillMap: {},
+                                      })
+                                    }
+                                  >
+                                    <SelectTrigger className="w-full">
+                                      <SelectValue placeholder={t("Kaunsa module")} />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      {moduleOptions.map((m) => (
+                                        <SelectItem key={m.key} value={m.key}>
+                                          {m.label}
+                                        </SelectItem>
+                                      ))}
+                                    </SelectContent>
+                                  </Select>
+
+                                  {field.lookupSourceModule && (
+                                    <Select
+                                      value={field.lookupDisplayField ?? ""}
+                                      onValueChange={(value) =>
+                                        value && setFormField(step.id, field.id, { lookupDisplayField: value })
+                                      }
+                                    >
+                                      <SelectTrigger className="w-full">
+                                        <SelectValue placeholder={t("Naam/label wala column")} />
+                                      </SelectTrigger>
+                                      <SelectContent>
+                                        {lookupModuleHeaders(field.lookupSourceModule, moduleOptions).map((h) => (
+                                          <SelectItem key={h} value={h}>
+                                            {h}
+                                          </SelectItem>
+                                        ))}
+                                      </SelectContent>
+                                    </Select>
+                                  )}
+
+                                  {field.lookupSourceModule && field.lookupDisplayField && (
+                                    <div className="space-y-1.5">
+                                      <p className="text-xs font-medium text-muted-foreground">
+                                        {t("Chunne par ye fields auto-fill hon (is step ke doosre fields)")}
+                                      </p>
+                                      {step.formFields
+                                        .filter((other) => other.id !== field.id && !other.builtIn && other.label.trim())
+                                        .map((other) => (
+                                          <div key={other.id} className="flex items-center gap-2">
+                                            <span className="w-32 shrink-0 truncate text-sm">{other.label}</span>
+                                            <Select
+                                              value={field.lookupAutofillMap?.[other.id] ?? "NONE"}
+                                              onValueChange={(value) =>
+                                                value &&
+                                                setFormField(step.id, field.id, {
+                                                  lookupAutofillMap: {
+                                                    ...(field.lookupAutofillMap ?? {}),
+                                                    [other.id]: value === "NONE" ? "" : value,
+                                                  },
+                                                })
+                                              }
+                                            >
+                                              <SelectTrigger className="w-full">
+                                                <SelectValue placeholder={t("None")} />
+                                              </SelectTrigger>
+                                              <SelectContent>
+                                                <SelectItem value="NONE">{t("None")}</SelectItem>
+                                                {lookupModuleHeaders(field.lookupSourceModule!, moduleOptions).map(
+                                                  (h) => (
+                                                    <SelectItem key={h} value={h}>
+                                                      {h}
+                                                    </SelectItem>
+                                                  )
+                                                )}
+                                              </SelectContent>
+                                            </Select>
+                                          </div>
+                                        ))}
+                                      {step.formFields.filter(
+                                        (other) => other.id !== field.id && !other.builtIn && other.label.trim()
+                                      ).length === 0 && (
+                                        <p className="text-xs text-muted-foreground">
+                                          {t("Is step me abhi koi aur field nahi hai autofill karne ke liye.")}
+                                        </p>
+                                      )}
+                                    </div>
+                                  )}
+                                </div>
                               )}
                               <label className="flex items-center gap-2 text-sm">
                                 <Checkbox

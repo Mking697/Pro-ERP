@@ -10,7 +10,23 @@
  * from elsewhere. Either, both, or neither can be present on the same step.
  */
 
-export type FormFieldType = "text" | "number" | "date" | "dropdown" | "attachment";
+export type FormFieldType = "text" | "number" | "date" | "dropdown" | "attachment" | "lookup";
+
+/**
+ * Config for a "lookup" field — the doer picks a row from another connected module (e.g.
+ * Customers) and its own value plus every mapped column autofill onto other fields of the
+ * *same* step's form, the instant the doer picks it. Generic: works for CUSTOMERS,
+ * VENDORS, or any future MODULE_SHEETS key exactly the same way.
+ */
+export interface FormFieldLookup {
+  /** A MODULE_SHEETS key (e.g. "CUSTOMERS") — the module rows are searched/selected from. */
+  sourceModule: string;
+  /** Which column of that module is shown as the option label and searched on (e.g. "Customer_Name"). */
+  displayField: string;
+  /** target FormField.key on this SAME step -> source column name in sourceModule.
+   * When the doer picks a row, every key here gets that row's value for that column. */
+  autofillMap: Record<string, string>;
+}
 
 export interface FormField {
   /** Stable key this field's value is stored under in Form_Data, and the key an Action
@@ -21,6 +37,8 @@ export interface FormField {
   required: boolean;
   /** Only meaningful for type "dropdown". */
   options?: string[];
+  /** Only meaningful for type "lookup". */
+  lookup?: FormFieldLookup;
 }
 
 export interface FormDataSourceConfig {
@@ -50,6 +68,42 @@ export interface StepDataSourceConfig {
   existing?: ExistingFmsDataSourceConfig;
 }
 
+/** Well-shaped or the field's `lookup` config is dropped — a malformed/tampered lookup
+ * config must never reach the resolver as if it were trustworthy. */
+function sanitizeLookup(raw: unknown): FormFieldLookup | undefined {
+  if (!raw || typeof raw !== "object") return undefined;
+  const l = raw as Partial<FormFieldLookup>;
+  if (typeof l.sourceModule !== "string" || !l.sourceModule) return undefined;
+  if (typeof l.displayField !== "string" || !l.displayField) return undefined;
+  const autofillMap: Record<string, string> = {};
+  if (l.autofillMap && typeof l.autofillMap === "object") {
+    for (const [k, v] of Object.entries(l.autofillMap)) {
+      if (typeof v === "string" && v) autofillMap[k] = v;
+    }
+  }
+  return { sourceModule: l.sourceModule, displayField: l.displayField, autofillMap };
+}
+
+function sanitizeFormField(raw: unknown): FormField | null {
+  if (!raw || typeof raw !== "object") return null;
+  const f = raw as Partial<FormField>;
+  if (typeof f.key !== "string" || !f.key) return null;
+  if (typeof f.label !== "string") return null;
+  if (typeof f.type !== "string") return null;
+  const field: FormField = {
+    key: f.key,
+    label: f.label,
+    type: f.type as FormFieldType,
+    required: Boolean(f.required),
+    options: Array.isArray(f.options) ? f.options.filter((o): o is string => typeof o === "string") : undefined,
+  };
+  if (field.type === "lookup") {
+    const lookup = sanitizeLookup(f.lookup);
+    if (lookup) field.lookup = lookup;
+  }
+  return field;
+}
+
 export function parseStepDataSourceConfig(raw: string | undefined | null): StepDataSourceConfig {
   if (!raw) return {};
   try {
@@ -57,7 +111,11 @@ export function parseStepDataSourceConfig(raw: string | undefined | null): StepD
     const config: StepDataSourceConfig = {};
 
     if (parsed.form && Array.isArray(parsed.form.fields)) {
-      config.form = { fields: parsed.form.fields };
+      config.form = {
+        fields: parsed.form.fields
+          .map((f) => sanitizeFormField(f))
+          .filter((f): f is FormField => f !== null),
+      };
     }
 
     const existing = parsed.existing;
