@@ -48,4 +48,5 @@ export interface FmsTemplateStepRecord {
   TAT_Source_Step_No: string;
   TAT_Source_Field_Key: string;
   TAT_Offset: string;
+  Notify_On_Complete: string[];
 }

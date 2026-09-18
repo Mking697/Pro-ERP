@@ -101,6 +101,11 @@ export const fmsTemplates = pgTable(
     tatSourceStepNo: integer("tat_source_step_no"),
     tatSourceFieldKey: text("tat_source_field_key").notNull().default(""),
     tatOffset: numeric("tat_offset"),
+    // User IDs to WhatsApp-notify the moment this step is marked complete — independent
+    // of who the next step is assigned to (the existing chaining already reaches that
+    // person by creating their run; this is for anyone who just needs to *know*, e.g. a
+    // supervisor). Zero, one, or many. Mirrors users.moduleAccess's text[] convention.
+    notifyOnComplete: text("notify_on_complete").array().notNull().default([]),
   },
   (table) => [primaryKey({ columns: [table.templateId, table.stepNo] })]
 );

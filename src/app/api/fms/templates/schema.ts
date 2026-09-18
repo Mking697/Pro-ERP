@@ -20,6 +20,7 @@ export const stepSchema = z
     tatSourceStepNo: z.string().trim().default(""),
     tatSourceFieldKey: z.string().trim().default(""),
     tatOffset: z.coerce.number().default(0),
+    notifyOnComplete: z.array(z.string().trim().min(1)).default([]),
   })
   .refine((step) => step.outcomeOptions.every((o) => o in step.nextStepMap), {
     message: "Har outcome ke liye agla step (ya END) chunein.",

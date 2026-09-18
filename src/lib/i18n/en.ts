@@ -560,6 +560,7 @@ export const EN: Record<string, string> = {
   "Step ka naam": "Step name",
   "User chunein": "Select a user",
   "Unit": "Unit",
+  "Minutes": "Minutes",
   "Hours": "Hours",
   "Days": "Days",
   "Outcomes (comma se alag)": "Outcomes (comma-separated)",
@@ -661,6 +662,9 @@ export const EN: Record<string, string> = {
   "Qty field": "Qty field",
   "UOM field (optional)": "UOM field (optional)",
   "Item ka UOM use karein": "Use the Item's own UOM",
+  "Notify via WhatsApp": "Notify via WhatsApp",
+  "Step complete hote hi in logon ko WhatsApp message jaayega — chahe wo is flow ka hissa na hon (jaise ek supervisor jo bas jaan na chahta hai).":
+    "These people get a WhatsApp message the moment this step is completed — even if they aren't part of this flow (e.g. a supervisor who just wants to know).",
   "Instance start nahi ho paya.": "Instance could not be started.",
   "FMS start ho gaya — pehla step assign ho gaya.": "FMS started — the first step has been assigned.",
   "Start": "Start",

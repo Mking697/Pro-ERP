@@ -162,8 +162,17 @@ export async function computeTatDeadline(
   tatUnit: FmsTatUnit
 ): Promise<number> {
   const { schedule, overrides, minutesPerDay } = await getUserWorkingSchedule(userId);
-  const minutes = tatUnit === "Days" ? tatValue * minutesPerDay : tatValue * 60;
+  const minutes = tatValue * unitToMinutes(tatUnit, minutesPerDay);
   return pureAddWorkingMinutes(startEpochMs, minutes, schedule, overrides);
+}
+
+/** `tatValue * unitToMinutes(...)` is every TAT-to-minutes conversion in this file —
+ * Minutes pass through as-is, Hours become 60x, Days use the shift's own real minutes
+ * per working day (not a naive 24*60). */
+function unitToMinutes(tatUnit: FmsTatUnit, minutesPerDay: number): number {
+  if (tatUnit === "Days") return minutesPerDay;
+  if (tatUnit === "Minutes") return 1;
+  return 60;
 }
 
 /**
@@ -194,6 +203,6 @@ export async function computeDefaultTatDeadline(
     "",
     ""
   );
-  const minutes = tatUnit === "Days" ? tatValue * minutesPerDay : tatValue * 60;
+  const minutes = tatValue * unitToMinutes(tatUnit, minutesPerDay);
   return pureAddWorkingMinutes(startEpochMs, minutes, schedule, overrides);
 }

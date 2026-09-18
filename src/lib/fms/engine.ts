@@ -23,6 +23,8 @@ import {
 import { resolveExistingFmsData } from "@/lib/fms/dataSourceResolver";
 import { parseActionType, parseLedgerMovementActionConfig } from "@/lib/fms/actions";
 import { runLedgerMovementAction } from "@/lib/fms/actionRunner";
+import { getUserById } from "@/lib/auth/users";
+import { sendWhatsAppMessage } from "@/lib/chatxflow";
 import {
   parseOutcomeType,
   deriveOutcomeFromQty,
@@ -456,7 +458,53 @@ export async function completeFmsStep(
     console.error(`[fms] chained event emit failed for run ${run.Run_ID}:`, error);
   }
 
+  // Best-effort, same as the chaining above: whoever is on this step's own
+  // Notify_On_Complete list just wants to *know* the moment it's done — a supervisor who
+  // isn't part of the flow at all, independent of whichever assignee the next run above
+  // was created for. A send failure (missing/invalid phone, ChatXFlow unconfigured,
+  // network) must never undo the completion already saved above — notifyStepComplete
+  // never throws (every recipient's own send is individually try/caught inside it) and
+  // fires every recipient in parallel via Promise.all, so N slow/broken sends only ever
+  // cost as long as the single slowest one, never their sum.
+  try {
+    await notifyStepComplete(step, completed);
+  } catch (error) {
+    console.error(`[fms] notifyStepComplete failed for run ${run.Run_ID}:`, error);
+  }
+
   return { completed, next };
+}
+
+/** Fires WhatsApp notifications to every user on a step's Notify_On_Complete list — never
+ * throws, never awaited by completeFmsStep's own return (see the catch at its call site).
+ * A recipient with no phone number on file is skipped silently (not misconfiguration, just
+ * nothing to send to); every other failure is console.error'd so a real misconfiguration
+ * (e.g. ChatXFlow not set up for this org) stays visible to whoever debugs it later. */
+async function notifyStepComplete(
+  step: FmsTemplateStepRecord,
+  completed: FmsRunRecord
+): Promise<void> {
+  const userIds = step.Notify_On_Complete;
+  if (!userIds || userIds.length === 0) return;
+
+  await Promise.all(
+    userIds.map(async (userId) => {
+      try {
+        const user = await getUserById(userId);
+        if (!user || !user.Phone_Number) return;
+
+        const message = `Namaste ${user.Full_Name}, "${completed.Template_Name}" me "${completed.Step_Name}" complete ho gaya (${completed.Outcome}).`;
+        const result = await sendWhatsAppMessage(user.Phone_Number, message);
+        if (!result.ok) {
+          console.error(
+            `[fms] notify send failed for run ${completed.Run_ID}, user ${userId}: ${result.error}`
+          );
+        }
+      } catch (error) {
+        console.error(`[fms] notify send threw for run ${completed.Run_ID}, user ${userId}:`, error);
+      }
+    })
+  );
 }
 
 /**

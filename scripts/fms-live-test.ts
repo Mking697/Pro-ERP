@@ -181,6 +181,7 @@ async function main() {
             tatSourceStepNo: "",
             tatSourceFieldKey: "",
             tatOffset: 0,
+            notifyOnComplete: [],
           },
           {
             stepNo: 2,
@@ -217,6 +218,7 @@ async function main() {
             tatSourceStepNo: "1",
             tatSourceFieldKey: "lead-days",
             tatOffset: -1,
+            notifyOnComplete: [],
           },
         ],
       });
@@ -332,6 +334,7 @@ async function main() {
             tatSourceStepNo: "",
             tatSourceFieldKey: "",
             tatOffset: 0,
+            notifyOnComplete: [],
           },
         ],
       });
@@ -399,6 +402,7 @@ async function main() {
             tatSourceStepNo: "",
             tatSourceFieldKey: "",
             tatOffset: 0,
+            notifyOnComplete: [],
           },
           {
             stepNo: 2,
@@ -426,6 +430,7 @@ async function main() {
             tatSourceStepNo: "",
             tatSourceFieldKey: "",
             tatOffset: 0,
+            notifyOnComplete: [],
           },
         ],
       });

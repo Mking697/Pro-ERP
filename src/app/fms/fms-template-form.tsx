@@ -84,7 +84,7 @@ interface DraftStep {
   stepName: string;
   assignedTo: string;
   tatValue: string;
-  tatUnit: "Hours" | "Days";
+  tatUnit: "Minutes" | "Hours" | "Days";
   /** "" keeps tatValue fixed; a 1-based step index sources the deadline from that
    * earlier step's own field instead (see outcomeType-independent TAT_Source_* columns). */
   tatSourceStepNo: string;
@@ -108,6 +108,9 @@ interface DraftStep {
   actionType: ActionType;
   /** Keyed by outcome text. */
   actionByOutcome: Record<string, LedgerMovementOutcomeAction & { uomField: string }>;
+  /** User IDs to WhatsApp-notify the moment this step is marked complete — independent of
+   * who the next step's own run is created for (Assigned To above). Zero, one, or many. */
+  notifyOnComplete: string[];
 }
 
 let nextId = 1;
@@ -133,6 +136,7 @@ function blankStep(): DraftStep {
     existingFilterByContext: true,
     actionType: "",
     actionByOutcome: {},
+    notifyOnComplete: [],
   };
 }
 
@@ -249,7 +253,7 @@ function hydrateSteps(records: FmsTemplateStepRecord[]): DraftStep[] {
       stepName: r.Step_Name,
       assignedTo: r.Assigned_To,
       tatValue: r.TAT_Value,
-      tatUnit: r.TAT_Unit === "Days" ? "Days" : "Hours",
+      tatUnit: r.TAT_Unit === "Days" ? "Days" : r.TAT_Unit === "Minutes" ? "Minutes" : "Hours",
       tatSourceStepNo: r.TAT_Source_Step_No || "",
       tatSourceFieldKey: r.TAT_Source_Field_Key || "",
       tatOffset: r.TAT_Offset || "0",
@@ -267,6 +271,7 @@ function hydrateSteps(records: FmsTemplateStepRecord[]): DraftStep[] {
       existingFilterByContext: dataSource.existing?.filterByContext ?? true,
       actionType,
       actionByOutcome,
+      notifyOnComplete: r.Notify_On_Complete,
     };
   });
 }
@@ -480,6 +485,7 @@ export default function FmsTemplateForm({
         tatSourceStepNo: s.tatSourceStepNo,
         tatSourceFieldKey: s.tatSourceFieldKey,
         tatOffset: Number(s.tatOffset) || 0,
+        notifyOnComplete: s.notifyOnComplete,
       };
     });
 
@@ -638,13 +644,15 @@ export default function FmsTemplateForm({
                       <Select
                         value={step.tatUnit}
                         onValueChange={(value) =>
-                          value && setStep(step.id, { tatUnit: value as "Hours" | "Days" })
+                          value &&
+                          setStep(step.id, { tatUnit: value as "Minutes" | "Hours" | "Days" })
                         }
                       >
                         <SelectTrigger id={`step-tat-unit-${step.id}`} className="w-full">
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
+                          <SelectItem value="Minutes">{t("Minutes")}</SelectItem>
                           <SelectItem value="Hours">{t("Hours")}</SelectItem>
                           <SelectItem value="Days">{t("Days")}</SelectItem>
                         </SelectContent>
@@ -1209,6 +1217,33 @@ export default function FmsTemplateForm({
                         })()}
                       </div>
                     )}
+                  </div>
+
+                  <div className="space-y-2 rounded-md border p-2">
+                    <Label>{t("Notify via WhatsApp")}</Label>
+                    <p className="text-xs text-muted-foreground">
+                      {t(
+                        "Step complete hote hi in logon ko WhatsApp message jaayega — chahe wo is flow ka hissa na hon (jaise ek supervisor jo bas jaan na chahta hai)."
+                      )}
+                    </p>
+                    <div className="grid grid-cols-2 gap-1 sm:grid-cols-3">
+                      {userOptions.map((u) => (
+                        <label key={u.userId} className="flex items-center gap-1.5 text-sm">
+                          <Checkbox
+                            checked={step.notifyOnComplete.includes(u.userId)}
+                            onCheckedChange={(checked) =>
+                              setStep(step.id, {
+                                notifyOnComplete:
+                                  checked === true
+                                    ? [...step.notifyOnComplete, u.userId]
+                                    : step.notifyOnComplete.filter((id) => id !== u.userId),
+                              })
+                            }
+                          />
+                          {u.fullName}
+                        </label>
+                      ))}
+                    </div>
                   </div>
                 </div>
               );

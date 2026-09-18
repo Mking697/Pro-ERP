@@ -53,9 +53,13 @@ export interface FmsTemplateStepRecord {
   TAT_Source_Step_No: string;
   TAT_Source_Field_Key: string;
   TAT_Offset: string;
+  /** User IDs to WhatsApp-notify the moment this step is marked complete — independent of
+   * who the next step's own run gets created for. See src/lib/fms/engine.ts's
+   * completeFmsStep, which sends these after the step's own row is updated. */
+  Notify_On_Complete: string[];
 }
 
-export type FmsTatUnit = "Hours" | "Days";
+export type FmsTatUnit = "Minutes" | "Hours" | "Days";
 
 export interface FmsTemplateStepInput {
   stepNo: number;
@@ -78,6 +82,8 @@ export interface FmsTemplateStepInput {
   tatSourceStepNo: string;
   tatSourceFieldKey: string;
   tatOffset: number;
+  /** See FmsTemplateStepRecord.Notify_On_Complete. */
+  notifyOnComplete: string[];
 }
 
 export interface CreateFmsTemplateInput {
@@ -149,6 +155,7 @@ function rowToRecord(row: TemplateRow): FmsTemplateStepRecord {
     TAT_Source_Step_No: row.tatSourceStepNo !== null ? String(row.tatSourceStepNo) : "",
     TAT_Source_Field_Key: row.tatSourceFieldKey,
     TAT_Offset: row.tatOffset ?? "",
+    Notify_On_Complete: row.notifyOnComplete ?? [],
   };
 }
 
@@ -270,6 +277,7 @@ export async function createFmsTemplate(input: CreateFmsTemplateInput): Promise<
       tatSourceStepNo: step.tatSourceStepNo ? Number(step.tatSourceStepNo) : null,
       tatSourceFieldKey: step.tatSourceFieldKey,
       tatOffset: step.tatSourceStepNo ? String(step.tatOffset) : null,
+      notifyOnComplete: step.notifyOnComplete,
     };
   });
 
