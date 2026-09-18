@@ -1,11 +1,15 @@
-import { appendModuleRow, appendModuleRows, getModuleRows, recordToRow } from "@/lib/moduleSheets";
+import type { InferSelectModel } from "drizzle-orm";
+import { customers } from "@/db/schema";
+import { listByOrg, insertRecord } from "@/db/repo";
+import { getTenantOrgId } from "@/lib/tenant";
 import { generateId } from "@/lib/id";
-import { nowStamp } from "@/lib/timestamp";
 
-const MODULE_KEY = "CUSTOMERS";
-
-/** One row of the customer master. Only Customer_Name is ever required — everything else
- * is optional contact/billing detail a Sales Order can fill in over time. */
+/**
+ * Mirrors the pre-Postgres sheet row shape exactly (same field names, same PascalCase
+ * casing) even though the persistence underneath is now the `customers` Postgres table —
+ * the goal is zero changes at the API routes and the `/parties` frontend, which both read
+ * `.Customer_Name`, `.Contact_Person`, etc. off this type today.
+ */
 export interface CustomerRecord {
   Customer_ID: string;
   Customer_Name: string;
@@ -23,8 +27,31 @@ export interface CustomerRecord {
   Created_By: string;
 }
 
+type CustomerRow = InferSelectModel<typeof customers>;
+
+function rowToRecord(row: CustomerRow): CustomerRecord {
+  return {
+    Customer_ID: row.id,
+    Customer_Name: row.customerName,
+    Contact_Person: row.contactPerson,
+    Phone: row.phone,
+    Email: row.email,
+    GSTIN: row.gstin,
+    Billing_Address: row.billingAddress,
+    Shipping_Address: row.shippingAddress,
+    City: row.city,
+    State: row.state,
+    Credit_Terms: row.creditTerms,
+    Status: row.status,
+    Created_At: row.createdAt.toISOString(),
+    Created_By: row.createdBy,
+  };
+}
+
 export async function listCustomers(): Promise<CustomerRecord[]> {
-  return getModuleRows<CustomerRecord>(MODULE_KEY);
+  const orgId = await getTenantOrgId();
+  const rows = await listByOrg(customers, orgId);
+  return rows.map(rowToRecord);
 }
 
 /** Customer_ID is generated, so there's nothing to collide on — but two rows named the
@@ -51,27 +78,29 @@ interface CustomerFields {
   creditTerms?: string;
 }
 
-function buildRecord(
+async function insertCustomer(
+  orgId: string,
   customerName: string,
   fields: CustomerFields,
   createdBy: string
-): CustomerRecord {
-  return {
-    Customer_ID: generateId("CUS"),
-    Customer_Name: customerName.trim(),
-    Contact_Person: fields.contactPerson?.trim() ?? "",
-    Phone: fields.phone?.trim() ?? "",
-    Email: fields.email?.trim() ?? "",
-    GSTIN: fields.gstin?.trim() ?? "",
-    Billing_Address: fields.billingAddress?.trim() ?? "",
-    Shipping_Address: fields.shippingAddress?.trim() ?? "",
-    City: fields.city?.trim() ?? "",
-    State: fields.state?.trim() ?? "",
-    Credit_Terms: fields.creditTerms?.trim() ?? "",
-    Status: "Active",
-    Created_At: nowStamp(),
-    Created_By: createdBy,
-  };
+): Promise<CustomerRecord> {
+  const row = await insertRecord(customers, {
+    id: generateId("CUS"),
+    orgId,
+    customerName: customerName.trim(),
+    contactPerson: fields.contactPerson?.trim() ?? "",
+    phone: fields.phone?.trim() ?? "",
+    email: fields.email?.trim() ?? "",
+    gstin: fields.gstin?.trim() ?? "",
+    billingAddress: fields.billingAddress?.trim() ?? "",
+    shippingAddress: fields.shippingAddress?.trim() ?? "",
+    city: fields.city?.trim() ?? "",
+    state: fields.state?.trim() ?? "",
+    creditTerms: fields.creditTerms?.trim() ?? "",
+    status: "Active",
+    createdBy,
+  });
+  return rowToRecord(row);
 }
 
 export interface CreateCustomerInput extends CustomerFields {
@@ -89,12 +118,12 @@ export async function createCustomer(input: CreateCustomerInput): Promise<Create
     throw new Error("Customer ka naam zaroori hai.");
   }
 
-  const existing = await listCustomers();
-  const warning = duplicateNameWarning(input.customerName, existing.map((c) => c.Customer_Name));
+  const orgId = await getTenantOrgId();
+  const existing = await listByOrg(customers, orgId);
+  const warning = duplicateNameWarning(input.customerName, existing.map((c) => c.customerName));
 
-  const record = buildRecord(input.customerName, input, input.createdBy);
-  await appendModuleRow(MODULE_KEY, recordToRow(MODULE_KEY, record));
-  return { customer: record, warning };
+  const customer = await insertCustomer(orgId, input.customerName, input, input.createdBy);
+  return { customer, warning };
 }
 
 export interface BulkCreateCustomerRowInput extends CustomerFields {
@@ -112,9 +141,12 @@ export interface BulkCreateCustomerResult {
 }
 
 /**
- * Creates many customers from one uploaded spreadsheet in a single Sheets write — same
- * shape as createVendorsBulk()/createItemsBulk(): Customer_ID is a generated key nobody
- * types, so there is nothing to collide on across rows.
+ * Creates many customers from one uploaded spreadsheet — same shape as
+ * createVendorsBulk()/createItemsBulk(): Customer_ID is a generated key nobody types, so
+ * there is nothing to collide on across rows. Each row is its own insert (no bulk-insert
+ * primitive in repo.ts yet), but that is still one row-per-row round trip to Postgres
+ * rather than a full-sheet rewrite, so there is no equivalent of the old single-Sheets-call
+ * batching to preserve.
  */
 export async function createCustomersBulk(
   inputs: BulkCreateCustomerRowInput[],
@@ -123,9 +155,9 @@ export async function createCustomersBulk(
   const created: { row: number; customer: CustomerRecord }[] = [];
   const errors: { row: number; message: string }[] = [];
   const warnings: { row: number; message: string }[] = [];
-  const rows: (string | number)[][] = [];
 
-  const seenNames = (await listCustomers()).map((c) => c.Customer_Name);
+  const orgId = await getTenantOrgId();
+  const seenNames = (await listByOrg(customers, orgId)).map((c) => c.customerName);
 
   for (const input of inputs) {
     if (!input.customerName.trim()) {
@@ -136,14 +168,9 @@ export async function createCustomersBulk(
     const warning = duplicateNameWarning(input.customerName, seenNames);
     if (warning) warnings.push({ row: input.row, message: warning });
 
-    const record = buildRecord(input.customerName, input, createdBy);
-    created.push({ row: input.row, customer: record });
-    rows.push(recordToRow(MODULE_KEY, record));
-    seenNames.push(record.Customer_Name); // so duplicates within the same file are caught too
-  }
-
-  if (rows.length > 0) {
-    await appendModuleRows(MODULE_KEY, rows);
+    const customer = await insertCustomer(orgId, input.customerName, input, createdBy);
+    created.push({ row: input.row, customer });
+    seenNames.push(customer.Customer_Name); // so duplicates within the same file are caught too
   }
 
   return { created, errors, warnings };

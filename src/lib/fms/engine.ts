@@ -1,6 +1,11 @@
-import { appendModuleRow, getModuleRows, updateModuleCells, recordToRow } from "@/lib/moduleSheets";
+import { and, eq } from "drizzle-orm";
+import type { InferSelectModel } from "drizzle-orm";
+import { fmsRuns } from "@/db/schema";
+import { db } from "@/db/client";
+import { listByOrg, insertRecord, findById, updateById } from "@/db/repo";
+import { getTenantOrgId } from "@/lib/tenant";
 import { generateId } from "@/lib/id";
-import { formatStamp, nowStamp, parseStamp } from "@/lib/timestamp";
+import { parseStamp } from "@/lib/timestamp";
 import {
   getFmsTemplateStep,
   listFmsTemplates,
@@ -13,7 +18,6 @@ import { computeNextWorkingInstant, computeTatDeadline, computeUserDayEnd } from
 import {
   parseStepDataSourceConfig,
   missingRequiredFields,
-  parseFormData,
   type StepDataSourceConfig,
 } from "@/lib/fms/dataSource";
 import { resolveExistingFmsData } from "@/lib/fms/dataSourceResolver";
@@ -28,8 +32,17 @@ import {
   SCRAP_QTY_KEY,
 } from "@/lib/fms/outcomeType";
 
-const MODULE_KEY = "FMS_RUNS";
-
+/**
+ * Mirrors the pre-Postgres sheet row shape exactly (same field names, same PascalCase
+ * casing) even though the persistence underneath is now the `fms_runs` Postgres table —
+ * the goal is zero changes at the API routes, `/fms`, the Dashboard and `src/lib/mis.ts`,
+ * which all read `.Status`, `.TAT_Deadline`, `.Form_Data`, etc. off this type today.
+ *
+ * `fms_runs` has a plain `id` (Run_ID) primary key — unlike `fms_templates` above, this
+ * satisfies repo.ts's `IdentifiedTable` constraint, so single-row reads/writes go through
+ * the generic layer; grouped/filtered reads (by Instance_ID, Assigned_To, ...) are direct
+ * Drizzle queries.
+ */
 export interface FmsRunRecord {
   Run_ID: string;
   Instance_ID: string;
@@ -56,8 +69,31 @@ export interface FmsRunRecord {
   Quantity: string;
 }
 
-function runToRow(run: FmsRunRecord): string[] {
-  return recordToRow(MODULE_KEY, run);
+type RunRow = InferSelectModel<typeof fmsRuns>;
+
+function runToRecord(row: RunRow): FmsRunRecord {
+  return {
+    Run_ID: row.id,
+    Instance_ID: row.instanceId,
+    Template_ID: row.templateId,
+    Template_Name: row.templateName,
+    Context_Ref: row.contextRef,
+    Started_By: row.startedBy,
+    Started_At: row.startedAt ? row.startedAt.toISOString() : "",
+    Step_No: String(row.stepNo),
+    Step_Name: row.stepName,
+    Assigned_To: row.assignedTo,
+    Created_At: row.createdAt.toISOString(),
+    TAT_Start: row.tatStart ? row.tatStart.toISOString() : "",
+    TAT_Deadline: row.tatDeadline ? row.tatDeadline.toISOString() : "",
+    Completed_At: row.completedAt ? row.completedAt.toISOString() : "",
+    Completed_By: row.completedBy,
+    Outcome: row.outcome,
+    Status: row.status,
+    Remark: row.remark,
+    Form_Data: row.formData ? JSON.stringify(row.formData) : "",
+    Quantity: row.quantity ?? "",
+  };
 }
 
 /** A step is only "Not Done" while it's still open and past its deadline — a live label,
@@ -73,11 +109,23 @@ export function isFmsStepOverdue(run: FmsRunRecord): boolean {
  * the new one's clock starts only once the furthest-out existing deadline arrives — pushed
  * forward through the working calendar, never added on top of "now" naively.
  */
-async function queueOpenTatStart(assignedTo: string, naturalStartEpochMs: number): Promise<number> {
-  const runs = await getModuleRows<FmsRunRecord>(MODULE_KEY);
-  const openDeadlines = runs
-    .filter((r) => r.Assigned_To === assignedTo && r.Status === "Pending")
-    .map((r) => parseStamp(r.TAT_Deadline)?.getTime())
+async function queueOpenTatStart(
+  orgId: string,
+  assignedTo: string,
+  naturalStartEpochMs: number
+): Promise<number> {
+  const openRuns = await db
+    .select({ tatDeadline: fmsRuns.tatDeadline })
+    .from(fmsRuns)
+    .where(
+      and(
+        eq(fmsRuns.orgId, orgId),
+        eq(fmsRuns.assignedTo, assignedTo),
+        eq(fmsRuns.status, "Pending")
+      )
+    );
+  const openDeadlines = openRuns
+    .map((r) => r.tatDeadline?.getTime())
     .filter((ms): ms is number => typeof ms === "number");
 
   const snappedNatural = await computeNextWorkingInstant(assignedTo, naturalStartEpochMs);
@@ -100,31 +148,43 @@ async function queueOpenTatStart(assignedTo: string, naturalStartEpochMs: number
  * the source step hasn't run yet, or its field wasn't a number) — a step must always get
  * *some* deadline, never none.
  */
-async function resolveTatValue(step: FmsTemplateStepRecord, instanceId: string): Promise<number> {
+async function resolveTatValue(
+  orgId: string,
+  step: FmsTemplateStepRecord,
+  instanceId: string
+): Promise<number> {
   const sourceStepNo = Number(step.TAT_Source_Step_No);
   if (!sourceStepNo || !step.TAT_Source_Field_Key) {
     return Number(step.TAT_Value);
   }
 
-  const runs = await getModuleRows<FmsRunRecord>(MODULE_KEY);
-  const sourceRun = runs.find(
-    (r) => r.Instance_ID === instanceId && Number(r.Step_No) === sourceStepNo
-  );
+  const [sourceRun] = await db
+    .select()
+    .from(fmsRuns)
+    .where(
+      and(
+        eq(fmsRuns.orgId, orgId),
+        eq(fmsRuns.instanceId, instanceId),
+        eq(fmsRuns.stepNo, sourceStepNo)
+      )
+    )
+    .limit(1);
   if (!sourceRun) return Number(step.TAT_Value);
 
-  const sourced = Number(parseFormData(sourceRun.Form_Data)[step.TAT_Source_Field_Key]);
+  const sourced = Number(sourceRun.formData?.[step.TAT_Source_Field_Key] ?? "");
   if (!Number.isFinite(sourced)) return Number(step.TAT_Value);
 
   return sourced + (Number(step.TAT_Offset) || 0);
 }
 
 interface AppendStepRunInput {
+  orgId: string;
   instanceId: string;
   templateId: string;
   templateName: string;
   contextRef: string;
   startedBy: string;
-  startedAt: string;
+  startedAt: Date;
   stepNo: number;
   stepName: string;
   assignedTo: string;
@@ -135,7 +195,7 @@ interface AppendStepRunInput {
 }
 
 async function appendStepRun(input: AppendStepRunInput): Promise<FmsRunRecord> {
-  const tatStartMs = await queueOpenTatStart(input.assignedTo, Date.now());
+  const tatStartMs = await queueOpenTatStart(input.orgId, input.assignedTo, Date.now());
   const tatDeadlineMs = await computeTatDeadline(
     input.assignedTo,
     tatStartMs,
@@ -143,31 +203,31 @@ async function appendStepRun(input: AppendStepRunInput): Promise<FmsRunRecord> {
     input.tatUnit
   );
 
-  const run: FmsRunRecord = {
-    Run_ID: generateId("RUN"),
-    Instance_ID: input.instanceId,
-    Template_ID: input.templateId,
-    Template_Name: input.templateName,
-    Context_Ref: input.contextRef,
-    Started_By: input.startedBy,
-    Started_At: input.startedAt,
-    Step_No: String(input.stepNo),
-    Step_Name: input.stepName,
-    Assigned_To: input.assignedTo,
-    Created_At: nowStamp(),
-    TAT_Start: formatStamp(new Date(tatStartMs)),
-    TAT_Deadline: formatStamp(new Date(tatDeadlineMs)),
-    Completed_At: "",
-    Completed_By: "",
-    Outcome: "",
-    Status: "Pending",
-    Remark: "",
-    Form_Data: "",
-    Quantity: input.quantity !== undefined ? String(input.quantity) : "",
-  };
+  const row = await insertRecord(fmsRuns, {
+    id: generateId("RUN"),
+    orgId: input.orgId,
+    instanceId: input.instanceId,
+    templateId: input.templateId,
+    templateName: input.templateName,
+    contextRef: input.contextRef,
+    startedBy: input.startedBy,
+    startedAt: input.startedAt,
+    stepNo: input.stepNo,
+    stepName: input.stepName,
+    assignedTo: input.assignedTo,
+    createdAt: new Date(),
+    tatStart: new Date(tatStartMs),
+    tatDeadline: new Date(tatDeadlineMs),
+    completedAt: null,
+    completedBy: "",
+    outcome: "",
+    status: "Pending",
+    remark: "",
+    formData: null,
+    quantity: input.quantity !== undefined ? String(input.quantity) : null,
+  });
 
-  await appendModuleRow(MODULE_KEY, runToRow(run));
-  return run;
+  return runToRecord(row);
 }
 
 interface StartFmsInstanceInput {
@@ -182,18 +242,20 @@ interface StartFmsInstanceInput {
 }
 
 export async function startFmsInstance(input: StartFmsInstanceInput): Promise<FmsRunRecord> {
+  const orgId = await getTenantOrgId();
   const firstStep = await getFmsTemplateStep(input.templateId, 1);
   if (!firstStep) {
     throw new Error("Is template ka pehla step nahi mila.");
   }
 
   return appendStepRun({
+    orgId,
     instanceId: generateId("INS"),
     templateId: input.templateId,
     templateName: firstStep.Template_Name,
     contextRef: input.contextRef,
     startedBy: input.startedBy,
-    startedAt: nowStamp(),
+    startedAt: new Date(),
     stepNo: 1,
     stepName: firstStep.Step_Name,
     assignedTo: firstStep.Assigned_To,
@@ -215,12 +277,10 @@ interface CompleteFmsStepInput {
 export async function completeFmsStep(
   input: CompleteFmsStepInput
 ): Promise<{ completed: FmsRunRecord; next: FmsRunRecord[] }> {
-  const runs = await getModuleRows<FmsRunRecord>(MODULE_KEY);
-  const index = runs.findIndex((r) => r.Run_ID === input.runId);
-  if (index === -1) throw new Error("Step nahi mila.");
-
-  const run = runs[index];
-  const rowNumber = index + 2; // data starts at sheet row 2, header is row 1
+  const orgId = await getTenantOrgId();
+  const runRow = await findById(fmsRuns, orgId, input.runId);
+  if (!runRow) throw new Error("Step nahi mila.");
+  const run = runToRecord(runRow);
 
   if (run.Status !== "Pending") {
     throw new Error("Yeh step pehle se complete ho chuka hai.");
@@ -318,34 +378,19 @@ export async function completeFmsStep(
   const now = new Date();
   const deadline = parseStamp(run.TAT_Deadline);
   const isOnTime = !deadline || now <= deadline;
-  const completedAt = formatStamp(now);
   const status = isOnTime ? "On Time" : "Delay Done";
   const remark = input.remark ?? "";
-  const formDataJson = JSON.stringify(formValues);
 
-  await updateModuleCells(MODULE_KEY, [
-    {
-      rowNumber,
-      fields: {
-        Completed_At: completedAt,
-        Completed_By: input.completedBy,
-        Outcome: outcome,
-        Status: status,
-        Remark: remark,
-        Form_Data: formDataJson,
-      },
-    },
-  ]);
-
-  const completed: FmsRunRecord = {
-    ...run,
-    Completed_At: completedAt,
-    Completed_By: input.completedBy,
-    Outcome: outcome,
-    Status: status,
-    Remark: remark,
-    Form_Data: formDataJson,
-  };
+  const updatedRow = await updateById(fmsRuns, orgId, input.runId, {
+    completedAt: now,
+    completedBy: input.completedBy,
+    outcome,
+    status,
+    remark,
+    formData: formValues,
+  });
+  if (!updatedRow) throw new Error("Step nahi mila.");
+  const completed = runToRecord(updatedRow);
 
   const nextMap = parseNextStepMap(step.Next_Step_Map);
 
@@ -354,16 +399,17 @@ export async function completeFmsStep(
     const target = await getFmsTemplateStep(run.Template_ID, stepNo);
     if (!target) return null;
     return appendStepRun({
+      orgId,
       instanceId: run.Instance_ID,
       templateId: run.Template_ID,
       templateName: run.Template_Name,
       contextRef: run.Context_Ref,
       startedBy: run.Started_By,
-      startedAt: run.Started_At,
+      startedAt: run.Started_At ? new Date(run.Started_At) : new Date(),
       stepNo,
       stepName: target.Step_Name,
       assignedTo: target.Assigned_To,
-      tatValue: await resolveTatValue(target, run.Instance_ID),
+      tatValue: await resolveTatValue(orgId, target, run.Instance_ID),
       tatUnit: target.TAT_Unit as FmsTatUnit,
       quantity,
     });
@@ -457,9 +503,10 @@ export interface FmsStepContext {
  * resolveExistingFmsData's own reasoning).
  */
 export async function getFmsStepContext(runId: string): Promise<FmsStepContext | null> {
-  const runs = await getModuleRows<FmsRunRecord>(MODULE_KEY);
-  const run = runs.find((r) => r.Run_ID === runId);
-  if (!run) return null;
+  const orgId = await getTenantOrgId();
+  const runRow = await findById(fmsRuns, orgId, runId);
+  if (!runRow) return null;
+  const run = runToRecord(runRow);
 
   const step = await getFmsTemplateStep(run.Template_ID, Number(run.Step_No));
   if (!step) return null;
@@ -475,13 +522,23 @@ export async function getFmsStepContext(runId: string): Promise<FmsStepContext |
 /** Every FMS_RUNS row ever assigned to this user, any status — what MIS scoring (see
  * src/lib/mis.ts's fmsMisCounts) and the score-breakdown table evaluate. */
 export async function listFmsRunsForUser(userId: string): Promise<FmsRunRecord[]> {
-  const runs = await getModuleRows<FmsRunRecord>(MODULE_KEY);
-  return runs.filter((r) => r.Assigned_To === userId);
+  const orgId = await getTenantOrgId();
+  const rows = await db
+    .select()
+    .from(fmsRuns)
+    .where(and(eq(fmsRuns.orgId, orgId), eq(fmsRuns.assignedTo, userId)));
+  return rows.map(runToRecord);
 }
 
 export async function listMyPendingFmsSteps(userId: string): Promise<FmsRunRecord[]> {
-  const runs = await getModuleRows<FmsRunRecord>(MODULE_KEY);
-  return runs.filter((r) => r.Assigned_To === userId && r.Status === "Pending");
+  const orgId = await getTenantOrgId();
+  const rows = await db
+    .select()
+    .from(fmsRuns)
+    .where(
+      and(eq(fmsRuns.orgId, orgId), eq(fmsRuns.assignedTo, userId), eq(fmsRuns.status, "Pending"))
+    );
+  return rows.map(runToRecord);
 }
 
 /**
@@ -496,9 +553,7 @@ export async function listMyPendingFmsSteps(userId: string): Promise<FmsRunRecor
  * behaviour, so this is additive rather than a change to already-relied-on behaviour.
  */
 export async function listMyDashboardFmsSteps(userId: string): Promise<FmsRunRecord[]> {
-  const runs = await getModuleRows<FmsRunRecord>(MODULE_KEY);
-  const mine = runs.filter((r) => r.Assigned_To === userId);
-
+  const mine = await listFmsRunsForUser(userId);
   const pending = mine.filter((r) => r.Status === "Pending");
 
   const completedToday: FmsRunRecord[] = [];
@@ -517,14 +572,18 @@ export async function listMyDashboardFmsSteps(userId: string): Promise<FmsRunRec
 }
 
 export async function listFmsInstanceHistory(instanceId: string): Promise<FmsRunRecord[]> {
-  const runs = await getModuleRows<FmsRunRecord>(MODULE_KEY);
-  return runs
-    .filter((r) => r.Instance_ID === instanceId)
-    .sort((a, b) => Number(a.Step_No) - Number(b.Step_No));
+  const orgId = await getTenantOrgId();
+  const rows = await db
+    .select()
+    .from(fmsRuns)
+    .where(and(eq(fmsRuns.orgId, orgId), eq(fmsRuns.instanceId, instanceId)));
+  return rows.map(runToRecord).sort((a, b) => Number(a.Step_No) - Number(b.Step_No));
 }
 
 export async function listAllFmsRuns(): Promise<FmsRunRecord[]> {
-  return getModuleRows<FmsRunRecord>(MODULE_KEY);
+  const orgId = await getTenantOrgId();
+  const rows = await listByOrg(fmsRuns, orgId);
+  return rows.map(runToRecord);
 }
 
 /**
@@ -535,6 +594,38 @@ export async function listAllFmsRuns(): Promise<FmsRunRecord[]> {
  * the API route checks this before calling deleteFmsTemplate.
  */
 export async function hasPendingFmsRunsForTemplate(templateId: string): Promise<boolean> {
-  const runs = await getModuleRows<FmsRunRecord>(MODULE_KEY);
-  return runs.some((r) => r.Template_ID === templateId && r.Status === "Pending");
+  const orgId = await getTenantOrgId();
+  const [row] = await db
+    .select({ id: fmsRuns.id })
+    .from(fmsRuns)
+    .where(
+      and(eq(fmsRuns.orgId, orgId), eq(fmsRuns.templateId, templateId), eq(fmsRuns.status, "Pending"))
+    )
+    .limit(1);
+  return Boolean(row);
+}
+
+/**
+ * Whether an FMS "Line" is already tracking a production plan — i.e. starting production
+ * fired PRODUCTION_STARTED and some Admin-built template picked it up. When one has, that
+ * Line's own last step is what writes the FG stock (via its own Ledger Movement Action,
+ * using the quantity that actually passed every stage) — src/lib/inventory/plans.ts's
+ * completePlan() must not also write one, or the same production would double-count.
+ *
+ * Lives here (not in plans.ts) now that FMS_RUNS is a real Postgres table this module
+ * already owns — plans.ts (an earlier, already-migrated Phase 3 group, otherwise left
+ * untouched by this FMS group) previously kept its own local copy of this exact check
+ * reading FMS_RUNS through the old Sheets-backed helpers; that copy would have silently
+ * gone stale (always returning false) the moment FMS stopped writing to that sheet, so
+ * plans.ts's completePlan() now imports this one instead — see that file's own updated
+ * comment.
+ */
+export async function hasFmsLine(planId: string): Promise<boolean> {
+  const orgId = await getTenantOrgId();
+  const [row] = await db
+    .select({ id: fmsRuns.id })
+    .from(fmsRuns)
+    .where(and(eq(fmsRuns.orgId, orgId), eq(fmsRuns.contextRef, `PRODUCTION_PLANS:${planId}`)))
+    .limit(1);
+  return Boolean(row);
 }

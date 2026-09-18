@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
 import { requireModule } from "@/lib/auth/guard";
-import { tryModule } from "@/lib/moduleSheets";
 import { byNewest } from "@/lib/timestamp";
 import {
   createFmsTemplate,
@@ -49,11 +48,8 @@ export async function GET() {
   const guard = await requireModule("FMS_ADMIN");
   if (!guard.ok) return guard.response;
 
-  const rows = await tryModule(() => listFmsTemplates());
-  return NextResponse.json({
-    templates: rows === null ? [] : groupTemplates(rows),
-    setupRequired: rows === null ? "FMS Templates" : null,
-  });
+  const rows = await listFmsTemplates();
+  return NextResponse.json({ templates: groupTemplates(rows) });
 }
 
 export async function POST(request: Request) {

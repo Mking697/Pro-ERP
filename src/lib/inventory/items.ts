@@ -1,29 +1,29 @@
-import {
-  appendModuleRow,
-  appendModuleRows,
-  findModuleRow,
-  getModuleRows,
-  getModuleRowNumbers,
-  recordToRow,
-  updateModuleCells,
-  updateModuleRow,
-} from "@/lib/moduleSheets";
+import type { InferSelectModel } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
+import { items } from "@/db/schema";
+import { db } from "@/db/client";
+import { listByOrg, insertRecord } from "@/db/repo";
+import { getTenantOrgId } from "@/lib/tenant";
 import { generateId } from "@/lib/id";
-import { nowStamp } from "@/lib/timestamp";
 import { ITEM_CATEGORIES, type ItemCategory } from "@/lib/inventory/constants";
-
-const MODULE_KEY = "ITEMS";
 
 export { ITEM_CATEGORIES, type ItemCategory } from "@/lib/inventory/constants";
 
 /**
  * One row of the inventory master.
  *
- * Everything is stored as a string because that is what a sheet holds; the numeric
- * fields are parsed at the edge by `num()` rather than being trusted. A blank is a
- * genuine "not set yet", which is different from zero — `Lead_Time_Days` of 0 would
- * make the reorder point 0 and silently stop suggesting orders, so the UI has to be
- * able to tell those apart.
+ * Mirrors the pre-Postgres sheet row shape exactly (same field names, same PascalCase
+ * casing, everything a string) even though the persistence underneath is now the `items`
+ * Postgres table — the goal is zero changes at the API routes and every inventory
+ * frontend, which all read `.SKU`, `.Item_Name`, etc. off this type today.
+ *
+ * Everything is still a string at this boundary: a blank is a genuine "not set yet",
+ * which is different from zero — `Lead_Time_Days` of 0 would make the reorder point 0
+ * and silently stop suggesting orders, so the UI has to be able to tell those apart.
+ *
+ * `items`' primary key column is named `sku`, not `id` — per repo.ts's `IdentifiedTable`
+ * doc comment this does NOT satisfy the generic findById/updateById/deleteById layer, so
+ * every SKU-keyed read/write below is a direct, bespoke Drizzle query instead.
  */
 export interface ItemRecord {
   SKU: string;
@@ -43,8 +43,8 @@ export interface ItemRecord {
   Created_By: string;
 }
 
-/** Parses a sheet cell to a number, treating blank/garbage as "not set". */
-export function num(value: string | undefined): number | null {
+/** Parses a stored value to a number, treating blank/garbage/null as "not set". */
+export function num(value: string | null | undefined): number | null {
   if (value === undefined || value === null) return null;
   const trimmed = String(value).trim();
   if (trimmed === "") return null;
@@ -53,7 +53,7 @@ export function num(value: string | undefined): number | null {
 }
 
 /** Same, but for places where a missing value should behave as zero. */
-export function numOr0(value: string | undefined): number {
+export function numOr0(value: string | null | undefined): number {
   return num(value) ?? 0;
 }
 
@@ -71,8 +71,37 @@ export function missingPlanningFields(item: ItemRecord): string[] {
   return missing;
 }
 
+type ItemRow = InferSelectModel<typeof items>;
+
+function rowToRecord(row: ItemRow): ItemRecord {
+  return {
+    SKU: row.sku,
+    Item_Name: row.itemName,
+    Category: row.category,
+    Size_Unit: row.sizeUnit,
+    UOM: row.uom,
+    Rate: row.rate ?? "",
+    ADC_Manual: row.adcManual ?? "",
+    Lead_Time_Days: row.leadTimeDays === null ? "" : String(row.leadTimeDays),
+    Safety_Factor: row.safetyFactor ?? "",
+    MOQ: row.moq ?? "",
+    Max_Level: row.maxLevel ?? "",
+    Location: row.location,
+    Status: row.status,
+    Created_At: row.createdAt.toISOString(),
+    Created_By: row.createdBy,
+  };
+}
+
+/** number|null|undefined -> a `numeric` column's insert/update value. */
+function numericCol(value: number | null | undefined): string | null {
+  return value === null || value === undefined ? null : String(value);
+}
+
 export async function listItems(): Promise<ItemRecord[]> {
-  return getModuleRows<ItemRecord>(MODULE_KEY);
+  const orgId = await getTenantOrgId();
+  const rows = await listByOrg(items, orgId);
+  return rows.map(rowToRecord);
 }
 
 export async function listActiveItems(): Promise<ItemRecord[]> {
@@ -81,8 +110,13 @@ export async function listActiveItems(): Promise<ItemRecord[]> {
 }
 
 export async function findItem(sku: string): Promise<ItemRecord | null> {
-  const items = await listItems();
-  return items.find((i) => i.SKU === sku) ?? null;
+  const orgId = await getTenantOrgId();
+  const rows = await db
+    .select()
+    .from(items)
+    .where(and(eq(items.orgId, orgId), eq(items.sku, sku)))
+    .limit(1);
+  return rows[0] ? rowToRecord(rows[0]) : null;
 }
 
 export interface CreateItemInput {
@@ -106,35 +140,35 @@ function optional(value: number | null | undefined): string {
 }
 
 export async function createItem(input: CreateItemInput): Promise<ItemRecord> {
-  const items = await listItems();
+  const orgId = await getTenantOrgId();
+  const existing = await listItems();
 
   // A SKU is the join key for every ledger row, BOM line and indent — a duplicate
   // would silently merge two different materials' stock.
   const sku = (input.sku ?? "").trim() || generateId("SKU");
-  if (items.some((i) => i.SKU.trim().toLowerCase() === sku.toLowerCase())) {
+  if (existing.some((i) => i.SKU.trim().toLowerCase() === sku.toLowerCase())) {
     throw new Error(`SKU "${sku}" pehle se maujood hai.`);
   }
 
-  const record: ItemRecord = {
-    SKU: sku,
-    Item_Name: input.itemName.trim(),
-    Category: input.category,
-    Size_Unit: input.sizeUnit?.trim() ?? "",
-    UOM: input.uom.trim(),
-    Rate: optional(input.rate),
-    ADC_Manual: optional(input.adcManual),
-    Lead_Time_Days: optional(input.leadTimeDays),
-    Safety_Factor: optional(input.safetyFactor),
-    MOQ: optional(input.moq),
-    Max_Level: optional(input.maxLevel),
-    Location: input.location?.trim() ?? "",
-    Status: "Active",
-    Created_At: nowStamp(),
-    Created_By: input.createdBy,
-  };
+  const row = await insertRecord(items, {
+    sku,
+    orgId,
+    itemName: input.itemName.trim(),
+    category: input.category,
+    sizeUnit: input.sizeUnit?.trim() ?? "",
+    uom: input.uom.trim(),
+    rate: numericCol(input.rate),
+    adcManual: numericCol(input.adcManual),
+    leadTimeDays: input.leadTimeDays ?? null,
+    safetyFactor: numericCol(input.safetyFactor),
+    moq: numericCol(input.moq),
+    maxLevel: numericCol(input.maxLevel),
+    location: input.location?.trim() ?? "",
+    status: "Active",
+    createdBy: input.createdBy,
+  });
 
-  await appendModuleRow(MODULE_KEY, recordToRow(MODULE_KEY, record));
-  return record;
+  return rowToRecord(row);
 }
 
 export interface BulkCreateRowInput {
@@ -166,27 +200,28 @@ export interface BulkCreateResult {
 }
 
 /**
- * Creates many items from one uploaded spreadsheet in a single Sheets write.
+ * Creates many items from one uploaded spreadsheet in a single insert.
  *
- * Reads the existing item list once (not once per row, the way calling createItem() in a
- * loop would) and tracks SKUs — both already on the sheet and already claimed earlier in
- * this same file — in one in-memory set, so two rows of the same upload can't collide with
- * each other the way a duplicate-only-against-the-sheet check would miss. A bad row (no
- * name, an unknown category, a SKU already taken) is skipped and reported rather than
- * failing the whole import — a 400-row upload with one typo should still create the other
- * 399, the same way the rest of this app prefers a partial, reported result (see
- * bulkUpdatePlanningFields's unknownSkus) over an all-or-nothing failure.
+ * Reads the existing item list once (not once per row) and tracks SKUs — both already in
+ * Postgres and already claimed earlier in this same file — in one in-memory set, so two
+ * rows of the same upload can't collide with each other the way a duplicate-only-against-
+ * the-table check would miss. A bad row (no name, an unknown category, a SKU already
+ * taken) is skipped and reported rather than failing the whole import — a 400-row upload
+ * with one typo should still create the other 399, the same way the rest of this app
+ * prefers a partial, reported result (see bulkUpdatePlanningFields's unknownSkus) over an
+ * all-or-nothing failure.
  */
 export async function createItemsBulk(
   inputs: BulkCreateRowInput[],
   createdBy: string
 ): Promise<BulkCreateResult> {
+  const orgId = await getTenantOrgId();
   const existing = await listItems();
   const usedSkus = new Set(existing.map((i) => i.SKU.trim().toLowerCase()));
 
   const created: { row: number; item: ItemRecord }[] = [];
   const errors: { row: number; message: string }[] = [];
-  const rows: (string | number)[][] = [];
+  const rows: (typeof items.$inferInsert)[] = [];
 
   for (const input of inputs) {
     if (!input.itemName.trim()) {
@@ -230,16 +265,32 @@ export async function createItemsBulk(
       Max_Level: optional(input.maxLevel),
       Location: input.location?.trim() ?? "",
       Status: "Active",
-      Created_At: nowStamp(),
+      Created_At: new Date().toISOString(),
       Created_By: createdBy,
     };
 
     created.push({ row: input.row, item: record });
-    rows.push(recordToRow(MODULE_KEY, record));
+    rows.push({
+      sku,
+      orgId,
+      itemName: record.Item_Name,
+      category: record.Category,
+      sizeUnit: record.Size_Unit,
+      uom: record.UOM,
+      rate: numericCol(input.rate),
+      adcManual: null,
+      leadTimeDays: input.leadTimeDays ?? null,
+      safetyFactor: numericCol(input.safetyFactor),
+      moq: numericCol(input.moq),
+      maxLevel: numericCol(input.maxLevel),
+      location: record.Location,
+      status: "Active",
+      createdBy,
+    });
   }
 
   if (rows.length > 0) {
-    await appendModuleRows(MODULE_KEY, rows);
+    await db.insert(items).values(rows);
   }
 
   return { created, errors };
@@ -261,45 +312,49 @@ export interface UpdateItemInput {
 }
 
 /**
- * Patches one item. Only the keys present in the patch are touched, so two people
- * editing different fields of the same item do not clobber each other's work as
- * easily — the whole row is still rewritten, but from freshly read values.
+ * Patches one item. Only the keys present in the patch are touched — Postgres's UPDATE
+ * still rewrites the whole row under the hood, but from freshly read values, same as the
+ * pre-Postgres "only the edited cells" behaviour it preserves at the field level.
  */
 export async function updateItem(
   sku: string,
   patch: UpdateItemInput
 ): Promise<ItemRecord> {
-  const found = await findModuleRow<ItemRecord>(MODULE_KEY, 0, sku);
-  if (!found) {
+  const orgId = await getTenantOrgId();
+  const current = await findItem(sku);
+  if (!current) {
     throw new Error(`SKU "${sku}" nahi mila.`);
   }
 
-  const current = found.record;
-  const updated: ItemRecord = {
-    ...current,
-    Item_Name: patch.itemName ?? current.Item_Name,
-    Category: patch.category ?? current.Category,
-    Size_Unit: patch.sizeUnit ?? current.Size_Unit,
-    UOM: patch.uom ?? current.UOM,
-    Rate: patch.rate !== undefined ? optional(patch.rate) : current.Rate,
-    ADC_Manual:
-      patch.adcManual !== undefined ? optional(patch.adcManual) : current.ADC_Manual,
-    Lead_Time_Days:
-      patch.leadTimeDays !== undefined
-        ? optional(patch.leadTimeDays)
-        : current.Lead_Time_Days,
-    Safety_Factor:
-      patch.safetyFactor !== undefined
-        ? optional(patch.safetyFactor)
-        : current.Safety_Factor,
-    MOQ: patch.moq !== undefined ? optional(patch.moq) : current.MOQ,
-    Max_Level: patch.maxLevel !== undefined ? optional(patch.maxLevel) : current.Max_Level,
-    Location: patch.location ?? current.Location,
-    Status: patch.status ?? current.Status,
-  };
+  const [row] = await db
+    .update(items)
+    .set({
+      itemName: patch.itemName ?? current.Item_Name,
+      category: patch.category ?? current.Category,
+      sizeUnit: patch.sizeUnit ?? current.Size_Unit,
+      uom: patch.uom ?? current.UOM,
+      rate: patch.rate !== undefined ? numericCol(patch.rate) : current.Rate || null,
+      adcManual:
+        patch.adcManual !== undefined ? numericCol(patch.adcManual) : current.ADC_Manual || null,
+      leadTimeDays:
+        patch.leadTimeDays !== undefined ? patch.leadTimeDays : num(current.Lead_Time_Days),
+      safetyFactor:
+        patch.safetyFactor !== undefined
+          ? numericCol(patch.safetyFactor)
+          : current.Safety_Factor || null,
+      moq: patch.moq !== undefined ? numericCol(patch.moq) : current.MOQ || null,
+      maxLevel:
+        patch.maxLevel !== undefined ? numericCol(patch.maxLevel) : current.Max_Level || null,
+      location: patch.location ?? current.Location,
+      status: (patch.status ?? current.Status) as "Active" | "Inactive",
+    })
+    .where(and(eq(items.orgId, orgId), eq(items.sku, sku)))
+    .returning();
 
-  await updateModuleRow(MODULE_KEY, found.rowNumber, recordToRow(MODULE_KEY, updated));
-  return updated;
+  if (!row) {
+    throw new Error(`SKU "${sku}" nahi mila.`);
+  }
+  return rowToRecord(row);
 }
 
 /** The planning fields Bulk Setup edits. Nothing else on an item is touched there. */
@@ -314,46 +369,68 @@ export type PlanningField = (typeof PLANNING_FIELDS)[number];
 
 export type PlanningPatch = Partial<Record<PlanningField, number | null>>;
 
+const PLANNING_COLUMN: Record<PlanningField, keyof typeof items.$inferInsert> = {
+  ADC_Manual: "adcManual",
+  Lead_Time_Days: "leadTimeDays",
+  Safety_Factor: "safetyFactor",
+  MOQ: "moq",
+  Max_Level: "maxLevel",
+};
+
 /**
- * Applies planning-field edits to many items in one API call.
+ * Applies planning-field edits to many items in one batch of updates.
  *
  * Bulk Setup exists because an item master runs to hundreds of rows and the reorder
  * maths is useless until Max Level, Lead Time and Safety Factor are filled — doing that
  * one dialog at a time is not realistic, and leaving it undone is what made the user's
  * previous system never suggest a reorder.
  *
- * Only the edited cells are written, so this cannot overwrite a name or category that
- * someone changed while the grid was open.
+ * Only the edited fields are set per row (never a full-record overwrite), so this cannot
+ * clobber a name or category that someone changed while the grid was open. A SKU this org
+ * doesn't have is reported in `unknownSkus` without an update attempt; a known SKU whose
+ * patch happens to carry no fields is simply a no-op, same as the original "only rows with
+ * fields to write are queued" behaviour. Each remaining patch is its own UPDATE, run
+ * concurrently — there is no bulk-update primitive in repo.ts, the same situation
+ * createVendorsBulk() documents for inserts.
  */
 export async function bulkUpdatePlanningFields(
   patches: { sku: string; fields: PlanningPatch }[]
 ): Promise<{ updated: number; unknownSkus: string[] }> {
   if (patches.length === 0) return { updated: 0, unknownSkus: [] };
 
-  const rowNumbers = await getModuleRowNumbers(MODULE_KEY, 0);
+  const orgId = await getTenantOrgId();
+  const knownSkus = new Set((await listItems()).map((i) => i.SKU));
 
-  const rows: { rowNumber: number; fields: Record<string, string | number> }[] = [];
   const unknownSkus: string[] = [];
+  const toUpdate: { sku: string; set: Record<string, string | number | null> }[] = [];
 
   for (const patch of patches) {
-    const rowNumber = rowNumbers.get(patch.sku);
-    if (rowNumber === undefined) {
+    if (!knownSkus.has(patch.sku)) {
       unknownSkus.push(patch.sku);
       continue;
     }
 
-    const fields: Record<string, string | number> = {};
-    for (const [key, value] of Object.entries(patch.fields)) {
-      // An empty string clears the field back to "not set", which the reorder maths
-      // treats differently from zero — so null has to survive the round trip.
-      fields[key] = value === null || value === undefined ? "" : value;
+    const set: Record<string, string | number | null> = {};
+    for (const [key, value] of Object.entries(patch.fields) as [
+      PlanningField,
+      number | null | undefined,
+    ][]) {
+      const column = PLANNING_COLUMN[key];
+      set[column] = key === "Lead_Time_Days" ? (value ?? null) : numericCol(value);
     }
-
-    if (Object.keys(fields).length > 0) {
-      rows.push({ rowNumber, fields });
+    if (Object.keys(set).length > 0) {
+      toUpdate.push({ sku: patch.sku, set });
     }
   }
 
-  await updateModuleCells(MODULE_KEY, rows);
-  return { updated: rows.length, unknownSkus };
+  await Promise.all(
+    toUpdate.map(({ sku, set }) =>
+      db
+        .update(items)
+        .set(set)
+        .where(and(eq(items.orgId, orgId), eq(items.sku, sku)))
+    )
+  );
+
+  return { updated: toUpdate.length, unknownSkus };
 }

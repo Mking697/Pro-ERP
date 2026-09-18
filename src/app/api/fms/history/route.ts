@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
 import { requireSession } from "@/lib/auth/guard";
-import { tryModule } from "@/lib/moduleSheets";
 import { listFmsHistory } from "@/lib/fms/history";
 
 /**
@@ -12,14 +11,11 @@ export async function GET() {
   const guard = await requireSession();
   if (!guard.ok) return guard.response;
 
-  const rows = await tryModule(() => listFmsHistory());
-  if (rows === null) {
-    return NextResponse.json({ history: [], setupRequired: "FMS Runs" });
-  }
+  const rows = await listFmsHistory();
 
   const scoped = guard.session.access.includes("PERFORMANCE_VIEW")
     ? rows
     : rows.filter((r) => r.assignedTo === guard.session.userId);
 
-  return NextResponse.json({ history: scoped, setupRequired: null });
+  return NextResponse.json({ history: scoped });
 }

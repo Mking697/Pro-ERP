@@ -1,18 +1,14 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { requireModule } from "@/lib/auth/guard";
-import { tryModule } from "@/lib/moduleSheets";
 import { createBom, listBoms, BomValidationError, COMPONENT_TYPES } from "@/lib/inventory/bom";
 
 export async function GET() {
   const guard = await requireModule("BOM_MANAGE");
   if (!guard.ok) return guard.response;
 
-  const boms = await tryModule(() => listBoms());
-  return NextResponse.json({
-    boms: boms ?? [],
-    setupRequired: boms === null ? "BOM (Bill of Materials)" : null,
-  });
+  const boms = await listBoms();
+  return NextResponse.json({ boms });
 }
 
 const bodySchema = z.object({

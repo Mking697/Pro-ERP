@@ -14,7 +14,6 @@ import { Badge } from "@/components/ui/badge";
 import { formatDueDisplay } from "@/lib/formatDate";
 import { parseStamp } from "@/lib/timestamp";
 import { CardListSkeleton } from "@/components/loading-states";
-import SheetNotConnected from "@/components/sheet-not-connected";
 import EmptyState from "@/components/empty-state";
 import { Workflow } from "lucide-react";
 import { useT } from "@/components/preferences-provider";
@@ -31,16 +30,14 @@ function isOverdue(run: FmsRunRecord): boolean {
 export default function MyStepsBoard() {
   const t = useT();
   const [steps, setSteps] = useState<FmsRunRecord[]>([]);
-  const [setupRequired, setSetupRequired] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [version, setVersion] = useState(0);
 
   useEffect(() => {
     fetch("/api/fms/my-steps")
       .then((res) => res.json())
-      .then((data: { steps?: FmsRunRecord[]; setupRequired?: string | null }) => {
+      .then((data: { steps?: FmsRunRecord[] }) => {
         setSteps(data.steps ?? []);
-        setSetupRequired(data.setupRequired ?? null);
       })
       .catch(() => toast.error(t("Steps load nahi ho paye.")))
       .finally(() => setLoading(false));
@@ -53,10 +50,6 @@ export default function MyStepsBoard() {
 
   if (loading) {
     return <CardListSkeleton label={t("Steps load ho rahe hain")} />;
-  }
-
-  if (setupRequired) {
-    return <SheetNotConnected what={setupRequired} />;
   }
 
   if (steps.length === 0) {

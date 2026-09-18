@@ -4,7 +4,8 @@ import { listInwardEntries, type InwardRecord } from "@/lib/inward";
 /** Context_Ref is always `"<MODULE_KEY>:<id>"` — the same convention every emitFmsEvent
  * caller writes (see src/lib/inward.ts, src/lib/fms/engine.ts) and the one
  * src/lib/fms/dataSourceResolver.ts's own contextId() already splits on. These are the
- * MODULE_SHEETS keys those callers actually use, not a display label. */
+ * source-module keys (src/lib/fms/sourceModules.ts) those callers actually use, not a
+ * display label. */
 const PRODUCTION_PLANS_PREFIX = "PRODUCTION_PLANS:";
 const INWARD_PREFIX = "INWARD_IQC_FMS:";
 

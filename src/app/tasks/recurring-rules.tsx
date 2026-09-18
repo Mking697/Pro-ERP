@@ -42,7 +42,6 @@ export default function RecurringRules({ refreshKey = 0 }: { refreshKey?: number
   const [rules, setRules] = useState<RecurringRule[]>([]);
   const [names, setNames] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
-  const [setupRequired, setSetupRequired] = useState<string | null>(null);
   const [savingId, setSavingId] = useState<string | null>(null);
 
   useEffect(() => {
@@ -52,11 +51,10 @@ export default function RecurringRules({ refreshKey = 0 }: { refreshKey?: number
     ])
       .then(
         ([rulesData, dirData]: [
-          { rules?: RecurringRule[]; setupRequired?: string },
+          { rules?: RecurringRule[] },
           { users?: DirectoryUser[] },
         ]) => {
           setRules(rulesData.rules ?? []);
-          setSetupRequired(rulesData.setupRequired ?? null);
           setNames(
             Object.fromEntries((dirData.users ?? []).map((u) => [u.userId, u.fullName]))
           );
@@ -101,14 +99,6 @@ export default function RecurringRules({ refreshKey = 0 }: { refreshKey?: number
 
   if (loading) {
     return <TableSkeleton columns={5} label={t("Rules load ho rahe hain")} />;
-  }
-
-  if (setupRequired) {
-    return (
-      <p className="py-8 text-center text-sm text-muted-foreground">
-        &quot;Recurring Tasks&quot; sheet abhi connect nahi hui hai.
-      </p>
-    );
   }
 
   return (

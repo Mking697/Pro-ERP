@@ -10,7 +10,7 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { useT } from "@/components/preferences-provider";
 
-export default function SignupForm({ serviceAccountEmail }: { serviceAccountEmail: string }) {
+export default function SignupForm() {
   const t = useT();
   const router = useRouter();
   const [orgName, setOrgName] = useState("");
@@ -18,7 +18,6 @@ export default function SignupForm({ serviceAccountEmail }: { serviceAccountEmai
   const [email, setEmail] = useState("");
   const [phoneNumber, setPhoneNumber] = useState("");
   const [password, setPassword] = useState("");
-  const [systemSheetUrl, setSystemSheetUrl] = useState("");
   const [logo, setLogo] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -35,7 +34,6 @@ export default function SignupForm({ serviceAccountEmail }: { serviceAccountEmai
           email,
           phoneNumber,
           password,
-          systemSheetUrl,
           logo,
         }),
       });
@@ -47,7 +45,7 @@ export default function SignupForm({ serviceAccountEmail }: { serviceAccountEmai
       }
 
       toast.success(`${data.organization.name} ka system taiyaar hai!`);
-      router.push("/onboarding");
+      router.push("/dashboard");
       router.refresh();
     } catch {
       toast.error(t("Kuch galat ho gaya. Dobara try karein."));
@@ -114,31 +112,6 @@ export default function SignupForm({ serviceAccountEmail }: { serviceAccountEmai
             onChange={(e) => setPassword(e.target.value)}
             placeholder={t("Kam se kam 8 characters")}
             minLength={8}
-            required
-          />
-        </div>
-      </div>
-
-      <div className="space-y-4">
-        <p className="text-sm font-medium">3. Aapka Google Sheet</p>
-        <div className="rounded-md border bg-muted/40 p-3 text-sm text-muted-foreground">
-          <p className="mb-2">{t("Ek")}<strong>blank</strong> Google Sheet banayein, use is address ke saath{" "}
-            <strong>Editor</strong> access se share karein:
-          </p>
-          <code className="block break-all rounded bg-background px-2 py-1.5 text-xs font-medium text-foreground">
-            {serviceAccountEmail}
-          </code>
-          <p className="mt-2">
-            Tabs aur header rows hum khud bana denge — aapko kuch type nahi karna.
-          </p>
-        </div>
-        <div className="space-y-2">
-          <Label htmlFor="systemSheetUrl">System Sheet URL</Label>
-          <Input
-            id="systemSheetUrl"
-            value={systemSheetUrl}
-            onChange={(e) => setSystemSheetUrl(e.target.value)}
-            placeholder="https://docs.google.com/spreadsheets/d/..."
             required
           />
         </div>

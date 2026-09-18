@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
 import { requireModule } from "@/lib/auth/guard";
-import { tryModule } from "@/lib/moduleSheets";
 import { listBoms } from "@/lib/inventory/bom";
 
 /**
@@ -13,10 +12,7 @@ export async function GET() {
   const guard = await requireModule("PPC_PLAN");
   if (!guard.ok) return guard.response;
 
-  const boms = await tryModule(() => listBoms());
-  if (boms === null) {
-    return NextResponse.json({ products: [], setupRequired: "BOM (Bill of Materials)" });
-  }
+  const boms = await listBoms();
 
   const products = boms
     .filter((b) => b.status === "Active")
@@ -28,5 +24,5 @@ export async function GET() {
     }))
     .sort((a, b) => a.productName.localeCompare(b.productName));
 
-  return NextResponse.json({ products, setupRequired: null });
+  return NextResponse.json({ products });
 }

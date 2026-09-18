@@ -1,9 +1,8 @@
 import { NextResponse } from "next/server";
 import { requireSession } from "@/lib/auth/guard";
-import { tryModule, getModuleRows } from "@/lib/moduleSheets";
 import { getFmsTemplateSteps, userCanAccessTemplate } from "@/lib/fms/templates";
+import { listAllFmsRuns } from "@/lib/fms/engine";
 import { resolveInstanceReferences } from "@/lib/fms/reference";
-import type { FmsRunRecord } from "@/lib/fms/engine";
 
 /**
  * Everything one FMS template's Flow Board needs: its own ordered step list, every
@@ -24,8 +23,8 @@ export async function GET(
 
   const { templateId } = await params;
 
-  const steps = await tryModule(() => getFmsTemplateSteps(templateId));
-  if (!steps || steps.length === 0) {
+  const steps = await getFmsTemplateSteps(templateId);
+  if (steps.length === 0) {
     return NextResponse.json({ error: "Template nahi mila." }, { status: 404 });
   }
 
@@ -41,17 +40,7 @@ export async function GET(
     dataSourceConfig: s.Data_Source_Config,
   }));
 
-  const runs = await tryModule(() => getModuleRows<FmsRunRecord>("FMS_RUNS"));
-  if (runs === null) {
-    return NextResponse.json({
-      templateName: steps[0].Template_Name,
-      steps: orderedSteps,
-      runs: [],
-      references: {},
-      setupRequired: "FMS Runs",
-    });
-  }
-
+  const runs = await listAllFmsRuns();
   const templateRuns = runs.filter((r) => r.Template_ID === templateId);
 
   const firstRefByInstance = new Map<string, string>();
@@ -73,6 +62,5 @@ export async function GET(
     steps: orderedSteps,
     runs: templateRuns,
     references: Object.fromEntries(references),
-    setupRequired: null,
   });
 }

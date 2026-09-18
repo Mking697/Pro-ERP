@@ -17,7 +17,7 @@ import {
 } from "@/components/ui/table";
 import { qty, statusVariant, type StockStatus } from "../types";
 import { TableSkeleton } from "@/components/loading-states";
-import { Unplug, PackageCheck } from "lucide-react";
+import { PackageCheck } from "lucide-react";
 import EmptyState from "@/components/empty-state";
 import { useT } from "@/components/preferences-provider";
 
@@ -47,7 +47,6 @@ export default function ReorderBoard({ canRaise }: { canRaise: boolean }) {
   const t = useT();
   const [rows, setRows] = useState<Suggestion[]>([]);
   const [notSetUp, setNotSetUp] = useState(0);
-  const [missingSheets, setMissingSheets] = useState<string[]>([]);
   const [selected, setSelected] = useState<Record<string, boolean>>({});
   const [qtyDraft, setQtyDraft] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
@@ -57,17 +56,10 @@ export default function ReorderBoard({ canRaise }: { canRaise: boolean }) {
   useEffect(() => {
     fetch("/api/inventory/reorder")
       .then((res) => res.json())
-      .then(
-        (data: {
-          suggestions?: Suggestion[];
-          notSetUp?: number;
-          missingSheets?: string[];
-        }) => {
-          setRows(data.suggestions ?? []);
-          setNotSetUp(data.notSetUp ?? 0);
-          setMissingSheets(data.missingSheets ?? []);
-        }
-      )
+      .then((data: { suggestions?: Suggestion[]; notSetUp?: number }) => {
+        setRows(data.suggestions ?? []);
+        setNotSetUp(data.notSetUp ?? 0);
+      })
       .catch(() => toast.error(t("Reorder list load nahi ho payi.")))
       .finally(() => setLoading(false));
   }, [version, t]);
@@ -126,23 +118,6 @@ export default function ReorderBoard({ canRaise }: { canRaise: boolean }) {
 
   if (loading) {
     return <TableSkeleton columns={5} label={t("Reorder list load ho rahi hai")} />;
-  }
-
-  if (missingSheets.length > 0) {
-    return (
-      <EmptyState
-        icon={<Unplug />}
-        title={t("Inventory sheets connect nahi hui")}
-        description={missingSheets.join(", ")}
-        action={
-          <Button
-            variant="outline"
-            size="sm"
-            render={<Link href="/admin/settings">{t("Settings kholein")}</Link>}
-          />
-        }
-      />
-    );
   }
 
   const allSelected = rows.length > 0 && rows.every((r) => selected[r.sku]);

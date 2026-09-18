@@ -114,7 +114,7 @@ export default function ItemPicker({
             setOpen(true);
           }}
           onFocus={() => setOpen(true)}
-          placeholder={configured ? "Naam ya SKU type karein..." : t("Items sheet connect nahi hai")}
+          placeholder={configured ? "Naam ya SKU type karein..." : t("Items load nahi ho paaye")}
           disabled={!configured}
           required={required}
           autoComplete="off"
@@ -146,7 +146,7 @@ export default function ItemPicker({
 
       {!configured && (
         <p className="text-xs text-muted-foreground">
-          Item master abhi connect nahi hua — is entry ka stock apne aap nahi badhega.
+          Items load nahi ho paaye — is entry ka stock apne aap nahi badhega.
         </p>
       )}
       {configured && query && matches.length === 0 && (

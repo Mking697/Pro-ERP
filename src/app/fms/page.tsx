@@ -42,7 +42,7 @@ export default async function FmsPage() {
           </TabsContent>
           {canManage && (
             <TabsContent value="templates" className="mt-4">
-              <TemplatesBoard />
+              <TemplatesBoard isAdmin={session.role === "Admin"} />
             </TabsContent>
           )}
         </Tabs>

@@ -17,7 +17,6 @@ import {
 import { formatDueDisplay } from "@/lib/formatDate";
 import BomForm from "./bom-form";
 import { CardListSkeleton } from "@/components/loading-states";
-import SheetNotConnected from "@/components/sheet-not-connected";
 import { ClipboardList } from "lucide-react";
 import EmptyState from "@/components/empty-state";
 import { useT } from "@/components/preferences-provider";
@@ -44,7 +43,6 @@ interface Bom {
 export default function BomBoard() {
   const t = useT();
   const [boms, setBoms] = useState<Bom[]>([]);
-  const [setupRequired, setSetupRequired] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [showArchived, setShowArchived] = useState(false);
   const [expanded, setExpanded] = useState<string | null>(null);
@@ -53,9 +51,8 @@ export default function BomBoard() {
   useEffect(() => {
     fetch("/api/bom")
       .then((res) => res.json())
-      .then((data: { boms?: Bom[]; setupRequired?: string | null }) => {
+      .then((data: { boms?: Bom[] }) => {
         setBoms(data.boms ?? []);
-        setSetupRequired(data.setupRequired ?? null);
       })
       .catch(() => toast.error(t("BOMs load nahi ho payi.")))
       .finally(() => setLoading(false));
@@ -63,12 +60,6 @@ export default function BomBoard() {
 
   if (loading) {
     return <CardListSkeleton label={t("BOMs load ho rahi hain")} />;
-  }
-
-  if (setupRequired) {
-    return (
-      <SheetNotConnected what={setupRequired} />
-    );
   }
 
   const visible = boms.filter((b) => showArchived || b.status === "Active");

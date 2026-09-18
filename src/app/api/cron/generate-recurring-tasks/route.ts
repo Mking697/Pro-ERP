@@ -22,7 +22,7 @@ export async function POST(request: Request) {
   }
 
   // A manual trigger runs only for the admin's own organization — their session is what
-  // scopes it, so one customer can never kick off generation inside another's sheets.
+  // scopes it, so one customer can never kick off generation inside another org's data.
   const guard = await requireRole(["Admin"]);
   if (!guard.ok) return guard.response;
 

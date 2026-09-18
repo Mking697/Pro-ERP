@@ -1,10 +1,9 @@
-import {
-  appendModuleRows,
-  getModuleRows,
-  recordToRow,
-  updateModuleCells,
-  tryModule,
-} from "@/lib/moduleSheets";
+import type { InferSelectModel } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
+import { productionPlans, planMaterials } from "@/db/schema";
+import { db } from "@/db/client";
+import { listByOrg, updateById } from "@/db/repo";
+import { getTenantOrgId } from "@/lib/tenant";
 import { generateId } from "@/lib/id";
 import { numOr0, findItem } from "@/lib/inventory/items";
 import { listBoms, type Bom } from "@/lib/inventory/bom";
@@ -20,6 +19,7 @@ import {
   recordMovement,
   InsufficientStockError,
 } from "@/lib/inventory/ledger";
+import { byNewest, parseStamp } from "@/lib/timestamp";
 
 export { allocateAcrossPool };
 export type {
@@ -28,10 +28,6 @@ export type {
   AllocatedMaterial,
   AllocationResult,
 } from "@/lib/inventory/allocation";
-import { byNewest, nowStamp } from "@/lib/timestamp";
-
-const PLANS_KEY = "PRODUCTION_PLANS";
-const MATERIALS_KEY = "PLAN_MATERIALS";
 
 export const PLAN_STATUSES = [
   "Ready",
@@ -55,41 +51,6 @@ const RESERVING: readonly PlanStatus[] = ["Ready", "Shortage", "In_Production"];
 
 /** Statuses a plan can still be worked on from. */
 const OPEN: readonly PlanStatus[] = ["Ready", "Shortage"];
-
-export interface PlanRow {
-  Plan_ID: string;
-  Timestamp: string;
-  Product_Name: string;
-  Product_SKU: string;
-  BOM_ID: string;
-  BOM_Version: string;
-  Planned_Qty: string;
-  Production_Date: string;
-  Status: string;
-  Actual_Qty: string;
-  Started_By: string;
-  Started_At: string;
-  Created_By: string;
-  Notes: string;
-  Job_No: string;
-  Order_No: string;
-  FMS_Template_ID: string;
-}
-
-export interface PlanMaterialRow {
-  Plan_ID: string;
-  SKU: string;
-  Item_Name: string;
-  Qty_Per_Unit: string;
-  Required_Qty: string;
-  UOM: string;
-  Allocated_Qty: string;
-  Shortage_Qty: string;
-  Consumed_Qty: string;
-  Status: string;
-  /** Every row carries when it was written — a plan's materials are an audit trail too. */
-  Created_At: string;
-}
 
 export interface PlanMaterial {
   sku: string;
@@ -130,72 +91,87 @@ export interface Plan {
   fmsTemplateId: string;
 }
 
-export async function listPlanRows(): Promise<PlanRow[]> {
-  return getModuleRows<PlanRow>(PLANS_KEY);
+const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
+
+/**
+ * `YYYY-MM-DD` in IST — the exact inverse of `parseStamp`'s IST wall-clock reading for a
+ * plain date, and what `<input type="date">` submits (`plan-form.tsx`). Deliberately NOT
+ * `.toISOString()` (contrast `Timestamp`/`Started_At` below): `plan-board.tsx` renders
+ * `plan.productionDate` straight into the page as text, and both `allocateAcrossPool`'s
+ * and this file's own sort use `localeCompare` on it — a full ISO instant would still sort
+ * correctly (ISO-8601 UTC strings are lexicographically ordered) but would display as e.g.
+ * "2026-09-19T18:30:00.000Z" instead of "2026-09-20", and would silently roll onto the
+ * previous calendar day for anyone reading it as a date. Same fragility class CLAUDE.md
+ * documents for Tasks' `Due_Date` — kept as a bare wall-clock string for the same reason.
+ */
+function toIstDateStamp(date: Date | null): string {
+  if (!date) return "";
+  const ist = new Date(date.getTime() + IST_OFFSET_MS);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${ist.getUTCFullYear()}-${pad(ist.getUTCMonth() + 1)}-${pad(ist.getUTCDate())}`;
 }
 
-export async function listPlanMaterialRows(): Promise<PlanMaterialRow[]> {
-  return getModuleRows<PlanMaterialRow>(MATERIALS_KEY);
-}
+type PlanRow = InferSelectModel<typeof productionPlans>;
+type PlanMaterialRow = InferSelectModel<typeof planMaterials>;
 
-function toMaterial(row: PlanMaterialRow): PlanMaterial {
+function materialFromRow(row: PlanMaterialRow): PlanMaterial {
   return {
-    sku: row.SKU,
-    itemName: row.Item_Name,
-    qtyPerUnit: numOr0(row.Qty_Per_Unit),
-    requiredQty: numOr0(row.Required_Qty),
-    uom: row.UOM,
-    allocatedQty: numOr0(row.Allocated_Qty),
-    shortageQty: numOr0(row.Shortage_Qty),
-    consumedQty: numOr0(row.Consumed_Qty),
-    status: row.Status,
+    sku: row.sku,
+    itemName: row.itemName,
+    qtyPerUnit: numOr0(row.qtyPerUnit),
+    requiredQty: numOr0(row.requiredQty),
+    uom: row.uom,
+    allocatedQty: numOr0(row.allocatedQty),
+    shortageQty: numOr0(row.shortageQty),
+    consumedQty: numOr0(row.consumedQty),
+    status: row.status,
   };
 }
 
-export function joinPlans(plans: PlanRow[], materials: PlanMaterialRow[]): Plan[] {
+function planFromRow(row: PlanRow, materials: PlanMaterial[]): Plan {
+  return {
+    planId: row.id,
+    timestamp: row.timestamp.toISOString(),
+    productName: row.productName,
+    productSku: row.productSku,
+    bomId: row.bomId,
+    bomVersion: Number(row.bomVersion) || 1,
+    plannedQty: numOr0(row.plannedQty),
+    productionDate: toIstDateStamp(row.productionDate),
+    status: row.status,
+    actualQty: row.actualQty !== null ? numOr0(row.actualQty) : null,
+    startedBy: row.startedBy,
+    startedAt: row.startedAt ? row.startedAt.toISOString() : "",
+    createdBy: row.createdBy,
+    notes: row.notes,
+    materials,
+    jobNo: row.jobNo,
+    orderNo: row.orderNo,
+    fmsTemplateId: row.fmsTemplateId,
+  };
+}
+
+export async function listPlans(): Promise<Plan[]> {
+  const orgId = await getTenantOrgId();
+  const [planRows, materialRows] = await Promise.all([
+    listByOrg(productionPlans, orgId),
+    listByOrg(planMaterials, orgId),
+  ]);
+
   const byPlan = new Map<string, PlanMaterial[]>();
-  for (const row of materials) {
-    if (!row.Plan_ID) continue;
-    const list = byPlan.get(row.Plan_ID) ?? [];
-    list.push(toMaterial(row));
-    byPlan.set(row.Plan_ID, list);
+  for (const row of materialRows) {
+    const list = byPlan.get(row.planId) ?? [];
+    list.push(materialFromRow(row));
+    byPlan.set(row.planId, list);
   }
 
-  return plans
-    .filter((p) => p.Plan_ID)
-    .map((p) => ({
-      planId: p.Plan_ID,
-      timestamp: p.Timestamp,
-      productName: p.Product_Name,
-      productSku: p.Product_SKU,
-      bomId: p.BOM_ID,
-      bomVersion: Number(p.BOM_Version) || 1,
-      plannedQty: numOr0(p.Planned_Qty),
-      productionDate: p.Production_Date,
-      status: (p.Status as PlanStatus) || "Ready",
-      actualQty: p.Actual_Qty ? numOr0(p.Actual_Qty) : null,
-      startedBy: p.Started_By,
-      startedAt: p.Started_At,
-      createdBy: p.Created_By,
-      notes: p.Notes,
-      materials: byPlan.get(p.Plan_ID) ?? [],
-      jobNo: p.Job_No,
-      orderNo: p.Order_No,
-      fmsTemplateId: p.FMS_Template_ID,
-    }))
+  return planRows
+    .map((row) => planFromRow(row, byPlan.get(row.id) ?? []))
     .sort(
       (a, b) =>
         a.productionDate.localeCompare(b.productionDate) ||
         byNewest(a.timestamp, b.timestamp)
     );
-}
-
-export async function listPlans(): Promise<Plan[]> {
-  const [plans, materials] = await Promise.all([
-    listPlanRows(),
-    listPlanMaterialRows(),
-  ]);
-  return joinPlans(plans, materials);
 }
 
 /**
@@ -206,23 +182,22 @@ export async function listPlans(): Promise<Plan[]> {
  * in. It lives here rather than in ledger.ts because plans own the data it derives from.
  */
 export async function committedBySku(): Promise<Map<string, number>> {
-  const [plans, materials] = await Promise.all([
-    listPlanRows().catch(() => [] as PlanRow[]),
-    listPlanMaterialRows().catch(() => [] as PlanMaterialRow[]),
+  const orgId = await getTenantOrgId();
+  const [planRows, materialRows] = await Promise.all([
+    listByOrg(productionPlans, orgId).catch(() => [] as PlanRow[]),
+    listByOrg(planMaterials, orgId).catch(() => [] as PlanMaterialRow[]),
   ]);
 
   const reserving = new Set(
-    plans
-      .filter((p) => RESERVING.includes(p.Status as PlanStatus))
-      .map((p) => p.Plan_ID)
+    planRows.filter((p) => RESERVING.includes(p.status as PlanStatus)).map((p) => p.id)
   );
 
   const out = new Map<string, number>();
-  for (const row of materials) {
-    if (!reserving.has(row.Plan_ID) || !row.SKU) continue;
-    const held = numOr0(row.Allocated_Qty) - numOr0(row.Consumed_Qty);
+  for (const row of materialRows) {
+    if (!reserving.has(row.planId) || !row.sku) continue;
+    const held = numOr0(row.allocatedQty) - numOr0(row.consumedQty);
     if (held <= 0) continue;
-    out.set(row.SKU, round3((out.get(row.SKU) ?? 0) + held));
+    out.set(row.sku, round3((out.get(row.sku) ?? 0) + held));
   }
   return out;
 }
@@ -382,6 +357,7 @@ export async function createPlans(
   createdBy: string
 ): Promise<Plan[]> {
   validateLines(lines);
+  const orgId = await getTenantOrgId();
   const { boms, free } = await planContext();
   const prepared = toAllocationLines(lines, boms);
   const results = allocateAcrossPool(
@@ -390,9 +366,9 @@ export async function createPlans(
   );
   const byKey = new Map(results.map((r) => [r.key, r]));
 
-  const now = nowStamp();
-  const planRows: string[][] = [];
-  const materialRows: string[][] = [];
+  const now = new Date();
+  const planRows: (typeof productionPlans.$inferInsert)[] = [];
+  const materialRows: (typeof planMaterials.$inferInsert)[] = [];
   const created: Plan[] = [];
 
   for (const { line, bom, alloc } of prepared) {
@@ -401,54 +377,55 @@ export async function createPlans(
 
     const planId = generateId("PLAN");
     const jobNo = generateId("JOB");
+    const productionDate = parseStamp(line.productionDate);
 
-    const row: PlanRow = {
-      Plan_ID: planId,
-      Timestamp: now,
-      Product_Name: bom.productName,
-      Product_SKU: bom.productSku,
-      BOM_ID: bom.bomId,
-      BOM_Version: String(bom.version),
-      Planned_Qty: String(line.plannedQty),
-      Production_Date: line.productionDate,
-      Status: result.status,
-      Actual_Qty: "",
-      Started_By: "",
-      Started_At: "",
-      Created_By: createdBy,
-      Notes: line.notes ?? "",
-      Job_No: jobNo,
-      Order_No: line.orderNo?.trim() ?? "",
-      FMS_Template_ID: line.fmsTemplateId?.trim() ?? "",
-    };
-    planRows.push(recordToRow(PLANS_KEY, row));
+    planRows.push({
+      id: planId,
+      orgId,
+      timestamp: now,
+      productName: bom.productName,
+      productSku: bom.productSku,
+      bomId: bom.bomId,
+      bomVersion: String(bom.version),
+      plannedQty: String(line.plannedQty),
+      productionDate,
+      status: result.status,
+      actualQty: null,
+      startedBy: "",
+      startedAt: null,
+      createdBy,
+      notes: line.notes ?? "",
+      jobNo,
+      orderNo: line.orderNo?.trim() ?? "",
+      fmsTemplateId: line.fmsTemplateId?.trim() ?? "",
+    });
 
     for (const m of result.materials) {
-      const materialRow: PlanMaterialRow = {
-        Plan_ID: planId,
-        SKU: m.sku,
-        Item_Name: m.itemName,
-        Qty_Per_Unit: String(m.qtyPerUnit),
-        Required_Qty: String(m.requiredQty),
-        UOM: m.uom,
-        Allocated_Qty: String(m.allocatedQty),
-        Shortage_Qty: String(m.shortageQty),
-        Consumed_Qty: "",
-        Status: m.shortageQty > 0 ? "Shortage" : "Allocated",
-        Created_At: now,
-      };
-      materialRows.push(recordToRow(MATERIALS_KEY, materialRow));
+      materialRows.push({
+        planId,
+        orgId,
+        sku: m.sku,
+        itemName: m.itemName,
+        qtyPerUnit: String(m.qtyPerUnit),
+        requiredQty: String(m.requiredQty),
+        uom: m.uom,
+        allocatedQty: String(m.allocatedQty),
+        shortageQty: String(m.shortageQty),
+        consumedQty: null,
+        status: m.shortageQty > 0 ? "Shortage" : "Allocated",
+        createdAt: now,
+      });
     }
 
     created.push({
       planId,
-      timestamp: now,
+      timestamp: now.toISOString(),
       productName: bom.productName,
       productSku: bom.productSku,
       bomId: bom.bomId,
       bomVersion: bom.version,
       plannedQty: line.plannedQty,
-      productionDate: line.productionDate,
+      productionDate: toIstDateStamp(productionDate),
       status: result.status,
       actualQty: null,
       startedBy: "",
@@ -475,8 +452,8 @@ export async function createPlans(
   // Materials first: a plan row with no materials would read as "nothing required" and
   // reserve nothing, whereas orphan material rows belong to no reserving plan and are
   // ignored by `committedBySku`. Neither is good, but only the first over-promises stock.
-  await appendModuleRows(MATERIALS_KEY, materialRows);
-  await appendModuleRows(PLANS_KEY, planRows);
+  if (materialRows.length > 0) await db.insert(planMaterials).values(materialRows);
+  if (planRows.length > 0) await db.insert(productionPlans).values(planRows);
 
   return created;
 }
@@ -491,24 +468,13 @@ async function loadPlan(planId: string): Promise<Plan> {
   return plan;
 }
 
-/** Row numbers of one plan's material rows — a plan spans several. */
-async function materialRowNumbers(planId: string): Promise<Map<string, number>> {
-  const rows = await listPlanMaterialRows();
-  const out = new Map<string, number>();
-  rows.forEach((row, i) => {
-    if (row.Plan_ID === planId) out.set(row.SKU, i + 2); // +2: header row, 1-indexed
-  });
-  return out;
-}
-
 async function setPlanFields(
+  orgId: string,
   planId: string,
-  fields: Record<string, string | number>
+  fields: Partial<typeof productionPlans.$inferInsert>
 ): Promise<void> {
-  const rows = await listPlanRows();
-  const index = rows.findIndex((r) => r.Plan_ID === planId);
-  if (index === -1) throw new PlanError("Plan nahi mila.");
-  await updateModuleCells(PLANS_KEY, [{ rowNumber: index + 2, fields }]);
+  const updated = await updateById(productionPlans, orgId, planId, fields);
+  if (!updated) throw new PlanError("Plan nahi mila.");
 }
 
 /**
@@ -520,6 +486,7 @@ async function setPlanFields(
  * twice.
  */
 export async function reallocatePlan(planId: string): Promise<Plan> {
+  const orgId = await getTenantOrgId();
   const plan = await loadPlan(planId);
   if (!OPEN.includes(plan.status)) {
     throw new PlanError("Sirf Ready ya Shortage plan dobara check ho sakta hai.");
@@ -527,9 +494,8 @@ export async function reallocatePlan(planId: string): Promise<Plan> {
 
   const [ledger, committed] = await Promise.all([listLedger(), committedBySku()]);
   const onHand = onHandBySku(ledger);
-  const rowNumbers = await materialRowNumbers(planId);
 
-  const updates: { rowNumber: number; fields: Record<string, string | number> }[] = [];
+  const writes: Promise<unknown>[] = [];
   const materials = plan.materials.map((m) => {
     if (m.shortageQty <= 0) return m;
 
@@ -539,31 +505,39 @@ export async function reallocatePlan(planId: string): Promise<Plan> {
 
     const allocatedQty = round3(m.allocatedQty + topUp);
     const shortageQty = round3(m.shortageQty - topUp);
-    const rowNumber = rowNumbers.get(m.sku);
-    if (rowNumber) {
-      updates.push({
-        rowNumber,
-        fields: {
-          Allocated_Qty: String(allocatedQty),
-          Shortage_Qty: String(shortageQty),
-          Status: shortageQty > 0 ? "Shortage" : "Allocated",
-        },
-      });
-    }
+
+    writes.push(
+      db
+        .update(planMaterials)
+        .set({
+          allocatedQty: String(allocatedQty),
+          shortageQty: String(shortageQty),
+          status: shortageQty > 0 ? "Shortage" : "Allocated",
+        })
+        .where(
+          and(
+            eq(planMaterials.orgId, orgId),
+            eq(planMaterials.planId, planId),
+            eq(planMaterials.sku, m.sku)
+          )
+        )
+    );
+
     return { ...m, allocatedQty, shortageQty };
   });
 
-  if (updates.length > 0) await updateModuleCells(MATERIALS_KEY, updates);
+  if (writes.length > 0) await Promise.all(writes);
 
   const status: PlanStatus = materials.some((m) => m.shortageQty > 0)
     ? "Shortage"
     : "Ready";
-  if (status !== plan.status) await setPlanFields(planId, { Status: status });
+  if (status !== plan.status) await setPlanFields(orgId, planId, { status });
 
   return { ...plan, status, materials };
 }
 
 export async function cancelPlan(planId: string): Promise<Plan> {
+  const orgId = await getTenantOrgId();
   const plan = await loadPlan(planId);
   if (!OPEN.includes(plan.status)) {
     throw new PlanError(
@@ -574,7 +548,7 @@ export async function cancelPlan(planId: string): Promise<Plan> {
   }
   // Nothing to reverse: no material has been issued, and dropping out of the reserving
   // statuses releases the reservation on its own.
-  await setPlanFields(planId, { Status: "Cancelled" });
+  await setPlanFields(orgId, planId, { status: "Cancelled" });
   return { ...plan, status: "Cancelled" };
 }
 
@@ -584,11 +558,19 @@ export async function cancelPlan(planId: string): Promise<Plan> {
  * Line's own last step is what writes the FG stock (via its own Ledger Movement Action,
  * using the quantity that actually passed every stage) — completePlan() must not also
  * write one, or the same production would double-count.
+ *
+ * FMS is now a migrated, Postgres-backed module (fms/engine.ts owns fms_runs) — the real
+ * check lives there (fms/engine.ts's own hasFmsLine, exported for exactly this caller).
+ * Imported *dynamically* rather than with a top-level `import`: fms/engine.ts already
+ * statically imports fms/dataSourceResolver.ts, which in turn statically imports this same
+ * file (listPlans/Plan/PlanMaterial, for an "Existing FMS" pull of a plan's own fields) —
+ * a top-level import back here would complete a real circular module graph. Deferring the
+ * import to call time (same pattern dataSourceResolver.ts itself uses for its FMS_RUNS/
+ * THIS_FLOW cases) avoids that while still calling the exact same live function.
  */
 async function hasFmsLine(planId: string): Promise<boolean> {
-  const runs = await tryModule(() => getModuleRows<{ Context_Ref: string }>("FMS_RUNS"));
-  if (!runs) return false;
-  return runs.some((r) => r.Context_Ref === `PRODUCTION_PLANS:${planId}`);
+  const { hasFmsLine: hasFmsLineEngine } = await import("@/lib/fms/engine");
+  return hasFmsLineEngine(planId);
 }
 
 /**
@@ -606,6 +588,7 @@ async function hasFmsLine(planId: string): Promise<boolean> {
  * quantity from Start Production.
  */
 export async function completePlan(planId: string, completedBy: string): Promise<Plan> {
+  const orgId = await getTenantOrgId();
   const plan = await loadPlan(planId);
   if (plan.status !== "In_Production") {
     throw new PlanError("Sirf chal raha plan complete ho sakta hai.");
@@ -633,7 +616,7 @@ export async function completePlan(planId: string, completedBy: string): Promise
     });
   }
 
-  await setPlanFields(planId, { Status: "Completed" });
+  await setPlanFields(orgId, planId, { status: "Completed" });
   return { ...plan, status: "Completed" };
 }
 
@@ -645,8 +628,8 @@ export async function completePlan(planId: string, completedBy: string): Promise
  * what is physically on the shelf.
  *
  * Every material is checked against its allowance before a single `Out` is written.
- * Sheets has no transaction, so a mid-way failure would leave a half-consumed plan —
- * checking up front is what keeps that from happening.
+ * Postgres has no cross-request transaction held open here either, so a mid-way failure
+ * would leave a half-consumed plan — checking up front is what keeps that from happening.
  */
 export async function startProduction(
   planId: string,
@@ -657,6 +640,7 @@ export async function startProduction(
     throw new PlanError("Actual quantity 0 se zyada honi chahiye.");
   }
 
+  const orgId = await getTenantOrgId();
   const plan = await loadPlan(planId);
   if (!OPEN.includes(plan.status)) {
     throw new PlanError("Ye plan production ke liye taiyar nahi hai.");
@@ -701,29 +685,32 @@ export async function startProduction(
   // Allocated is set equal to Consumed, and that is what releases the leftover: committed
   // is measured as Allocated − Consumed, so the difference collapses to zero. What was
   // planned is not lost — Required_Qty still holds it.
-  const rowNumbers = await materialRowNumbers(planId);
-  const updates: { rowNumber: number; fields: Record<string, string | number> }[] = [];
-  for (const draw of draws) {
-    const rowNumber = rowNumbers.get(draw.material.sku);
-    if (!rowNumber) continue;
-    updates.push({
-      rowNumber,
-      fields: {
-        Allocated_Qty: String(draw.consume),
-        Shortage_Qty: "0",
-        Consumed_Qty: String(draw.consume),
-        Status: "Consumed",
-      },
-    });
-  }
-  if (updates.length > 0) await updateModuleCells(MATERIALS_KEY, updates);
+  await Promise.all(
+    draws.map((draw) =>
+      db
+        .update(planMaterials)
+        .set({
+          allocatedQty: String(draw.consume),
+          shortageQty: "0",
+          consumedQty: String(draw.consume),
+          status: "Consumed",
+        })
+        .where(
+          and(
+            eq(planMaterials.orgId, orgId),
+            eq(planMaterials.planId, planId),
+            eq(planMaterials.sku, draw.material.sku)
+          )
+        )
+    )
+  );
 
-  const startedAt = nowStamp();
-  await setPlanFields(planId, {
-    Status: "In_Production",
-    Actual_Qty: String(actualQty),
-    Started_By: userId,
-    Started_At: startedAt,
+  const startedAt = new Date();
+  await setPlanFields(orgId, planId, {
+    status: "In_Production",
+    actualQty: String(actualQty),
+    startedBy: userId,
+    startedAt,
   });
 
   return {
@@ -731,7 +718,7 @@ export async function startProduction(
     status: "In_Production",
     actualQty,
     startedBy: userId,
-    startedAt,
+    startedAt: startedAt.toISOString(),
     materials: draws.map((d) => ({
       ...d.material,
       allocatedQty: d.consume,

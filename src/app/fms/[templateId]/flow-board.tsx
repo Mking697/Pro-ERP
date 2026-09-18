@@ -23,7 +23,6 @@ import { formatDueDisplay } from "@/lib/formatDate";
 import { parseStamp, byNewest } from "@/lib/timestamp";
 import { parseStepDataSourceConfig, parseFormData, type FormField } from "@/lib/fms/dataSource";
 import { TableSkeleton } from "@/components/loading-states";
-import SheetNotConnected from "@/components/sheet-not-connected";
 import EmptyState from "@/components/empty-state";
 import { Workflow } from "lucide-react";
 import { useT } from "@/components/preferences-provider";
@@ -41,7 +40,6 @@ interface InstancesResponse {
   steps?: StepDef[];
   runs?: FmsRunRecord[];
   references?: Record<string, string>;
-  setupRequired?: string | null;
 }
 
 /** One row of the board — every FMS_RUNS row of one instance, grouped. */
@@ -82,7 +80,6 @@ export default function FlowBoard({ templateId }: { templateId: string }) {
   const [runs, setRuns] = useState<FmsRunRecord[]>([]);
   const [references, setReferences] = useState<Record<string, string>>({});
   const [userMap, setUserMap] = useState<Record<string, string>>({});
-  const [setupRequired, setSetupRequired] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [openInstanceId, setOpenInstanceId] = useState<string | null>(null);
@@ -100,7 +97,6 @@ export default function FlowBoard({ templateId }: { templateId: string }) {
           setSteps(data.steps ?? []);
           setRuns(data.runs ?? []);
           setReferences(data.references ?? {});
-          setSetupRequired(data.setupRequired ?? null);
 
           const map: Record<string, string> = {};
           for (const u of usersData.users ?? []) map[u.userId] = u.fullName;
@@ -141,10 +137,6 @@ export default function FlowBoard({ templateId }: { templateId: string }) {
 
   if (loading) {
     return <TableSkeleton columns={5} label={t("Flow load ho raha hai")} />;
-  }
-
-  if (setupRequired) {
-    return <SheetNotConnected what={setupRequired} />;
   }
 
   if (instances.length === 0) {

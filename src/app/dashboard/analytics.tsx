@@ -1,6 +1,5 @@
 import Link from "next/link";
 import type { SessionPayload } from "@/lib/auth/session";
-import { tryModule } from "@/lib/moduleSheets";
 import { listTasks, type TaskRecord } from "@/lib/tasks";
 import { listUsers } from "@/lib/auth/users";
 import { listRecurringTasks } from "@/lib/recurringTasks";
@@ -38,7 +37,6 @@ import { getInventorySnapshot, itemsNeedingReorder } from "@/lib/inventory/servi
 import { listIndents } from "@/lib/inventory/indents";
 import { listBoms } from "@/lib/inventory/bom";
 import { listPlans } from "@/lib/inventory/plans";
-import { tenantCached } from "@/lib/cache";
 import {
   canSeeReport,
   getReport,
@@ -73,9 +71,8 @@ async function safe<T>(fn: () => Promise<T>): Promise<T | null> {
 /**
  * Narrows one module's rows to the reader's own work.
  *
- * `null` means the sheet is not connected or the read failed, and must stay `null` — the
- * section renders a "not set up" state from it, which is a different thing from "you have
- * nothing here".
+ * `null` means the read failed and must stay `null` — the section is skipped entirely
+ * rather than rendering a chart built on a partial or wrong read.
  */
 function scopeFor<T>(
   rows: T[] | null,
@@ -183,40 +180,39 @@ export default async function Analytics({
   };
   const needs = (id: string) => shows(id);
 
-  // Only read the sheets this viewer is actually allowed to see — every extra read
-  // spends the shared Sheets quota for no one's benefit.
+  // Only read the modules this viewer is actually allowed to see — every extra read is
+  // wasted work for no one's benefit.
   //
-  // Cached briefly, per organization. Reports now span ten modules, so one render can
-  // fire well over a dozen sheet reads, and a public share link puts that behind a URL
-  // anybody may refresh. A chart covering a date range is not stock on a shelf: half a
-  // minute of staleness costs a reader nothing, where an out-of-date free-stock figure
-  // would let two people promise the same material. That is why this caches and the
-  // inventory screens do not.
+  // No caching here anymore. This used to run through `tenantCached` (30s TTL, per
+  // organization) purely to survive Google Sheets' per-minute API quota and full-sheet
+  // scan cost — CLAUDE.md documents that quota being hit for real during development. A
+  // report is now a handful of indexed `WHERE org_id = $1` reads against Postgres, which
+  // is both fast enough not to need it and, for a share link in particular, a real
+  // correctness improvement: a public link served stale data for up to 30 seconds before,
+  // and a viewer refreshing to check "is this current" got a false negative. If a future
+  // report render set is measurably expensive again, add a narrowly-scoped cache then —
+  // per the migration plan's own stated default, this isn't pre-built speculatively.
   //
-  // Each read degrades to null on its own rather than throwing, so one exhausted quota
-  // or one disconnected sheet leaves the rest of the report standing.
+  // Each read still degrades to null on its own rather than throwing, so one failure (a
+  // bad query, a genuinely empty module) leaves the rest of the report standing.
   const read = () =>
-    tenantCached(session.orgId, `analytics:${only ?? "all"}:${range.key}:${from ?? ""}:${to ?? ""}:${access.join(",")}`, 30_000, () =>
-      Promise.all([
-        needs("tasks") || needs("delegation") || needs("performance")
-          ? safe(() => tryModule(() => listTasks()))
-          : null,
-        needs("performance") || needs("delegation")
-          ? listUsers().catch(() => [])
-          : Promise.resolve([]),
-        needs("recurring") ? safe(() => tryModule(() => listRecurringTasks())) : null,
-        needs("inward") ? safe(() => tryModule(() => listInwardEntries())) : null,
-        needs("iqc") ? safe(() => tryModule(() => listFailureLog())) : null,
-        needs("iqc") || needs("ims")
-          ? safe(() => tryModule(() => listImsInward()))
-          : null,
-        needs("inventory") ? safe(() => getInventorySnapshot()) : null,
-        needs("indents") ? safe(() => tryModule(() => listIndents())) : null,
-        needs("bom") ? safe(() => tryModule(() => listBoms())) : null,
-        needs("ppc") ? safe(() => tryModule(() => listPlans())) : null,
-        needs("performance") ? safe(() => tryModule(() => listAllFmsRuns())) : null,
-      ])
-    );
+    Promise.all([
+      needs("tasks") || needs("delegation") || needs("performance")
+        ? safe(() => listTasks())
+        : null,
+      needs("performance") || needs("delegation")
+        ? listUsers().catch(() => [])
+        : Promise.resolve([]),
+      needs("recurring") ? safe(() => listRecurringTasks()) : null,
+      needs("inward") ? safe(() => listInwardEntries()) : null,
+      needs("iqc") ? safe(() => listFailureLog()) : null,
+      needs("iqc") || needs("ims") ? safe(() => listImsInward()) : null,
+      needs("inventory") ? safe(() => getInventorySnapshot()) : null,
+      needs("indents") ? safe(() => listIndents()) : null,
+      needs("bom") ? safe(() => listBoms()) : null,
+      needs("ppc") ? safe(() => listPlans()) : null,
+      needs("performance") ? safe(() => listAllFmsRuns()) : null,
+    ]);
 
   const [
     allTasks,

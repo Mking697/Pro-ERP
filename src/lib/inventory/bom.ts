@@ -1,26 +1,30 @@
-import {
-  appendModuleRows,
-  getModuleRows,
-  recordToRow,
-  updateModuleCells,
-} from "@/lib/moduleSheets";
+import type { InferSelectModel } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
+import { bom } from "@/db/schema";
+import { db } from "@/db/client";
+import { getTenantOrgId } from "@/lib/tenant";
 import { generateId } from "@/lib/id";
 import { numOr0 } from "@/lib/inventory/items";
 import { suggestProductSku } from "@/lib/inventory/constants";
-import { byNewest, nowStamp } from "@/lib/timestamp";
-
-const MODULE_KEY = "BOM";
+import { byNewest } from "@/lib/timestamp";
 
 export { suggestProductSku };
 
 /**
  * A component is an inventory item today. When Semi-FG arrives, a BOM line will be able
  * to point at another product instead — the column exists now because adding it later
- * would mean migrating every customer's sheet.
+ * would mean migrating every customer's data.
  */
 export const COMPONENT_TYPES = ["Item", "Product"] as const;
 export type ComponentType = (typeof COMPONENT_TYPES)[number];
 
+/**
+ * Mirrors the pre-Postgres flat-row shape exactly (same field names, same PascalCase
+ * casing, everything a string) even though the persistence underneath is now the `bom`
+ * Postgres table. `bom`'s primary key is the composite `(bom_id, line_no)` — per repo.ts's
+ * `IdentifiedTable` doc comment this does NOT satisfy the generic layer, so every query
+ * here is a direct, bespoke Drizzle query instead.
+ */
 export interface BomRow {
   BOM_ID: string;
   Product_Name: string;
@@ -58,8 +62,30 @@ export interface Bom {
   lines: BomLine[];
 }
 
+type BomRowDb = InferSelectModel<typeof bom>;
+
+function rowToRecord(row: BomRowDb): BomRow {
+  return {
+    BOM_ID: row.bomId,
+    Product_Name: row.productName,
+    Product_SKU: row.productSku,
+    Version: row.version,
+    Line_No: row.lineNo,
+    Component_SKU: row.componentSku,
+    Component_Name: row.componentName,
+    Component_Type: row.componentType,
+    Qty_Per_Unit: row.qtyPerUnit ?? "",
+    UOM: row.uom,
+    Status: row.status,
+    Created_At: row.createdAt.toISOString(),
+    Created_By: row.createdBy,
+  };
+}
+
 export async function listBomRows(): Promise<BomRow[]> {
-  return getModuleRows<BomRow>(MODULE_KEY);
+  const orgId = await getTenantOrgId();
+  const rows = await db.select().from(bom).where(eq(bom.orgId, orgId));
+  return rows.map(rowToRecord);
 }
 
 /** Groups the flat rows back into one object per BOM, newest version first. */
@@ -70,7 +96,7 @@ export function groupBoms(rows: BomRow[]): Bom[] {
     if (!row.BOM_ID) continue;
 
     const existing = byId.get(row.BOM_ID);
-    const bom: Bom =
+    const bomEntry: Bom =
       existing ??
       {
         bomId: row.BOM_ID,
@@ -84,8 +110,8 @@ export function groupBoms(rows: BomRow[]): Bom[] {
       };
 
     if (row.Component_SKU) {
-      bom.lines.push({
-        lineNo: Number(row.Line_No) || bom.lines.length + 1,
+      bomEntry.lines.push({
+        lineNo: Number(row.Line_No) || bomEntry.lines.length + 1,
         componentSku: row.Component_SKU,
         componentName: row.Component_Name,
         componentType: (row.Component_Type as ComponentType) || "Item",
@@ -94,11 +120,11 @@ export function groupBoms(rows: BomRow[]): Bom[] {
       });
     }
 
-    if (!existing) byId.set(row.BOM_ID, bom);
+    if (!existing) byId.set(row.BOM_ID, bomEntry);
   }
 
-  for (const bom of byId.values()) {
-    bom.lines.sort((a, b) => a.lineNo - b.lineNo);
+  for (const bomEntry of byId.values()) {
+    bomEntry.lines.sort((a, b) => a.lineNo - b.lineNo);
   }
 
   return [...byId.values()].sort(
@@ -176,9 +202,9 @@ export async function createBom(input: CreateBomInput): Promise<Bom> {
     seen.add(line.componentSku);
   }
 
-  // One read, reused for both the version lookup and the SKU collision check — the
-  // Sheets per-minute quota is shared across every tenant, so a second fetch here costs
-  // every organization, not just this one.
+  const orgId = await getTenantOrgId();
+
+  // One read, reused for both the version lookup and the SKU collision check.
   const boms = await listBoms();
   const normalized = productName.toLowerCase();
   const existing =
@@ -214,30 +240,28 @@ export async function createBom(input: CreateBomInput): Promise<Bom> {
   }
 
   const bomId = generateId("BOM");
-  const now = nowStamp();
+  const now = new Date();
 
-  const rows = input.lines.map((line, i) => {
-    const row: BomRow = {
-      BOM_ID: bomId,
-      Product_Name: productName,
-      Product_SKU: productSku,
-      Version: String(version),
-      Line_No: String(i + 1),
-      Component_SKU: line.componentSku,
-      Component_Name: line.componentName,
-      Component_Type: line.componentType ?? "Item",
-      Qty_Per_Unit: String(line.qtyPerUnit),
-      UOM: line.uom,
-      Status: "Active",
-      Created_At: now,
-      Created_By: input.createdBy,
-    };
-    return recordToRow(MODULE_KEY, row);
-  });
+  const rows = input.lines.map((line, i) => ({
+    bomId,
+    orgId,
+    productName,
+    productSku,
+    version: String(version),
+    lineNo: String(i + 1),
+    componentSku: line.componentSku,
+    componentName: line.componentName,
+    componentType: line.componentType ?? "Item",
+    qtyPerUnit: String(line.qtyPerUnit),
+    uom: line.uom,
+    status: "Active" as const,
+    createdAt: now,
+    createdBy: input.createdBy,
+  }));
 
-  // Every line in one call — a BOM is written as a unit, and it keeps the request cost
+  // Every line in one insert — a BOM is written as a unit, and it keeps the request cost
   // flat however many components a product has.
-  await appendModuleRows(MODULE_KEY, rows);
+  await db.insert(bom).values(rows);
 
   // Archive last: if this fails, two Active BOMs is visible and fixable, where archiving
   // first and then failing to write would leave the product with no BOM at all.
@@ -251,7 +275,7 @@ export async function createBom(input: CreateBomInput): Promise<Bom> {
     productSku,
     version,
     status: "Active",
-    createdAt: now,
+    createdAt: now.toISOString(),
     createdBy: input.createdBy,
     lines: input.lines.map((line, i) => ({
       lineNo: i + 1,
@@ -266,13 +290,9 @@ export async function createBom(input: CreateBomInput): Promise<Bom> {
 
 /** Sets the status on every row of one BOM — they all carry it. */
 export async function setBomStatus(bomId: string, status: string): Promise<void> {
-  // A BOM spans many rows, so positions come from the full list rather than a
-  // key-to-row index, which keeps only the first match per key.
-  const rows = await listBomRows();
-  const targets = rows
-    .map((row, i) => ({ row, rowNumber: i + 2 })) // +2: header row, and 1-indexed
-    .filter(({ row }) => row.BOM_ID === bomId)
-    .map(({ rowNumber }) => ({ rowNumber, fields: { Status: status } }));
-
-  await updateModuleCells(MODULE_KEY, targets);
+  const orgId = await getTenantOrgId();
+  await db
+    .update(bom)
+    .set({ status: status as "Active" | "Archived" })
+    .where(and(eq(bom.orgId, orgId), eq(bom.bomId, bomId)));
 }

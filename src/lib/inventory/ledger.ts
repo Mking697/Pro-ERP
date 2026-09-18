@@ -1,12 +1,15 @@
-import { appendModuleRow, appendModuleRows, getModuleRows, recordToRow } from "@/lib/moduleSheets";
+import type { InferSelectModel } from "drizzle-orm";
+import { stockLedger } from "@/db/schema";
+import { db } from "@/db/client";
+import { listByOrg, insertRecord } from "@/db/repo";
+import { getTenantOrgId } from "@/lib/tenant";
 import { generateId } from "@/lib/id";
 import { num, numOr0, type ItemRecord } from "@/lib/inventory/items";
 import type { Direction, LedgerSource, StockStatus } from "@/lib/inventory/constants";
 // round3 lives with the allocation, which imports nothing at all — so a shared rounding
 // rule costs this module no extra dependency.
 import { round3 } from "@/lib/inventory/allocation";
-
-const MODULE_KEY = "STOCK_LEDGER";
+import { stampMs } from "@/lib/timestamp";
 
 export {
   DIRECTIONS,
@@ -15,8 +18,16 @@ export {
   type LedgerSource,
   type StockStatus,
 } from "@/lib/inventory/constants";
-import { nowStamp, stampMs } from "@/lib/timestamp";
 
+/**
+ * Mirrors the pre-Postgres sheet row shape exactly (same field names, same PascalCase
+ * casing, everything a string) even though the persistence underneath is now the
+ * `stock_ledger` Postgres table. `Timestamp` is a real UTC instant written by Postgres'
+ * `defaultNow()` and read back as `.toISOString()` — safe because nothing in this codebase
+ * does a raw string-prefix comparison against a ledger Timestamp (contrast Tasks'
+ * `Due_Date`, which does); every comparison already goes through `stampMs`/`parseStamp`,
+ * both of which parse ISO strings correctly.
+ */
 export interface LedgerRecord {
   Txn_ID: string;
   Timestamp: string;
@@ -32,8 +43,29 @@ export interface LedgerRecord {
   User_ID: string;
 }
 
+type LedgerRow = InferSelectModel<typeof stockLedger>;
+
+function rowToRecord(row: LedgerRow): LedgerRecord {
+  return {
+    Txn_ID: row.id,
+    Timestamp: row.timestamp.toISOString(),
+    SKU: row.sku,
+    Direction: row.direction,
+    Quantity: row.quantity,
+    UOM: row.uom,
+    Source: row.source,
+    Reference_ID: row.referenceId,
+    Location: row.location,
+    Issued_To: row.issuedTo,
+    Remark: row.remark,
+    User_ID: row.userId,
+  };
+}
+
 export async function listLedger(): Promise<LedgerRecord[]> {
-  return getModuleRows<LedgerRecord>(MODULE_KEY);
+  const orgId = await getTenantOrgId();
+  const rows = await listByOrg(stockLedger, orgId);
+  return rows.map(rowToRecord);
 }
 
 export async function listLedgerForSku(sku: string): Promise<LedgerRecord[]> {
@@ -237,23 +269,23 @@ export async function recordMovement(
     }
   }
 
-  const record: LedgerRecord = {
-    Txn_ID: generateId("TXN"),
-    Timestamp: nowStamp(),
-    SKU: input.sku,
-    Direction: input.direction,
-    Quantity: String(input.quantity),
-    UOM: input.uom,
-    Source: input.source,
-    Reference_ID: input.referenceId ?? "",
-    Location: input.location ?? "",
-    Issued_To: input.issuedTo ?? "",
-    Remark: input.remark ?? "",
-    User_ID: input.userId,
-  };
+  const orgId = await getTenantOrgId();
+  const row = await insertRecord(stockLedger, {
+    id: generateId("TXN"),
+    orgId,
+    sku: input.sku,
+    direction: input.direction,
+    quantity: String(input.quantity),
+    uom: input.uom,
+    source: input.source,
+    referenceId: input.referenceId ?? "",
+    location: input.location ?? "",
+    issuedTo: input.issuedTo ?? "",
+    remark: input.remark ?? "",
+    userId: input.userId,
+  });
 
-  await appendModuleRow(MODULE_KEY, recordToRow(MODULE_KEY, record));
-  return record;
+  return rowToRecord(row);
 }
 
 export interface BulkMovementInput {
@@ -268,7 +300,7 @@ export interface BulkMovementInput {
 }
 
 /**
- * Appends many movements in one Sheets write — bulk item import uses this for every row's
+ * Appends many movements in one insert — bulk item import uses this for every row's
  * Opening Stock, so importing hundreds of new items costs one extra write, not one per
  * item the way calling recordMovement() in a loop would.
  *
@@ -280,23 +312,21 @@ export interface BulkMovementInput {
 export async function recordMovementsBulk(inputs: BulkMovementInput[]): Promise<void> {
   if (inputs.length === 0) return;
 
-  const rows = inputs.map((input) => {
-    const record: LedgerRecord = {
-      Txn_ID: generateId("TXN"),
-      Timestamp: nowStamp(),
-      SKU: input.sku,
-      Direction: input.direction,
-      Quantity: String(input.quantity),
-      UOM: input.uom,
-      Source: input.source,
-      Reference_ID: "",
-      Location: input.location ?? "",
-      Issued_To: "",
-      Remark: input.remark ?? "",
-      User_ID: input.userId,
-    };
-    return recordToRow(MODULE_KEY, record);
-  });
+  const orgId = await getTenantOrgId();
+  const rows = inputs.map((input) => ({
+    id: generateId("TXN"),
+    orgId,
+    sku: input.sku,
+    direction: input.direction,
+    quantity: String(input.quantity),
+    uom: input.uom,
+    source: input.source,
+    referenceId: "",
+    location: input.location ?? "",
+    issuedTo: "",
+    remark: input.remark ?? "",
+    userId: input.userId,
+  }));
 
-  await appendModuleRows(MODULE_KEY, rows);
+  await db.insert(stockLedger).values(rows);
 }

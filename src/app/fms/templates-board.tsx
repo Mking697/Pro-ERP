@@ -15,7 +15,6 @@ import {
 } from "@/components/ui/table";
 import { formatDueDisplay } from "@/lib/formatDate";
 import { CardListSkeleton } from "@/components/loading-states";
-import SheetNotConnected from "@/components/sheet-not-connected";
 import EmptyState from "@/components/empty-state";
 import { Workflow } from "lucide-react";
 import { useT } from "@/components/preferences-provider";
@@ -45,11 +44,10 @@ interface TemplateSummary {
   steps: FmsTemplateStepRecord[];
 }
 
-export default function TemplatesBoard() {
+export default function TemplatesBoard({ isAdmin }: { isAdmin: boolean }) {
   const t = useT();
   const [templates, setTemplates] = useState<TemplateSummary[]>([]);
   const [userMap, setUserMap] = useState<Record<string, string>>({});
-  const [setupRequired, setSetupRequired] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -68,11 +66,10 @@ export default function TemplatesBoard() {
     ])
       .then(
         ([templatesData, usersData]: [
-          { templates?: TemplateSummary[]; setupRequired?: string | null },
+          { templates?: TemplateSummary[] },
           { users: { userId: string; fullName: string }[] },
         ]) => {
           setTemplates(templatesData.templates ?? []);
-          setSetupRequired(templatesData.setupRequired ?? null);
 
           const map: Record<string, string> = {};
           for (const u of usersData.users ?? []) map[u.userId] = u.fullName;
@@ -159,10 +156,6 @@ export default function TemplatesBoard() {
 
   if (loading) {
     return <CardListSkeleton label={t("Templates load ho rahe hain")} />;
-  }
-
-  if (setupRequired) {
-    return <SheetNotConnected what={setupRequired} />;
   }
 
   const userOptions = Object.entries(userMap).map(([userId, fullName]) => ({ userId, fullName }));
@@ -320,7 +313,10 @@ export default function TemplatesBoard() {
         </div>
       )}
 
-      {templates.length > 0 && (
+      {/* Backend-enforced Admin-only (see requireRole(["Admin"]) in
+          src/app/api/fms/reset/route.ts) — a user with only the FMS_ADMIN module grant
+          reaches this tab but must never see a destructive control the API will refuse. */}
+      {isAdmin && templates.length > 0 && (
         <div className="flex justify-end border-t pt-4">
           <Button variant="destructive" size="sm" onClick={() => setResetOpen(true)}>
             {t("Saare FMS Templates + Runs Reset Karein")}
@@ -334,6 +330,7 @@ export default function TemplatesBoard() {
           both — for the whole org. Bigger blast radius than the per-template Delete above,
           so this asks for a typed word a stray click cannot produce, same reasoning as
           organization deletion in src/app/platform/organizations-table.tsx. */}
+      {isAdmin && (
       <Dialog
         open={resetOpen}
         onOpenChange={(v) => {
@@ -346,7 +343,7 @@ export default function TemplatesBoard() {
             <DialogTitle>{t("Saare FMS data reset karein?")}</DialogTitle>
             <DialogDescription>
               {t(
-                "Ye is organization ke SAARE FMS templates (jo bhi design kiye gaye hain), aur unke saare runs — pending tasks aur poori history — permanently delete kar dega. Ye Google Sheets se hi mit jaata hai, wapas nahi aata."
+                "Ye is organization ke SAARE FMS templates (jo bhi design kiye gaye hain), aur unke saare runs — pending tasks aur poori history — permanently delete kar dega. Ye wapas nahi aata."
               )}
             </DialogDescription>
           </DialogHeader>
@@ -378,6 +375,7 @@ export default function TemplatesBoard() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      )}
     </div>
   );
 }

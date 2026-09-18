@@ -114,12 +114,12 @@ export default async function AppShell({
             href="/dashboard"
             className="flex min-w-0 items-center gap-2.5 rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
-            <OrgLogo url={logoUrl} name={org?.Org_Name ?? "Pro ERP"} />
+            <OrgLogo url={logoUrl} name={org?.orgName ?? "Pro ERP"} />
             <span className="min-w-0">
               <span className="block text-sm font-semibold leading-tight">Pro ERP</span>
               {org && (
                 <span className="block truncate text-xs leading-tight text-muted-foreground">
-                  {org.Org_Name}
+                  {org.orgName}
                 </span>
               )}
             </span>

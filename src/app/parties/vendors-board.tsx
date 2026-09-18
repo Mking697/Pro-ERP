@@ -12,7 +12,6 @@ import {
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { TableSkeleton } from "@/components/loading-states";
-import SheetNotConnected from "@/components/sheet-not-connected";
 import { useT } from "@/components/preferences-provider";
 import CreateVendorDialog from "./create-vendor-dialog";
 import PartyImportDialog from "./party-import-dialog";
@@ -21,16 +20,14 @@ import type { VendorRow } from "./types";
 export default function VendorsBoard() {
   const t = useT();
   const [vendors, setVendors] = useState<VendorRow[]>([]);
-  const [setupRequired, setSetupRequired] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [version, setVersion] = useState(0);
 
   useEffect(() => {
     fetch("/api/parties/vendors")
       .then((res) => res.json())
-      .then((data: { vendors?: VendorRow[]; setupRequired?: string | null }) => {
+      .then((data: { vendors?: VendorRow[] }) => {
         setVendors(data.vendors ?? []);
-        setSetupRequired(data.setupRequired ?? null);
       })
       .catch(() => toast.error(t("Vendors load nahi ho paye.")))
       .finally(() => setLoading(false));
@@ -42,10 +39,6 @@ export default function VendorsBoard() {
 
   if (loading) {
     return <TableSkeleton columns={6} label={t("Vendors load ho rahe hain")} />;
-  }
-
-  if (setupRequired) {
-    return <SheetNotConnected what={setupRequired} />;
   }
 
   return (

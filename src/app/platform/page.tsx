@@ -34,8 +34,8 @@ export default async function PlatformPage() {
             <CardTitle>{t("Suspend karne ka matlab")}</CardTitle>
             <CardDescription>
               Suspend karte hi us organization ke saare users agli request par hi bahar ho
-              jaate hain — login block ho jaata hai aur uske crons chalna band. Uska data,
-              sheets aur users sab waise ke waise rehte hain; dobara Active karte hi sab
+              jaate hain — login block ho jaata hai aur uske crons chalna band. Uska data
+              aur users sab waise ke waise rehte hain; dobara Active karte hi sab
               wapas chalne lagta hai. Kuch delete nahi hota.
             </CardDescription>
           </CardHeader>

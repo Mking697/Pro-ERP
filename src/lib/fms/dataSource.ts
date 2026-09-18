@@ -16,10 +16,11 @@ export type FormFieldType = "text" | "number" | "date" | "dropdown" | "attachmen
  * Config for a "lookup" field — the doer picks a row from another connected module (e.g.
  * Customers) and its own value plus every mapped column autofill onto other fields of the
  * *same* step's form, the instant the doer picks it. Generic: works for CUSTOMERS,
- * VENDORS, or any future MODULE_SHEETS key exactly the same way.
+ * VENDORS, or any future source-module key (src/lib/fms/sourceModules.ts) exactly the
+ * same way.
  */
 export interface FormFieldLookup {
-  /** A MODULE_SHEETS key (e.g. "CUSTOMERS") — the module rows are searched/selected from. */
+  /** A source-module key (e.g. "CUSTOMERS") — the module rows are searched/selected from. */
   sourceModule: string;
   /** Which column of that module is shown as the option label and searched on (e.g. "Customer_Name"). */
   displayField: string;
@@ -46,11 +47,11 @@ export interface FormDataSourceConfig {
 }
 
 /** Sentinel `sourceModule` meaning "an earlier step of this same running instance",
- * rather than a real MODULE_SHEETS key. */
+ * rather than a real source-module key. */
 export const THIS_FLOW_SOURCE = "THIS_FLOW";
 
 export interface ExistingFmsDataSourceConfig {
-  /** A MODULE_SHEETS key (e.g. "PRODUCTION_PLANS"), or THIS_FLOW_SOURCE. */
+  /** A source-module key (e.g. "PRODUCTION_PLANS"), or THIS_FLOW_SOURCE. */
   sourceModule: string;
   /** Required when sourceModule === THIS_FLOW_SOURCE: which earlier Step_No to read. */
   sourceStepNo?: number;

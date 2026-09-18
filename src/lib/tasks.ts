@@ -1,15 +1,17 @@
-import {
-  appendModuleRow,
-  getModuleRows,
-  updateModuleRow,
-  findModuleRow,
-  recordToRow,
-} from "@/lib/moduleSheets";
+import type { InferSelectModel } from "drizzle-orm";
+import { tasks } from "@/db/schema";
+import { findById, insertRecord, listByOrg, updateById } from "@/db/repo";
+import { getTenantOrgId } from "@/lib/tenant";
 import { generateId } from "@/lib/id";
-import { formatStamp, nowStamp, parseStamp } from "@/lib/timestamp";
+import { parseStamp } from "@/lib/timestamp";
 
-const MODULE_KEY = "TASKS";
-
+/**
+ * Mirrors the pre-Postgres sheet row shape exactly (same field names, same PascalCase
+ * casing) even though the persistence underneath is now the `tasks` Postgres table — the
+ * goal is zero changes at the API routes, `src/lib/mis.ts`, `src/lib/recurringGenerator.ts`
+ * and the `/tasks`/`/dashboard`/`/performance` frontends, which all read `.Title`,
+ * `.Due_Date`, `.On_Time_Count`, etc. off this type today.
+ */
 export interface TaskRecord {
   Task_ID: string;
   Title: string;
@@ -31,12 +33,64 @@ export interface TaskRecord {
   Recurring_ID: string;
 }
 
-function taskToRow(task: TaskRecord): string[] {
-  return recordToRow(MODULE_KEY, task);
+const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
+
+/**
+ * The exact inverse of `parseStamp`'s IST wall-clock reading: given the real instant
+ * stored in Postgres, renders it back as `YYYY-MM-DDTHH:mm` IST — the same shape
+ * `<input type="datetime-local">` submits and `formatDateTime()` produces.
+ *
+ * Deliberately NOT `toISOString()` (contrast `Created_At`/`Completed_At` below), because
+ * `recurringGenerator.ts`'s `generateDueRecurringOccurrences()` — which this migration must
+ * not touch — does a raw `task.Due_Date.startsWith(todayIST())` string-prefix check to
+ * decide "was today's occurrence already generated". `todayIST()` is the IST calendar day;
+ * a UTC ISO string's own leading `YYYY-MM-DD` only agrees with that for part of the day
+ * (any due time between IST midnight and 5:30am would land on the *previous* UTC calendar
+ * date). Recurring occurrences happen to always be due at 23:59 IST today, which would
+ * never actually cross that boundary either way — but a one-time task's Due_Date has no
+ * such guarantee, and this field's whole original contract was "whatever wall-clock string
+ * a person typed, unconverted". Keeping it as an IST wall-clock string preserves that
+ * contract exactly, independent of which particular times happen to be in use today.
+ */
+function toIstWallStamp(date: Date | null): string {
+  if (!date) return "";
+  const ist = new Date(date.getTime() + IST_OFFSET_MS);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return (
+    `${ist.getUTCFullYear()}-${pad(ist.getUTCMonth() + 1)}-${pad(ist.getUTCDate())}` +
+    `T${pad(ist.getUTCHours())}:${pad(ist.getUTCMinutes())}`
+  );
+}
+
+type TaskRow = InferSelectModel<typeof tasks>;
+
+function rowToRecord(row: TaskRow): TaskRecord {
+  return {
+    Task_ID: row.id,
+    Title: row.title,
+    Description: row.description,
+    Assigned_To: row.assignedTo,
+    Assigned_By: row.assignedBy,
+    Task_Type: row.taskType,
+    Recurrence_Frequency: row.recurrenceFrequency,
+    Due_Date: toIstWallStamp(row.dueDate),
+    Attachment_URL: row.attachmentUrl,
+    Status: row.status,
+    Completed_At: row.completedAt ? row.completedAt.toISOString() : "",
+    Completion_Proof_URL: row.completionProofUrl,
+    Remark: row.remark,
+    Created_At: row.createdAt.toISOString(),
+    On_Time_Count: String(row.onTimeCount),
+    Delay_Count: String(row.delayCount),
+    Priority: row.priority,
+    Recurring_ID: row.recurringId,
+  };
 }
 
 export async function listTasks(): Promise<TaskRecord[]> {
-  return getModuleRows<TaskRecord>(MODULE_KEY);
+  const orgId = await getTenantOrgId();
+  const rows = await listByOrg(tasks, orgId);
+  return rows.map(rowToRecord);
 }
 
 interface CreateTaskInput {
@@ -54,29 +108,27 @@ interface CreateTaskInput {
  * definition (src/lib/recurringTasks.ts) generates each dated occurrence as its own row
  * via createRecurringOccurrence() instead. */
 export async function createTask(input: CreateTaskInput): Promise<TaskRecord> {
-  const task: TaskRecord = {
-    Task_ID: generateId("TSK"),
-    Title: input.title,
-    Description: input.description,
-    Assigned_To: input.assignedTo,
-    Assigned_By: input.assignedBy,
-    Priority: input.priority,
-    Task_Type: "One-Time",
-    Recurrence_Frequency: "",
-    Due_Date: input.dueDate,
-    Attachment_URL: input.attachmentUrl,
-    Status: "Pending",
-    Completed_At: "",
-    Completion_Proof_URL: "",
-    Remark: input.remark,
-    Created_At: nowStamp(),
-    On_Time_Count: "0",
-    Delay_Count: "0",
-    Recurring_ID: "",
-  };
-
-  await appendModuleRow(MODULE_KEY, taskToRow(task));
-  return task;
+  const orgId = await getTenantOrgId();
+  const row = await insertRecord(tasks, {
+    id: generateId("TSK"),
+    orgId,
+    title: input.title,
+    description: input.description,
+    assignedTo: input.assignedTo,
+    assignedBy: input.assignedBy,
+    priority: input.priority,
+    taskType: "One-Time",
+    recurrenceFrequency: "",
+    dueDate: parseStamp(input.dueDate),
+    attachmentUrl: input.attachmentUrl,
+    status: "Pending",
+    completionProofUrl: "",
+    remark: input.remark,
+    onTimeCount: 0,
+    delayCount: 0,
+    recurringId: "",
+  });
+  return rowToRecord(row);
 }
 
 interface CreateRecurringOccurrenceInput {
@@ -92,29 +144,27 @@ interface CreateRecurringOccurrenceInput {
 export async function createRecurringOccurrence(
   input: CreateRecurringOccurrenceInput
 ): Promise<TaskRecord> {
-  const task: TaskRecord = {
-    Task_ID: generateId("TSK"),
-    Title: input.title,
-    Description: "",
-    Assigned_To: input.assignedTo,
-    Assigned_By: input.assignedBy,
-    Priority: "Medium",
-    Task_Type: "Recurring",
-    Recurrence_Frequency: input.frequency,
-    Due_Date: input.dueDate,
-    Attachment_URL: "",
-    Status: "Pending",
-    Completed_At: "",
-    Completion_Proof_URL: "",
-    Remark: "",
-    Created_At: nowStamp(),
-    On_Time_Count: "0",
-    Delay_Count: "0",
-    Recurring_ID: input.recurringId,
-  };
-
-  await appendModuleRow(MODULE_KEY, taskToRow(task));
-  return task;
+  const orgId = await getTenantOrgId();
+  const row = await insertRecord(tasks, {
+    id: generateId("TSK"),
+    orgId,
+    title: input.title,
+    description: "",
+    assignedTo: input.assignedTo,
+    assignedBy: input.assignedBy,
+    priority: "Medium",
+    taskType: "Recurring",
+    recurrenceFrequency: input.frequency,
+    dueDate: parseStamp(input.dueDate),
+    attachmentUrl: "",
+    status: "Pending",
+    completionProofUrl: "",
+    remark: "",
+    onTimeCount: 0,
+    delayCount: 0,
+    recurringId: input.recurringId,
+  });
+  return rowToRecord(row);
 }
 
 export async function markTaskDone(
@@ -122,32 +172,31 @@ export async function markTaskDone(
   proofUrl: string,
   requestingUserId: string
 ): Promise<TaskRecord> {
-  const found = await findModuleRow<TaskRecord>(MODULE_KEY, 0, taskId);
+  const orgId = await getTenantOrgId();
+  const found = await findById(tasks, orgId, taskId);
   if (!found) {
     throw new Error("Task nahi mila.");
   }
-  if (found.record.Assigned_To !== requestingUserId) {
+  if (found.assignedTo !== requestingUserId) {
     throw new Error("Aap sirf apne assigned tasks complete kar sakte hain.");
   }
-  if (found.record.Status !== "Pending") {
+  if (found.status !== "Pending") {
     throw new Error("Yeh task pehle se complete ho chuka hai.");
   }
 
   const now = new Date();
-  const dueDate = parseStamp(found.record.Due_Date);
-  const isOnTime = !dueDate || now <= dueDate;
+  const isOnTime = !found.dueDate || now <= found.dueDate;
 
-  const updated: TaskRecord = {
-    ...found.record,
-    Status: isOnTime ? "Done on Time" : "Delay Done",
-    // The same IST format every other timestamp column uses — these sheets are read by
-    // people, and one ISO row in a column of DD/MM/YYYY is both unreadable and unsortable.
-    Completed_At: formatStamp(now),
-    Completion_Proof_URL: proofUrl,
-    On_Time_Count: String(Number(found.record.On_Time_Count || 0) + (isOnTime ? 1 : 0)),
-    Delay_Count: String(Number(found.record.Delay_Count || 0) + (isOnTime ? 0 : 1)),
-  };
+  const updated = await updateById(tasks, orgId, taskId, {
+    status: isOnTime ? "Done on Time" : "Delay Done",
+    completedAt: now,
+    completionProofUrl: proofUrl,
+    onTimeCount: found.onTimeCount + (isOnTime ? 1 : 0),
+    delayCount: found.delayCount + (isOnTime ? 0 : 1),
+  });
+  if (!updated) {
+    throw new Error("Task nahi mila.");
+  }
 
-  await updateModuleRow(MODULE_KEY, found.rowNumber, taskToRow(updated));
-  return updated;
+  return rowToRecord(updated);
 }

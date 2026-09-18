@@ -25,7 +25,7 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "Pro ERP",
-  description: "Custom ERP powered by Google Sheets & Drive",
+  description: "Custom multi-tenant ERP",
 };
 
 /**

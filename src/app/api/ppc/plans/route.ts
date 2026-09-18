@@ -1,18 +1,14 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { requireModule } from "@/lib/auth/guard";
-import { tryModule } from "@/lib/moduleSheets";
 import { createPlans, listPlans, PlanError } from "@/lib/inventory/plans";
 
 export async function GET() {
   const guard = await requireModule("PPC_PLAN");
   if (!guard.ok) return guard.response;
 
-  const plans = await tryModule(() => listPlans());
-  return NextResponse.json({
-    plans: plans ?? [],
-    setupRequired: plans === null ? "Production Plans (PPC)" : null,
-  });
+  const plans = await listPlans();
+  return NextResponse.json({ plans });
 }
 
 const lineSchema = z.object({

@@ -1,18 +1,14 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { requireModule } from "@/lib/auth/guard";
-import { tryModule } from "@/lib/moduleSheets";
 import { createIndent, listIndents, INDENT_REASONS } from "@/lib/inventory/indents";
 
 export async function GET() {
   const guard = await requireModule("INVENTORY_VIEW");
   if (!guard.ok) return guard.response;
 
-  const indents = await tryModule(() => listIndents());
-  return NextResponse.json({
-    indents: indents ?? [],
-    setupRequired: indents === null ? "Indents (Purchase requests)" : null,
-  });
+  const indents = await listIndents();
+  return NextResponse.json({ indents });
 }
 
 const bodySchema = z.object({

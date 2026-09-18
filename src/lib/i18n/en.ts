@@ -13,6 +13,7 @@ export const EN: Record<string, string> = {
   "Mera kaam": "My work",
   "Apna system shuru karein": "Set up your system",
   "Apne organization ka Pro ERP shuru karein": "Start Pro ERP for your organization",
+  "Ek minute me aapka apna system taiyaar ho jaayega.": "Your own system will be ready in a minute.",
   "Apna email aur password daalein.": "Enter your email and password.",
   "Login karein": "Sign in",
   "Naya password": "New password",
@@ -87,8 +88,6 @@ export const EN: Record<string, string> = {
   "Items load ho rahe hain": "Loading items",
   "Items load nahi ho paye.": "Could not load items.",
   "Inventory kholein": "Open Inventory",
-  "Inventory ki sheets abhi connect nahi hui": "Inventory sheets are not connected yet",
-  "Inventory sheets connect nahi hui": "Inventory sheets are not connected",
   "Har item ka live stock. Stock kahin store nahi hota — har baar In/Out entries se nikala jaata hai.":
     "Live stock for every item. Stock is never stored — it is worked out from the In and Out entries every time.",
   "Planning ke number bharne se pehle item master me item banane honge.":
@@ -225,15 +224,10 @@ export const EN: Record<string, string> = {
   "Full access": "Full access",
 
   // --- admin: settings -------------------------------------------------------------
-  "Google Sheets, Drive, aur WhatsApp connections manage karein.":
-    "Manage Google Sheets, Drive and WhatsApp connections.",
-  "Har sheet aur Drive folder is address ke saath":
-    "Share every sheet and Drive folder with this address",
+  "Logo, WhatsApp, aur baaki organization settings manage karein.":
+    "Manage the logo, WhatsApp, and other organization settings.",
   "Settings kholein": "Open Settings",
   "Settings load nahi ho payi.": "Could not load settings.",
-  "Sheet connections load ho rahi hain": "Loading sheet connections",
-  "Connect ho gaya.": "Connected.",
-  "Pehle URL daalein.": "Enter a URL first.",
   "Save nahi ho paya.": "Could not save.",
   "Update nahi ho paya.": "Could not update.",
   "Status update nahi ho paya.": "Could not update the status.",
@@ -277,11 +271,6 @@ export const EN: Record<string, string> = {
   "Koi rejection nahi — achhi baat hai.": "No rejections — which is good news.",
   "Sab items ke planning fields bhare hue hain.":
     "Every item's planning fields are filled in.",
-  "Items sheet connect nahi hai": "The Items sheet is not connected",
-  "PPC ke liye Production Plans aur Plan Materials — dono sheet chahiye.":
-    "PPC needs both sheets: Production Plans and Plan Materials.",
-  "Ye page usi sheet se padhta hai. Settings me uska URL paste karte hi yahan data aane lagega.":
-    "This page reads from that sheet. Paste its URL in Settings and the data will appear here.",
 
   // --- period-filtered analytics ---------------------------------------------------
   "Is period me koi data nahi.": "No data in this period.",
@@ -329,17 +318,8 @@ export const EN: Record<string, string> = {
     "A user with this email already exists.",
   "ChatXFlow abhi Settings me configure nahi hua hai.":
     "ChatXFlow is not configured in Settings yet.",
-  "Ye link kisi folder ka nahi hai.": "That link does not point to a folder.",
-  "Is folder tak access nahi mil paya. Folder ko service account email ke saath Editor access se share karein.":
-    "Could not reach that folder. Share it with the service account email, with Editor access.",
-  "Ye folder ek personal Google Drive me hai. Service account personal Drive me file nahi rakh sakta (Google ki limitation), isliye attachments yahan upload nahi honge. Folder ko ek Shared Drive ke andar banayein aur service account ko Content Manager access dein.":
-    "That folder is in a personal Google Drive. A service account cannot store files in a personal Drive — this is Google's own limitation, not ours — so attachments will not upload there. Create the folder inside a Shared Drive and give the service account Content Manager access.",
-  "Is folder me file upload nahi ho payi.":
-    "The file could not be uploaded to that folder.",
-  "File storage abhi configure nahi hui hai. Admin > Settings me apna Drive folder connect karein, ya platform administrator se kahein ki blob storage set karein.":
-    "File storage is not configured yet. Connect your Drive folder under Admin > Settings, or ask the platform administrator to set up blob storage.",
-  "Ye Drive folder ek personal Google Drive me hai, isliye file upload nahi ho sakti. Folder ko Shared Drive me banayein, ya platform administrator se blob storage set karwayein.":
-    "This Drive folder is in a personal Google Drive, so files cannot be uploaded to it. Create the folder in a Shared Drive, or ask the platform administrator to set up blob storage.",
+  "File storage abhi configure nahi hui hai. Platform administrator se kahein ki blob storage set karein.":
+    "File storage is not configured yet. Ask the platform administrator to set up blob storage.",
   "Logo storage abhi configure nahi hui hai. Platform administrator se kahein.":
     "Logo storage is not configured yet. Please ask the platform administrator.",
 
@@ -420,8 +400,6 @@ export const EN: Record<string, string> = {
     "The user is removed and their email becomes available again. Their past tasks and records are left exactly as they are.",
   "Ye user hat jaayega aur uska email dobara istemaal ho sakega. Wo turant login nahi kar payega. Uske purane tasks aur records nahi mitenge — wo record hain ki kya hua tha.":
     "This user will be removed and their email freed for reuse. They will not be able to sign in from now on. Their past tasks and records are not deleted — those are a record of what happened.",
-  "Is organization ki tenancy khatam ho jaayegi: uske users login nahi kar payenge aur unke email dobara istemaal ho sakenge. Unki apni Google Sheets ko haath nahi lagaya jaata — wo data unka hai.":
-    "This ends the organization's tenancy: its users can no longer sign in and their emails become available again. Its own Google Sheets are left untouched — that data belongs to them.",
   "Pakka karne ke liye organization ka naam likhein":
     "Type the organization's name to confirm",
   "MIS score timestamps se calculate hota hai. 0% sabse achha, −100% sabse kharab — late aur chhoote hue tasks penalty banate hain.":
@@ -694,4 +672,118 @@ export const EN: Record<string, string> = {
     "Saving creates a new version and archives the old one — any instance already running keeps running against the old version; nothing changes underneath it mid-flow.",
   "Naya version ban gaya, purana Archive ho gaya.": "New version created, the old one archived.",
   "Naya version save karein": "Save new version",
+
+  // --- fms: lookup field, reset, flow board -----------------------------------------
+  "Lookup (dusre module se)": "Lookup (from another module)",
+  "Kaunsa module": "Which module",
+  "Naam/label wala column": "Column with the name/label",
+  "Chunne par ye fields auto-fill hon (is step ke doosre fields)":
+    "Selecting a row auto-fills these fields (this step's other fields)",
+  "None": "None",
+  "Is step me abhi koi aur field nahi hai autofill karne ke liye.":
+    "This step has no other field yet to autofill.",
+  "Lookup list load nahi ho payi.": "Could not load the lookup list.",
+  "Search karein...": "Search...",
+  "Koi match nahi mila.": "No matches found.",
+  "Saare FMS Templates + Runs Reset Karein": "Reset All FMS Templates + Runs",
+  "Saare FMS data reset karein?": "Reset all FMS data?",
+  "Ye is organization ke SAARE FMS templates (jo bhi design kiye gaye hain), aur unke saare runs — pending tasks aur poori history — permanently delete kar dega. Ye wapas nahi aata.":
+    "This will permanently delete ALL of this organization's FMS templates (however many have been designed), and all of their runs — pending tasks and the full history. This cannot be undone.",
+  "Pakka karne ke liye likhein": "Type this to confirm",
+  "Rehne dein": "Keep it",
+  "Reset ho raha hai...": "Resetting...",
+  "Sab Delete Karein": "Delete Everything",
+  "Flow ka data load nahi ho paya.": "Could not load the flow's data.",
+  "Flow load ho raha hai": "Loading flow",
+  "Is flow ka abhi tak koi instance nahi chala": "This flow hasn't run yet",
+  "Jaise hi ye flow kisi trigger se ya manually start hoga, wo yahan dikhega.":
+    "As soon as this flow starts — by a trigger or manually — it will show up here.",
+  "Reference search karein...": "Search by reference...",
+  "Reference": "Reference",
+  "Current Step": "Current Step",
+  "Kiske Paas": "Held By",
+  "Shuru Hua": "Started",
+  "Is search se koi instance nahi mila.": "No instance matches this search.",
+  "Shuru hua": "Started",
+  "Assigned": "Assigned",
+  "Abhi shuru nahi hua.": "Not started yet.",
+  "Attempt": "Attempt",
+  "Plan": "Planned",
+  "Actual": "Actual",
+  "Is flow ke saare instances — kaunsa step chal raha hai, kiske paas hai, aur ab tak kya hua.":
+    "Every instance of this flow — which step is running, who holds it, and what's happened so far.",
+
+  // --- vendor & customer master -------------------------------------------------------
+  "Vendors / Customers": "Vendors / Customers",
+  "Vendor aur Customer master — ek baar bana lein, aage PO, invoice aur sales order isi se juden ge.":
+    "Vendor and Customer master — set these up once; POs, invoices and sales orders will all link back to them.",
+  "Vendors": "Vendors",
+  "Customers": "Customers",
+  "Vendor": "Vendor",
+  "Customer": "Customer",
+  "Add Vendor": "Add Vendor",
+  "Naya Vendor": "New Vendor",
+  "Sirf Vendor Name zaroori hai — baaki details baad me bhi bhari ja sakti hain.":
+    "Only Vendor Name is required — the rest can be filled in later.",
+  "Vendor Name": "Vendor Name",
+  "Vendor ban gaya.": "Vendor created.",
+  "Add Customer": "Add Customer",
+  "Naya Customer": "New Customer",
+  "Sirf Customer Name zaroori hai — baaki details baad me bhi bhari ja sakti hain.":
+    "Only Customer Name is required — the rest can be filled in later.",
+  "Customer Name": "Customer Name",
+  "Customer ban gaya.": "Customer created.",
+  "Contact Person": "Contact Person",
+  "Phone": "Phone",
+  "Address": "Address",
+  "Billing Address": "Billing Address",
+  "Shipping address billing jaisa hi hai": "Shipping address same as billing",
+  "Shipping Address": "Shipping Address",
+  "City": "City",
+  "State": "State",
+  "Payment Terms": "Payment Terms",
+  "Jaise: Net 30": "e.g. Net 30",
+  "Credit Terms": "Credit Terms",
+  "Jaise: Net 15": "e.g. Net 15",
+  "Bank Name": "Bank Name",
+  "Account No.": "Account No.",
+  "Save": "Save",
+  "Vendors load nahi ho paye.": "Vendors could not be loaded.",
+  "Vendors load ho rahe hain": "Loading vendors",
+  "Abhi koi vendor nahi hai.": "No vendors yet.",
+  "Customers load nahi ho paye.": "Customers could not be loaded.",
+  "Customers load ho rahe hain": "Loading customers",
+  "Abhi koi customer nahi hai.": "No customers yet.",
+  "Bulk Upload": "Bulk Upload",
+  "Template download karein, usi format me apna data bharein, phir upload karein — sab ek baar me ban jaayenge.":
+    "Download the template, fill in your data in the same format, then upload it — everything is created in one go.",
+  "ban gaye": "created",
+  "duplicate naam ke saath ban gaye": "created with a duplicate name",
+
+  // --- nav, page titles, shared misc --------------------------------------------------
+  "BOM": "BOM",
+  "Inventory": "Inventory",
+  "Indents": "Indents",
+  "Production Planning": "Production Planning",
+  "Reports": "Reports",
+  "Tasks": "Tasks",
+  "Platform": "Platform",
+  "Inward & IQC": "Inward & IQC",
+  "Team Performance": "Team Performance",
+  "Excel export": "Export to Excel",
+  "Share": "Share",
+  "Copy": "Copy",
+  "sirf aapka kaam": "only your own work",
+  "Item ya SKU search karein": "Search by name or SKU",
+  "Items load nahi ho paaye": "Items could not be loaded",
+  "Guidebook": "Guidebook",
+  "topics": "topics",
+  "Guidebook contents": "Guidebook contents",
+  "Contents": "Contents",
+  "Settings": "Settings",
+  "Theme": "Theme",
+  "Colour": "Colour",
+  "Language": "Language",
+  "Is organization ka saara data — users, tasks, inventory, sab kuch — permanently delete ho jaayega. Uske users login nahi kar payenge aur unke email dobara istemaal ho sakenge. Ye wapas nahi aata.":
+    "All of this organization's data — users, tasks, inventory, everything — will be permanently deleted. Its users will no longer be able to log in, and their emails will become available for reuse. This cannot be undone.",
 };

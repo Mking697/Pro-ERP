@@ -13,12 +13,15 @@ export interface OrgRunResult<T> {
  * Runs the same work once per active organization — the shape every cron job needs,
  * since a scheduled run belongs to no single logged-in tenant.
  *
- * Deliberately sequential. Every org's sheet calls share one service account and so one
- * per-project rate limit; firing all tenants at once would burst straight into 429s and
- * make the nightly job fail for everyone rather than run a little slower.
+ * Deliberately sequential. This was originally forced by every org's Sheets calls sharing
+ * one Google service account's per-project rate limit — now that persistence is Postgres,
+ * that specific constraint is gone (no shared external rate limit across tenants). Kept
+ * sequential anyway for simplicity and easy per-org error isolation; these jobs run once
+ * daily, so there's no latency pressure to parallelize. Revisit if a future cron job needs
+ * to run much more frequently or against many more organizations.
  *
- * One organization's failure (a disconnected sheet, revoked access) is captured and
- * reported, never allowed to abort the remaining tenants' runs.
+ * One organization's failure (a disconnected sheet, revoked access, a bad query) is
+ * captured and reported, never allowed to abort the remaining tenants' runs.
  */
 export async function forEachActiveOrganization<T>(
   fn: (ctx: TenantContext) => Promise<T>
@@ -27,21 +30,17 @@ export async function forEachActiveOrganization<T>(
   const results: OrgRunResult<T>[] = [];
 
   for (const org of orgs) {
-    if (org.Status !== "Active" || !org.System_Sheet_ID) continue;
+    if (org.status !== "Active") continue;
 
-    const ctx: TenantContext = {
-      orgId: org.Org_ID,
-      systemSheetId: org.System_Sheet_ID,
-      org,
-    };
+    const ctx: TenantContext = { orgId: org.id, org };
 
     try {
       const result = await runWithTenant(ctx, () => fn(ctx));
-      results.push({ orgId: org.Org_ID, orgName: org.Org_Name, ok: true, result });
+      results.push({ orgId: org.id, orgName: org.orgName, ok: true, result });
     } catch (error) {
       results.push({
-        orgId: org.Org_ID,
-        orgName: org.Org_Name,
+        orgId: org.id,
+        orgName: org.orgName,
         ok: false,
         error: error instanceof Error ? error.message : String(error),
       });

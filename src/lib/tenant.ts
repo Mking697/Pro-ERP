@@ -5,8 +5,6 @@ import { getOrganization, type Organization } from "@/lib/platform/registry";
 
 export interface TenantContext {
   orgId: string;
-  /** The organization's own spreadsheet holding its Users and Settings tabs. */
-  systemSheetId: string;
   org: Organization;
 }
 
@@ -27,15 +25,10 @@ export async function tenantFromOrgId(orgId: string): Promise<TenantContext> {
   if (!org) {
     throw new TenantResolutionError(`Organization "${orgId}" registry me nahi mila.`);
   }
-  if (org.Status !== "Active") {
-    throw new TenantResolutionError(`Organization "${org.Org_Name}" abhi active nahi hai.`);
+  if (org.status !== "Active") {
+    throw new TenantResolutionError(`Organization "${org.orgName}" abhi active nahi hai.`);
   }
-  if (!org.System_Sheet_ID) {
-    throw new TenantResolutionError(
-      `"${org.Org_Name}" ka System sheet abhi connect nahi hua hai.`
-    );
-  }
-  return { orgId: org.Org_ID, systemSheetId: org.System_Sheet_ID, org };
+  return { orgId: org.id, org };
 }
 
 /**
@@ -66,11 +59,6 @@ export async function getTenant(): Promise<TenantContext> {
   }
 
   return tenantFromOrgId(session.orgId);
-}
-
-/** The spreadsheet every tenant-scoped Users/Settings read should target. */
-export async function getTenantSheetId(): Promise<string> {
-  return (await getTenant()).systemSheetId;
 }
 
 export async function getTenantOrgId(): Promise<string> {

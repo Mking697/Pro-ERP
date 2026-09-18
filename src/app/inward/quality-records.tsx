@@ -49,16 +49,14 @@ export default function QualityRecords({ view }: { view: "failures" | "ims" }) {
   const t = useT();
   const [failures, setFailures] = useState<FailureRow[]>([]);
   const [ims, setIms] = useState<ImsRow[]>([]);
-  const [missing, setMissing] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     fetch("/api/inward/records")
       .then((res) => res.json())
-      .then((data: { failures?: FailureRow[]; ims?: ImsRow[]; setupRequired?: string[] }) => {
+      .then((data: { failures?: FailureRow[]; ims?: ImsRow[] }) => {
         setFailures(data.failures ?? []);
         setIms(data.ims ?? []);
-        setMissing(data.setupRequired ?? []);
       })
       .catch(() => toast.error(t("Records load nahi ho paye.")))
       .finally(() => setLoading(false));
@@ -66,15 +64,6 @@ export default function QualityRecords({ view }: { view: "failures" | "ims" }) {
 
   if (loading) {
     return <TableSkeleton columns={5} label={t("Records load ho rahe hain")} />;
-  }
-
-  const sheetName = view === "failures" ? "Failure Log" : "IMS - Inward Sub-Sheet";
-  if (missing.includes(sheetName)) {
-    return (
-      <p className="py-8 text-center text-sm text-muted-foreground">
-        &quot;{sheetName}&quot; sheet abhi connect nahi hui hai.
-      </p>
-    );
   }
 
   if (view === "failures") {

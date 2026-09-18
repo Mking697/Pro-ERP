@@ -2,7 +2,6 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { requireModule, requireSession } from "@/lib/auth/guard";
 import { listTasks, createTask } from "@/lib/tasks";
-import { tryModule } from "@/lib/moduleSheets";
 import { PRIORITIES } from "@/lib/priority";
 
 export async function GET() {
@@ -12,18 +11,7 @@ export async function GET() {
   const canDelegate = guard.session.access.includes("TASK_DELEGATE");
   const canAssignRecurring = guard.session.access.includes("RECURRING_ASSIGN");
 
-  // An org that has not connected its Tasks sheet yet is mid-onboarding, not broken —
-  // report that as a state the UI can render, rather than a 500.
-  const allTasks = await tryModule(() => listTasks());
-  if (allTasks === null) {
-    return NextResponse.json({
-      myTasks: [],
-      delegatedTasks: [],
-      canDelegate,
-      canAssignRecurring,
-      setupRequired: "Tasks",
-    });
-  }
+  const allTasks = await listTasks();
 
   const myTasks = allTasks.filter((t) => t.Assigned_To === guard.session.userId);
   const delegatedTasks = canDelegate

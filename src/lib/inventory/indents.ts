@@ -1,17 +1,13 @@
-import {
-  appendModuleRow,
-  findModuleRow,
-  getModuleRows,
-  recordToRow,
-  tryModule,
-  updateModuleRow,
-} from "@/lib/moduleSheets";
+import type { InferSelectModel } from "drizzle-orm";
+import { desc, eq } from "drizzle-orm";
+import { indents } from "@/db/schema";
+import { db } from "@/db/client";
+import { findById, insertRecord, listByOrg, updateById } from "@/db/repo";
+import { getTenantOrgId } from "@/lib/tenant";
 import { generateId } from "@/lib/id";
 import { num, numOr0, type ItemRecord } from "@/lib/inventory/items";
 import { recordMovement } from "@/lib/inventory/ledger";
-import { nowStamp } from "@/lib/timestamp";
-
-const MODULE_KEY = "INDENTS";
+import { parseStamp } from "@/lib/timestamp";
 
 export const INDENT_STATUSES = [
   "Pending",
@@ -29,6 +25,13 @@ const OPEN_STATUSES: IndentStatus[] = ["Approved", "Ordered", "Partially_Receive
 export const INDENT_REASONS = ["Reorder", "Production_Shortage"] as const;
 export type IndentReason = (typeof INDENT_REASONS)[number];
 
+/**
+ * Mirrors the pre-Postgres sheet row shape exactly (same field names, same PascalCase
+ * casing, everything a string) even though the persistence underneath is now the
+ * `indents` Postgres table. `indents` has a plain `id` primary key (unlike `items`/`bom`),
+ * so it satisfies repo.ts's `IdentifiedTable` and every single-row read/write below goes
+ * through the generic layer.
+ */
 export interface IndentRecord {
   Indent_ID: string;
   Timestamp: string;
@@ -48,9 +51,42 @@ export interface IndentRecord {
   Received_At: string;
 }
 
+type IndentRow = InferSelectModel<typeof indents>;
+
+function rowToRecord(row: IndentRow): IndentRecord {
+  return {
+    Indent_ID: row.id,
+    Timestamp: row.timestamp.toISOString(),
+    SKU: row.sku,
+    Item_Name: row.itemName,
+    Suggested_Qty: row.suggestedQty ?? "",
+    Final_Qty: row.finalQty ?? "",
+    UOM: row.uom,
+    Reason: row.reason,
+    Linked_Plan_ID: row.linkedPlanId,
+    Status: row.status,
+    Requested_By: row.requestedBy,
+    Approved_By: row.approvedBy,
+    Approved_At: row.approvedAt ? row.approvedAt.toISOString() : "",
+    Expected_Date: row.expectedDate ? row.expectedDate.toISOString() : "",
+    Received_Qty: row.receivedQty ?? "",
+    Received_At: row.receivedAt ? row.receivedAt.toISOString() : "",
+  };
+}
+
+/**
+ * Newest first, for the Indents board — an explicit `ORDER BY timestamp DESC` rather than
+ * relying on insertion order (which the old sheet-append order gave for free, but Postgres
+ * makes no such guarantee for a plain unordered SELECT).
+ */
 export async function listIndents(): Promise<IndentRecord[]> {
-  const rows = await getModuleRows<IndentRecord>(MODULE_KEY);
-  return rows.reverse();
+  const orgId = await getTenantOrgId();
+  const rows = await db
+    .select()
+    .from(indents)
+    .where(eq(indents.orgId, orgId))
+    .orderBy(desc(indents.timestamp));
+  return rows.map(rowToRecord);
 }
 
 /**
@@ -59,19 +95,17 @@ export async function listIndents(): Promise<IndentRecord[]> {
  * This is what stops the system re-ordering something that is already on its way. A
  * `Pending` indent does not count — nobody has committed to buying it yet, so treating
  * it as incoming would suppress a genuine reorder while the approval sits unread.
- *
- * Returns an empty map when the Indents sheet is not connected, so inventory keeps
- * working for an organization that has not set up purchasing.
  */
 export async function inTransitBySku(): Promise<Map<string, number>> {
-  const indents = await tryModule(() => getModuleRows<IndentRecord>(MODULE_KEY));
+  const orgId = await getTenantOrgId();
+  const rows = await listByOrg(indents, orgId);
   const transit = new Map<string, number>();
 
-  for (const row of indents ?? []) {
-    if (!row.SKU || !OPEN_STATUSES.includes(row.Status as IndentStatus)) continue;
-    const outstanding = numOr0(row.Final_Qty) - numOr0(row.Received_Qty);
+  for (const row of rows) {
+    if (!row.sku || !OPEN_STATUSES.includes(row.status as IndentStatus)) continue;
+    const outstanding = numOr0(row.finalQty) - numOr0(row.receivedQty);
     if (outstanding > 0) {
-      transit.set(row.SKU, (transit.get(row.SKU) ?? 0) + outstanding);
+      transit.set(row.sku, (transit.get(row.sku) ?? 0) + outstanding);
     }
   }
 
@@ -127,31 +161,29 @@ export async function createIndent(input: CreateIndentInput): Promise<IndentReco
     throw new Error("Indent quantity 0 se zyada honi chahiye.");
   }
 
-  const record: IndentRecord = {
-    Indent_ID: generateId("IND"),
-    Timestamp: nowStamp(),
-    SKU: input.sku,
-    Item_Name: input.itemName,
-    Suggested_Qty: String(input.suggestedQty),
-    Final_Qty: String(input.finalQty),
-    UOM: input.uom,
-    Reason: input.reason,
-    Linked_Plan_ID: input.linkedPlanId ?? "",
-    Status: "Pending",
-    Requested_By: input.requestedBy,
-    Approved_By: "",
-    Approved_At: "",
-    Expected_Date: input.expectedDate ?? "",
-    Received_Qty: "",
-    Received_At: "",
-  };
+  const orgId = await getTenantOrgId();
+  const row = await insertRecord(indents, {
+    id: generateId("IND"),
+    orgId,
+    sku: input.sku,
+    itemName: input.itemName,
+    suggestedQty: String(input.suggestedQty),
+    finalQty: String(input.finalQty),
+    uom: input.uom,
+    reason: input.reason,
+    linkedPlanId: input.linkedPlanId ?? "",
+    status: "Pending",
+    requestedBy: input.requestedBy,
+    approvedBy: "",
+    expectedDate: input.expectedDate ? parseStamp(input.expectedDate) : null,
+    receivedQty: null,
+  });
 
-  await appendModuleRow(MODULE_KEY, recordToRow(MODULE_KEY, record));
-  return record;
+  return rowToRecord(row);
 }
 
-async function loadIndent(indentId: string) {
-  const found = await findModuleRow<IndentRecord>(MODULE_KEY, 0, indentId);
+async function loadIndent(orgId: string, indentId: string): Promise<IndentRow> {
+  const found = await findById(indents, orgId, indentId);
   if (!found) throw new Error("Indent nahi mila.");
   return found;
 }
@@ -161,35 +193,35 @@ export async function approveIndent(
   approvedBy: string,
   finalQty?: number
 ): Promise<IndentRecord> {
-  const found = await loadIndent(indentId);
-  if (found.record.Status !== "Pending") {
-    throw new Error(`Ye indent pehle se "${found.record.Status}" hai.`);
+  const orgId = await getTenantOrgId();
+  const found = await loadIndent(orgId, indentId);
+  if (found.status !== "Pending") {
+    throw new Error(`Ye indent pehle se "${found.status}" hai.`);
   }
   if (finalQty !== undefined && !(finalQty > 0)) {
     throw new Error("Quantity 0 se zyada honi chahiye.");
   }
 
-  const updated: IndentRecord = {
-    ...found.record,
-    Status: "Approved",
-    Approved_By: approvedBy,
-    Approved_At: nowStamp(),
-    Final_Qty: finalQty !== undefined ? String(finalQty) : found.record.Final_Qty,
-  };
-
-  await updateModuleRow(MODULE_KEY, found.rowNumber, recordToRow(MODULE_KEY, updated));
-  return updated;
+  const updated = await updateById(indents, orgId, indentId, {
+    status: "Approved",
+    approvedBy,
+    approvedAt: new Date(),
+    finalQty: finalQty !== undefined ? String(finalQty) : found.finalQty,
+  });
+  if (!updated) throw new Error("Indent nahi mila.");
+  return rowToRecord(updated);
 }
 
 export async function cancelIndent(indentId: string): Promise<IndentRecord> {
-  const found = await loadIndent(indentId);
-  if (found.record.Status === "Received") {
+  const orgId = await getTenantOrgId();
+  const found = await loadIndent(orgId, indentId);
+  if (found.status === "Received") {
     throw new Error("Received indent cancel nahi ho sakta.");
   }
 
-  const updated: IndentRecord = { ...found.record, Status: "Cancelled" };
-  await updateModuleRow(MODULE_KEY, found.rowNumber, recordToRow(MODULE_KEY, updated));
-  return updated;
+  const updated = await updateById(indents, orgId, indentId, { status: "Cancelled" });
+  if (!updated) throw new Error("Indent nahi mila.");
+  return rowToRecord(updated);
 }
 
 export class IndentReceiptError extends Error {}
@@ -214,49 +246,46 @@ export async function receiveIndent(
     throw new IndentReceiptError("Received quantity 0 se zyada honi chahiye.");
   }
 
-  const found = await loadIndent(indentId);
-  const indent = found.record;
+  const orgId = await getTenantOrgId();
+  const indent = await loadIndent(orgId, indentId);
 
-  if (!OPEN_STATUSES.includes(indent.Status as IndentStatus)) {
+  if (!OPEN_STATUSES.includes(indent.status as IndentStatus)) {
     throw new IndentReceiptError(
-      `Is indent par receive nahi kar sakte — abhi "${indent.Status}" hai. Pehle approve karein.`
+      `Is indent par receive nahi kar sakte — abhi "${indent.status}" hai. Pehle approve karein.`
     );
   }
 
-  const ordered = numOr0(indent.Final_Qty);
-  const already = numOr0(indent.Received_Qty);
+  const ordered = numOr0(indent.finalQty);
+  const already = numOr0(indent.receivedQty);
   const outstanding = ordered - already;
 
   if (receivedNow > outstanding) {
     throw new IndentReceiptError(
-      `Sirf ${round3(outstanding)} ${indent.UOM} bacha hua hai, aur aap ${receivedNow} receive kar rahe hain.`
+      `Sirf ${round3(outstanding)} ${indent.uom} bacha hua hai, aur aap ${receivedNow} receive kar rahe hain.`
     );
   }
 
   const total = round3(already + receivedNow);
-  const now = nowStamp();
-
-  const updated: IndentRecord = {
-    ...indent,
-    Received_Qty: String(total),
-    Received_At: now,
-    Status: total >= ordered ? "Received" : "Partially_Received",
-  };
 
   // Stock first: if the ledger write fails the indent stays open, which is recoverable.
   // The reverse order would leave stock added against an indent that still looks unfilled.
   await recordMovement({
-    sku: indent.SKU,
+    sku: indent.sku,
     direction: "In",
     quantity: receivedNow,
-    uom: indent.UOM,
+    uom: indent.uom,
     source: "Indent_Receipt",
-    referenceId: indent.Indent_ID,
+    referenceId: indent.id,
     location,
-    remark: `Indent receipt — ${indent.Reason}`,
+    remark: `Indent receipt — ${indent.reason}`,
     userId,
   });
 
-  await updateModuleRow(MODULE_KEY, found.rowNumber, recordToRow(MODULE_KEY, updated));
-  return updated;
+  const updated = await updateById(indents, orgId, indentId, {
+    receivedQty: String(total),
+    receivedAt: new Date(),
+    status: total >= ordered ? "Received" : "Partially_Received",
+  });
+  if (!updated) throw new IndentReceiptError("Indent nahi mila.");
+  return rowToRecord(updated);
 }

@@ -1,10 +1,9 @@
 /**
  * Inventory constants with no server dependencies.
  *
- * Kept apart from items.ts and ledger.ts deliberately: those reach the Sheets client
- * through moduleSheets and tenant, which import `next/headers` and googleapis. A client
- * component that needed only the category list would drag all of that into the browser
- * bundle — and fail the build.
+ * Kept apart from items.ts and ledger.ts deliberately: those reach the database through
+ * `tenant`, which imports `next/headers`. A client component that needed only the
+ * category list would drag all of that into the browser bundle — and fail the build.
  */
 
 export const ITEM_CATEGORIES = ["Raw Material", "Consumable", "Semi-FG", "FG"] as const;

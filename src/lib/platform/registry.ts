@@ -1,143 +1,74 @@
+import { eq, type InferSelectModel } from "drizzle-orm";
+import { db } from "@/db/client";
 import {
-  getSheetsClient,
-  readRows,
-  readRowsBatch,
-  appendRow,
-  updateRow,
-  rowsToObjects,
-  deleteRow,
-} from "@/lib/googleSheets";
-import { cached, invalidateCache } from "@/lib/cache";
+  bom,
+  customers,
+  failureLog,
+  fmsRuns,
+  fmsTemplates,
+  fmsWeekoffOverrides,
+  holidayList,
+  imsInward,
+  indents,
+  inwardIqcFms,
+  items,
+  organizations,
+  planMaterials,
+  productionPlans,
+  recurringTasks,
+  reportShares,
+  settings,
+  stockLedger,
+  tasks,
+  users,
+  usersIndex,
+  vendors,
+} from "@/db/schema";
 import { generateId, slugify } from "@/lib/id";
-import { nowStamp } from "@/lib/timestamp";
 
 /**
- * The platform registry is the one spreadsheet Pro ERP itself owns — it holds no
- * business data, only the map of which organization exists and which System sheet
- * belongs to it. Every organization's actual data lives in their own spreadsheet,
- * which they connect by pasting a URL.
+ * The platform registry — which organizations exist and which email belongs to which one.
+ *
+ * Used to live in its own Google Spreadsheet (the one thing Pro ERP itself owned, since
+ * every organization's actual business data lived in their own connected sheets). Now
+ * `organizations` and `users_index` are just tables in the same Neon Postgres database as
+ * everything else — no separate "platform sheet" concept survives this rewrite.
  */
-export const ORGANIZATIONS_TAB = "Organizations";
-export const USERS_INDEX_TAB = "Users_Index";
-
-export const ORGANIZATIONS_HEADERS = [
-  "Org_ID",
-  "Org_Name",
-  "Slug",
-  "System_Sheet_ID",
-  "Owner_Email",
-  "Plan",
-  "Status",
-  "Created_At",
-] as const;
-
-export const USERS_INDEX_HEADERS = ["Email", "Org_ID", "User_ID", "Status"] as const;
-
-export interface Organization {
-  Org_ID: string;
-  Org_Name: string;
-  Slug: string;
-  System_Sheet_ID: string;
-  Owner_Email: string;
-  Plan: string;
-  Status: string;
-  Created_At: string;
-}
-
-export interface UserIndexEntry {
-  Email: string;
-  Org_ID: string;
-  User_ID: string;
-  Status: string;
-}
-
-const ORGS_CACHE_KEY = "platform:organizations";
-const INDEX_CACHE_KEY = "platform:users-index";
-const REGISTRY_TTL_MS = 30_000;
-
-export function getPlatformSheetId(): string {
-  const id = process.env.PLATFORM_SHEET_ID;
-  if (!id) {
-    throw new Error(
-      "Missing PLATFORM_SHEET_ID environment variable — this is the spreadsheet that lists every organization."
-    );
-  }
-  return id;
-}
-
-/**
- * Creates the two registry tabs and their header rows if they are missing, so a fresh
- * install only needs a blank spreadsheet shared with the service account.
- */
-export async function ensurePlatformSheet(): Promise<void> {
-  const spreadsheetId = getPlatformSheetId();
-  const sheets = getSheetsClient();
-  const meta = await sheets.spreadsheets.get({ spreadsheetId });
-  const existing = new Set(
-    (meta.data.sheets ?? []).map((s) => s.properties?.title).filter(Boolean) as string[]
-  );
-
-  const missing = [ORGANIZATIONS_TAB, USERS_INDEX_TAB].filter((t) => !existing.has(t));
-  if (missing.length > 0) {
-    await sheets.spreadsheets.batchUpdate({
-      spreadsheetId,
-      requestBody: {
-        requests: missing.map((title) => ({ addSheet: { properties: { title } } })),
-      },
-    });
-  }
-
-  const current = await readRowsBatch(spreadsheetId, [ORGANIZATIONS_TAB, USERS_INDEX_TAB]);
-  const headerWrites: { range: string; values: string[][] }[] = [];
-
-  if ((current[ORGANIZATIONS_TAB]?.[0] ?? []).length === 0) {
-    headerWrites.push({
-      range: `${ORGANIZATIONS_TAB}!A1`,
-      values: [[...ORGANIZATIONS_HEADERS]],
-    });
-  }
-  if ((current[USERS_INDEX_TAB]?.[0] ?? []).length === 0) {
-    headerWrites.push({
-      range: `${USERS_INDEX_TAB}!A1`,
-      values: [[...USERS_INDEX_HEADERS]],
-    });
-  }
-
-  if (headerWrites.length > 0) {
-    await sheets.spreadsheets.values.batchUpdate({
-      spreadsheetId,
-      requestBody: { valueInputOption: "RAW", data: headerWrites },
-    });
-  }
-}
+export type Organization = InferSelectModel<typeof organizations>;
+export type UserIndexEntry = InferSelectModel<typeof usersIndex>;
 
 export async function listOrganizations(): Promise<Organization[]> {
-  return cached(ORGS_CACHE_KEY, REGISTRY_TTL_MS, async () => {
-    const rows = await readRows(getPlatformSheetId(), ORGANIZATIONS_TAB);
-    return rowsToObjects<Organization>(rows);
-  });
+  return db.select().from(organizations);
 }
 
 export async function getOrganization(orgId: string): Promise<Organization | null> {
-  const orgs = await listOrganizations();
-  return orgs.find((o) => o.Org_ID === orgId) ?? null;
+  const [org] = await db
+    .select()
+    .from(organizations)
+    .where(eq(organizations.id, orgId))
+    .limit(1);
+  return org ?? null;
 }
 
 export async function getOrganizationBySlug(slug: string): Promise<Organization | null> {
-  const orgs = await listOrganizations();
   const normalized = slug.trim().toLowerCase();
-  return orgs.find((o) => o.Slug?.trim().toLowerCase() === normalized) ?? null;
+  const [org] = await db
+    .select()
+    .from(organizations)
+    .where(eq(organizations.slug, normalized))
+    .limit(1);
+  return org ?? null;
 }
 
 /** Login's first hop: which organization does this email belong to? */
 export async function lookupUserOrg(email: string): Promise<UserIndexEntry | null> {
-  const entries = await cached(INDEX_CACHE_KEY, REGISTRY_TTL_MS, async () => {
-    const rows = await readRows(getPlatformSheetId(), USERS_INDEX_TAB);
-    return rowsToObjects<UserIndexEntry>(rows);
-  });
-
   const normalized = email.trim().toLowerCase();
-  return entries.find((e) => e.Email?.trim().toLowerCase() === normalized) ?? null;
+  const [entry] = await db
+    .select()
+    .from(usersIndex)
+    .where(eq(usersIndex.email, normalized))
+    .limit(1);
+  return entry ?? null;
 }
 
 /**
@@ -149,33 +80,21 @@ export async function isEmailTaken(email: string): Promise<boolean> {
 }
 
 export async function indexUser(entry: UserIndexEntry): Promise<void> {
-  await appendRow(getPlatformSheetId(), USERS_INDEX_TAB, [
-    entry.Email.trim().toLowerCase(),
-    entry.Org_ID,
-    entry.User_ID,
-    entry.Status,
-  ]);
-  invalidateCache(INDEX_CACHE_KEY);
+  await db.insert(usersIndex).values({
+    email: entry.email.trim().toLowerCase(),
+    orgId: entry.orgId,
+    userId: entry.userId,
+    status: entry.status,
+  });
 }
 
-/** Keeps the index's Status column in step with the org's own Users tab. */
+/** Keeps the index's Status column in step with the org's own Users table. */
 export async function updateIndexedUserStatus(email: string, status: string): Promise<void> {
-  const spreadsheetId = getPlatformSheetId();
-  const rows = await readRows(spreadsheetId, USERS_INDEX_TAB);
   const normalized = email.trim().toLowerCase();
-  const rowIndex = rows.findIndex(
-    (row, i) => i > 0 && row[0]?.trim().toLowerCase() === normalized
-  );
-  if (rowIndex === -1) return;
-
-  const row = rows[rowIndex];
-  await updateRow(spreadsheetId, USERS_INDEX_TAB, rowIndex + 1, [
-    row[0] ?? "",
-    row[1] ?? "",
-    row[2] ?? "",
-    status,
-  ]);
-  invalidateCache(INDEX_CACHE_KEY);
+  await db
+    .update(usersIndex)
+    .set({ status: status as UserIndexEntry["status"] })
+    .where(eq(usersIndex.email, normalized));
 }
 
 /**
@@ -185,53 +104,73 @@ export async function updateIndexedUserStatus(email: string, status: string): Pr
  * would keep that address claimed across the whole platform even though the user is gone.
  */
 export async function removeIndexedUser(email: string): Promise<void> {
-  const spreadsheetId = getPlatformSheetId();
-  const rows = await readRows(spreadsheetId, USERS_INDEX_TAB);
   const normalized = email.trim().toLowerCase();
-  const rowIndex = rows.findIndex(
-    (row, i) => i > 0 && row[0]?.trim().toLowerCase() === normalized
-  );
-  if (rowIndex === -1) return;
-
-  await deleteRow(spreadsheetId, USERS_INDEX_TAB, rowIndex + 1);
-  invalidateCache(INDEX_CACHE_KEY);
+  await db.delete(usersIndex).where(eq(usersIndex.email, normalized));
 }
 
 /**
- * Removes an organization from the registry, along with every email it had claimed.
+ * Removes an organization from the registry, along with every row any tenant-scoped table
+ * owns for it.
  *
- * Nothing in the organization's own Google Sheets is touched — those belong to them, and
- * this platform has no business deleting a customer's records. What this does is end the
- * tenancy: the org can no longer be resolved, so nobody can sign in to it, and its emails
- * become available again.
+ * Unlike the Sheets era — where an organization's data lived in totally separate
+ * spreadsheets that this platform never touched — every domain table is now a shared table
+ * with a foreign key back to `organizations`. There is no way to delete the organization
+ * row while leaving orphaned rows behind in any of them (Postgres refuses it: this was hit
+ * for real during Phase 1 verification — deleting an org with a settings row still present
+ * failed with `settings_org_id_organizations_id_fk`), so this deletes every tenant-scoped
+ * table's rows along with the registry entries, atomically. This list must cover every
+ * table in `src/db/schema/**` that has an `org_id` column referencing `organizations` — a
+ * table left out here means deleting an org with any data in it throws a foreign-key
+ * violation instead of actually deleting it. None of these tables reference each other (only
+ * `organizations`), so they can be deleted in any order within the same batch.
+ *
+ * Uses `db.batch()`, not `db.transaction()` — the neon-http driver has no interactive
+ * transaction support at all (`db.transaction()` throws unconditionally: "No transactions
+ * support in neon-http driver"). `batch()` is neon-http's real atomicity primitive: every
+ * statement rides one HTTP round trip as a single Neon-side transaction, succeeding or
+ * failing together, just without the ability to branch on an earlier statement's result
+ * mid-batch. That limitation doesn't matter here — if `orgId` doesn't exist, every delete
+ * affects zero rows (a harmless no-op commit); existence is checked up front instead (see
+ * below), both to fail fast and because TypeScript's tuple inference for `db.batch()`
+ * stops preserving each statement's own result type somewhere around this many mixed
+ * statements — indexing into the batch result to recover one delete's `.returning()` rows
+ * silently widened to a type with no `.length`, so this reads the row first instead of
+ * asking the batch which one deleted it.
  */
 export async function deleteOrganization(orgId: string): Promise<void> {
-  const spreadsheetId = getPlatformSheetId();
-
-  // Emails first. If this half fails, the organization is still reachable and can be
-  // retried; doing it the other way round would strand entries pointing at nothing.
-  const indexRows = await readRows(spreadsheetId, USERS_INDEX_TAB);
-  for (let i = indexRows.length - 1; i > 0; i--) {
-    if (indexRows[i]?.[1] === orgId) {
-      // Deleting bottom-up keeps the rows above at the numbers already read.
-      await deleteRow(spreadsheetId, USERS_INDEX_TAB, i + 1);
-    }
-  }
-
-  const orgRows = await readRows(spreadsheetId, ORGANIZATIONS_TAB);
-  const rowIndex = orgRows.findIndex((row, i) => i > 0 && row[0] === orgId);
-  if (rowIndex === -1) {
+  const existing = await getOrganization(orgId);
+  if (!existing) {
     throw new Error("Organization nahi mili.");
   }
-  await deleteRow(spreadsheetId, ORGANIZATIONS_TAB, rowIndex + 1);
 
-  invalidateCache(INDEX_CACHE_KEY);
-  invalidateCache(ORGS_CACHE_KEY);
+  await db.batch([
+    db.delete(usersIndex).where(eq(usersIndex.orgId, orgId)),
+    db.delete(reportShares).where(eq(reportShares.orgId, orgId)),
+    db.delete(settings).where(eq(settings.orgId, orgId)),
+    db.delete(tasks).where(eq(tasks.orgId, orgId)),
+    db.delete(recurringTasks).where(eq(recurringTasks.orgId, orgId)),
+    db.delete(holidayList).where(eq(holidayList.orgId, orgId)),
+    db.delete(inwardIqcFms).where(eq(inwardIqcFms.orgId, orgId)),
+    db.delete(failureLog).where(eq(failureLog.orgId, orgId)),
+    db.delete(imsInward).where(eq(imsInward.orgId, orgId)),
+    db.delete(items).where(eq(items.orgId, orgId)),
+    db.delete(stockLedger).where(eq(stockLedger.orgId, orgId)),
+    db.delete(indents).where(eq(indents.orgId, orgId)),
+    db.delete(bom).where(eq(bom.orgId, orgId)),
+    db.delete(productionPlans).where(eq(productionPlans.orgId, orgId)),
+    db.delete(planMaterials).where(eq(planMaterials.orgId, orgId)),
+    db.delete(fmsTemplates).where(eq(fmsTemplates.orgId, orgId)),
+    db.delete(fmsRuns).where(eq(fmsRuns.orgId, orgId)),
+    db.delete(fmsWeekoffOverrides).where(eq(fmsWeekoffOverrides.orgId, orgId)),
+    db.delete(vendors).where(eq(vendors.orgId, orgId)),
+    db.delete(customers).where(eq(customers.orgId, orgId)),
+    db.delete(users).where(eq(users.orgId, orgId)),
+    db.delete(organizations).where(eq(organizations.id, orgId)),
+  ]);
 }
 
 interface CreateOrganizationInput {
   orgName: string;
-  systemSheetId: string;
   ownerEmail: string;
 }
 
@@ -242,53 +181,40 @@ export async function createOrganization(
 
   // Two orgs called "Acme" must not collide on the slug.
   const base = slugify(input.orgName);
-  const taken = new Set(orgs.map((o) => o.Slug?.trim().toLowerCase()));
+  const taken = new Set(orgs.map((o) => o.slug?.trim().toLowerCase()));
   let slug = base;
   let n = 2;
   while (taken.has(slug)) {
     slug = `${base}-${n++}`;
   }
 
-  const org: Organization = {
-    Org_ID: generateId("ORG"),
-    Org_Name: input.orgName.trim(),
-    Slug: slug,
-    System_Sheet_ID: input.systemSheetId,
-    Owner_Email: input.ownerEmail.trim().toLowerCase(),
-    Plan: "Free",
-    Status: "Active",
-    Created_At: nowStamp(),
-  };
+  const [org] = await db
+    .insert(organizations)
+    .values({
+      id: generateId("ORG"),
+      orgName: input.orgName.trim(),
+      slug,
+      ownerEmail: input.ownerEmail.trim().toLowerCase(),
+      plan: "Free",
+      status: "Active",
+    })
+    .returning();
 
-  await appendRow(
-    getPlatformSheetId(),
-    ORGANIZATIONS_TAB,
-    ORGANIZATIONS_HEADERS.map((h) => org[h])
-  );
-  invalidateCache(ORGS_CACHE_KEY);
   return org;
 }
 
 export async function updateOrganization(
   orgId: string,
-  patch: Partial<Omit<Organization, "Org_ID" | "Created_At">>
+  patch: Partial<Omit<Organization, "id" | "createdAt">>
 ): Promise<Organization> {
-  const spreadsheetId = getPlatformSheetId();
-  const rows = await readRows(spreadsheetId, ORGANIZATIONS_TAB);
-  const rowIndex = rows.findIndex((row, i) => i > 0 && row[0] === orgId);
-  if (rowIndex === -1) {
+  const [updated] = await db
+    .update(organizations)
+    .set(patch)
+    .where(eq(organizations.id, orgId))
+    .returning();
+
+  if (!updated) {
     throw new Error("Organization nahi mila.");
   }
-
-  const current = rowsToObjects<Organization>([rows[0], rows[rowIndex]])[0];
-  const updated: Organization = { ...current, ...patch };
-
-  await updateRow(
-    spreadsheetId,
-    ORGANIZATIONS_TAB,
-    rowIndex + 1,
-    ORGANIZATIONS_HEADERS.map((h) => updated[h])
-  );
-  invalidateCache(ORGS_CACHE_KEY);
   return updated;
 }

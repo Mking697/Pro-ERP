@@ -12,7 +12,6 @@ import {
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { TableSkeleton } from "@/components/loading-states";
-import SheetNotConnected from "@/components/sheet-not-connected";
 import { useT } from "@/components/preferences-provider";
 import CreateCustomerDialog from "./create-customer-dialog";
 import PartyImportDialog from "./party-import-dialog";
@@ -21,16 +20,14 @@ import type { CustomerRow } from "./types";
 export default function CustomersBoard() {
   const t = useT();
   const [customers, setCustomers] = useState<CustomerRow[]>([]);
-  const [setupRequired, setSetupRequired] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [version, setVersion] = useState(0);
 
   useEffect(() => {
     fetch("/api/parties/customers")
       .then((res) => res.json())
-      .then((data: { customers?: CustomerRow[]; setupRequired?: string | null }) => {
+      .then((data: { customers?: CustomerRow[] }) => {
         setCustomers(data.customers ?? []);
-        setSetupRequired(data.setupRequired ?? null);
       })
       .catch(() => toast.error(t("Customers load nahi ho paye.")))
       .finally(() => setLoading(false));
@@ -42,10 +39,6 @@ export default function CustomersBoard() {
 
   if (loading) {
     return <TableSkeleton columns={6} label={t("Customers load ho rahe hain")} />;
-  }
-
-  if (setupRequired) {
-    return <SheetNotConnected what={setupRequired} />;
   }
 
   return (

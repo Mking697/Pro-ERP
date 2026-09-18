@@ -1,4 +1,7 @@
-import { getModuleRows, deleteModuleRows } from "@/lib/moduleSheets";
+import { eq } from "drizzle-orm";
+import { fmsTemplates, fmsRuns } from "@/db/schema";
+import { db } from "@/db/client";
+import { getTenantOrgId } from "@/lib/tenant";
 
 export interface ResetFmsResult {
   templatesDeleted: number;
@@ -11,27 +14,16 @@ export interface ResetFmsResult {
  * steps and finished history alike. For clearing out flows and test data built while
  * designing, before an organization starts running FMS for real.
  *
- * Irreversible: a direct sheet-row delete, not an archive — there is nothing to undo this
- * with once it runs. The API route calling this is Admin-only for exactly that reason.
+ * Irreversible: a real row delete, not an archive — there is nothing to undo this with
+ * once it runs. The API route calling this is Admin-only for exactly that reason.
  */
 export async function resetAllFmsData(): Promise<ResetFmsResult> {
-  const [templateRows, runRows] = await Promise.all([
-    getModuleRows("FMS_TEMPLATES"),
-    getModuleRows("FMS_RUNS"),
+  const orgId = await getTenantOrgId();
+
+  const [deletedTemplates, deletedRuns] = await Promise.all([
+    db.delete(fmsTemplates).where(eq(fmsTemplates.orgId, orgId)).returning({ templateId: fmsTemplates.templateId }),
+    db.delete(fmsRuns).where(eq(fmsRuns.orgId, orgId)).returning({ id: fmsRuns.id }),
   ]);
 
-  if (templateRows.length > 0) {
-    await deleteModuleRows(
-      "FMS_TEMPLATES",
-      templateRows.map((_, i) => i + 2)
-    );
-  }
-  if (runRows.length > 0) {
-    await deleteModuleRows(
-      "FMS_RUNS",
-      runRows.map((_, i) => i + 2)
-    );
-  }
-
-  return { templatesDeleted: templateRows.length, runsDeleted: runRows.length };
+  return { templatesDeleted: deletedTemplates.length, runsDeleted: deletedRuns.length };
 }

@@ -27,7 +27,6 @@ import {
 import { useConfirm } from "@/components/confirm-dialog";
 import PlanForm from "./plan-form";
 import { CardListSkeleton } from "@/components/loading-states";
-import SheetNotConnected from "@/components/sheet-not-connected";
 import { Factory } from "lucide-react";
 import EmptyState from "@/components/empty-state";
 import { useT } from "@/components/preferences-provider";
@@ -75,7 +74,6 @@ function statusVariant(status: Plan["status"]) {
 export default function PlanBoard({ access }: { access: string[] }) {
   const t = useT();
   const [plans, setPlans] = useState<Plan[]>([]);
-  const [setupRequired, setSetupRequired] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [showClosed, setShowClosed] = useState(false);
   const [expanded, setExpanded] = useState<string | null>(null);
@@ -94,9 +92,8 @@ export default function PlanBoard({ access }: { access: string[] }) {
   useEffect(() => {
     fetch("/api/ppc/plans")
       .then((res) => res.json())
-      .then((data: { plans?: Plan[]; setupRequired?: string | null }) => {
+      .then((data: { plans?: Plan[] }) => {
         setPlans(data.plans ?? []);
-        setSetupRequired(data.setupRequired ?? null);
       })
       .catch(() => toast.error(t("Plans load nahi ho paye.")))
       .finally(() => setLoading(false));
@@ -148,15 +145,6 @@ export default function PlanBoard({ access }: { access: string[] }) {
 
   if (loading) {
     return <CardListSkeleton label={t("Plans load ho rahe hain")} />;
-  }
-
-  if (setupRequired) {
-    return (
-      <SheetNotConnected
-        what={setupRequired}
-        hint={t("PPC ke liye Production Plans aur Plan Materials — dono sheet chahiye.")}
-      />
-    );
   }
 
   const closed = plans.filter(

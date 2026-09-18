@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireSession } from "@/lib/auth/guard";
-import { MODULE_SHEETS, getModuleRows } from "@/lib/moduleSheets";
+import { SOURCE_MODULES } from "@/lib/fms/sourceModules";
+import { listSourceModuleRows } from "@/lib/fms/dataSourceResolver";
 import { tenantCached } from "@/lib/cache";
 import { getTenantOrgId } from "@/lib/tenant";
 
@@ -21,24 +22,21 @@ export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const moduleKey = searchParams.get("module") ?? "";
 
-  // Only a real MODULE_SHEETS key is ever accepted — this must never become a way to probe
-  // for module keys that don't exist.
-  if (!MODULE_SHEETS.some((m) => m.key === moduleKey)) {
+  // Only a real source module key is ever accepted — this must never become a way to
+  // probe for module keys that don't exist.
+  if (!SOURCE_MODULES.some((m) => m.key === moduleKey)) {
     return NextResponse.json({ error: "Invalid module." }, { status: 400 });
   }
 
   const orgId = await getTenantOrgId();
   try {
-    const rows = await tenantCached(
-      orgId,
-      `fms-lookup-source:${moduleKey}`,
-      30_000,
-      () => getModuleRows<Record<string, string>>(moduleKey)
+    const rows = await tenantCached(orgId, `fms-lookup-source:${moduleKey}`, 30_000, () =>
+      listSourceModuleRows(moduleKey)
     );
     return NextResponse.json({ rows });
   } catch {
-    // sourceModule not connected yet (or unreadable) — an empty list lets the picker
-    // render (nothing to pick) rather than erroring the whole step-completion dialog.
+    // Unreadable for some reason — an empty list lets the picker render (nothing to pick)
+    // rather than erroring the whole step-completion dialog.
     return NextResponse.json({ rows: [] });
   }
 }

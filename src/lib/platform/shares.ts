@@ -1,40 +1,38 @@
 import { randomBytes } from "node:crypto";
-import {
-  appendRow,
-  deleteRow,
-  getSheetsClient,
-  readRows,
-  rowsToObjects,
-} from "@/lib/googleSheets";
-import { cached, invalidateCache } from "@/lib/cache";
-import { getPlatformSheetId } from "@/lib/platform/registry";
-import { byNewest, nowStamp } from "@/lib/timestamp";
+import type { InferSelectModel } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
+import { reportShares } from "@/db/schema";
+import { db } from "@/db/client";
+import { insertRecord } from "@/db/repo";
 
 /**
  * Public, read-only report links.
  *
- * These live in the platform registry rather than in each organization's own sheet for
- * one reason: a visitor arrives with nothing but a token, so resolving it from a
- * per-organization sheet would mean reading every organization's sheet to find the owner.
- * The registry is already the one global map — this is the same job `Users_Index` does
- * for email addresses.
+ * These live in the platform registry table (`report_shares`, `src/db/schema/platform.ts`)
+ * rather than in each organization's own tables, for one reason: a visitor arrives with
+ * nothing but a token, so resolving it from a per-organization store would mean scanning
+ * every organization's data to find the owner. The registry is already the one global map
+ * — this is the same job `usersIndex` does for email addresses.
+ *
+ * `token` is the table's real primary key, not a `generateId()` id — it is already the
+ * credential a visitor holds, there is nothing else to key on. There is no `Status`/status
+ * column: revoking deletes the row outright (see `revokeReportShare`), so "the row exists"
+ * already means "Active" — a stored status flag would just be one more place for that fact
+ * to drift out of sync with the row's real presence.
  */
-export const REPORT_SHARES_TAB = "Report_Shares";
 
-export const REPORT_SHARES_HEADERS = [
-  "Token",
-  "Org_ID",
-  "Report",
-  "Label",
-  "Range_Key",
-  "From_Date",
-  "To_Date",
-  "Access",
-  "Created_By",
-  "Created_At",
-  "Status",
-] as const;
-
+/**
+ * Mirrors the pre-Postgres sheet row shape (same field names, same PascalCase casing)
+ * even though the persistence underneath is now the `report_shares` Postgres table — the
+ * goal is zero changes at the API routes and `/share/[token]` page, which both read
+ * `.Token`, `.Org_ID`, `.Access`, etc. off this type today.
+ *
+ * `Access` stays a comma-joined string (not the table's real `text[]` column) for the same
+ * reason `users.ts` keeps `Module_Access` a string — there is exactly one outside reader
+ * (`/share/[token]/page.tsx` does `share.Access.split(",")`), so converting at this file's
+ * boundary keeps that call site, and the API route's `access: guard.session.access` input,
+ * unchanged.
+ */
 export interface ReportShare {
   Token: string;
   Org_ID: string;
@@ -48,91 +46,33 @@ export interface ReportShare {
   Access: string;
   Created_By: string;
   Created_At: string;
-  Status: string;
 }
 
-const SHARES_CACHE_KEY = "platform:report-shares";
-const SHARES_TTL_MS = 30_000;
+type ReportShareRow = InferSelectModel<typeof reportShares>;
+
+function rowToRecord(row: ReportShareRow): ReportShare {
+  return {
+    Token: row.token,
+    Org_ID: row.orgId,
+    Report: row.report,
+    Label: row.label,
+    Range_Key: row.rangeKey,
+    From_Date: row.fromDate,
+    To_Date: row.toDate,
+    Access: row.access.join(","),
+    Created_By: row.createdBy,
+    Created_At: row.createdAt.toISOString(),
+  };
+}
 
 /**
- * 32 random bytes, url-safe.
+ * 24 random bytes, url-safe.
  *
  * The link is the only thing standing between a stranger and this report, so the token
  * has to be unguessable rather than merely unique — no counters, no ids, no timestamps.
  */
 function newToken(): string {
   return randomBytes(24).toString("base64url");
-}
-
-/**
- * Creates the tab if it is missing, and adds any header column it does not yet have.
- *
- * Missing columns are **appended**, never inserted in the middle. A sheet that already
- * holds rows has them laid out under its own header; inserting a column into the
- * constant and writing rows in that new order would shift every value one place along —
- * `Status` would be read from the wrong column and every link would be born dead. This
- * is the same rule `ensureModuleHeaders()` follows for the module sheets.
- *
- * Returns the header as the sheet actually has it, which is the order rows must be
- * written in.
- */
-async function ensureSharesTab(): Promise<string[]> {
-  const spreadsheetId = getPlatformSheetId();
-  const sheets = getSheetsClient();
-  const meta = await sheets.spreadsheets.get({ spreadsheetId });
-  const exists = (meta.data.sheets ?? []).some(
-    (s) => s.properties?.title === REPORT_SHARES_TAB
-  );
-
-  if (!exists) {
-    await sheets.spreadsheets.batchUpdate({
-      spreadsheetId,
-      requestBody: {
-        requests: [{ addSheet: { properties: { title: REPORT_SHARES_TAB } } }],
-      },
-    });
-  }
-
-  const rows = exists ? await readRows(spreadsheetId, REPORT_SHARES_TAB) : [];
-  const current = (rows[0] ?? []).filter(Boolean);
-
-  if (current.length === 0) {
-    await sheets.spreadsheets.values.batchUpdate({
-      spreadsheetId,
-      requestBody: {
-        valueInputOption: "RAW",
-        data: [
-          { range: `${REPORT_SHARES_TAB}!A1`, values: [[...REPORT_SHARES_HEADERS]] },
-        ],
-      },
-    });
-    return [...REPORT_SHARES_HEADERS];
-  }
-
-  const missing = REPORT_SHARES_HEADERS.filter((h) => !current.includes(h));
-  if (missing.length === 0) return current;
-
-  const merged = [...current, ...missing];
-  await sheets.spreadsheets.values.batchUpdate({
-    spreadsheetId,
-    requestBody: {
-      valueInputOption: "RAW",
-      data: [{ range: `${REPORT_SHARES_TAB}!A1`, values: [merged] }],
-    },
-  });
-  return merged;
-}
-
-async function allShares(): Promise<ReportShare[]> {
-  return cached(SHARES_CACHE_KEY, SHARES_TTL_MS, async () => {
-    try {
-      const rows = await readRows(getPlatformSheetId(), REPORT_SHARES_TAB);
-      return rowsToObjects<ReportShare>(rows).filter((s) => s.Token);
-    } catch {
-      // The tab does not exist until the first link is made; no links is not an error.
-      return [];
-    }
-  });
 }
 
 export interface CreateShareInput {
@@ -156,61 +96,49 @@ export interface CreateShareInput {
  * start showing production plans. What was shared stays what was shared.
  */
 export async function createReportShare(input: CreateShareInput): Promise<ReportShare> {
-  const header = await ensureSharesTab();
-
-  const share: ReportShare = {
-    Token: newToken(),
-    Org_ID: input.orgId,
-    Report: input.report,
-    Label: input.label.trim() || "Report",
-    Range_Key: input.rangeKey,
-    From_Date: input.from ?? "",
-    To_Date: input.to ?? "",
-    Access: [...input.access].join(","),
-    Created_By: input.createdBy,
-    Created_At: nowStamp(),
-    Status: "Active",
-  };
-
-  // Laid out to the sheet's own header, not to the constant's order — the two differ on
-  // any sheet created before a column was added.
-  await appendRow(
-    getPlatformSheetId(),
-    REPORT_SHARES_TAB,
-    header.map((h) => share[h as keyof ReportShare] ?? "")
-  );
-  invalidateCache(SHARES_CACHE_KEY);
-  return share;
+  const row = await insertRecord(reportShares, {
+    token: newToken(),
+    orgId: input.orgId,
+    report: input.report,
+    label: input.label.trim() || "Report",
+    rangeKey: input.rangeKey,
+    fromDate: input.from ?? "",
+    toDate: input.to ?? "",
+    access: [...input.access],
+    createdBy: input.createdBy,
+  });
+  return rowToRecord(row);
 }
 
 /**
- * The active link for this token, or null — revoked, expired and unknown look alike.
+ * The link for this token, or null — revoked, expired and unknown look alike.
  *
- * Deliberately reads the sheet rather than the cache. The cache is per-process, and this
- * runs across several serverless instances, so revoking on one would leave the others
- * serving the link until their own copy expired. A revocation that takes effect "within
- * thirty seconds, depending which server you reach" is not a revocation.
- *
- * The extra read is affordable because the expensive part of the page — the whole report
- * data set — is cached; this is one row lookup in front of it.
+ * Deliberately scoped by `token` alone — this call has no org/session context at all (a
+ * visitor holds nothing but the token), so it must never add an implicit org filter. There
+ * is also no cache in front of this read any more: the old Sheets version noted that a
+ * cached read would let a revoked link keep resolving on other serverless instances for up
+ * to 30 seconds. This is a plain indexed `WHERE token = $1` against the live table, so a
+ * revocation (the row's deletion) is visible on the very next request, everywhere.
  */
 export async function getReportShare(token: string): Promise<ReportShare | null> {
   if (!token) return null;
-  try {
-    const rows = await readRows(getPlatformSheetId(), REPORT_SHARES_TAB);
-    const found = rowsToObjects<ReportShare>(rows).find((s) => s.Token === token);
-    return found && found.Status === "Active" ? found : null;
-  } catch {
-    // No tab yet, or the registry is unreachable. Refusing is the safe direction.
-    return null;
-  }
+  const rows = await db
+    .select()
+    .from(reportShares)
+    .where(eq(reportShares.token, token))
+    .limit(1);
+  const found = rows[0];
+  return found ? rowToRecord(found) : null;
 }
 
+/** Every link belonging to `orgId`, newest first. */
 export async function listReportShares(orgId: string): Promise<ReportShare[]> {
-  const shares = await allShares();
-  return shares
-    .filter((s) => s.Org_ID === orgId && s.Status === "Active")
-    .sort((a, b) => byNewest(a.Created_At, b.Created_At));
+  const rows = await db
+    .select()
+    .from(reportShares)
+    .where(eq(reportShares.orgId, orgId))
+    .orderBy(desc(reportShares.createdAt));
+  return rows.map(rowToRecord);
 }
 
 /**
@@ -218,23 +146,13 @@ export async function listReportShares(orgId: string): Promise<ReportShare[]> {
  *
  * The row is deleted rather than flagged, so revoking really does mean the token is gone
  * — there is no state left that could accidentally be flipped back to Active.
+ *
+ * Both `token` and `orgId` must match: an organization may only revoke a link that is its
+ * own. This is a real authorization boundary, not just a lookup convenience — without the
+ * `orgId` predicate, one tenant could revoke another tenant's link by guessing its token.
  */
 export async function revokeReportShare(orgId: string, token: string): Promise<void> {
-  const spreadsheetId = getPlatformSheetId();
-  const rows = await readRows(spreadsheetId, REPORT_SHARES_TAB);
-
-  // Columns are located by name rather than by position, for the same reason writes are.
-  const header = rows[0] ?? [];
-  const tokenAt = header.indexOf("Token");
-  const orgAt = header.indexOf("Org_ID");
-  if (tokenAt === -1 || orgAt === -1) return;
-
-  // Both must match: an organization may only revoke a link that is its own.
-  const rowIndex = rows.findIndex(
-    (row, i) => i > 0 && row[tokenAt] === token && row[orgAt] === orgId
-  );
-  if (rowIndex === -1) return;
-
-  await deleteRow(spreadsheetId, REPORT_SHARES_TAB, rowIndex + 1);
-  invalidateCache(SHARES_CACHE_KEY);
+  await db
+    .delete(reportShares)
+    .where(and(eq(reportShares.token, token), eq(reportShares.orgId, orgId)));
 }

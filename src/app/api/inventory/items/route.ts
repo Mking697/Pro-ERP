@@ -24,7 +24,6 @@ export async function GET() {
       status: i.status,
       missingFields: i.missingFields,
     })),
-    missingSheets: snapshot.missingSheets,
   });
 }
 

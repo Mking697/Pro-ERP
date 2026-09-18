@@ -2,7 +2,6 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { requireAnyModule, requireModule } from "@/lib/auth/guard";
 import { listInwardEntries, createInwardEntry } from "@/lib/inward";
-import { tryModule } from "@/lib/moduleSheets";
 
 // Reading inward entries is not a public-to-the-org fact: party names, invoice numbers
 // and attachment URLs are commercial information. Any one of the three inward grants is
@@ -11,11 +10,7 @@ export async function GET() {
   const guard = await requireAnyModule(["INWARD_ENTRY", "IQC_CHECK", "IMS_VIEW"]);
   if (!guard.ok) return guard.response;
 
-  const entries = await tryModule(() => listInwardEntries());
-  if (entries === null) {
-    return NextResponse.json({ entries: [], setupRequired: "Inward & IQC FMS" });
-  }
-
+  const entries = await listInwardEntries();
   return NextResponse.json({ entries });
 }
 

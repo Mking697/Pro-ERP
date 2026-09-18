@@ -18,7 +18,6 @@ import { formatDueDisplay } from "@/lib/formatDate";
 import { qty } from "../types";
 import { TableSkeleton } from "@/components/loading-states";
 import { useConfirm } from "@/components/confirm-dialog";
-import SheetNotConnected from "@/components/sheet-not-connected";
 import { useT } from "@/components/preferences-provider";
 
 interface Indent {
@@ -68,7 +67,6 @@ export default function IndentsBoard({
   const t = useT();
   const [indents, setIndents] = useState<Indent[]>([]);
   const confirm = useConfirm();
-  const [setupRequired, setSetupRequired] = useState<string | null>(null);
   const [filter, setFilter] = useState<(typeof STATUS_FILTERS)[number]>("Open");
   const [receiveDraft, setReceiveDraft] = useState<Record<string, string>>({});
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -78,9 +76,8 @@ export default function IndentsBoard({
   useEffect(() => {
     fetch("/api/inventory/indents")
       .then((res) => res.json())
-      .then((data: { indents?: Indent[]; setupRequired?: string | null }) => {
+      .then((data: { indents?: Indent[] }) => {
         setIndents(data.indents ?? []);
-        setSetupRequired(data.setupRequired ?? null);
       })
       .catch(() => toast.error(t("Indents load nahi ho paye.")))
       .finally(() => setLoading(false));
@@ -149,12 +146,6 @@ export default function IndentsBoard({
 
   if (loading) {
     return <TableSkeleton columns={6} label={t("Indents load ho rahe hain")} />;
-  }
-
-  if (setupRequired) {
-    return (
-      <SheetNotConnected what={setupRequired} />
-    );
   }
 
   const visible = indents.filter((i) => {

@@ -9,9 +9,9 @@ import { recordMovementsBulk, type BulkMovementInput } from "@/lib/inventory/led
 // row, so this is generous for the sizes this form is actually for.
 const MAX_FILE_BYTES = 4 * 1024 * 1024;
 
-// A single import writing thousands of rows in one Sheets call risks the serverless
-// function's own time limit long before it risks the Sheets API's. 2000 items is already
-// far more than one spreadsheet setup pass would ever cover in practice.
+// createItemsBulk() writes every row in one Postgres insert, but parsing and validating
+// thousands of rows first still risks the serverless function's own time limit. 2000 items
+// is already far more than one spreadsheet setup pass would ever cover in practice.
 const MAX_ROWS = 2000;
 
 const ALLOWED_EXTENSIONS = [".csv", ".xlsx", ".xls"];

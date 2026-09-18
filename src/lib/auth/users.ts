@@ -1,5 +1,7 @@
 import bcrypt from "bcryptjs";
-import { getSheetRows, appendSheetRow, updateSheetRow, rowsToObjects } from "@/lib/tenantSheets";
+import { and, eq, type InferSelectModel } from "drizzle-orm";
+import { db } from "@/db/client";
+import { users } from "@/db/schema";
 import { getTenantOrgId } from "@/lib/tenant";
 import { generateId } from "@/lib/id";
 import {
@@ -8,13 +10,14 @@ import {
   removeIndexedUser,
   updateIndexedUserStatus,
 } from "@/lib/platform/registry";
-import { deleteRow, getSheetsClient } from "@/lib/googleSheets";
-import { getTenantSheetId } from "@/lib/tenant";
 import { serializeModuleAccess } from "@/lib/moduleAccess";
-import { nowStamp } from "@/lib/timestamp";
 
-const USERS_TAB = "Users";
-
+/**
+ * Mirrors the pre-Postgres SheetUser shape exactly (same field names, same casing) even
+ * though the persistence underneath is now the `users` Postgres table — the goal is zero
+ * changes at the dozens of call sites across the app that read `.Full_Name`, `.Role`,
+ * `.Module_Access`, etc. off this type.
+ */
 export interface SheetUser {
   User_ID: string;
   Full_Name: string;
@@ -50,66 +53,56 @@ export function toSafeUser(user: SheetUser): SafeSheetUser {
   };
 }
 
-export const USERS_HEADERS: (keyof SheetUser)[] = [
-  "User_ID",
-  "Full_Name",
-  "Email",
-  "Password_Hash",
-  "Role",
-  "Department",
-  "Phone_Number",
-  "Status",
-  "Created_At",
-  "Created_By",
-  "Module_Access",
-  "Shift",
-];
+type UserRow = InferSelectModel<typeof users>;
 
-function userToRow(user: SheetUser): string[] {
-  return USERS_HEADERS.map((h) => user[h] ?? "");
+function rowToSheetUser(row: UserRow): SheetUser {
+  return {
+    User_ID: row.id,
+    Full_Name: row.fullName,
+    Email: row.email,
+    Password_Hash: row.passwordHash,
+    Role: row.role,
+    Department: row.department,
+    Phone_Number: row.phoneNumber,
+    Status: row.status,
+    Created_At: row.createdAt.toISOString(),
+    Created_By: row.createdBy,
+    Module_Access: row.moduleAccess.join(","),
+    Shift: row.shift,
+  };
 }
 
-// One check per warm instance per spreadsheet — the header only ever grows.
-const headersEnsured = new Set<string>();
+/** CSV of module keys (validated/ordered by MODULE_ACCESS) -> the array the column stores. */
+function moduleAccessToArray(keys: readonly string[]): string[] {
+  const csv = serializeModuleAccess(keys);
+  return csv ? csv.split(",") : [];
+}
+
+async function getUserRow(orgId: string, userId: string): Promise<UserRow | null> {
+  const [row] = await db
+    .select()
+    .from(users)
+    .where(and(eq(users.orgId, orgId), eq(users.id, userId)))
+    .limit(1);
+  return row ?? null;
+}
 
 /**
- * Adds any columns the code knows about but the sheet's header row is missing.
+ * Always reads fresh — login must never authenticate against a stale password hash or a
+ * since-deactivated account. (No caching layer sits in front of this read at all now, so
+ * "fresh" is simply what a normal indexed Postgres read already is.)
  *
- * Rows are read back by matching against the sheet's own header row, so a column added
- * to USERS_HEADERS after an organization already connected its sheet would otherwise be
- * written into a position no header names — the value would be invisible on read. This
- * makes adding a column a code change instead of a manual instruction to every customer.
- */
-export async function ensureUsersHeaders(): Promise<void> {
-  const spreadsheetId = await getTenantSheetId();
-  if (headersEnsured.has(spreadsheetId)) return;
-
-  const rows = await getSheetRows(USERS_TAB);
-  const existing = rows[0] ?? [];
-  const missing = USERS_HEADERS.filter((h) => !existing.includes(h));
-
-  if (missing.length > 0) {
-    const sheets = getSheetsClient();
-    await sheets.spreadsheets.values.update({
-      spreadsheetId,
-      range: `${USERS_TAB}!A1`,
-      valueInputOption: "RAW",
-      requestBody: { values: [[...existing, ...missing]] },
-    });
-  }
-
-  headersEnsured.add(spreadsheetId);
-}
-
-/**
- * Always reads fresh (no cache) — login must never authenticate against a stale
- * password hash or a since-deactivated account.
+ * Scoped to the current tenant's org_id, mirroring how the Sheets-era version was
+ * implicitly scoped to "whichever spreadsheet getTenantSheetId() resolved to." Email is
+ * unique platform-wide (see the platform registry), so this filter is defense in depth
+ * rather than the only thing narrowing the match.
  */
 export async function findUserByEmail(email: string): Promise<SheetUser | null> {
-  const rows = await getSheetRows(USERS_TAB);
-  const users = rowsToObjects<SheetUser>(rows);
+  const orgId = await getTenantOrgId();
   const normalized = email.trim().toLowerCase();
-  return users.find((u) => u.Email?.trim().toLowerCase() === normalized) ?? null;
+  const rows = await db.select().from(users).where(eq(users.orgId, orgId));
+  const match = rows.find((u) => u.email?.trim().toLowerCase() === normalized);
+  return match ? rowToSheetUser(match) : null;
 }
 
 export async function verifyPassword(plain: string, hash: string): Promise<boolean> {
@@ -122,14 +115,15 @@ export async function hashPassword(plain: string): Promise<string> {
 }
 
 export async function getUserById(userId: string): Promise<SheetUser | null> {
-  const rows = await getSheetRows(USERS_TAB);
-  const users = rowsToObjects<SheetUser>(rows);
-  return users.find((u) => u.User_ID === userId) ?? null;
+  const orgId = await getTenantOrgId();
+  const row = await getUserRow(orgId, userId);
+  return row ? rowToSheetUser(row) : null;
 }
 
 export async function listUsers(): Promise<SheetUser[]> {
-  const rows = await getSheetRows(USERS_TAB);
-  return rowsToObjects<SheetUser>(rows);
+  const orgId = await getTenantOrgId();
+  const rows = await db.select().from(users).where(eq(users.orgId, orgId));
+  return rows.map(rowToSheetUser);
 }
 
 interface CreateUserInput {
@@ -146,7 +140,6 @@ interface CreateUserInput {
 
 export async function createUser(input: CreateUserInput): Promise<SheetUser> {
   const orgId = await getTenantOrgId();
-  await ensureUsersHeaders();
   const normalizedEmail = input.email.trim().toLowerCase();
 
   // The login form asks only for an email, so an address has to identify exactly one
@@ -158,42 +151,36 @@ export async function createUser(input: CreateUserInput): Promise<SheetUser> {
   const userId = generateId("UID");
   const passwordHash = await hashPassword(input.password);
 
-  const newUser: SheetUser = {
-    User_ID: userId,
-    Full_Name: input.fullName,
-    Email: input.email,
-    Password_Hash: passwordHash,
-    Role: input.role,
-    Department: input.department,
-    Phone_Number: input.phoneNumber,
-    Status: "Active",
-    Created_At: nowStamp(),
-    Created_By: input.createdBy,
-    Module_Access: serializeModuleAccess(input.moduleAccess ?? []),
-    Shift: input.shift?.trim() || "1",
-  };
+  const [row] = await db
+    .insert(users)
+    .values({
+      id: userId,
+      orgId,
+      fullName: input.fullName,
+      email: input.email,
+      passwordHash,
+      role: input.role,
+      department: input.department,
+      phoneNumber: input.phoneNumber,
+      status: "Active",
+      createdBy: input.createdBy,
+      moduleAccess: moduleAccessToArray(input.moduleAccess ?? []),
+      shift: input.shift?.trim() || "1",
+    })
+    .returning();
 
-  await appendSheetRow(USERS_TAB, userToRow(newUser));
+  const newUser = rowToSheetUser(row);
 
   // The platform index is what lets login find this user's organization from their
-  // email alone, without scanning every tenant's Users tab.
+  // email alone, without scanning every tenant's Users table.
   await indexUser({
-    Email: normalizedEmail,
-    Org_ID: orgId,
-    User_ID: userId,
-    Status: newUser.Status,
+    email: normalizedEmail,
+    orgId,
+    userId,
+    status: newUser.Status as "Active" | "Inactive",
   });
 
   return newUser;
-}
-
-async function findUserRow(userId: string): Promise<{ rowNumber: number; user: SheetUser } | null> {
-  const rows = await getSheetRows(USERS_TAB);
-  const rowIndex = rows.findIndex((row, i) => i > 0 && row[0] === userId);
-  if (rowIndex === -1) return null;
-
-  const user = rowsToObjects<SheetUser>([rows[0], rows[rowIndex]])[0];
-  return { rowNumber: rowIndex + 1, user };
 }
 
 interface UpdateUserInput {
@@ -206,28 +193,31 @@ interface UpdateUserInput {
 }
 
 export async function updateUser(userId: string, patch: UpdateUserInput): Promise<SheetUser> {
-  await ensureUsersHeaders();
-  const found = await findUserRow(userId);
+  const orgId = await getTenantOrgId();
+  const found = await getUserRow(orgId, userId);
   if (!found) {
     throw new Error("User nahi mila.");
   }
 
-  const updated: SheetUser = {
-    ...found.user,
-    Role: patch.role ?? found.user.Role,
-    Department: patch.department ?? found.user.Department,
-    Phone_Number: patch.phoneNumber ?? found.user.Phone_Number,
-    Status: patch.status ?? found.user.Status,
-    Module_Access:
-      patch.moduleAccess !== undefined
-        ? serializeModuleAccess(patch.moduleAccess)
-        : found.user.Module_Access,
-    Shift: patch.shift?.trim() || found.user.Shift,
-  };
+  const [row] = await db
+    .update(users)
+    .set({
+      role: patch.role ?? found.role,
+      department: patch.department ?? found.department,
+      phoneNumber: patch.phoneNumber ?? found.phoneNumber,
+      status: (patch.status ?? found.status) as "Active" | "Inactive",
+      moduleAccess:
+        patch.moduleAccess !== undefined
+          ? moduleAccessToArray(patch.moduleAccess)
+          : found.moduleAccess,
+      shift: patch.shift?.trim() || found.shift,
+    })
+    .where(and(eq(users.orgId, orgId), eq(users.id, userId)))
+    .returning();
 
-  await updateSheetRow(USERS_TAB, found.rowNumber, userToRow(updated));
+  const updated = rowToSheetUser(row);
 
-  if (patch.status && patch.status !== found.user.Status) {
+  if (patch.status && patch.status !== found.status) {
     await updateIndexedUserStatus(updated.Email, updated.Status);
   }
 
@@ -253,15 +243,15 @@ export async function deleteUser(userId: string, actingUserId: string): Promise<
     throw new UserDeletionError("Aap khud ko delete nahi kar sakte.");
   }
 
-  await ensureUsersHeaders();
-  const found = await findUserRow(userId);
+  const orgId = await getTenantOrgId();
+  const found = await getUserRow(orgId, userId);
   if (!found) {
     throw new UserDeletionError("User nahi mila.");
   }
 
   // An organization with no Admin cannot be administered again — there would be nobody
-  // left who can create users or connect sheets.
-  if (found.user.Role === "Admin") {
+  // left who can create users or manage settings.
+  if (found.role === "Admin") {
     const admins = (await listUsers()).filter(
       (u) => u.Role === "Admin" && u.Status === "Active"
     );
@@ -274,24 +264,20 @@ export async function deleteUser(userId: string, actingUserId: string): Promise<
 
   // The index entry goes first: if the second half fails, the user still exists and the
   // action can simply be retried. The other order would leave an email pointing nowhere.
-  await removeIndexedUser(found.user.Email);
-  await deleteRow(await getTenantSheetId(), USERS_TAB, found.rowNumber);
+  await removeIndexedUser(found.email);
+  await db.delete(users).where(and(eq(users.orgId, orgId), eq(users.id, userId)));
 }
 
 export async function resetUserPassword(userId: string, newPassword: string): Promise<void> {
-  // Its siblings all migrate the header first; this one did not, so on a sheet still
-  // missing a column the rewritten row would be laid out against the old header — and
-  // this is the row that carries the password hash.
-  await ensureUsersHeaders();
-  const found = await findUserRow(userId);
+  const orgId = await getTenantOrgId();
+  const found = await getUserRow(orgId, userId);
   if (!found) {
     throw new Error("User nahi mila.");
   }
 
-  const updated: SheetUser = {
-    ...found.user,
-    Password_Hash: await hashPassword(newPassword),
-  };
-
-  await updateSheetRow(USERS_TAB, found.rowNumber, userToRow(updated));
+  const passwordHash = await hashPassword(newPassword);
+  await db
+    .update(users)
+    .set({ passwordHash })
+    .where(and(eq(users.orgId, orgId), eq(users.id, userId)));
 }

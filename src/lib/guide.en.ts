@@ -20,7 +20,7 @@ export const GUIDE_EN: GuideChapter[] = [
         title: "What Pro ERP is",
         audience: "everyone",
         summary:
-          "This is the system that runs your organization's work — task delegation, recurring jobs, material inward and quality checks, inventory and stock, product BOMs, production planning, and everybody's performance scoring. All of the data lives in your organization's own Google Sheets; Pro ERP simply reads and writes them.",
+          "This is the system that runs your organization's work — task delegation, recurring jobs, material inward and quality checks, inventory and stock, product BOMs, production planning, and everybody's performance scoring. Your data is fully isolated to your own organization — another organization's data is never visible to you.",
         how: [
           "One idea runs through the whole system: no figure is ever stored anywhere — it is always worked out afresh from the real entries.",
           "Your MIS score is not written in a box; it is built from the timestamps on your tasks. An item's stock is not written anywhere either; it is the sum of every In and Out.",
@@ -768,70 +768,6 @@ export const GUIDE_EN: GuideChapter[] = [
       "For the organization's Admin only — the full path to standing the system up for the first time.",
     sections: [
       {
-        id: "how-it-works",
-        title: "How the system works",
-        audience: "admin",
-        summary:
-          "All of your organization's data lives in your own Google Sheets. Pro ERP reads and writes them through a service account, which is why every sheet has to be shared with that service account.",
-        notes: [
-          "Every module has its own Google Sheet. You do not need to create the header rows — the system writes them the first time it saves.",
-          "If you remove our access from a sheet, that module stops working there and then.",
-        ],
-      },
-      {
-        id: "connect-sheets",
-        title: "Connecting the module sheets",
-        audience: "admin",
-        summary:
-          "Create a blank Google Sheet for each module and paste its URL.",
-        steps: [
-          "Create a folder in Google Drive and share it with the service account email, with Editor access (the address is on the Settings page).",
-          "Create a blank sheet inside that folder for each module — the full list is below.",
-          "Sharing the folder gives access to every sheet inside it, so there is no need to share each sheet separately.",
-          "Paste each URL against its module under Admin → Settings and save.",
-        ],
-        example: {
-          title: "Which sheet is for what",
-          lines: [
-            "  Tasks                  one-off tasks",
-            "  Recurring Tasks        rules for repeating work",
-            "  Holiday List           dates that are holidays",
-            "  Inward & IQC FMS       incoming material + quality check",
-            "  Failure Log            what failed the quality check",
-            "  IMS Inward             what passed",
-            "",
-            "  Items                  item master (SKU, UOM, planning)",
-            "  Stock Ledger           every In / Out line — stock comes from this",
-            "  Indents                purchase requests",
-            "  BOM                    a product's recipe",
-            "  Production Plans       what to make, how much, when",
-            "  Plan Materials         each plan's BOM copy + reservation",
-          ],
-        },
-        notes: [
-          "There is no need to create every sheet at once. Connect the ones for the modules you are actually using — the rest can be added later.",
-          "Inventory needs both Items and Stock Ledger to work. PPC needs both Production Plans and Plan Materials — one alone is not enough.",
-          "You do not need to write the header row. The system creates it on the first write, and adds any new column later in the same way.",
-          "On save the system checks straight away whether it can reach the sheet, so a mistake is caught there and then.",
-          "Put the dates in the Holiday List in YYYY-MM-DD format as plain text (format the column as Plain Text, or prefix each entry with '). Otherwise Google rewrites them into its own format and they stop matching.",
-        ],
-      },
-      {
-        id: "attachments",
-        title: "The folder for attachments",
-        audience: "admin",
-        summary: "Where the files attached to tasks and inward entries go.",
-        steps: [
-          "Paste your folder's URL under Admin → Settings, in File Storage (Drive Folder).",
-          "On save the system uploads a test file and tells you immediately whether the folder will work.",
-        ],
-        notes: [
-          "Required: the folder has to be inside a Shared Drive (which only Google Workspace accounts have), and the service account needs Content Manager access.",
-          "A folder in a personal 'My Drive' will not work — Google does not let a service account store files in a personal Drive at all. That is Google's rule, not a shortcoming of ours.",
-          "If you do not connect a Drive folder, or it does not work, files go to the platform's own storage instead. Your work is never blocked either way.",
-        ],
-      },
-      {
         id: "users",
         title: "Creating users and granting access",
         audience: "admin",
@@ -885,9 +821,7 @@ export const GUIDE_EN: GuideChapter[] = [
         audience: "admin",
         summary: "Common problems and the first thing to try.",
         notes: [
-          "\"Sheet is not configured\" — that module's URL has not been pasted under Settings yet.",
-          "\"Could not reach\" — the sheet or folder was never shared with the service account, or the sharing was removed.",
-          "Somebody cannot sign in — do not have them copy the password from the sheet (that is a hash). Give them a new one with Reset Password.",
+          "Somebody cannot sign in — do not have them copy the password from anywhere (only its encrypted hash is ever stored). Give them a new one with Reset Password.",
           "Somebody sees no tabs at all — nothing is ticked under their System Access.",
           "WhatsApp is not sending — check with Send Test Message under Settings, then check the ChatXFlow session.",
         ],
@@ -907,13 +841,11 @@ export const GUIDE_EN: GuideChapter[] = [
         summary:
           "Any organization can sign itself up — there is nothing for you to do.",
         steps: [
-          "They go to /signup and create a blank Google Sheet.",
-          "They share that sheet with the service account, with Editor access.",
-          "They enter the organization's name, their own admin account and the sheet's URL.",
-          "The system creates the Users and Settings tabs in that sheet, registers the organization, makes them an Admin and signs them in.",
+          "They go to /signup and enter the organization's name, their own admin account, and optionally a logo.",
+          "The system registers the organization, makes them an Admin and signs them in — nothing else to connect.",
         ],
         notes: [
-          "One sheet cannot serve two organizations, and one email can exist only once across the whole platform — sign-in asks only for an email, so it has to be unique.",
+          "One email can exist only once across the whole platform — sign-in asks only for an email, so it has to be unique.",
         ],
       },
       {
@@ -924,7 +856,7 @@ export const GUIDE_EN: GuideChapter[] = [
         steps: ["Switch off Active against that organization on the Platform page."],
         notes: [
           "All of its users are signed out on their next request, and its automated jobs stop too.",
-          "Nothing is deleted — not the data, not the sheets, not the users. Switching it back on returns everything to how it was.",
+          "Nothing is deleted — not the data, not the users. Switching it back on returns everything to how it was.",
         ],
       },
       {
@@ -944,7 +876,6 @@ export const GUIDE_EN: GuideChapter[] = [
         audience: "platform",
         summary: "This install's real limits.",
         notes: [
-          "Every organization runs through one Google service account, and Google's request limit applies to that whole project rather than per organization. With many organizations running at once, this bites first.",
           "If two people edit the very same record at exactly the same moment, one of the changes can be lost. Different people doing their own work is not a problem.",
           "File uploads are capped at 4MB.",
           "The automated jobs run once a day.",

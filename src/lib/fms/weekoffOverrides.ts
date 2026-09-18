@@ -1,14 +1,22 @@
-import { appendModuleRow, getModuleRows, recordToRow } from "@/lib/moduleSheets";
+import type { InferSelectModel } from "drizzle-orm";
+import { fmsWeekoffOverrides } from "@/db/schema";
+import { listByOrg, insertRecord } from "@/db/repo";
+import { getTenantOrgId } from "@/lib/tenant";
 import { generateId } from "@/lib/id";
-import { nowStamp } from "@/lib/timestamp";
-
-const MODULE_KEY = "FMS_WEEKOFF_OVERRIDES";
 
 export type WeekoffScope = "ALL" | "DEPARTMENT" | "USER";
 
+/**
+ * Mirrors the pre-Postgres sheet row shape exactly (same field names, same PascalCase
+ * casing) even though the persistence underneath is now the `fms_weekoff_overrides`
+ * Postgres table — `fms_weekoff_overrides` has a plain `id` (Override_ID) primary key, so
+ * it goes through repo.ts's generic layer like `indents`, unlike `fms_templates`/`bom`.
+ */
 export interface WeekoffOverrideRecord {
   Override_ID: string;
-  /** YYYY-MM-DD, plain text — same convention as HOLIDAY_LIST. */
+  /** YYYY-MM-DD, plain text — same convention as HOLIDAY_LIST. Postgres's `date` column
+   * comes back from Drizzle as a plain string already in this shape (see
+   * src/lib/holidays.ts's own comment on the same point), no conversion needed. */
   Date: string;
   Scope: string;
   Scope_Value: string;
@@ -16,8 +24,23 @@ export interface WeekoffOverrideRecord {
   Created_At: string;
 }
 
+type WeekoffRow = InferSelectModel<typeof fmsWeekoffOverrides>;
+
+function rowToRecord(row: WeekoffRow): WeekoffOverrideRecord {
+  return {
+    Override_ID: row.id,
+    Date: row.date,
+    Scope: row.scope,
+    Scope_Value: row.scopeValue,
+    Created_By: row.createdBy,
+    Created_At: row.createdAt.toISOString(),
+  };
+}
+
 export async function listWeekoffOverrides(): Promise<WeekoffOverrideRecord[]> {
-  return getModuleRows<WeekoffOverrideRecord>(MODULE_KEY);
+  const orgId = await getTenantOrgId();
+  const rows = await listByOrg(fmsWeekoffOverrides, orgId);
+  return rows.map(rowToRecord);
 }
 
 interface AddWeekoffOverrideInput {
@@ -33,16 +56,16 @@ interface AddWeekoffOverrideInput {
 export async function addWeekoffOverride(
   input: AddWeekoffOverrideInput
 ): Promise<WeekoffOverrideRecord> {
-  const record: WeekoffOverrideRecord = {
-    Override_ID: generateId("OVR"),
-    Date: input.date,
-    Scope: input.scope,
-    Scope_Value: input.scope === "ALL" ? "" : input.scopeValue,
-    Created_By: input.createdBy,
-    Created_At: nowStamp(),
-  };
-  await appendModuleRow(MODULE_KEY, recordToRow(MODULE_KEY, record));
-  return record;
+  const orgId = await getTenantOrgId();
+  const row = await insertRecord(fmsWeekoffOverrides, {
+    id: generateId("OVR"),
+    orgId,
+    date: input.date,
+    scope: input.scope,
+    scopeValue: input.scope === "ALL" ? "" : input.scopeValue,
+    createdBy: input.createdBy,
+  });
+  return rowToRecord(row);
 }
 
 /** Whether an override row's scope covers this user (by department or by name). */

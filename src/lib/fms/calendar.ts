@@ -2,7 +2,6 @@ import { getSetting } from "@/lib/settings";
 import { getUserById } from "@/lib/auth/users";
 import { getHolidayDates } from "@/lib/holidays";
 import { listWeekoffOverrides, overrideAppliesToUser } from "@/lib/fms/weekoffOverrides";
-import { tryModule } from "@/lib/moduleSheets";
 import {
   nextWorkingInstant as pureNextWorkingInstant,
   addWorkingMinutes as pureAddWorkingMinutes,
@@ -118,8 +117,8 @@ async function getWorkingSchedule(
   const [shiftTimes, weeklyOffDays, holidayDates, overrideRows] = await Promise.all([
     getShiftTimes(shiftId),
     getWeeklyOffDays(),
-    tryModule(() => getHolidayDates()).then((s) => s ?? new Set<string>()),
-    tryModule(() => listWeekoffOverrides()).then((r) => r ?? []),
+    getHolidayDates(),
+    listWeekoffOverrides(),
   ]);
 
   const shiftWindows = buildShiftWindows(shiftTimes);

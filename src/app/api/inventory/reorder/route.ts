@@ -27,6 +27,5 @@ export async function GET() {
     // Items whose reorder point cannot be computed are excluded from the list above
     // rather than guessed at — reported here so the gap is visible, not silent.
     notSetUp: snapshot.items.filter((i) => i.rop === null).length,
-    missingSheets: snapshot.missingSheets,
   });
 }

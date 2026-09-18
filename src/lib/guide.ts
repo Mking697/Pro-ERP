@@ -62,7 +62,7 @@ export const GUIDE: GuideChapter[] = [
         title: "Pro ERP kya hai",
         audience: "everyone",
         summary:
-          "Ye aapke organization ka kaam-kaaj sambhalne wala system hai — task delegation, recurring kaam, material inward aur quality check, inventory aur stock, product ki BOM, production planning, aur sabki performance scoring. Saara data aapke organization ke apne Google Sheets me rehta hai; Pro ERP usi ko padhta-likhta hai.",
+          "Ye aapke organization ka kaam-kaaj sambhalne wala system hai — task delegation, recurring kaam, material inward aur quality check, inventory aur stock, product ki BOM, production planning, aur sabki performance scoring. Aapka data poori tarah aapke organization tak seemit hai — kisi doosre organization ko kabhi nahi dikhta.",
         how: [
           "Poore system me ek soch baar-baar dikhegi: koi bhi ginti wala number kahin store karke nahi rakha jaata — wo hamesha asli entries se jod kar nikala jaata hai.",
           "Aapka MIS score kisi khaane me likha nahi hai; wo aapke tasks ke waqt se banta hai. Kisi item ka stock bhi kahin likha nahi hai; wo har In aur Out ka jod hai.",
@@ -809,70 +809,6 @@ export const GUIDE: GuideChapter[] = [
     description: "Sirf organization Admin ke liye — pehli baar system khada karne ka poora tarika.",
     sections: [
       {
-        id: "how-it-works",
-        title: "System kaam kaise karta hai",
-        audience: "admin",
-        summary:
-          "Aapke organization ka saara data aapke apne Google Sheets me rehta hai. Pro ERP un sheets ko ek service account ke zariye padhta-likhta hai. Isliye har sheet ko us service account ke saath share karna zaroori hai.",
-        notes: [
-          "Har module ki apni alag Google Sheet hoti hai. Header rows aap ko nahi banane — pehli baar likhte waqt system khud bana deta hai.",
-          "Agar aap sheet se hamara access hata denge to us module ka kaam wahin ruk jaayega.",
-        ],
-      },
-      {
-        id: "connect-sheets",
-        title: "Module sheets connect karna",
-        audience: "admin",
-        summary: "Har module ke liye ek blank Google Sheet banakar uska URL paste karna.",
-        steps: [
-          "Google Drive me ek folder banayein, aur use service account email ke saath Editor access se share karein (email Settings page par likha hai).",
-          "Us folder ke andar har module ke liye ek blank sheet banayein (poori list neeche hai).",
-          "Folder share hone se andar ki saari sheets ko access mil jaata hai — har sheet alag se share karne ki zaroorat nahi.",
-          "Admin → Settings me har module ke saamne uska URL paste karke Save karein.",
-        ],
-        example: {
-          title: "Kaun si sheet kis kaam ke liye",
-          lines: [
-            "  Tasks                  ek baar ke task",
-            "  Recurring Tasks        baar-baar wale kaam ke rules",
-            "  Holiday List           chhutti ki tarikhein",
-            "  Inward & IQC FMS       aane wala material + quality check",
-            "  Failure Log            jo quality me fail hua",
-            "  IMS Inward             jo pass hua",
-            "",
-            "  Items                  item master (SKU, UOM, planning)",
-            "  Stock Ledger           har In / Out ki line — stock isi se",
-            "  Indents                purchase requests",
-            "  BOM                    product ki recipe",
-            "  Production Plans       kya, kitna, kab banana hai",
-            "  Plan Materials         har plan ki BOM copy + reserve",
-          ],
-        },
-        notes: [
-          "Saari sheets ek saath banane ki zaroorat nahi. Jo module aap abhi chala rahe hain, sirf uski sheet connect karein — baaki baad me jodi ja sakti hain.",
-          "Inventory chalane ke liye kam se kam Items aur Stock Ledger dono chahiye. PPC ke liye Production Plans aur Plan Materials dono chahiye — ek se kaam nahi chalega.",
-          "Sheet me header row aapko nahi banani. Pehli baar likhte waqt system khud bana deta hai, aur baad me koi naya column joda jaaye to wo bhi apne aap add ho jaata hai.",
-          "Save karte waqt system turant check karta hai ki us sheet tak pahunch hai ya nahi — galti wahin pakdi jaati hai.",
-          "Holiday List me tarikhein YYYY-MM-DD format me, plain text ke roop me daalein (column ko Plain Text format karein, ya har entry se pehle ' lagayein). Warna Google unhe apne format me badal deta hai aur match nahi hota.",
-        ],
-      },
-      {
-        id: "attachments",
-        title: "Attachments ka folder",
-        audience: "admin",
-        summary:
-          "Task aur inward ke saath jo files lagti hain, wo kahan jaayengi.",
-        steps: [
-          "Admin → Settings me File Storage (Drive Folder) me apne folder ka URL paste karein.",
-          "Save karte waqt system ek test file upload karke turant bata dega ki folder chalega ya nahi.",
-        ],
-        notes: [
-          "Zaroori: folder ek Shared Drive ke andar hona chahiye (Google Workspace waalon ke paas hi hota hai), aur service account ko Content Manager access chahiye.",
-          "Personal 'My Drive' ka folder kaam nahi karega — Google service account ko personal Drive me file rakhne hi nahi deta. Ye hamari kami nahi, Google ka niyam hai.",
-          "Agar aap Drive folder connect nahi karte, ya wo kaam nahi karta, to files apne aap platform ke apne storage me chali jaati hain. Aapka kaam kisi haal me rukega nahi.",
-        ],
-      },
-      {
         id: "users",
         title: "Users banana aur access dena",
         audience: "admin",
@@ -925,9 +861,7 @@ export const GUIDE: GuideChapter[] = [
         audience: "admin",
         summary: "Aam dikkatein aur unka pehla ilaaj.",
         notes: [
-          "\"Sheet configure nahi hui hai\" — Settings me us module ka URL paste karna baaki hai.",
-          "\"Access nahi mil paya\" — sheet ya folder service account ke saath share nahi hui, ya share hata di gayi.",
-          "User login nahi kar pa raha — password sheet se copy mat karwayein (wo hash hai). Reset Password se naya dein.",
+          "User login nahi kar pa raha — password kahin se copy mat karwayein (sirf uska encrypted hash store hota hai). Reset Password se naya dein.",
           "User ko koi tab nahi dikh raha — uske System Access me kuch tick nahi hua hai.",
           "WhatsApp nahi ja raha — Settings me Send Test Message se check karein, phir ChatXFlow ka session dekhein.",
         ],
@@ -947,13 +881,11 @@ export const GUIDE: GuideChapter[] = [
         summary:
           "Koi bhi organization khud signup kar sakta hai — aapko kuch karne ki zaroorat nahi.",
         steps: [
-          "Wo /signup par jaakar ek blank Google Sheet banata hai.",
-          "Us sheet ko service account ke saath Editor access se share karta hai.",
-          "Organization ka naam, apna admin account aur sheet ka URL daalta hai.",
-          "System sheet me Users aur Settings tabs bana deta hai, organization register karta hai, aur use Admin bana kar login kara deta hai.",
+          "Wo /signup par jaakar organization ka naam, apna admin account aur (chahein to) logo daalta hai.",
+          "System organization register karta hai, use Admin bana kar login kara deta hai — bas itna hi, kuch aur connect karne ki zaroorat nahi.",
         ],
         notes: [
-          "Ek hi sheet do organizations ko nahi di ja sakti, aur ek email poore platform par ek hi baar ban sakta hai — login sirf email maangta hai, isliye wo unique hona zaroori hai.",
+          "Ek email poore platform par ek hi baar ban sakta hai — login sirf email maangta hai, isliye wo unique hona zaroori hai.",
         ],
       },
       {
@@ -966,7 +898,7 @@ export const GUIDE: GuideChapter[] = [
         ],
         notes: [
           "Uske saare users agli hi request par bahar ho jaate hain aur uske automated kaam bhi ruk jaate hain.",
-          "Data, sheets aur users kuch bhi delete nahi hota — switch wapas on karte hi sab pehle jaisa chalne lagta hai.",
+          "Data aur users kuch bhi delete nahi hota — switch wapas on karte hi sab pehle jaisa chalne lagta hai.",
         ],
       },
       {
@@ -986,7 +918,6 @@ export const GUIDE: GuideChapter[] = [
         audience: "platform",
         summary: "Is install ki asli seemaayein.",
         notes: [
-          "Saare organizations ek hi Google service account se chalte hain, aur Google ki request limit us poore project par lagti hai — har organization par alag nahi. Bahut saare organizations ek saath chalne par ye pehle tang karegi.",
           "Ek hi record ko do log theek ek hi samay par edit karein to ek ka badlaav dab sakta hai. Alag-alag log apna-apna kaam karein to koi dikkat nahi.",
           "File upload ki seema 4MB hai.",
           "Automated kaam din me ek baar chalte hain.",

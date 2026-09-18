@@ -1,18 +1,14 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { requireModule } from "@/lib/auth/guard";
-import { tryModule } from "@/lib/moduleSheets";
 import { createVendor, listVendors } from "@/lib/parties/vendors";
 
 export async function GET() {
   const guard = await requireModule("PARTY_MASTER");
   if (!guard.ok) return guard.response;
 
-  const vendors = await tryModule(() => listVendors());
-  return NextResponse.json({
-    vendors: vendors ?? [],
-    setupRequired: vendors === null ? "Vendor Master" : null,
-  });
+  const vendors = await listVendors();
+  return NextResponse.json({ vendors });
 }
 
 const createSchema = z.object({

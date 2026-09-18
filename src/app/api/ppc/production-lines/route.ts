@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
 import { requireModule } from "@/lib/auth/guard";
-import { tryModule } from "@/lib/moduleSheets";
 import { listFmsTemplates, type FmsTemplateStepRecord } from "@/lib/fms/templates";
 
 /**
@@ -29,8 +28,8 @@ export async function GET() {
   const guard = await requireModule("PPC_PLAN");
   if (!guard.ok) return guard.response;
 
-  const rows = await tryModule(() => listFmsTemplates());
-  const lines = firstSteps(rows ?? [])
+  const rows = await listFmsTemplates();
+  const lines = firstSteps(rows)
     .filter((s) => s.Status === "Active")
     .map((s) => ({ templateId: s.Template_ID, templateName: s.Template_Name }));
 

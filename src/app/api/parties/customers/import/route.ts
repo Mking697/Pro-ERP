@@ -7,8 +7,8 @@ import { createCustomersBulk, type BulkCreateCustomerRowInput } from "@/lib/part
 // body around 4.5MB, and a spreadsheet of customer rows is plain text/XML and tiny per row.
 const MAX_FILE_BYTES = 4 * 1024 * 1024;
 
-// A single import writing thousands of rows in one Sheets call risks the serverless
-// function's own time limit long before it risks the Sheets API's.
+// createCustomersBulk() writes one row at a time (no bulk-insert primitive for it yet), so
+// thousands of rows risk the serverless function's own time limit well before anything else.
 const MAX_ROWS = 2000;
 
 const ALLOWED_EXTENSIONS = [".csv", ".xlsx", ".xls"];

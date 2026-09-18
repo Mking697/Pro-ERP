@@ -3,8 +3,6 @@ import { redirect } from "next/navigation";
 import { verifySession, SESSION_COOKIE } from "@/lib/auth/session";
 import { listUsers } from "@/lib/auth/users";
 import { listTasks } from "@/lib/tasks";
-import { tryModule } from "@/lib/moduleSheets";
-import SetupRequired from "@/components/setup-required";
 import AppShell from "@/components/app-shell";
 import { computeCombinedMisSummary, getScoreColorClass, formatScore } from "@/lib/mis";
 import { listAllFmsRuns } from "@/lib/fms/engine";
@@ -32,20 +30,11 @@ export default async function PerformancePage() {
     redirect("/dashboard");
   }
 
-  const [users, allTasks, allFmsRuns] = await Promise.all([
+  const [users, allTasks, fmsRuns] = await Promise.all([
     listUsers(),
-    tryModule(() => listTasks()),
-    tryModule(() => listAllFmsRuns()),
+    listTasks(),
+    listAllFmsRuns(),
   ]);
-  if (allTasks === null) {
-    return (
-      <AppShell session={session}>
-        <SetupRequired what="Tasks" isAdmin={session.role === "Admin"} />
-      </AppShell>
-    );
-  }
-  // FMS is optional per organization — folded in when connected, Task-only score otherwise.
-  const fmsRuns = allFmsRuns ?? [];
 
   const rows = users
     .filter((u) => u.Status === "Active")

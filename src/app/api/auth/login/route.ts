@@ -29,15 +29,15 @@ export async function POST(request: Request) {
   );
 
   // The form asks only for an email, so the organization has to be discovered before
-  // there is any sheet to check the password against.
+  // there is any user row to check the password against.
   const indexed = await lookupUserOrg(email);
-  if (!indexed || indexed.Status !== "Active") {
+  if (!indexed || indexed.status !== "Active") {
     return invalid;
   }
 
   let tenant;
   try {
-    tenant = await tenantFromOrgId(indexed.Org_ID);
+    tenant = await tenantFromOrgId(indexed.orgId);
   } catch (error) {
     if (error instanceof TenantResolutionError) {
       return NextResponse.json({ error: error.message }, { status: 403 });
@@ -55,7 +55,7 @@ export async function POST(request: Request) {
     return invalid;
   }
 
-  // Resolved once at login so every later guard is a token check, not a sheet read.
+  // Resolved once at login so every later guard is a token check, not a database read.
   const access = effectiveModuleAccess(user.Role, user.Module_Access);
 
   const token = await signSession({
@@ -77,8 +77,8 @@ export async function POST(request: Request) {
     },
     organization: {
       orgId: tenant.orgId,
-      name: tenant.org.Org_Name,
-      slug: tenant.org.Slug,
+      name: tenant.org.orgName,
+      slug: tenant.org.slug,
     },
   });
 

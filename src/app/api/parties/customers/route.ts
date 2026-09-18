@@ -1,18 +1,14 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { requireModule } from "@/lib/auth/guard";
-import { tryModule } from "@/lib/moduleSheets";
 import { createCustomer, listCustomers } from "@/lib/parties/customers";
 
 export async function GET() {
   const guard = await requireModule("PARTY_MASTER");
   if (!guard.ok) return guard.response;
 
-  const customers = await tryModule(() => listCustomers());
-  return NextResponse.json({
-    customers: customers ?? [],
-    setupRequired: customers === null ? "Customer Master" : null,
-  });
+  const customers = await listCustomers();
+  return NextResponse.json({ customers });
 }
 
 const createSchema = z.object({

@@ -1,18 +1,14 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { requireRole } from "@/lib/auth/guard";
-import { tryModule } from "@/lib/moduleSheets";
 import { addWeekoffOverride, listWeekoffOverrides } from "@/lib/fms/weekoffOverrides";
 
 export async function GET() {
   const guard = await requireRole(["Admin"]);
   if (!guard.ok) return guard.response;
 
-  const overrides = await tryModule(() => listWeekoffOverrides());
-  return NextResponse.json({
-    overrides: overrides ?? [],
-    setupRequired: overrides === null ? "FMS Week-off Overrides" : null,
-  });
+  const overrides = await listWeekoffOverrides();
+  return NextResponse.json({ overrides });
 }
 
 const bodySchema = z.object({

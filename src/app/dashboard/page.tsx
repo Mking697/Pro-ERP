@@ -3,9 +3,7 @@ import { redirect } from "next/navigation";
 import Link from "next/link";
 import { verifySession, SESSION_COOKIE } from "@/lib/auth/session";
 import { listTasks, type TaskRecord } from "@/lib/tasks";
-import { tryModule } from "@/lib/moduleSheets";
 import { MODULE_ACCESS } from "@/lib/moduleAccess";
-import SetupRequired from "@/components/setup-required";
 import AppShell from "@/components/app-shell";
 import { computeCombinedMisSummary, isOverdue, getScoreColorClass, formatScore } from "@/lib/mis";
 import { listFmsRunsForUser } from "@/lib/fms/engine";
@@ -72,24 +70,12 @@ export default async function DashboardPage({
     redirect("/login");
   }
 
-  // A freshly signed-up organization has no Tasks sheet yet — that is an onboarding
-  // step still pending, not an error worth showing a crash page for.
-  const allTasks = await tryModule(() => listTasks());
-  if (allTasks === null) {
-    return (
-      <AppShell session={session}>
-        <SetupRequired what="Tasks" isAdmin={session.role === "Admin"} />
-      </AppShell>
-    );
-  }
+  const allTasks = await listTasks();
 
   const myTasks = allTasks.filter((t) => t.Assigned_To === session.userId);
   const pending = myTasks.filter((t) => t.Status === "Pending");
   const completed = myTasks.filter((t) => t.Status !== "Pending");
-  // FMS is optional per organization — an org that hasn't connected it yet still gets a
-  // Task-only score rather than an error, the same way SetupRequired above only guards
-  // Tasks (which every org needs from day one).
-  const myFmsRuns = (await tryModule(() => listFmsRunsForUser(session.userId))) ?? [];
+  const myFmsRuns = await listFmsRunsForUser(session.userId);
   const mis = computeCombinedMisSummary(myTasks, myFmsRuns);
   const overdueCount = pending.filter(isOverdue).length;
 

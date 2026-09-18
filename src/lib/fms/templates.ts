@@ -1,16 +1,20 @@
-import {
-  appendModuleRows,
-  getModuleRows,
-  updateModuleCells,
-  deleteModuleRows,
-  recordToRow,
-} from "@/lib/moduleSheets";
+import { and, eq } from "drizzle-orm";
+import type { InferSelectModel } from "drizzle-orm";
+import { fmsTemplates } from "@/db/schema";
+import { db } from "@/db/client";
+import { getTenantOrgId } from "@/lib/tenant";
 import { generateId } from "@/lib/id";
-import { nowStamp } from "@/lib/timestamp";
 import { describeDataSourceType, parseStepDataSourceConfig } from "@/lib/fms/dataSource";
+import { parseLedgerMovementActionConfig } from "@/lib/fms/actions";
 
-const MODULE_KEY = "FMS_TEMPLATES";
-
+/**
+ * `fms_templates` has the composite primary key `(template_id, step_no)` — one row per
+ * step, a template's metadata (name, trigger, status) repeated on every one of its rows,
+ * exactly mirroring the old sheet's flat shape (same reasoning as `bom`'s `(bom_id,
+ * line_no)`). Per repo.ts's `IdentifiedTable` doc comment this does NOT satisfy the
+ * generic findById/updateById/deleteById layer, so every query here is a direct, bespoke
+ * Drizzle query instead.
+ */
 export interface FmsTemplateStepRecord {
   Template_ID: string;
   Template_Name: string;
@@ -24,6 +28,12 @@ export interface FmsTemplateStepRecord {
   TAT_Value: string;
   TAT_Unit: string;
   Outcome_Options: string;
+  /** Still a semicolon string at this API boundary ("Pass:3;Fail:5") — unchanged, since
+   * fms-template-form.tsx / template-format.ts on the frontend parse exactly this shape.
+   * Only the storage underneath (fms_templates.next_step_map, a jsonb column) moved from
+   * this same semicolon string — which was never actually valid JSON, so it could never
+   * really have been written to a jsonb column under Sheets either — to a real JSON
+   * object. See nextStepMapToStorage/nextStepMapFromStorage below. */
   Next_Step_Map: string;
   /** "" | "FORM" | "EXISTING_FMS" — see src/lib/fms/dataSource.ts. */
   Data_Source_Type: string;
@@ -78,13 +88,25 @@ export interface CreateFmsTemplateInput {
   steps: FmsTemplateStepInput[];
 }
 
-function serializeNextStepMap(map: Record<string, number | "END">): string {
-  return Object.entries(map)
+/** outcome -> target -> the real JSON object fms_templates.next_step_map now stores. */
+function nextStepMapToStorage(map: Record<string, number | "END">): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const [outcome, target] of Object.entries(map)) out[outcome] = String(target);
+  return out;
+}
+
+/** The inverse — and what FmsTemplateStepRecord.Next_Step_Map (still a semicolon string
+ * at the API boundary, unchanged) is built from on every read. */
+function nextStepMapFromStorage(json: Record<string, string> | null | undefined): string {
+  if (!json) return "";
+  return Object.entries(json)
     .map(([outcome, target]) => `${outcome}:${target}`)
     .join(";");
 }
 
-/** "Pass:3;Fail:5" -> { Pass: "3", Fail: "5" }. Target is a Step_No string, or "END". */
+/** "Pass:3;Fail:5" -> { Pass: "3", Fail: "5" }. Target is a Step_No string, or "END".
+ * Unchanged — still parses the same semicolon string FmsTemplateStepRecord.Next_Step_Map
+ * has always carried at this boundary; only the storage underneath moved to real JSON. */
 export function parseNextStepMap(raw: string): Record<string, string> {
   const map: Record<string, string> = {};
   if (!raw) return map;
@@ -102,9 +124,39 @@ export function parseOutcomeOptions(raw: string): string[] {
     .filter(Boolean);
 }
 
+type TemplateRow = InferSelectModel<typeof fmsTemplates>;
+
+function rowToRecord(row: TemplateRow): FmsTemplateStepRecord {
+  return {
+    Template_ID: row.templateId,
+    Template_Name: row.templateName,
+    Trigger_Event: row.triggerEvent,
+    Status: row.status,
+    Created_By: row.createdBy,
+    Created_At: row.createdAt.toISOString(),
+    Step_No: String(row.stepNo),
+    Step_Name: row.stepName,
+    Assigned_To: row.assignedTo,
+    TAT_Value: row.tatValue ?? "",
+    TAT_Unit: row.tatUnit,
+    Outcome_Options: row.outcomeOptions,
+    Next_Step_Map: nextStepMapFromStorage(row.nextStepMap),
+    Data_Source_Type: row.dataSourceType,
+    Data_Source_Config: row.dataSourceConfig ? JSON.stringify(row.dataSourceConfig) : "",
+    Action_Type: row.actionType,
+    Action_Config: row.actionConfig ? JSON.stringify(row.actionConfig) : "",
+    Outcome_Type: row.outcomeType,
+    TAT_Source_Step_No: row.tatSourceStepNo !== null ? String(row.tatSourceStepNo) : "",
+    TAT_Source_Field_Key: row.tatSourceFieldKey,
+    TAT_Offset: row.tatOffset ?? "",
+  };
+}
+
 /** Every step row of every template — filter/group by Template_ID to get one flow. */
 export async function listFmsTemplates(): Promise<FmsTemplateStepRecord[]> {
-  return getModuleRows<FmsTemplateStepRecord>(MODULE_KEY);
+  const orgId = await getTenantOrgId();
+  const rows = await db.select().from(fmsTemplates).where(eq(fmsTemplates.orgId, orgId));
+  return rows.map(rowToRecord);
 }
 
 export async function getFmsTemplateSteps(templateId: string): Promise<FmsTemplateStepRecord[]> {
@@ -148,10 +200,6 @@ export function userCanAccessTemplate(
  * template for an FMS_ADMIN, or only the ones whose static step design assigns this user
  * otherwise (see userCanAccessTemplate). A template is stored as one row per step, so this
  * groups/dedupes by Template_ID, keeping each one's own Template_Name.
- *
- * Callers should wrap this in tenantCached with a short TTL — it runs on every page load
- * via AppShell, so an uncached full FMS_TEMPLATES read here would make the project's
- * already-documented Sheets-quota problem worse.
  */
 export async function listNavFmsTemplates(
   userId: string,
@@ -174,45 +222,58 @@ export async function listNavFmsTemplates(
   return out;
 }
 
-/** Mints a Template_ID and appends every step as one row each, in a single sheet write. */
+/** Mints a Template_ID and inserts every step as one row each, in a single insert. */
 export async function createFmsTemplate(input: CreateFmsTemplateInput): Promise<string> {
   if (input.steps.length === 0) {
     throw new Error("Template me kam se kam ek step chahiye.");
   }
 
+  const orgId = await getTenantOrgId();
   const templateId = generateId("FTP");
-  const createdAt = nowStamp();
+  const createdAt = new Date();
 
   const rows = input.steps.map((step) => {
-    const record: FmsTemplateStepRecord = {
-      Template_ID: templateId,
-      Template_Name: input.templateName,
-      Trigger_Event: input.triggerEvent,
-      Status: "Active",
-      Created_By: input.createdBy,
-      Created_At: createdAt,
-      Step_No: String(step.stepNo),
-      Step_Name: step.stepName,
-      Assigned_To: step.assignedTo,
-      TAT_Value: String(step.tatValue),
-      TAT_Unit: step.tatUnit,
-      Outcome_Options: step.outcomeOptions.join(","),
-      Next_Step_Map: serializeNextStepMap(step.nextStepMap),
+    const dataSourceConfig = parseStepDataSourceConfig(step.dataSourceConfig);
+    return {
+      templateId,
+      orgId,
+      templateName: input.templateName,
+      triggerEvent: input.triggerEvent,
+      status: "Active" as const,
+      createdBy: input.createdBy,
+      createdAt,
+      stepNo: step.stepNo,
+      stepName: step.stepName,
+      assignedTo: step.assignedTo,
+      tatValue: String(step.tatValue),
+      tatUnit: step.tatUnit,
+      outcomeOptions: step.outcomeOptions.join(","),
+      nextStepMap: nextStepMapToStorage(step.nextStepMap),
       // Derived from the config itself, never trusted from the client, so it can never
       // drift out of sync with what's actually configured.
-      Data_Source_Type: describeDataSourceType(parseStepDataSourceConfig(step.dataSourceConfig)),
-      Data_Source_Config: step.dataSourceConfig,
-      Action_Type: step.actionType,
-      Action_Config: step.actionConfig,
-      Outcome_Type: step.outcomeType,
-      TAT_Source_Step_No: step.tatSourceStepNo,
-      TAT_Source_Field_Key: step.tatSourceFieldKey,
-      TAT_Offset: step.tatSourceStepNo ? String(step.tatOffset) : "",
+      dataSourceType: describeDataSourceType(dataSourceConfig) as
+        | ""
+        | "FORM"
+        | "EXISTING_FMS"
+        | "FORM_AND_EXISTING",
+      dataSourceConfig,
+      actionType: step.actionType,
+      actionConfig: parseLedgerMovementActionConfig(step.actionConfig),
+      outcomeType: step.outcomeType as
+        | ""
+        | "DONE"
+        | "PASS_FAIL"
+        | "PASS_FAIL_QTY"
+        | "NUMBER"
+        | "TEXT"
+        | "ATTACHMENT",
+      tatSourceStepNo: step.tatSourceStepNo ? Number(step.tatSourceStepNo) : null,
+      tatSourceFieldKey: step.tatSourceFieldKey,
+      tatOffset: step.tatSourceStepNo ? String(step.tatOffset) : null,
     };
-    return recordToRow(MODULE_KEY, record);
   });
 
-  await appendModuleRows(MODULE_KEY, rows);
+  await db.insert(fmsTemplates).values(rows);
   return templateId;
 }
 
@@ -236,28 +297,21 @@ export async function updateFmsTemplate(
   return newTemplateId;
 }
 
-/**
- * Flips every row of a template to a new Status in one batch write.
- *
- * A template is many rows (one per step), so this can't go through updateModuleRow —
- * row numbers are derived from read order (data starts at sheet row 2) the same way
- * findModuleRow/getModuleRowNumbers do it internally.
- */
+/** Flips every row of a template to a new Status in one write. */
 export async function setFmsTemplateStatus(
   templateId: string,
   status: "Active" | "Archived"
 ): Promise<void> {
-  const rows = await getModuleRows<FmsTemplateStepRecord>(MODULE_KEY);
-  const updates = rows
-    .map((record, i) => ({ record, rowNumber: i + 2 }))
-    .filter(({ record }) => record.Template_ID === templateId)
-    .map(({ rowNumber }) => ({ rowNumber, fields: { Status: status } }));
+  const orgId = await getTenantOrgId();
+  const updated = await db
+    .update(fmsTemplates)
+    .set({ status })
+    .where(and(eq(fmsTemplates.orgId, orgId), eq(fmsTemplates.templateId, templateId)))
+    .returning({ templateId: fmsTemplates.templateId });
 
-  if (updates.length === 0) {
+  if (updated.length === 0) {
     throw new Error("Template nahi mila.");
   }
-
-  await updateModuleCells(MODULE_KEY, updates);
 }
 
 /**
@@ -269,20 +323,20 @@ export async function setFmsTemplateStatus(
  * references the template — this function only knows about FMS_TEMPLATES.
  */
 export async function deleteFmsTemplate(templateId: string): Promise<void> {
-  const rows = await getModuleRows<FmsTemplateStepRecord>(MODULE_KEY);
-  const matches = rows
-    .map((record, i) => ({ record, rowNumber: i + 2 }))
-    .filter(({ record }) => record.Template_ID === templateId);
+  const orgId = await getTenantOrgId();
+  const rows = await db
+    .select({ status: fmsTemplates.status })
+    .from(fmsTemplates)
+    .where(and(eq(fmsTemplates.orgId, orgId), eq(fmsTemplates.templateId, templateId)));
 
-  if (matches.length === 0) {
+  if (rows.length === 0) {
     throw new Error("Template nahi mila.");
   }
-  if (matches.some(({ record }) => record.Status !== "Archived")) {
+  if (rows.some((r) => r.status !== "Archived")) {
     throw new Error("Sirf Archived template delete ki ja sakti hai — pehle Archive karein.");
   }
 
-  await deleteModuleRows(
-    MODULE_KEY,
-    matches.map(({ rowNumber }) => rowNumber)
-  );
+  await db
+    .delete(fmsTemplates)
+    .where(and(eq(fmsTemplates.orgId, orgId), eq(fmsTemplates.templateId, templateId)));
 }

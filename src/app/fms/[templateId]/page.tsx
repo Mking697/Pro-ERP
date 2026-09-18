@@ -5,7 +5,6 @@ import AppShell from "@/components/app-shell";
 import PageHeader from "@/components/page-header";
 import { getT } from "@/lib/i18n/server";
 import { getFmsTemplateSteps, userCanAccessTemplate } from "@/lib/fms/templates";
-import { tryModule } from "@/lib/moduleSheets";
 import FlowBoard from "./flow-board";
 
 /**
@@ -33,8 +32,8 @@ export default async function FlowTemplatePage({
 
   const { templateId } = await params;
 
-  const steps = await tryModule(() => getFmsTemplateSteps(templateId));
-  if (!steps || steps.length === 0) redirect("/fms");
+  const steps = await getFmsTemplateSteps(templateId);
+  if (steps.length === 0) redirect("/fms");
 
   const isAdmin = session.access.includes("FMS_ADMIN");
   if (!userCanAccessTemplate(steps, session.userId, isAdmin)) redirect("/fms");

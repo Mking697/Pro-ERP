@@ -26,8 +26,8 @@ export async function PATCH(
     // Suspending takes effect on the next request: tenantFromOrgId refuses a non-Active
     // organization, so its users are locked out without touching their data.
     const org = await updateOrganization(orgId, {
-      ...(parsed.data.status ? { Status: parsed.data.status } : {}),
-      ...(parsed.data.plan ? { Plan: parsed.data.plan } : {}),
+      ...(parsed.data.status ? { status: parsed.data.status } : {}),
+      ...(parsed.data.plan ? { plan: parsed.data.plan } : {}),
     });
     return NextResponse.json({ organization: org });
   } catch (err) {
@@ -56,15 +56,18 @@ export async function DELETE(
     if (!org) {
       return NextResponse.json({ error: "Organization nahi mili." }, { status: 404 });
     }
-    if (confirmName.toLowerCase() !== org.Org_Name.trim().toLowerCase()) {
+    if (confirmName.toLowerCase() !== org.orgName.trim().toLowerCase()) {
       return NextResponse.json(
         { error: "Organization ka naam theek se likhein." },
         { status: 400 }
       );
     }
 
-    // Only the tenancy ends. The organization's own Google Sheets are theirs and are
-    // left untouched — this platform has no business deleting a customer's records.
+    // Every row this organization owns — users, tasks, inventory, FMS, everything —
+    // lives in this platform's own Postgres tables now (unlike the Sheets era, where an
+    // org's business data lived in spreadsheets this platform never touched), so
+    // deleteOrganization() really does delete all of it, atomically, along with the
+    // registry entry itself.
     await deleteOrganization(orgId);
     return NextResponse.json({ ok: true });
   } catch (err) {

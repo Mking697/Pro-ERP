@@ -1,11 +1,15 @@
-import { appendModuleRow, appendModuleRows, getModuleRows, recordToRow } from "@/lib/moduleSheets";
+import type { InferSelectModel } from "drizzle-orm";
+import { vendors } from "@/db/schema";
+import { listByOrg, insertRecord } from "@/db/repo";
+import { getTenantOrgId } from "@/lib/tenant";
 import { generateId } from "@/lib/id";
-import { nowStamp } from "@/lib/timestamp";
 
-const MODULE_KEY = "VENDORS";
-
-/** One row of the vendor master. Only Vendor_Name is ever required — everything else is
- * optional contact/banking detail a purchase flow can fill in over time. */
+/**
+ * Mirrors the pre-Postgres sheet row shape exactly (same field names, same PascalCase
+ * casing) even though the persistence underneath is now the `vendors` Postgres table — the
+ * goal is zero changes at the API routes and the `/parties` frontend, which both read
+ * `.Vendor_Name`, `.Contact_Person`, etc. off this type today.
+ */
 export interface VendorRecord {
   Vendor_ID: string;
   Vendor_Name: string;
@@ -25,8 +29,33 @@ export interface VendorRecord {
   Created_By: string;
 }
 
+type VendorRow = InferSelectModel<typeof vendors>;
+
+function rowToRecord(row: VendorRow): VendorRecord {
+  return {
+    Vendor_ID: row.id,
+    Vendor_Name: row.vendorName,
+    Contact_Person: row.contactPerson,
+    Phone: row.phone,
+    Email: row.email,
+    GSTIN: row.gstin,
+    Address: row.address,
+    City: row.city,
+    State: row.state,
+    Payment_Terms: row.paymentTerms,
+    Bank_Name: row.bankName,
+    Bank_Account_No: row.bankAccountNo,
+    IFSC: row.ifsc,
+    Status: row.status,
+    Created_At: row.createdAt.toISOString(),
+    Created_By: row.createdBy,
+  };
+}
+
 export async function listVendors(): Promise<VendorRecord[]> {
-  return getModuleRows<VendorRecord>(MODULE_KEY);
+  const orgId = await getTenantOrgId();
+  const rows = await listByOrg(vendors, orgId);
+  return rows.map(rowToRecord);
 }
 
 /** Vendor_ID is generated, so there's nothing to collide on — but two rows named the same
@@ -55,25 +84,31 @@ interface VendorFields {
   ifsc?: string;
 }
 
-function buildRecord(vendorName: string, fields: VendorFields, createdBy: string): VendorRecord {
-  return {
-    Vendor_ID: generateId("VEN"),
-    Vendor_Name: vendorName.trim(),
-    Contact_Person: fields.contactPerson?.trim() ?? "",
-    Phone: fields.phone?.trim() ?? "",
-    Email: fields.email?.trim() ?? "",
-    GSTIN: fields.gstin?.trim() ?? "",
-    Address: fields.address?.trim() ?? "",
-    City: fields.city?.trim() ?? "",
-    State: fields.state?.trim() ?? "",
-    Payment_Terms: fields.paymentTerms?.trim() ?? "",
-    Bank_Name: fields.bankName?.trim() ?? "",
-    Bank_Account_No: fields.bankAccountNo?.trim() ?? "",
-    IFSC: fields.ifsc?.trim() ?? "",
-    Status: "Active",
-    Created_At: nowStamp(),
-    Created_By: createdBy,
-  };
+async function insertVendor(
+  orgId: string,
+  vendorName: string,
+  fields: VendorFields,
+  createdBy: string
+): Promise<VendorRecord> {
+  const row = await insertRecord(vendors, {
+    id: generateId("VEN"),
+    orgId,
+    vendorName: vendorName.trim(),
+    contactPerson: fields.contactPerson?.trim() ?? "",
+    phone: fields.phone?.trim() ?? "",
+    email: fields.email?.trim() ?? "",
+    gstin: fields.gstin?.trim() ?? "",
+    address: fields.address?.trim() ?? "",
+    city: fields.city?.trim() ?? "",
+    state: fields.state?.trim() ?? "",
+    paymentTerms: fields.paymentTerms?.trim() ?? "",
+    bankName: fields.bankName?.trim() ?? "",
+    bankAccountNo: fields.bankAccountNo?.trim() ?? "",
+    ifsc: fields.ifsc?.trim() ?? "",
+    status: "Active",
+    createdBy,
+  });
+  return rowToRecord(row);
 }
 
 export interface CreateVendorInput extends VendorFields {
@@ -91,12 +126,12 @@ export async function createVendor(input: CreateVendorInput): Promise<CreateVend
     throw new Error("Vendor ka naam zaroori hai.");
   }
 
-  const existing = await listVendors();
-  const warning = duplicateNameWarning(input.vendorName, existing.map((v) => v.Vendor_Name));
+  const orgId = await getTenantOrgId();
+  const existing = await listByOrg(vendors, orgId);
+  const warning = duplicateNameWarning(input.vendorName, existing.map((v) => v.vendorName));
 
-  const record = buildRecord(input.vendorName, input, input.createdBy);
-  await appendModuleRow(MODULE_KEY, recordToRow(MODULE_KEY, record));
-  return { vendor: record, warning };
+  const vendor = await insertVendor(orgId, input.vendorName, input, input.createdBy);
+  return { vendor, warning };
 }
 
 export interface BulkCreateVendorRowInput extends VendorFields {
@@ -114,10 +149,12 @@ export interface BulkCreateVendorResult {
 }
 
 /**
- * Creates many vendors from one uploaded spreadsheet in a single Sheets write — same
- * shape as createItemsBulk(), minus the SKU-uniqueness bookkeeping: Vendor_ID is a
+ * Creates many vendors from one uploaded spreadsheet — same shape as
+ * createItemsBulk()/createCustomersBulk(), minus any uniqueness bookkeeping: Vendor_ID is a
  * generated key nobody types, not a join key a person retypes across sheets, so there is
- * nothing to collide on.
+ * nothing to collide on. Each row is its own insert (no bulk-insert primitive in repo.ts
+ * yet), but that is still one row-per-row round trip to Postgres rather than a full-sheet
+ * rewrite, so there is no equivalent of the old single-Sheets-call batching to preserve.
  */
 export async function createVendorsBulk(
   inputs: BulkCreateVendorRowInput[],
@@ -126,9 +163,9 @@ export async function createVendorsBulk(
   const created: { row: number; vendor: VendorRecord }[] = [];
   const errors: { row: number; message: string }[] = [];
   const warnings: { row: number; message: string }[] = [];
-  const rows: (string | number)[][] = [];
 
-  const seenNames = (await listVendors()).map((v) => v.Vendor_Name);
+  const orgId = await getTenantOrgId();
+  const seenNames = (await listByOrg(vendors, orgId)).map((v) => v.vendorName);
 
   for (const input of inputs) {
     if (!input.vendorName.trim()) {
@@ -139,14 +176,9 @@ export async function createVendorsBulk(
     const warning = duplicateNameWarning(input.vendorName, seenNames);
     if (warning) warnings.push({ row: input.row, message: warning });
 
-    const record = buildRecord(input.vendorName, input, createdBy);
-    created.push({ row: input.row, vendor: record });
-    rows.push(recordToRow(MODULE_KEY, record));
-    seenNames.push(record.Vendor_Name); // so duplicates within the same file are caught too
-  }
-
-  if (rows.length > 0) {
-    await appendModuleRows(MODULE_KEY, rows);
+    const vendor = await insertVendor(orgId, input.vendorName, input, createdBy);
+    created.push({ row: input.row, vendor });
+    seenNames.push(vendor.Vendor_Name); // so duplicates within the same file are caught too
   }
 
   return { created, errors, warnings };

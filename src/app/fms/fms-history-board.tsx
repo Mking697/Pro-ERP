@@ -14,7 +14,6 @@ import {
 } from "@/components/ui/table";
 import { formatDueDisplay } from "@/lib/formatDate";
 import { TableSkeleton } from "@/components/loading-states";
-import SheetNotConnected from "@/components/sheet-not-connected";
 import EmptyState from "@/components/empty-state";
 import { History } from "lucide-react";
 import { useT } from "@/components/preferences-provider";
@@ -51,7 +50,6 @@ export default function FmsHistoryBoard() {
   const t = useT();
   const [rows, setRows] = useState<FmsHistoryRow[]>([]);
   const [userMap, setUserMap] = useState<Record<string, string>>({});
-  const [setupRequired, setSetupRequired] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
 
@@ -62,11 +60,10 @@ export default function FmsHistoryBoard() {
     ])
       .then(
         ([historyData, usersData]: [
-          { history?: FmsHistoryRow[]; setupRequired?: string | null },
+          { history?: FmsHistoryRow[] },
           { users: { userId: string; fullName: string }[] },
         ]) => {
           setRows(historyData.history ?? []);
-          setSetupRequired(historyData.setupRequired ?? null);
 
           const map: Record<string, string> = {};
           for (const u of usersData.users ?? []) map[u.userId] = u.fullName;
@@ -95,10 +92,6 @@ export default function FmsHistoryBoard() {
 
   if (loading) {
     return <TableSkeleton columns={7} label={t("History load ho rahi hai")} />;
-  }
-
-  if (setupRequired) {
-    return <SheetNotConnected what={setupRequired} />;
   }
 
   if (rows.length === 0) {

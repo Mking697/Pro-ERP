@@ -2,18 +2,13 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { requireModule } from "@/lib/auth/guard";
 import { listRecurringTasks, createRecurringTask } from "@/lib/recurringTasks";
-import { tryModule } from "@/lib/moduleSheets";
 import { FREQUENCY_CODES } from "@/lib/frequency";
 
 export async function GET() {
   const guard = await requireModule("RECURRING_ASSIGN");
   if (!guard.ok) return guard.response;
 
-  const rules = await tryModule(() => listRecurringTasks());
-  if (rules === null) {
-    return NextResponse.json({ rules: [], setupRequired: "Recurring Tasks" });
-  }
-
+  const rules = await listRecurringTasks();
   return NextResponse.json({ rules });
 }
 

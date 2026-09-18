@@ -1,26 +1,32 @@
-import {
-  appendModuleRow,
-  ensureModuleHeaders,
-  getModuleRows,
-  updateModuleRow,
-  findModuleRow,
-  recordToRow,
-} from "@/lib/moduleSheets";
+import type { InferSelectModel } from "drizzle-orm";
+import { inwardIqcFms, failureLog, imsInward } from "@/db/schema";
+import { findById, insertRecord, listByOrg, updateById } from "@/db/repo";
+import { getTenantOrgId } from "@/lib/tenant";
+import { generateId } from "@/lib/id";
 import { recordMovement } from "@/lib/inventory/ledger";
 import { findItem } from "@/lib/inventory/items";
-import { generateId } from "@/lib/id";
-import { formatStamp, nowStamp, parseStamp } from "@/lib/timestamp";
 import { emitFmsEvent } from "@/lib/fms/engine";
 import { computeDefaultTatDeadline } from "@/lib/fms/calendar";
 import { getSetting } from "@/lib/settings";
+import { parseStamp } from "@/lib/timestamp";
 
 const DEFAULT_IQC_TAT_VALUE = 24;
 const DEFAULT_IQC_TAT_UNIT = "Hours";
 
-const MODULE_KEY = "INWARD_IQC_FMS";
-const FAILURE_LOG_KEY = "FAILURE_LOG";
-const IMS_INWARD_KEY = "IMS_INWARD";
+// Context_Ref prefix an FMS template's Trigger_Event ("INWARD_ENTRY_CREATED") resolves
+// against — src/lib/fms/reference.ts and src/lib/fms/dataSourceResolver.ts both split on
+// this exact string, so it must stay "INWARD_IQC_FMS", the old Sheets-era module key, not
+// "INWARD". Nothing else about this constant is meaningful anymore now that the table
+// isn't looked up by module key — it exists purely so the Context_Ref convention doesn't
+// drift out from under FMS, which this migration is explicitly not allowed to touch.
+const CONTEXT_REF_PREFIX = "INWARD_IQC_FMS";
 
+/**
+ * Mirrors the pre-Postgres sheet row shape exactly (same field names, same PascalCase
+ * casing) even though the persistence underneath is now the `inward_iqc_fms` Postgres
+ * table — the goal is zero changes at the API routes and the `/inward` frontend, which
+ * all read `.Entry_ID`, `.IQC_Status`, etc. off this type today.
+ */
 export interface InwardRecord {
   Entry_ID: string;
   Timestamp: string;
@@ -73,13 +79,72 @@ export interface ImsInwardRecord {
   Verified_By: string;
 }
 
+type InwardRow = InferSelectModel<typeof inwardIqcFms>;
+type FailureLogRow = InferSelectModel<typeof failureLog>;
+type ImsInwardRow = InferSelectModel<typeof imsInward>;
+
+function rowToRecord(row: InwardRow): InwardRecord {
+  return {
+    Entry_ID: row.id,
+    Timestamp: row.timestamp.toISOString(),
+    Party_Name: row.partyName,
+    Invoice_No: row.invoiceNo,
+    Inward_Type: row.inwardType,
+    Attachment_URL: row.attachmentUrl,
+    Remark: row.remark,
+    IQC_Status: row.iqcStatus,
+    Verified_By: row.verifiedBy,
+    Verified_At: row.verifiedAt ? row.verifiedAt.toISOString() : "",
+    Verify_Checkbox: row.verifyCheckbox,
+    IQC_Pass_Qty: row.iqcPassQty ?? "",
+    IQC_Fail_Qty: row.iqcFailQty ?? "",
+    Fail_Reason: row.failReason,
+    SKU: row.sku,
+    Item_Name: row.itemName,
+    Created_By: row.createdBy,
+    IQC_TAT_Value: row.iqcTatValue ?? "",
+    IQC_TAT_Unit: row.iqcTatUnit,
+    IQC_Deadline: row.iqcDeadline ? row.iqcDeadline.toISOString() : "",
+  };
+}
+
+function failureLogFromRow(row: FailureLogRow): FailureLogRecord {
+  return {
+    Log_ID: row.id,
+    Linked_Entry_ID: row.linkedEntryId,
+    Timestamp: row.timestamp.toISOString(),
+    Party_Name: row.partyName,
+    Invoice_No: row.invoiceNo,
+    Inward_Type: row.inwardType,
+    Fail_Qty: row.failQty,
+    Fail_Reason: row.failReason,
+    Attachment_URL: row.attachmentUrl,
+    Verified_By: row.verifiedBy,
+  };
+}
+
+function imsInwardFromRow(row: ImsInwardRow): ImsInwardRecord {
+  return {
+    Record_ID: row.id,
+    Linked_Entry_ID: row.linkedEntryId,
+    Timestamp: row.timestamp.toISOString(),
+    Party_Name: row.partyName,
+    Invoice_No: row.invoiceNo,
+    Inward_Type: row.inwardType,
+    Pass_Qty: row.passQty,
+    Verified_By: row.verifiedBy,
+  };
+}
+
 export async function listInwardEntries(): Promise<InwardRecord[]> {
-  return getModuleRows<InwardRecord>(MODULE_KEY);
+  const orgId = await getTenantOrgId();
+  const rows = await listByOrg(inwardIqcFms, orgId);
+  return rows.map(rowToRecord);
 }
 
 /** An entry's IQC check counts as "Not Done" only while it is still Pending and its
  * deadline has passed — a live, timestamp-derived classification, never a status stored
- * in the sheet. Mirrors isOverdue() in src/lib/mis.ts. */
+ * in the table. Mirrors isOverdue() in src/lib/mis.ts. */
 export function isIqcOverdue(entry: InwardRecord): boolean {
   if (entry.IQC_Status !== "Pending" || !entry.IQC_Deadline) return false;
   const deadline = parseStamp(entry.IQC_Deadline);
@@ -88,14 +153,22 @@ export function isIqcOverdue(entry: InwardRecord): boolean {
 
 /** Rejected quantities routed here by submitQualityCheck, newest first. */
 export async function listFailureLog(): Promise<FailureLogRecord[]> {
-  const rows = await getModuleRows<FailureLogRecord>(FAILURE_LOG_KEY);
-  return rows.reverse();
+  const orgId = await getTenantOrgId();
+  const rows = await listByOrg(failureLog, orgId);
+  return rows
+    .slice()
+    .sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime())
+    .map(failureLogFromRow);
 }
 
 /** Accepted quantities routed here by submitQualityCheck, newest first. */
 export async function listImsInward(): Promise<ImsInwardRecord[]> {
-  const rows = await getModuleRows<ImsInwardRecord>(IMS_INWARD_KEY);
-  return rows.reverse();
+  const orgId = await getTenantOrgId();
+  const rows = await listByOrg(imsInward, orgId);
+  return rows
+    .slice()
+    .sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime())
+    .map(imsInwardFromRow);
 }
 
 interface CreateInwardInput {
@@ -112,8 +185,7 @@ interface CreateInwardInput {
 }
 
 export async function createInwardEntry(input: CreateInwardInput): Promise<InwardRecord> {
-  // The SKU columns were added after some organizations connected this sheet.
-  await ensureModuleHeaders(MODULE_KEY);
+  const orgId = await getTenantOrgId();
 
   // How long IQC has to verify this entry — an Admin-configured company default (Settings),
   // not per-user, since nobody in particular is assigned an inward entry. Computed once
@@ -126,36 +198,35 @@ export async function createInwardEntry(input: CreateInwardInput): Promise<Inwar
   const tatUnit = tatUnitRaw === "Days" ? "Days" : DEFAULT_IQC_TAT_UNIT;
   const deadlineMs = await computeDefaultTatDeadline(Date.now(), tatValue, tatUnit);
 
-  const record: InwardRecord = {
-    Entry_ID: generateId("INW"),
-    Timestamp: nowStamp(),
-    Party_Name: input.partyName,
-    Invoice_No: input.invoiceNo,
-    Inward_Type: input.inwardType,
-    Attachment_URL: input.attachmentUrl,
-    Remark: input.remark,
-    IQC_Status: "Pending",
-    Verified_By: "",
-    Verified_At: "",
-    Verify_Checkbox: "",
-    IQC_Pass_Qty: "",
-    IQC_Fail_Qty: "",
-    Fail_Reason: "",
-    SKU: input.sku ?? "",
-    Item_Name: input.itemName ?? "",
-    Created_By: input.createdBy,
-    IQC_TAT_Value: String(tatValue),
-    IQC_TAT_Unit: tatUnit,
-    IQC_Deadline: formatStamp(new Date(deadlineMs)),
-  };
-
-  await appendModuleRow(MODULE_KEY, recordToRow(MODULE_KEY, record));
+  const row = await insertRecord(inwardIqcFms, {
+    id: generateId("INW"),
+    orgId,
+    partyName: input.partyName,
+    invoiceNo: input.invoiceNo,
+    inwardType: input.inwardType,
+    attachmentUrl: input.attachmentUrl,
+    remark: input.remark,
+    iqcStatus: "Pending",
+    verifiedBy: "",
+    verifiedAt: null,
+    verifyCheckbox: "",
+    iqcPassQty: null,
+    iqcFailQty: null,
+    failReason: "",
+    sku: input.sku ?? "",
+    itemName: input.itemName ?? "",
+    createdBy: input.createdBy,
+    iqcTatValue: String(tatValue),
+    iqcTatUnit: tatUnit,
+    iqcDeadline: new Date(deadlineMs),
+  });
+  const record = rowToRecord(row);
 
   // Best-effort: lets an org-defined FMS template react to a new inward entry without
   // touching this module's own IQC flow at all. Mirrors the IQC stock-In write below — a
   // chaining failure must never undo or block the entry that has already saved.
   try {
-    await emitFmsEvent("INWARD_ENTRY_CREATED", `${MODULE_KEY}:${record.Entry_ID}`);
+    await emitFmsEvent("INWARD_ENTRY_CREATED", `${CONTEXT_REF_PREFIX}:${record.Entry_ID}`);
   } catch (error) {
     console.error(`[inward] FMS event emit failed for ${record.Entry_ID}:`, error);
   }
@@ -173,59 +244,60 @@ interface QualityCheckInput {
 }
 
 export async function submitQualityCheck(input: QualityCheckInput): Promise<InwardRecord> {
-  await ensureModuleHeaders(MODULE_KEY);
-  const found = await findModuleRow<InwardRecord>(MODULE_KEY, 0, input.entryId);
+  const orgId = await getTenantOrgId();
+  const found = await findById(inwardIqcFms, orgId, input.entryId);
   if (!found) {
     throw new Error("Entry nahi mili.");
   }
-  if (found.record.IQC_Status === "Verified") {
+  if (found.iqcStatus === "Verified") {
     throw new Error("Yeh entry pehle se verify ho chuki hai.");
   }
 
-  const now = nowStamp();
-  const updated: InwardRecord = {
-    ...found.record,
-    IQC_Status: "Verified",
-    Verified_By: input.verifiedBy,
-    Verified_At: now,
-    Verify_Checkbox: input.verifyChecked ? "Yes" : "No",
-    IQC_Pass_Qty: String(input.passQty),
-    IQC_Fail_Qty: String(input.failQty),
-    Fail_Reason: input.failQty > 0 ? input.failReason : "",
-  };
-
-  await updateModuleRow(MODULE_KEY, found.rowNumber, recordToRow(MODULE_KEY, updated));
+  const now = new Date();
+  const updated = await updateById(inwardIqcFms, orgId, input.entryId, {
+    iqcStatus: "Verified",
+    verifiedBy: input.verifiedBy,
+    verifiedAt: now,
+    verifyCheckbox: input.verifyChecked ? "Yes" : "No",
+    iqcPassQty: String(input.passQty),
+    iqcFailQty: String(input.failQty),
+    failReason: input.failQty > 0 ? input.failReason : "",
+  });
+  if (!updated) {
+    throw new Error("Entry nahi mili.");
+  }
+  const record = rowToRecord(updated);
 
   // Route the outcome: a failed quantity goes to the Failure Log, a passed quantity
   // goes into IMS inventory — both reference the original entry by Linked_Entry_ID.
   if (input.failQty > 0) {
-    const failureLog: FailureLogRecord = {
-      Log_ID: generateId("FAIL"),
-      Linked_Entry_ID: updated.Entry_ID,
-      Timestamp: now,
-      Party_Name: updated.Party_Name,
-      Invoice_No: updated.Invoice_No,
-      Inward_Type: updated.Inward_Type,
-      Fail_Qty: String(input.failQty),
-      Fail_Reason: input.failReason,
-      Attachment_URL: updated.Attachment_URL,
-      Verified_By: input.verifiedBy,
-    };
-    await appendModuleRow(FAILURE_LOG_KEY, recordToRow(FAILURE_LOG_KEY, failureLog));
+    await insertRecord(failureLog, {
+      id: generateId("FAIL"),
+      orgId,
+      linkedEntryId: record.Entry_ID,
+      timestamp: now,
+      partyName: record.Party_Name,
+      invoiceNo: record.Invoice_No,
+      inwardType: record.Inward_Type,
+      failQty: String(input.failQty),
+      failReason: input.failReason,
+      attachmentUrl: record.Attachment_URL,
+      verifiedBy: input.verifiedBy,
+    });
   }
 
   if (input.passQty > 0) {
-    const imsRecord: ImsInwardRecord = {
-      Record_ID: generateId("IMS"),
-      Linked_Entry_ID: updated.Entry_ID,
-      Timestamp: now,
-      Party_Name: updated.Party_Name,
-      Invoice_No: updated.Invoice_No,
-      Inward_Type: updated.Inward_Type,
-      Pass_Qty: String(input.passQty),
-      Verified_By: input.verifiedBy,
-    };
-    await appendModuleRow(IMS_INWARD_KEY, recordToRow(IMS_INWARD_KEY, imsRecord));
+    await insertRecord(imsInward, {
+      id: generateId("IMS"),
+      orgId,
+      linkedEntryId: record.Entry_ID,
+      timestamp: now,
+      partyName: record.Party_Name,
+      invoiceNo: record.Invoice_No,
+      inwardType: record.Inward_Type,
+      passQty: String(input.passQty),
+      verifiedBy: input.verifiedBy,
+    });
 
     // A passed quantity is stock that has physically arrived, so it enters the ledger
     // here rather than waiting for someone to key the same numbers a second time.
@@ -233,30 +305,30 @@ export async function submitQualityCheck(input: QualityCheckInput): Promise<Inwa
     // Only when the entry names an item — an inward recorded without a SKU has nothing
     // to add to. Best-effort: a stock write must never undo a completed quality check,
     // which is already saved above.
-    if (updated.SKU) {
+    if (record.SKU) {
       try {
-        const item = await findItem(updated.SKU);
+        const item = await findItem(record.SKU);
         if (item) {
           await recordMovement({
-            sku: updated.SKU,
+            sku: record.SKU,
             direction: "In",
             quantity: input.passQty,
             uom: item.UOM,
             source: "IQC",
-            referenceId: updated.Entry_ID,
+            referenceId: record.Entry_ID,
             location: item.Location,
-            remark: `IQC pass — ${updated.Party_Name} / ${updated.Invoice_No}`,
+            remark: `IQC pass — ${record.Party_Name} / ${record.Invoice_No}`,
             userId: input.verifiedBy,
           });
         }
       } catch (error) {
         console.error(
-          `[inward] IQC stock In failed for ${updated.Entry_ID} / ${updated.SKU}:`,
+          `[inward] IQC stock In failed for ${record.Entry_ID} / ${record.SKU}:`,
           error
         );
       }
     }
   }
 
-  return updated;
+  return record;
 }

@@ -61,13 +61,13 @@ export default async function SharedReportPage({
         <header className="border-b bg-background">
           <div className="mx-auto flex w-full max-w-6xl flex-wrap items-center justify-between gap-3 px-4 py-3 sm:px-6">
             <div className="flex min-w-0 items-center gap-2.5">
-              <OrgLogo url={logoUrl} name={org?.Org_Name ?? "Pro ERP"} />
+              <OrgLogo url={logoUrl} name={org?.orgName ?? "Pro ERP"} />
               <span className="min-w-0">
                 <span className="block truncate text-sm font-semibold leading-tight">
                   {share.Label}
                 </span>
                 <span className="block truncate text-xs leading-tight text-muted-foreground">
-                  {org?.Org_Name ?? ""}
+                  {org?.orgName ?? ""}
                 </span>
               </span>
             </div>

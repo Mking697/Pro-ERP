@@ -37,7 +37,6 @@ interface OrgRow {
   plan: string;
   status: string;
   createdAt: string;
-  systemSheetId: string;
   userCount: number | null;
   error: string | null;
 }
@@ -97,7 +96,7 @@ export default function OrganizationsTable() {
     confirm.ask({
       title: `${org.name} ko suspend karein?`,
       description:
-        "Is organization ke saare users agli request par bahar ho jaayenge aur uske automated kaam ruk jaayenge. Data, sheets aur users kuch delete nahi hota — switch wapas on karte hi sab pehle jaisa chalne lagta hai.",
+        "Is organization ke saare users agli request par bahar ho jaayenge aur uske automated kaam ruk jaayenge. Data aur users kuch delete nahi hota — switch wapas on karte hi sab pehle jaisa chalne lagta hai.",
       confirmLabel: "Haan, suspend karein",
       onConfirm: () => toggleStatus(org, false),
     });
@@ -226,7 +225,7 @@ export default function OrganizationsTable() {
             <DialogTitle>{deleting?.name} — delete?</DialogTitle>
             <DialogDescription>
               {t(
-                "Is organization ki tenancy khatam ho jaayegi: uske users login nahi kar payenge aur unke email dobara istemaal ho sakenge. Unki apni Google Sheets ko haath nahi lagaya jaata — wo data unka hai."
+                "Is organization ka saara data — users, tasks, inventory, sab kuch — permanently delete ho jaayega. Uske users login nahi kar payenge aur unke email dobara istemaal ho sakenge. Ye wapas nahi aata."
               )}
             </DialogDescription>
           </DialogHeader>

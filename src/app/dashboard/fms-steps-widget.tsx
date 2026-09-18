@@ -27,15 +27,13 @@ export default function FmsStepsWidget() {
   const t = useT();
   const [steps, setSteps] = useState<FmsRunRecord[]>([]);
   const [loading, setLoading] = useState(true);
-  const [setupRequired, setSetupRequired] = useState<string | null>(null);
   const [version, setVersion] = useState(0);
 
   useEffect(() => {
     fetch("/api/fms/my-steps?scope=dashboard")
       .then((res) => res.json())
-      .then((data: { steps?: FmsRunRecord[]; setupRequired?: string | null }) => {
+      .then((data: { steps?: FmsRunRecord[] }) => {
         setSteps(data.steps ?? []);
-        setSetupRequired(data.setupRequired ?? null);
       })
       .catch(() => toast.error(t("Steps load nahi ho paye.")))
       .finally(() => setLoading(false));
@@ -43,10 +41,6 @@ export default function FmsStepsWidget() {
 
   if (loading) {
     return <p className="py-6 text-center text-sm text-muted-foreground">{t("Load ho raha hai...")}</p>;
-  }
-
-  if (setupRequired) {
-    return null; // FMS not connected for this org — nothing to show, no error worth surfacing here.
   }
 
   if (steps.length === 0) {

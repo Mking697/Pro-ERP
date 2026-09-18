@@ -20,8 +20,6 @@ import BulkImportDialog from "./bulk-import-dialog";
 import StockMovementDialog from "./stock-movement-dialog";
 import { qty, statusVariant, type ItemRow, type StockStatus } from "./types";
 import { TableSkeleton } from "@/components/loading-states";
-import { Unplug } from "lucide-react";
-import EmptyState from "@/components/empty-state";
 import { useT } from "@/components/preferences-provider";
 
 const STATUS_FILTERS: (StockStatus | "All")[] = [
@@ -43,7 +41,6 @@ export default function InventoryBoard({
 }) {
   const t = useT();
   const [items, setItems] = useState<ItemRow[]>([]);
-  const [missingSheets, setMissingSheets] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState<StockStatus | "All">("All");
@@ -52,9 +49,8 @@ export default function InventoryBoard({
   useEffect(() => {
     fetch("/api/inventory/items")
       .then((res) => res.json())
-      .then((data: { items?: ItemRow[]; missingSheets?: string[] }) => {
+      .then((data: { items?: ItemRow[] }) => {
         setItems(data.items ?? []);
-        setMissingSheets(data.missingSheets ?? []);
       })
       .catch(() => toast.error(t("Items load nahi ho paye.")))
       .finally(() => setLoading(false));
@@ -86,23 +82,6 @@ export default function InventoryBoard({
 
   if (loading) {
     return <TableSkeleton columns={6} label={t("Items load ho rahe hain")} />;
-  }
-
-  if (missingSheets.length > 0) {
-    return (
-      <EmptyState
-        icon={<Unplug />}
-        title={t("Inventory ki sheets abhi connect nahi hui")}
-        description={`Baaki hain: ${missingSheets.join(", ")}`}
-        action={
-          <Button
-            variant="outline"
-            size="sm"
-            render={<Link href="/admin/settings">{t("Settings kholein")}</Link>}
-          />
-        }
-      />
-    );
   }
 
   return (
