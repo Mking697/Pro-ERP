@@ -2,13 +2,14 @@ import Link from "next/link";
 import { getOrganization } from "@/lib/platform/registry";
 import type { SessionPayload } from "@/lib/auth/session";
 import { Badge } from "@/components/ui/badge";
-import NavLinks, { type NavItem } from "@/components/nav-links";
+import NavLinks, { type NavEntry, type NavItem } from "@/components/nav-links";
 import LogoutButton from "@/app/dashboard/logout-button";
 import { isPlatformAdmin } from "@/lib/platform/admin";
 import { getSetting } from "@/lib/settings";
 import { OrgLogo } from "@/components/logo-picker";
 import SettingsMenu from "@/components/settings-menu";
 import { listNavFmsTemplates } from "@/lib/fms/templates";
+import { listUsedFmsTemplateIds } from "@/lib/inventory/plans";
 import { tenantCached } from "@/lib/cache";
 
 /**
@@ -43,64 +44,93 @@ export default async function AppShell({
     () => listNavFmsTemplates(session.userId, isFmsAdmin)
   ).catch(() => []);
 
-  const items: NavItem[] = [{ icon: "dashboard", href: "/dashboard", label: "Dashboard" }];
+  // A "PMS" Line's own default trigger is "MANUAL" (see api/ppc/production-lines/route.ts),
+  // so Trigger_Event alone can't tell a PPC-connected Line apart from every other FMS flow
+  // — actually being chosen by a production plan can. Same caching reasoning as above.
+  const usedFmsTemplateIds = await tenantCached(
+    session.orgId,
+    "nav-used-fms-template-ids",
+    60_000,
+    () => listUsedFmsTemplateIds()
+  ).catch(() => new Set<string>());
 
-  // Everyone has tasks assigned to them, so Tasks is always reachable.
-  items.push({ icon: "tasks", href: "/tasks", label: "Tasks" });
+  const pmsFmsTemplates = navFmsTemplates.filter(
+    (tpl) => tpl.triggerEvent === "PRODUCTION_STARTED" || usedFmsTemplateIds.has(tpl.templateId)
+  );
+  const otherFmsTemplates = navFmsTemplates.filter(
+    (tpl) => !(tpl.triggerEvent === "PRODUCTION_STARTED" || usedFmsTemplateIds.has(tpl.templateId))
+  );
 
-  // Anyone can be the assignee of an FMS step, same tier as Tasks.
-  items.push({ icon: "fms", href: "/fms", label: "FMS" });
+  const items: NavEntry[] = [{ icon: "dashboard", href: "/dashboard", label: "Dashboard" }];
 
-  // Each designed flow gets its own named nav item alongside the generic FMS tabs, so a
-  // doer working an "Inward FMS" or a "Purchase FMS" reaches its operational view
-  // directly instead of hunting through every template mixed together.
-  for (const tpl of navFmsTemplates) {
-    items.push({ icon: "fms", href: `/fms/${tpl.templateId}`, label: tpl.templateName });
+  // MDO — day-to-day work: everyone has tasks assigned to them and can be an FMS step's
+  // assignee, and every person has at least their own tasks report.
+  const mdoItems: NavItem[] = [
+    { icon: "tasks", href: "/tasks", label: "Tasks" },
+    { icon: "fms", href: "/fms", label: "Flow" },
+    { icon: "performance", href: "/reports", label: "Reports" },
+  ];
+  if (session.access.includes("PERFORMANCE_VIEW")) {
+    mdoItems.push({ icon: "performance", href: "/performance", label: "Performance" });
   }
+  items.push({ icon: "mdo", label: "MDO", items: mdoItems });
 
-  // Every person has at least their own tasks report.
-  items.push({ icon: "performance", href: "/reports", label: "Reports" });
-
-  if (session.access.includes("INVENTORY_VIEW")) {
-    items.push({ icon: "inventory", href: "/inventory", label: "Inventory" });
-  }
-
+  // PMS — BOM, PPC, and every FMS Line a production plan actually starts.
+  const pmsItems: NavItem[] = [];
   if (session.access.includes("BOM_MANAGE")) {
-    items.push({ icon: "bom", href: "/bom", label: "BOM" });
+    pmsItems.push({ icon: "bom", href: "/bom", label: "BOM" });
+  }
+  if (session.access.includes("PPC_PLAN") || session.access.includes("INVENTORY_TXN")) {
+    pmsItems.push({ icon: "ppc", href: "/ppc", label: "PPC" });
+  }
+  for (const tpl of pmsFmsTemplates) {
+    pmsItems.push({ icon: "fms", href: `/fms/${tpl.templateId}`, label: tpl.templateName });
+  }
+  if (pmsItems.length > 0) {
+    items.push({ icon: "pms", label: "PMS", items: pmsItems });
   }
 
-  // Production-floor users reach PPC to start a run, planners to build one.
-  if (
-    session.access.includes("PPC_PLAN") ||
-    session.access.includes("INVENTORY_TXN")
-  ) {
-    items.push({ icon: "ppc", href: "/ppc", label: "PPC" });
+  // Stock — Inventory today; Finished Goods lands here once it exists.
+  if (session.access.includes("INVENTORY_VIEW")) {
+    items.push({
+      icon: "stock",
+      label: "Stock",
+      items: [{ icon: "inventory", href: "/inventory", label: "Inventory" }],
+    });
   }
 
+  // FMS — Inward (which already covers IQC as its own tab), plus every other named flow
+  // (Purchase FMS, etc.) that isn't a PPC-connected Line.
+  const fmsItems: NavItem[] = [];
   if (
     session.access.includes("INWARD_ENTRY") ||
     session.access.includes("IQC_CHECK") ||
     session.access.includes("IMS_VIEW")
   ) {
-    items.push({ icon: "inward", href: "/inward", label: "Inward" });
+    fmsItems.push({ icon: "inward", href: "/inward", label: "Inward" });
+  }
+  for (const tpl of otherFmsTemplates) {
+    fmsItems.push({ icon: "fms", href: `/fms/${tpl.templateId}`, label: tpl.templateName });
+  }
+  if (fmsItems.length > 0) {
+    items.push({ icon: "fms", label: "FMS", items: fmsItems });
   }
 
+  // Others — master data and administration.
+  const otherItems: NavItem[] = [];
   if (session.access.includes("PARTY_MASTER")) {
-    items.push({ icon: "parties", href: "/parties", label: "Vendors/Customers" });
+    otherItems.push({ icon: "parties", href: "/parties", label: "Vendors/Customers" });
   }
-
-  if (session.access.includes("PERFORMANCE_VIEW")) {
-    items.push({ icon: "performance", href: "/performance", label: "Performance" });
-  }
-
   if (session.role === "Admin") {
-    items.push({ icon: "users", href: "/admin/users", label: "Users" });
-    items.push({ icon: "settings", href: "/admin/settings", label: "Settings" });
+    otherItems.push({ icon: "users", href: "/admin/users", label: "Users" });
+    otherItems.push({ icon: "settings", href: "/admin/settings", label: "Settings" });
   }
-
   // Platform operator only — not an organization Admin.
   if (isPlatformAdmin(session.email)) {
-    items.push({ icon: "platform", href: "/platform", label: "Platform" });
+    otherItems.push({ icon: "platform", href: "/platform", label: "Platform" });
+  }
+  if (otherItems.length > 0) {
+    items.push({ icon: "others", label: "Others", items: otherItems });
   }
 
   // Last, so it never pushes day-to-day work off a narrow screen.

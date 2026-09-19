@@ -151,6 +151,19 @@ function planFromRow(row: PlanRow, materials: PlanMaterial[]): Plan {
   };
 }
 
+/**
+ * Every distinct FMS Template ID any production plan in this org has picked as its Line
+ * (`fmsTemplateId`), blank ones excluded. This is what the nav bar uses to tell a
+ * PPC-connected "PMS" Line apart from every other FMS flow — a Line's own default trigger
+ * is "MANUAL" (see api/ppc/production-lines/route.ts), so Trigger_Event alone can't be
+ * trusted to tell them apart; actually being chosen by a plan can.
+ */
+export async function listUsedFmsTemplateIds(): Promise<Set<string>> {
+  const orgId = await getTenantOrgId();
+  const rows = await listByOrg(productionPlans, orgId);
+  return new Set(rows.map((r) => r.fmsTemplateId).filter((id) => id.trim() !== ""));
+}
+
 export async function listPlans(): Promise<Plan[]> {
   const orgId = await getTenantOrgId();
   const [planRows, materialRows] = await Promise.all([

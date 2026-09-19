@@ -184,6 +184,10 @@ export async function getFmsTemplateStep(
 export interface FmsNavTemplate {
   templateId: string;
   templateName: string;
+  /** "MANUAL", or an event key like "PRODUCTION_STARTED" — see FmsTemplateStepRecord's own
+   * doc comment. The nav bar uses this to decide whether a flow is a PPC-connected
+   * "PMS" Line or belongs in the generic FMS group. */
+  triggerEvent: string;
 }
 
 /**
@@ -224,7 +228,11 @@ export async function listNavFmsTemplates(
   const out: FmsNavTemplate[] = [];
   for (const [templateId, templateSteps] of byTemplate) {
     if (!userCanAccessTemplate(templateSteps, userId, isAdmin)) continue;
-    out.push({ templateId, templateName: templateSteps[0].Template_Name });
+    out.push({
+      templateId,
+      templateName: templateSteps[0].Template_Name,
+      triggerEvent: templateSteps[0].Trigger_Event,
+    });
   }
   return out;
 }
