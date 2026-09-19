@@ -22,6 +22,7 @@ import {
   tasks,
   users,
   usersIndex,
+  vendorItems,
   vendors,
 } from "@/db/schema";
 import { generateId, slugify } from "@/lib/id";
@@ -162,6 +163,7 @@ export async function deleteOrganization(orgId: string): Promise<void> {
     db.delete(fmsTemplates).where(eq(fmsTemplates.orgId, orgId)),
     db.delete(fmsRuns).where(eq(fmsRuns.orgId, orgId)),
     db.delete(fmsWeekoffOverrides).where(eq(fmsWeekoffOverrides.orgId, orgId)),
+    db.delete(vendorItems).where(eq(vendorItems.orgId, orgId)),
     db.delete(vendors).where(eq(vendors.orgId, orgId)),
     db.delete(customers).where(eq(customers.orgId, orgId)),
     db.delete(users).where(eq(users.orgId, orgId)),

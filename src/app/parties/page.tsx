@@ -21,15 +21,15 @@ export default async function PartiesPage() {
     <AppShell session={session}>
       <div className="space-y-6">
         <PageHeader
-          title={t("Vendors / Customers")}
+          title={t("Purchase Vendors / Customers")}
           description={t(
-            "Vendor aur Customer master — ek baar bana lein, aage PO, invoice aur sales order isi se juden ge."
+            "Purchase Vendor aur Customer master — ek baar bana lein, aage PO, invoice aur sales order isi se juden ge. (Aage OEM ya Manufacturing Vendor jaise dusre vendor types alag se aa sakte hain — ye form sirf Purchase Vendor ke liye hai.)"
           )}
         />
 
         <Tabs defaultValue="vendors">
           <TabsList>
-            <TabsTrigger value="vendors">{t("Vendors")}</TabsTrigger>
+            <TabsTrigger value="vendors">{t("Purchase Vendors")}</TabsTrigger>
             <TabsTrigger value="customers">{t("Customers")}</TabsTrigger>
           </TabsList>
 

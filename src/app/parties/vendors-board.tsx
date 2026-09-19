@@ -15,6 +15,7 @@ import { TableSkeleton } from "@/components/loading-states";
 import { useT } from "@/components/preferences-provider";
 import CreateVendorDialog from "./create-vendor-dialog";
 import PartyImportDialog from "./party-import-dialog";
+import VendorItemsDialog from "./vendor-items-dialog";
 import type { VendorRow } from "./types";
 
 export default function VendorsBoard() {
@@ -45,7 +46,7 @@ export default function VendorsBoard() {
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-end gap-2">
         <PartyImportDialog
-          entityLabel={t("Vendor")}
+          entityLabel={t("Purchase Vendor")}
           templateUrl="/api/parties/vendors/import-template"
           importUrl="/api/parties/vendors/import"
           onImported={() => setVersion((v) => v + 1)}
@@ -65,12 +66,13 @@ export default function VendorsBoard() {
               <TableHead>{t("State")}</TableHead>
               <TableHead>{t("Payment Terms")}</TableHead>
               <TableHead>Status</TableHead>
+              <TableHead className="w-20" />
             </TableRow>
           </TableHeader>
           <TableBody>
             {vendors.length === 0 && (
               <TableRow>
-                <TableCell colSpan={8} className="text-center text-muted-foreground">
+                <TableCell colSpan={9} className="text-center text-muted-foreground">
                   {t("Abhi koi vendor nahi hai.")}
                 </TableCell>
               </TableRow>
@@ -88,6 +90,9 @@ export default function VendorsBoard() {
                   <Badge variant={v.Status === "Active" ? "default" : "secondary"}>
                     {v.Status || "Active"}
                   </Badge>
+                </TableCell>
+                <TableCell>
+                  <VendorItemsDialog vendorId={v.Vendor_ID} vendorName={v.Vendor_Name} />
                 </TableCell>
               </TableRow>
             ))}

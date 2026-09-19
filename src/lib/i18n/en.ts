@@ -718,17 +718,17 @@ export const EN: Record<string, string> = {
     "Every instance of this flow — which step is running, who holds it, and what's happened so far.",
 
   // --- vendor & customer master -------------------------------------------------------
-  "Vendors / Customers": "Vendors / Customers",
-  "Vendor aur Customer master — ek baar bana lein, aage PO, invoice aur sales order isi se juden ge.":
-    "Vendor and Customer master — set these up once; POs, invoices and sales orders will all link back to them.",
-  "Vendors": "Vendors",
+  "Purchase Vendors / Customers": "Purchase Vendors / Customers",
+  "Purchase Vendor aur Customer master — ek baar bana lein, aage PO, invoice aur sales order isi se juden ge. (Aage OEM ya Manufacturing Vendor jaise dusre vendor types alag se aa sakte hain — ye form sirf Purchase Vendor ke liye hai.)":
+    "Purchase Vendor and Customer master — set these up once; POs, invoices and sales orders will all link back to them. (Other vendor types, like an OEM or Manufacturing Vendor, may be added separately later — this form is for Purchase Vendors only.)",
+  "Purchase Vendors": "Purchase Vendors",
   "Customers": "Customers",
-  "Vendor": "Vendor",
+  "Purchase Vendor": "Purchase Vendor",
   "Customer": "Customer",
-  "Add Vendor": "Add Vendor",
-  "Naya Vendor": "New Vendor",
-  "Sirf Vendor Name zaroori hai — baaki details baad me bhi bhari ja sakti hain.":
-    "Only Vendor Name is required — the rest can be filled in later.",
+  "Add Purchase Vendor": "Add Purchase Vendor",
+  "Naya Purchase Vendor": "New Purchase Vendor",
+  "Ye Purchase Vendor hai — kaccha maal/parts kharidne ke liye. Sirf Vendor Name zaroori hai, baaki details baad me bhi bhari ja sakti hain.":
+    "This is a Purchase Vendor — for buying raw material/parts. Only Vendor Name is required, the rest can be filled in later.",
   "Vendor Name": "Vendor Name",
   "Vendor ban gaya.": "Vendor created.",
   "Add Customer": "Add Customer",
@@ -763,6 +763,28 @@ export const EN: Record<string, string> = {
     "Download the template, fill in your data in the same format, then upload it — everything is created in one go.",
   "ban gaye": "created",
   "duplicate naam ke saath ban gaye": "created with a duplicate name",
+
+  // --- vendor <-> item linking (price, lead time, indent suggestions) ----------------
+  "Vendor ke items load nahi ho paye.": "The vendor's items could not be loaded.",
+  "Ye vendor kaun se item supply karta hai, kitne lead time me, aur kis price par — indent uthate waqt yahi list suggest hogi.":
+    "Which items this vendor supplies, at what lead time and price — this is the list an indent will suggest.",
+  "Item chunein.": "Choose an item.",
+  "Item chunna zaroori hai.": "Choosing an item is required.",
+  "Item link nahi ho paya.": "The item could not be linked.",
+  "Item vendor se jud gaya.": "Item linked to the vendor.",
+  "Lead Time (din)": "Lead Time (days)",
+  "Abhi koi item is vendor se linked nahi hai.": "No items are linked to this vendor yet.",
+  "Hata nahi paya.": "Could not be removed.",
+  "Band karein": "Close",
+  "Vendor nahi mila.": "Vendor not found.",
+  "Link nahi mila.": "Link not found.",
+  "Koi vendor linked nahi": "No vendor linked",
+  "Price nahi hai": "No price set",
+  "aur vendor": "more",
+  "Items": "Items",
+  "Item": "Item",
+  "Unit Price": "Unit Price",
+  "Suggested Vendor": "Suggested Vendor",
 
   // --- nav, page titles, shared misc --------------------------------------------------
   "BOM": "BOM",

@@ -92,8 +92,8 @@ export const MODULE_ACCESS = [
   },
   {
     key: "PARTY_MASTER",
-    label: "Vendor & Customer Master",
-    description: "Vendor aur Customer master bana aur manage kar sakta hai",
+    label: "Purchase Vendor & Customer Master",
+    description: "Purchase Vendor aur Customer master bana aur manage kar sakta hai",
     href: "/parties",
   },
 ] as const;

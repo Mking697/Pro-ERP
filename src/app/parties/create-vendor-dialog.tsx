@@ -79,12 +79,14 @@ export default function CreateVendorDialog({
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger render={<Button>+ {t("Add Vendor")}</Button>} />
+      <DialogTrigger render={<Button>+ {t("Add Purchase Vendor")}</Button>} />
       <DialogContent className="max-w-lg">
         <DialogHeader>
-          <DialogTitle>{t("Naya Vendor")}</DialogTitle>
+          <DialogTitle>{t("Naya Purchase Vendor")}</DialogTitle>
           <DialogDescription>
-            {t("Sirf Vendor Name zaroori hai — baaki details baad me bhi bhari ja sakti hain.")}
+            {t(
+              "Ye Purchase Vendor hai — kaccha maal/parts kharidne ke liye. Sirf Vendor Name zaroori hai, baaki details baad me bhi bhari ja sakti hain."
+            )}
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="max-h-[70vh] space-y-4 overflow-y-auto pr-1">

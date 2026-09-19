@@ -21,6 +21,13 @@ import { PackageCheck } from "lucide-react";
 import EmptyState from "@/components/empty-state";
 import { useT } from "@/components/preferences-provider";
 
+interface VendorOption {
+  vendorId: string;
+  vendorName: string;
+  leadTimeDays: string;
+  unitPrice: string;
+}
+
 interface Suggestion {
   sku: string;
   itemName: string;
@@ -34,6 +41,7 @@ interface Suggestion {
   rop: number | null;
   status: StockStatus;
   suggestedQty: number;
+  vendors: VendorOption[];
 }
 
 /**
@@ -117,7 +125,7 @@ export default function ReorderBoard({ canRaise }: { canRaise: boolean }) {
   }
 
   if (loading) {
-    return <TableSkeleton columns={5} label={t("Reorder list load ho rahi hai")} />;
+    return <TableSkeleton columns={6} label={t("Reorder list load ho rahi hai")} />;
   }
 
   const allSelected = rows.length > 0 && rows.every((r) => selected[r.sku]);
@@ -178,6 +186,7 @@ export default function ReorderBoard({ canRaise }: { canRaise: boolean }) {
                     </TableHead>
                   )}
                   <TableHead>Item</TableHead>
+                  <TableHead>{t("Suggested Vendor")}</TableHead>
                   <TableHead className="text-right">Free</TableHead>
                   <TableHead className="text-right">In Transit</TableHead>
                   <TableHead className="text-right">Projected</TableHead>
@@ -212,6 +221,28 @@ export default function ReorderBoard({ canRaise }: { canRaise: boolean }) {
                         {row.moq && ` · MOQ ${row.moq}`}
                         {row.maxLevel && ` · Max ${row.maxLevel}`}
                       </span>
+                    </TableCell>
+                    <TableCell className="text-sm">
+                      {row.vendors.length === 0 ? (
+                        <span className="text-muted-foreground">{t("Koi vendor linked nahi")}</span>
+                      ) : (
+                        <div className="space-y-0.5">
+                          {row.vendors.slice(0, 2).map((v) => (
+                            <div key={v.vendorId} className="whitespace-nowrap">
+                              <span className="font-medium">{v.vendorName}</span>
+                              <span className="ml-1 text-xs text-muted-foreground">
+                                {v.unitPrice ? `₹${v.unitPrice}/${row.uom}` : t("Price nahi hai")}
+                                {v.leadTimeDays && ` · ${v.leadTimeDays}d`}
+                              </span>
+                            </div>
+                          ))}
+                          {row.vendors.length > 2 && (
+                            <span className="text-xs text-muted-foreground">
+                              +{row.vendors.length - 2} {t("aur vendor")}
+                            </span>
+                          )}
+                        </div>
+                      )}
                     </TableCell>
                     <TableCell className="text-right tabular-nums">
                       {qty(row.free)}
