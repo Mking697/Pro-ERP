@@ -96,6 +96,12 @@ export const MODULE_ACCESS = [
     description: "Purchase Vendor aur Customer master bana aur manage kar sakta hai",
     href: "/parties",
   },
+  {
+    key: "PURCHASE_FMS",
+    label: "Purchase (PO Issue / Follow Up / Material Received)",
+    description: "Approved indents se PO bana sakta hai, follow-up aur material receiving kar sakta hai",
+    href: "/purchase",
+  },
 ] as const;
 
 export type ModuleAccessKey = (typeof MODULE_ACCESS)[number]["key"];

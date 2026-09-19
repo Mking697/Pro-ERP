@@ -64,6 +64,27 @@ export async function listVendorItems(vendorId: string): Promise<VendorItemRecor
 }
 
 /**
+ * One vendor's own link to one SKU — its lead time and current price — or null if this
+ * vendor doesn't actually supply that item. What Purchase's PO Issue step checks before
+ * letting an item onto a PO (see src/lib/purchase/orders.ts).
+ */
+export async function getVendorItemLink(
+  vendorId: string,
+  sku: string
+): Promise<{ leadTimeDays: number | null; unitPrice: string } | null> {
+  const orgId = await getTenantOrgId();
+  const [row] = await db
+    .select()
+    .from(vendorItems)
+    .where(
+      and(eq(vendorItems.orgId, orgId), eq(vendorItems.vendorId, vendorId), eq(vendorItems.sku, sku))
+    )
+    .limit(1);
+  if (!row) return null;
+  return { leadTimeDays: row.leadTimeDays, unitPrice: row.unitPrice ?? "" };
+}
+
+/**
  * Every Active vendor supplying a SKU, cheapest unit price first (a vendor with no price
  * set yet sorts last, not first — an unset price is not "free"). This is what the reorder
  * board suggests when an indent is about to be raised for that item.

@@ -8,6 +8,8 @@ import { generateId } from "@/lib/id";
 import { num, numOr0, type ItemRecord } from "@/lib/inventory/items";
 import { recordMovement } from "@/lib/inventory/ledger";
 import { parseStamp } from "@/lib/timestamp";
+import { getPurchaseSetup } from "@/lib/purchase/settings";
+import { computeTatDeadline, computeDefaultTatDeadline } from "@/lib/fms/calendar";
 
 export const INDENT_STATUSES = [
   "Pending",
@@ -49,6 +51,10 @@ export interface IndentRecord {
   Expected_Date: string;
   Received_Qty: string;
   Received_At: string;
+  /** "" until PO Issue bundles this indent into a Purchase Order — src/lib/purchase/orders.ts. */
+  PO_ID: string;
+  /** Purchase flow Step 1's own deadline ("Indent Approve" must happen by this time). */
+  Step1_Due_At: string;
 }
 
 type IndentRow = InferSelectModel<typeof indents>;
@@ -71,6 +77,8 @@ function rowToRecord(row: IndentRow): IndentRecord {
     Expected_Date: row.expectedDate ? row.expectedDate.toISOString() : "",
     Received_Qty: row.receivedQty ?? "",
     Received_At: row.receivedAt ? row.receivedAt.toISOString() : "",
+    PO_ID: row.poId,
+    Step1_Due_At: row.step1DueAt ? row.step1DueAt.toISOString() : "",
   };
 }
 
@@ -162,6 +170,26 @@ export async function createIndent(input: CreateIndentInput): Promise<IndentReco
   }
 
   const orgId = await getTenantOrgId();
+
+  // Purchase flow Step 1's own deadline — "Indent Approve" must happen by this time.
+  // Computed once here, working-hours-aware, exactly like Inward's IQC TAT (see
+  // computeDefaultTatDeadline's own doc comment) — falls back to the company default
+  // shift when the Admin hasn't assigned a Step 1 Doer yet in Purchase Setup.
+  const purchaseSetup = await getPurchaseSetup();
+  const createdAt = Date.now();
+  const step1DueAtMs = purchaseSetup.step1Doer
+    ? await computeTatDeadline(
+        purchaseSetup.step1Doer,
+        createdAt,
+        purchaseSetup.step1TatValue,
+        purchaseSetup.step1TatUnit
+      )
+    : await computeDefaultTatDeadline(
+        createdAt,
+        purchaseSetup.step1TatValue,
+        purchaseSetup.step1TatUnit
+      );
+
   const row = await insertRecord(indents, {
     id: generateId("IND"),
     orgId,
@@ -177,6 +205,8 @@ export async function createIndent(input: CreateIndentInput): Promise<IndentReco
     approvedBy: "",
     expectedDate: input.expectedDate ? parseStamp(input.expectedDate) : null,
     receivedQty: null,
+    poId: "",
+    step1DueAt: new Date(step1DueAtMs),
   });
 
   return rowToRecord(row);

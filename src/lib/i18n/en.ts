@@ -786,6 +786,63 @@ export const EN: Record<string, string> = {
   "Unit Price": "Unit Price",
   "Suggested Vendor": "Suggested Vendor",
 
+  // --- purchase flow (Indent Approve -> PO Issue -> Follow Up -> Material Received) ---
+  "Purchase": "Purchase",
+  "Indent Approve ke baad ka flow — PO Issue, Follow Up, aur Material Received.":
+    "The flow after Indent Approve — PO Issue, Follow Up, and Material Received.",
+  "PO Issue": "PO Issue",
+  "Follow Up": "Follow Up",
+  "Material Received": "Material Received",
+  "Purchase — Setup": "Purchase — Setup",
+  "Purchase Setup load nahi ho paya.": "Purchase Setup could not be loaded.",
+  "Purchase Setup save ho gaya.": "Purchase Setup saved.",
+  "Purchase Setup load ho raha hai": "Loading Purchase Setup",
+  "Indent Approve se Material Received tak — har step ka Doer aur (jahan lagu ho) TAT set karein. Step 3 aur 4 ka time vendor ke Lead Time se khud ban jaata hai.":
+    "From Indent Approve to Material Received — set a Doer and (where it applies) a TAT for each step. Steps 3 and 4's timing is derived automatically from the vendor's own Lead Time.",
+  "Indent Approve": "Indent Approve",
+  "Time = PO Issue ka actual time + Vendor ka Lead Time − 1 din.":
+    "Time = PO Issue's actual completion time + the vendor's Lead Time − 1 day.",
+  "Time = PO Issue ka actual time + Vendor ka poora Lead Time.":
+    "Time = PO Issue's actual completion time + the vendor's full Lead Time.",
+  "Candidates load nahi ho paye.": "Candidates could not be loaded.",
+  "Candidates load ho rahe hain": "Loading candidates",
+  "Abhi koi Approved indent nahi hai": "No Approved indents yet",
+  "Indent Approve hote hi wo yahan PO ke liye aa jaayega.":
+    "Once an indent is Approved, it will show up here for a PO.",
+  "Vendor": "Vendor",
+  "Vendor chunein": "Choose a vendor",
+  "Vendor select karein": "Select a vendor",
+  "Koi bhi Approved indent ka item kisi vendor se linked nahi hai — pehle Parties me Vendor ↔ Item link karein.":
+    "No Approved indent's item is linked to any vendor yet — link a Vendor ↔ Item first from Parties.",
+  "Ye vendor is list ke kisi item ko supply nahi karta.":
+    "This vendor doesn't supply any item on this list.",
+  "Old Price": "Old Price",
+  "New Price": "New Price",
+  "PO Attachment": "PO Attachment",
+  "item chuna": "item chosen",
+  "PO Issue karein": "Issue PO",
+  "Kam se kam ek item chunein.": "Choose at least one item.",
+  "PO attachment zaroori hai.": "A PO attachment is required.",
+  "PO list load nahi ho payi.": "The PO list could not be loaded.",
+  "PO list load ho rahi hai": "Loading the PO list",
+  "Abhi koi Follow-up pending nahi hai": "No Follow-up is pending yet",
+  "PO Issue hote hi wo yahan follow-up ke liye aa jaayega.":
+    "Once a PO is issued, it will show up here for follow-up.",
+  "Due": "Due",
+  "Jaise: Vendor ne bola X date tak aa jaayega": "e.g. Vendor said it'll arrive by X date",
+  "Follow-up Done": "Follow-up Done",
+  "Follow-up complete ho gaya.": "Follow-up completed.",
+  "Ordered": "Ordered",
+  "Received": "Received",
+  "Receive": "Receive",
+  "Invoice": "Invoice",
+  "Invoice dekhein": "View invoice",
+  "Lead Time due": "Lead Time due",
+  "Abhi koi PO receiving ke liye ready nahi hai": "No PO is ready for receiving yet",
+  "Follow-up complete hote hi PO yahan receiving ke liye aa jaayega.":
+    "Once follow-up is complete, the PO will show up here for receiving.",
+  "Receive ho gaya — stock me jud gaya.": "Received — added to stock.",
+
   // --- nav, page titles, shared misc --------------------------------------------------
   "BOM": "BOM",
   "Inventory": "Inventory",

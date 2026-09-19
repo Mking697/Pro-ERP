@@ -89,6 +89,13 @@ export const indents = pgTable("indents", {
   expectedDate: timestamp("expected_date", { withTimezone: true }),
   receivedQty: numeric("received_qty"),
   receivedAt: timestamp("received_at", { withTimezone: true }),
+  // Which Purchase Order this indent was bundled into at PO Issue time — "" until then.
+  // Plain text, not FK-enforced, matching every other cross-entity reference in this
+  // schema (see src/db/schema/parties.ts's vendorItems doc comment for why).
+  poId: text("po_id").notNull().default(""),
+  // Purchase flow Step 1's own deadline ("Indent Approve" must happen by this time),
+  // computed once at creation from the org's Purchase Setup — see src/lib/purchase/settings.ts.
+  step1DueAt: timestamp("step1_due_at", { withTimezone: true }),
 });
 
 // BomRow.Status — "Active" | "Archived", the same versioning convention CLAUDE.md
