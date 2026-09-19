@@ -88,7 +88,7 @@ function isActive(pathname: string, href: string): boolean {
 
 const TRIGGER_CLASSES = cn(
   "relative flex shrink-0 items-center gap-2 rounded-md px-3 py-2 text-sm font-medium",
-  "transition-colors duration-150",
+  "transition-all duration-150 not-disabled:active:scale-[0.97]",
   "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
   "text-muted-foreground hover:bg-muted hover:text-foreground",
   "data-popup-open:bg-muted data-popup-open:text-foreground"
@@ -96,10 +96,13 @@ const TRIGGER_CLASSES = cn(
 
 function ActiveUnderline() {
   return (
-    // Position, not colour alone, marks the current section.
+    // Position, not colour alone, marks the current section. This mounts/unmounts with
+    // the active state (see call sites below) rather than toggling a class on a
+    // permanent element, so `animate-in` actually replays on every route change instead
+    // of only on first paint.
     <span
       aria-hidden="true"
-      className="absolute inset-x-2 -bottom-px h-0.5 rounded-full bg-foreground"
+      className="absolute inset-x-2 -bottom-px h-0.5 origin-center animate-in rounded-full bg-foreground fade-in-0 zoom-in-50 duration-200 ease-out"
     />
   );
 }

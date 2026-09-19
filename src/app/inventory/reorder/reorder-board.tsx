@@ -20,6 +20,7 @@ import { TableSkeleton } from "@/components/loading-states";
 import { PackageCheck } from "lucide-react";
 import EmptyState from "@/components/empty-state";
 import { useT } from "@/components/preferences-provider";
+import { cn } from "@/lib/utils";
 
 interface VendorOption {
   vendorId: string;
@@ -196,8 +197,15 @@ export default function ReorderBoard({ canRaise }: { canRaise: boolean }) {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {rows.map((row) => (
-                  <TableRow key={row.sku}>
+                {rows.map((row, i) => (
+                  <TableRow
+                    key={row.sku}
+                    style={{ animationDelay: `${Math.min(i, 10) * 40}ms` }}
+                    className={cn(
+                      "animate-in fade-in-0 slide-in-from-bottom-1 fill-mode-both",
+                      selected[row.sku] && "bg-accent/40"
+                    )}
+                  >
                     {canRaise && (
                       <TableCell>
                         <Checkbox

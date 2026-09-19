@@ -142,7 +142,7 @@ export default async function AppShell({
         <div className="mx-auto flex w-full max-w-6xl items-center justify-between gap-4 px-4 py-3 sm:px-6">
           <Link
             href="/dashboard"
-            className="flex min-w-0 items-center gap-2.5 rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="flex min-w-0 items-center gap-2.5 rounded-md transition-opacity duration-150 hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
             <OrgLogo url={logoUrl} name={org?.orgName ?? "Pro ERP"} />
             <span className="min-w-0">

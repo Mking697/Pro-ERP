@@ -24,6 +24,7 @@ import {
 } from "@/components/ui/table";
 import ItemPicker, { type PickerItem } from "@/components/item-picker";
 import { useT } from "@/components/preferences-provider";
+import { cn } from "@/lib/utils";
 
 interface VendorItem {
   Vendor_Item_ID: string;
@@ -189,7 +190,13 @@ export default function VendorItemsDialog({
                 </TableRow>
               )}
               {rows.map((row) => (
-                <TableRow key={row.Vendor_Item_ID}>
+                <TableRow
+                  key={row.Vendor_Item_ID}
+                  className={cn(
+                    "transition-opacity duration-150",
+                    busyId === row.Vendor_Item_ID && "opacity-40"
+                  )}
+                >
                   <TableCell>
                     <span className="block font-medium">{row.Item_Name || row.SKU}</span>
                     <span className="block text-xs text-muted-foreground">{row.SKU}</span>

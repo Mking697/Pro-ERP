@@ -1,3 +1,4 @@
+import type { CSSProperties } from "react";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import Link from "next/link";
@@ -30,14 +31,16 @@ function StatCard({
   value,
   valueClassName,
   hint,
+  style,
 }: {
   label: string;
   value: string;
   valueClassName?: string;
   hint?: string;
+  style?: CSSProperties;
 }) {
   return (
-    <Card>
+    <Card className="animate-in fade-in-0 slide-in-from-bottom-2 fill-mode-both duration-500" style={style}>
       <CardHeader className="pb-2">
         <CardTitle className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
           {label}
@@ -104,13 +107,14 @@ export default async function DashboardPage({
         </div>
 
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-          <StatCard label="Pending Tasks" value={String(pending.length)} />
-          <StatCard label="Completed Tasks" value={String(completed.length)} />
+          <StatCard label="Pending Tasks" value={String(pending.length)} style={{ animationDelay: "0ms" }} />
+          <StatCard label="Completed Tasks" value={String(completed.length)} style={{ animationDelay: "80ms" }} />
           <StatCard
             label="MIS Score"
             value={formatScore(mis.score)}
             valueClassName={getScoreColorClass(mis.score)}
             hint={`On Time ${mis.onTime} · Delay ${mis.delay} · Not Done ${mis.notDone} — 0% best`}
+            style={{ animationDelay: "160ms" }}
           />
         </div>
 
@@ -134,11 +138,12 @@ export default async function DashboardPage({
                   <CardTitle>{t("Aapke modules")}</CardTitle>
                 </CardHeader>
                 <CardContent className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                  {myModules.map((m) => (
+                  {myModules.map((m, i) => (
                     <Link
                       key={m.key}
                       href={m.href}
-                      className="rounded-lg border p-3 transition-colors duration-150 hover:border-foreground/30 hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      style={{ animationDelay: `${Math.min(i, 8) * 60}ms` }}
+                      className="animate-in fade-in-0 slide-in-from-bottom-1 fill-mode-both rounded-lg border p-3 transition-all duration-150 hover:-translate-y-0.5 hover:border-foreground/30 hover:bg-muted/60 hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                     >
                       <p className="text-sm font-medium">{t(m.label)}</p>
                       <p className="mt-0.5 text-xs text-muted-foreground">
@@ -183,10 +188,11 @@ export default async function DashboardPage({
                 {upcoming.length === 0 && (
                   <p className="py-6 text-center text-sm text-muted-foreground">{t("Koi pending task nahi hai.")}</p>
                 )}
-                {upcoming.map((task) => (
+                {upcoming.map((task, i) => (
                   <div
                     key={task.Task_ID}
-                    className="flex items-start justify-between gap-3 rounded-lg border p-3 text-sm transition-colors duration-150 hover:bg-muted/50"
+                    style={{ animationDelay: `${i * 60}ms` }}
+                    className="animate-in fade-in-0 slide-in-from-bottom-1 fill-mode-both flex items-start justify-between gap-3 rounded-lg border p-3 text-sm transition-all duration-150 hover:-translate-y-0.5 hover:bg-muted/50 hover:shadow-sm"
                   >
                     <div className="min-w-0 space-y-1">
                       <div className="flex flex-wrap items-center gap-2">

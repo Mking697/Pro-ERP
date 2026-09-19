@@ -77,8 +77,12 @@ export default function VendorsBoard() {
                 </TableCell>
               </TableRow>
             )}
-            {vendors.map((v) => (
-              <TableRow key={v.Vendor_ID}>
+            {vendors.map((v, i) => (
+              <TableRow
+                key={v.Vendor_ID}
+                style={{ animationDelay: `${Math.min(i, 10) * 40}ms` }}
+                className="animate-in fade-in-0 slide-in-from-bottom-1 fill-mode-both"
+              >
                 <TableCell className="font-medium">{v.Vendor_Name}</TableCell>
                 <TableCell>{v.Contact_Person || "—"}</TableCell>
                 <TableCell>{v.Phone || "—"}</TableCell>
