@@ -12,6 +12,7 @@ const updateSchema = z.object({
   status: z.enum(["Active", "Inactive"]).optional(),
   moduleAccess: z.array(z.enum(MODULE_ACCESS_KEYS)).optional(),
   shift: z.string().optional(),
+  reportingManagerId: z.string().trim().optional(),
 });
 
 export async function PATCH(

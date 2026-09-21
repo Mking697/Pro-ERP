@@ -6,6 +6,7 @@ import {
   BarChart3,
   BookOpen,
   Building2,
+  CalendarOff,
   ClipboardList,
   Factory,
   Handshake,
@@ -52,6 +53,7 @@ const ICONS = {
   pms: Factory,
   stock: Package,
   others: MoreHorizontal,
+  leave: CalendarOff,
 } as const;
 
 export type NavIcon = keyof typeof ICONS;

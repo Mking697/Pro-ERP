@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { toast } from "sonner";
 import {
   Dialog,
@@ -28,6 +28,11 @@ import { generateRandomPassword } from "@/lib/generatePassword";
 import type { SafeUser } from "./types";
 import { useT } from "@/components/preferences-provider";
 
+interface UserOption {
+  userId: string;
+  fullName: string;
+}
+
 export default function CreateUserDialog({
   onCreated,
 }: {
@@ -43,7 +48,16 @@ export default function CreateUserDialog({
   const [department, setDepartment] = useState("");
   const [phoneNumber, setPhoneNumber] = useState("");
   const [shift, setShift] = useState("1");
+  const [reportingManagerId, setReportingManagerId] = useState("");
   const [moduleAccess, setModuleAccess] = useState<string[]>([]);
+  const [userOptions, setUserOptions] = useState<UserOption[]>([]);
+
+  useEffect(() => {
+    fetch("/api/users/directory")
+      .then((res) => res.json())
+      .then((data: { users?: UserOption[] }) => setUserOptions(data.users ?? []))
+      .catch(() => {});
+  }, []);
 
   function resetForm() {
     setFullName("");
@@ -53,6 +67,7 @@ export default function CreateUserDialog({
     setDepartment("");
     setPhoneNumber("");
     setShift("1");
+    setReportingManagerId("");
     setModuleAccess([]);
   }
 
@@ -71,6 +86,7 @@ export default function CreateUserDialog({
           department,
           phoneNumber,
           shift,
+          reportingManagerId,
           moduleAccess,
         }),
       });
@@ -190,6 +206,28 @@ export default function CreateUserDialog({
                 ))}
               </SelectContent>
             </Select>
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="reportingManager">{t("Reporting Manager")}</Label>
+            <Select
+              value={reportingManagerId || "NONE"}
+              onValueChange={(value) => value && setReportingManagerId(value === "NONE" ? "" : value)}
+            >
+              <SelectTrigger id="reportingManager" className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="NONE">{t("Koi nahi")}</SelectItem>
+                {userOptions.map((u) => (
+                  <SelectItem key={u.userId} value={u.userId}>
+                    {u.fullName}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-muted-foreground">
+              {t("Leave approval chain me 'Reporting Manager' step yahi resolve hota hai.")}
+            </p>
           </div>
           <ModuleAccessPicker
             value={moduleAccess}

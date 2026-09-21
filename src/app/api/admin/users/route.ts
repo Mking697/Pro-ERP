@@ -22,6 +22,7 @@ const createSchema = z.object({
   phoneNumber: z.string().optional().default(""),
   moduleAccess: z.array(z.enum(MODULE_ACCESS_KEYS)).optional().default([]),
   shift: z.string().optional().default("1"),
+  reportingManagerId: z.string().trim().optional().default(""),
 });
 
 export async function POST(request: Request) {

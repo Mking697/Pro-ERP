@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import {
   Dialog,
@@ -31,6 +31,11 @@ import type { SafeUser } from "./types";
 import { useT } from "@/components/preferences-provider";
 import { useConfirm } from "@/components/confirm-dialog";
 
+interface UserOption {
+  userId: string;
+  fullName: string;
+}
+
 export default function ManageUserDialog({
   user,
   onUpdated,
@@ -46,11 +51,20 @@ export default function ManageUserDialog({
   const [department, setDepartment] = useState(user.Department);
   const [phoneNumber, setPhoneNumber] = useState(user.Phone_Number);
   const [shift, setShift] = useState(user.Shift || "1");
+  const [reportingManagerId, setReportingManagerId] = useState(user.Reporting_Manager_ID || "");
   const [active, setActive] = useState(user.Status === "Active");
   const [moduleAccess, setModuleAccess] = useState<string[]>(
     parseModuleAccess(user.Module_Access)
   );
   const [savingDetails, setSavingDetails] = useState(false);
+  const [userOptions, setUserOptions] = useState<UserOption[]>([]);
+
+  useEffect(() => {
+    fetch("/api/users/directory")
+      .then((res) => res.json())
+      .then((data: { users?: UserOption[] }) => setUserOptions(data.users ?? []))
+      .catch(() => {});
+  }, []);
 
   const [newPassword, setNewPassword] = useState("");
   const [resetting, setResetting] = useState(false);
@@ -87,6 +101,7 @@ export default function ManageUserDialog({
           department,
           phoneNumber,
           shift,
+          reportingManagerId,
           status: active ? "Active" : "Inactive",
           moduleAccess,
         }),
@@ -192,6 +207,30 @@ export default function ManageUserDialog({
                 ))}
               </SelectContent>
             </Select>
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="edit-reportingManager">{t("Reporting Manager")}</Label>
+            <Select
+              value={reportingManagerId || "NONE"}
+              onValueChange={(value) => value && setReportingManagerId(value === "NONE" ? "" : value)}
+            >
+              <SelectTrigger id="edit-reportingManager" className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="NONE">{t("Koi nahi")}</SelectItem>
+                {userOptions
+                  .filter((u) => u.userId !== user.User_ID)
+                  .map((u) => (
+                    <SelectItem key={u.userId} value={u.userId}>
+                      {u.fullName}
+                    </SelectItem>
+                  ))}
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-muted-foreground">
+              {t("Leave approval chain me 'Reporting Manager' step yahi resolve hota hai.")}
+            </p>
           </div>
           <ModuleAccessPicker
             value={moduleAccess}

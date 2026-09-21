@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireRole } from "@/lib/auth/guard";
 import { generateDueRecurringOccurrences } from "@/lib/recurringGenerator";
+import { processLeaveTransitions } from "@/lib/leave/reassignment";
 import { forEachActiveOrganization } from "@/lib/platform/runner";
 
 // Walking every tenant sequentially takes longer than a single-org run ever did.
@@ -12,12 +13,20 @@ function isCronCall(request: Request): boolean {
   return Boolean(cronSecret && authHeader === `Bearer ${cronSecret}`);
 }
 
+/** Both are once-a-day, per-org, date-driven jobs — riding the same daily cron slot keeps
+ * vercel.json's cron list from growing one entry per job. */
+async function runDailyJobs() {
+  const [recurring, leave] = await Promise.all([
+    generateDueRecurringOccurrences(),
+    processLeaveTransitions(),
+  ]);
+  return { recurring, leave };
+}
+
 export async function POST(request: Request) {
   // A scheduled run belongs to no logged-in user, so it generates for every organization.
   if (isCronCall(request)) {
-    const organizations = await forEachActiveOrganization(() =>
-      generateDueRecurringOccurrences()
-    );
+    const organizations = await forEachActiveOrganization(() => runDailyJobs());
     return NextResponse.json({ scope: "all-organizations", organizations });
   }
 
@@ -26,7 +35,7 @@ export async function POST(request: Request) {
   const guard = await requireRole(["Admin"]);
   if (!guard.ok) return guard.response;
 
-  const result = await generateDueRecurringOccurrences();
+  const result = await runDailyJobs();
   return NextResponse.json({ scope: "organization", result });
 }
 

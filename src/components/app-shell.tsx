@@ -68,6 +68,7 @@ export default async function AppShell({
   const mdoItems: NavItem[] = [
     { icon: "tasks", href: "/tasks", label: "Tasks" },
     { icon: "fms", href: "/fms", label: "Flow" },
+    { icon: "leave", href: "/leave", label: "Leave" },
     { icon: "performance", href: "/reports", label: "Reports" },
   ];
   if (session.access.includes("PERFORMANCE_VIEW")) {

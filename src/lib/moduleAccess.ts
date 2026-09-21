@@ -102,6 +102,12 @@ export const MODULE_ACCESS = [
     description: "Approved indents se PO bana sakta hai, follow-up aur material receiving kar sakta hai",
     href: "/purchase",
   },
+  {
+    key: "LEAVE_HR",
+    label: "Leave — HR",
+    description: "Kisi bhi doer ke liye Emergency Leave file kar sakta hai (jab wo khud file na kar paaye)",
+    href: "/leave",
+  },
 ] as const;
 
 export type ModuleAccessKey = (typeof MODULE_ACCESS)[number]["key"];

@@ -33,6 +33,9 @@ export interface SheetUser {
   Module_Access: string;
   /** FMS shift id (e.g. "1", "2") — see src/lib/fms/calendar.ts. Blank defaults to "1". */
   Shift: string;
+  /** Another user's id, or "" — this person's Leave approval chain "Reporting Manager"
+   * step resolves to whoever this points to. See src/lib/leave/*.ts. */
+  Reporting_Manager_ID: string;
 }
 
 export type SafeSheetUser = Omit<SheetUser, "Password_Hash">;
@@ -50,6 +53,7 @@ export function toSafeUser(user: SheetUser): SafeSheetUser {
     Created_By: user.Created_By,
     Module_Access: user.Module_Access ?? "",
     Shift: user.Shift ?? "",
+    Reporting_Manager_ID: user.Reporting_Manager_ID ?? "",
   };
 }
 
@@ -69,6 +73,7 @@ function rowToSheetUser(row: UserRow): SheetUser {
     Created_By: row.createdBy,
     Module_Access: row.moduleAccess.join(","),
     Shift: row.shift,
+    Reporting_Manager_ID: row.reportingManagerId,
   };
 }
 
@@ -136,6 +141,7 @@ interface CreateUserInput {
   createdBy: string;
   moduleAccess?: readonly string[];
   shift?: string;
+  reportingManagerId?: string;
 }
 
 export async function createUser(input: CreateUserInput): Promise<SheetUser> {
@@ -166,6 +172,7 @@ export async function createUser(input: CreateUserInput): Promise<SheetUser> {
       createdBy: input.createdBy,
       moduleAccess: moduleAccessToArray(input.moduleAccess ?? []),
       shift: input.shift?.trim() || "1",
+      reportingManagerId: input.reportingManagerId?.trim() ?? "",
     })
     .returning();
 
@@ -190,6 +197,7 @@ interface UpdateUserInput {
   status?: string;
   moduleAccess?: readonly string[];
   shift?: string;
+  reportingManagerId?: string;
 }
 
 export async function updateUser(userId: string, patch: UpdateUserInput): Promise<SheetUser> {
@@ -211,6 +219,10 @@ export async function updateUser(userId: string, patch: UpdateUserInput): Promis
           ? moduleAccessToArray(patch.moduleAccess)
           : found.moduleAccess,
       shift: patch.shift?.trim() || found.shift,
+      reportingManagerId:
+        patch.reportingManagerId !== undefined
+          ? patch.reportingManagerId.trim()
+          : found.reportingManagerId,
     })
     .where(and(eq(users.orgId, orgId), eq(users.id, userId)))
     .returning();

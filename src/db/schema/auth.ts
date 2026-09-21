@@ -32,4 +32,8 @@ export const users = pgTable("users", {
   // FMS shift id (e.g. "1", "2") — src/lib/fms/calendar.ts. Blank/omitted defaults to "1"
   // at the application layer, same as today.
   shift: text("shift").notNull().default("1"),
+  // Another user's id, or "" if unset — the first stop in this person's Leave approval
+  // chain when their org's own Leave Approval Setup has a "Reporting Manager" step. Plain
+  // text, not FK-enforced, matching every other cross-entity reference in this schema.
+  reportingManagerId: text("reporting_manager_id").notNull().default(""),
 });

@@ -11,5 +11,6 @@ export * from "./inward";
 export * from "./inventory";
 export * from "./ppc";
 export * from "./fms";
+export * from "./leave";
 export * from "./parties";
 export * from "./purchase";

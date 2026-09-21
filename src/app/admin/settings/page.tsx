@@ -2,8 +2,10 @@ import LogoForm from "./logo-form";
 import WhatsAppForm from "./whatsapp-form";
 import FmsShiftForm from "./fms-shift-form";
 import FmsWeekoffOverridesForm from "./fms-weekoff-overrides-form";
+import HolidayListForm from "./holiday-list-form";
 import InwardIqcTatForm from "./inward-iqc-tat-form";
 import PurchaseSetupForm from "./purchase-setup-form";
+import LeaveApprovalSetupForm from "./leave-approval-setup-form";
 import { getT } from "@/lib/i18n/server";
 
 export default async function AdminSettingsPage() {
@@ -18,8 +20,10 @@ export default async function AdminSettingsPage() {
       <WhatsAppForm />
       <FmsShiftForm />
       <FmsWeekoffOverridesForm />
+      <HolidayListForm />
       <InwardIqcTatForm />
       <PurchaseSetupForm />
+      <LeaveApprovalSetupForm />
     </div>
   );
 }
