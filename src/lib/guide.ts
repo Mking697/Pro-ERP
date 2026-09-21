@@ -750,6 +750,92 @@ export const GUIDE: GuideChapter[] = [
   },
 
   {
+    id: "leads",
+    title: "Leads aur Quotation (Sales Pipeline)",
+    description:
+      "Lead punch/import se le kar Qualify, Follow-up, Meeting, Negotiation aur Quotation tak — poora sales pipeline. Quotation accept hote hi 'Order Confirmed' par ruk jaata hai — aage ka Order/Dispatch module abhi nahi bana hai.",
+    sections: [
+      {
+        id: "leads-idea",
+        title: "Lead FMS kaam kaise karta hai",
+        audience: "LEAD_FMS",
+        summary:
+          "Har lead ek fixed pipeline se guzarta hai — New se le kar Order Confirmed (jeeta) ya Lost (haara) tak — aur har kadam ek activity ban kar us lead ki history me record hota hai.",
+        how: [
+          "Pipeline: New → Qualified (ya Junk, yahin khatam) → Follow-up (Call Back Later par yahin ruka rehta hai) → Meeting Scheduled (Reschedule par yahin ruka rehta hai) → Negotiation → Quotation Sent → Order Confirmed (jeeta) / Lost (kabhi bhi ho sakta hai).",
+          "Lead ki detail dabate hi sirf usi stage ka relevant action dikhta hai — jaise New lead par sirf Qualify, Negotiation par Negotiation notes + Quotation banane ka button.",
+          "Har action (Qualify, Follow-up, Meeting, Negotiation, Quotation, Won, Lost) turant us lead ki History me ek line ban kar dikhta hai — kisne, kab, kya kiya, sab ek jagah.",
+        ],
+        notes: [
+          "Lost kabhi bhi, kisi bhi (khatam na hui) stage se ho sakta hai — reason likhna zaroori hai.",
+          "'Call Back Later' aur 'Reschedule' loops hain — jab tak Doer khud aage nahi badhata, lead usi stage me ruki rehti hai, agli follow-up/meeting date ke saath.",
+        ],
+      },
+      {
+        id: "leads-punch",
+        title: "Naya Lead Punch ya Import Karna",
+        audience: "LEAD_FMS",
+        summary: "Ek lead ka sirf naam hi kaafi hai shuru karne ke liye — baaki jo pata ho bhar dein.",
+        steps: [
+          "Leads page par '+ Naya Lead' dabayein — sirf Naam zaroori hai, Phone/Company/City/Product Interest sab optional hain.",
+          "Bahut saare leads ek saath daalne ho (jaise exhibition ya IndiaMART se) to 'Bulk Upload' se template download karke Excel me bharein aur upload karein.",
+        ],
+        notes: [
+          "Agar wahi naam-phone wala lead pehle se hai to ek warning dikhegi, lekin lead phir bhi ban jaayega — duplicate kabhi block nahi hota, sirf flag hota hai.",
+        ],
+      },
+      {
+        id: "leads-pipeline",
+        title: "Pipeline ke har stage ka matlab",
+        audience: "LEAD_FMS",
+        summary: "Kaunsa button kab dabana hai, aur uska kya asar hota hai.",
+        how: [
+          "New: abhi-abhi aaya lead. Qualify dabakar 'Qualified' (aage badhaayein) ya 'Junk' (bekaar lead, yahin khatam) mark karein.",
+          "Qualified/Follow-up: yahan 'Follow-up Log Karein' se Interested / Not Interested / Call Back Later mein se ek chunein — Call Back Later par agli date/time dena zaroori hai, lead usi stage me rukega. Isi stage se 'Meeting Schedule Karein' se meeting bhi tay ki ja sakti hai.",
+          "Meeting Scheduled: meeting ke baad 'Meeting Outcome' me Done (Negotiation shuru) / Reschedule (nayi date) / Not Interested (Lost) chunein.",
+          "Negotiation: requirement notes likh kar save karein (jitni baar chahe), aur jab tayyar ho 'Quotation Banayein' dabayein.",
+          "Quotation Sent: quotation bhej diya gaya hai — customer ka jawab aane par Quotation page se hi Accept ya Reject karein.",
+          "Order Confirmed / Lost: dono terminal hain — inme koi action nahi bacha, sirf summary dikhti hai.",
+        ],
+      },
+      {
+        id: "leads-quotation",
+        title: "Quotation Banana, Bhejna aur Accept Karna",
+        audience: "LEAD_FMS",
+        summary: "Header, ek editable line-item grid (formula calculator ke saath), aur GST/Freight totals — sab ek hi page par.",
+        steps: [
+          "Lead ke Negotiation stage se 'Quotation Banayein' dabayein — party details, subject/note/terms Quotation Setup ke defaults se apne aap bhar jaate hain.",
+          "Line items me Particular/Specification/Description/UOM bharein. Qty box me seedha number ya formula (jaise 2.5*3+1.2) likh kar bahar click karein — jawab khud aa jaayega, formula bhi saath me yaad rakha jaata hai.",
+          "Rate bharte hi Amount khud ban jaata hai. Freight aur GST% daalte hi neeche Sub Total/GST/Payable turant update ho jaate hain.",
+          "'Draft Save Karein' se jab chahe utni baar save karein. Tayyar hone par 'Bhej Dein (Send)' dabayein — isse pehle kam se kam ek line hona zaroori hai.",
+          "Customer ka jawab aane par 'Accepted Mark Karein' (lead 'Order Confirmed' ho jaayega) ya 'Rejected Mark Karein' dabayein.",
+          "'PDF Download' se kabhi bhi ek professional PDF quotation ban kar khulti hai — company/bank letterhead Quotation Setup se, logo Organization Logo se aata hai.",
+        ],
+        notes: [
+          "Quotation Number (jaise QN-0001) ek series me apne aap milta hai — Admin Quotation Setup me prefix/starting number tay karta hai.",
+          "Ek baar Accept ho jaane ke baad quotation edit nahi ho sakta — sirf PDF dobara download ho sakta hai.",
+          "Quotation FMS ka kaam yahin khatam ho jaata hai — Order Confirmed hote hi bas lead ka status badalta hai; aage ka Dispatch/PDI module abhi bana nahi hai.",
+        ],
+      },
+      {
+        id: "leads-quotation-setup",
+        title: "Quotation Setup",
+        audience: "admin",
+        summary: "Quotation PDF ka letterhead aur har naye quotation ke defaults ek baar set kar dein.",
+        steps: [
+          "Admin → Settings → Quotation — Setup section kholein.",
+          "Company Name/Address/GSTIN aur Bank Details bharein — ye har PDF par letterhead ki tarah chhapte hain.",
+          "Default Subject/Note/Terms & Conditions likhein — naya quotation banate hi ye khud bhar jaate hain (baad me har quotation par alag se badle bhi ja sakte hain).",
+          "Default GST%, Quotation Valid For (kitne din) aur Number Prefix/Starting Number tay karein, Save karein.",
+        ],
+        notes: [
+          "Organization Logo yahin se nahi, Settings ke Logo section se aata hai — do jagah alag se upload karne ki zaroorat nahi.",
+        ],
+      },
+    ],
+  },
+
+  {
     id: "bom",
     title: "BOM — product kis cheez se banta hai",
     description: "Ek product banane me kya-kya aur kitna lagta hai, wo likh dena.",

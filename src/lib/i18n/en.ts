@@ -999,4 +999,59 @@ export const EN: Record<string, string> = {
   "Upar ka nav bar groups me bant gaya": "The top nav bar is now grouped",
   "Menu ab MDO, PMS, Stock, FMS aur Others groups me bant gaya hai, taaki roz ke kaam aur setup wale link mix na hon.":
     "The menu is now grouped into MDO, PMS, Stock, FMS, and Others, so day-to-day links and setup links never sit mixed together.",
+
+  // --- leads and quotations ----------------------------------------------------------
+  "Quotation Setup load nahi ho paya.": "Quotation Setup could not be loaded.",
+  "Quotation Setup save ho gaya.": "Quotation Setup saved.",
+  "Quotation Setup load ho raha hai": "Loading Quotation Setup",
+  "Quotation — Setup": "Quotation — Setup",
+  "Quotation PDF ke letterhead aur defaults — company/bank details, subject/note/terms, GST%, aur quotation number series.":
+    "Letterhead and defaults for the quotation PDF — company/bank details, subject/note/terms, GST%, and the quotation number series.",
+  "Pehla quotation number": "First quotation number",
+  "Lead punch ho gaya.": "Lead punched in.",
+  "+ Naya Lead": "+ New Lead",
+  "Naya Lead Punch Karein": "Punch In a New Lead",
+  "Sirf naam zaroori hai — baaki jo pata ho wo bhar dein.":
+    "Only the name is required — fill in whatever else you know.",
+  "Punch karein": "Punch in",
+  "Lead load nahi ho paya.": "The lead could not be loaded.",
+  "Quotation ban gaya.": "Quotation created.",
+  "Details aur pipeline action": "Details and pipeline action",
+  "Abhi koi activity nahi hai.": "There is no activity yet.",
+  "Kholein": "Open",
+  "Quotation Banayein": "Create Quotation",
+  "Order Confirmed ho gaya — is lead se quotation accept ho chuka hai.":
+    "Order Confirmed — a quotation from this lead has been accepted.",
+  "Lost Mark Karein": "Mark Lost",
+  "Qualify Karein": "Qualify",
+  "Follow-up Log Karein": "Log Follow-up",
+  "Agli Follow-up Date/Time": "Next Follow-up Date/Time",
+  "Save karein": "Save",
+  "Meeting Schedule Karein": "Schedule Meeting",
+  "Schedule karein": "Schedule",
+  "Nayi Date/Time": "New Date/Time",
+  "Note Save Karein": "Save Note",
+  "Leads load nahi ho paye.": "Leads could not be loaded.",
+  "Leads load ho rahe hain": "Loading leads",
+  "Abhi koi lead nahi hai": "There are no leads yet",
+  "Naya lead punch karein ya bulk import se le aayein.": "Punch in a new lead, or bring several in via bulk import.",
+  "Agla Follow-up / Meeting": "Next Follow-up / Meeting",
+  "Lead punch/import se le kar Qualify, Follow-up, Meeting, Negotiation aur Quotation tak — poora sales pipeline.":
+    "From punching in or importing a lead through Qualify, Follow-up, Meeting, Negotiation and Quotation — the whole sales pipeline.",
+  "Header, line items aur totals — Draft me jitni baar chahe badla ja sakta hai.":
+    "Header, line items and totals — can be changed as many times as needed while it's a Draft.",
+  "Quotation load nahi ho paya.": "The quotation could not be loaded.",
+  "Ye quantity samajh nahi aayi — sirf number ya formula (+ - * / ( )) likhein.":
+    "That quantity wasn't understood — enter a plain number or a formula (+ - * / ( )).",
+  "Draft save ho gaya.": "Draft saved.",
+  "Ho gaya.": "Done.",
+  "Quotation load ho raha hai": "Loading quotation",
+  "Draft Save Karein": "Save Draft",
+  "Bhej Dein (Send)": "Send",
+  "Accepted Mark Karein": "Mark Accepted",
+  "Rejected Mark Karein": "Mark Rejected",
+  "Ye quotation Accept ho chuka hai — ab edit nahi ho sakta, sirf PDF dobara download ho sakta hai.":
+    "This quotation has been Accepted — it can no longer be edited, only the PDF can be downloaded again.",
+  "khaali chhodein agar billing jaisa hi hai": "leave blank if same as billing",
+  "+ Line Add Karein": "+ Add Line",
 };

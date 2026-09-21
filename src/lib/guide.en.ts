@@ -708,6 +708,92 @@ export const GUIDE_EN: GuideChapter[] = [
   },
 
   {
+    id: "leads",
+    title: "Leads and Quotations (Sales Pipeline)",
+    description:
+      "From punching in or importing a lead through Qualify, Follow-up, Meeting, Negotiation and Quotation — the whole sales pipeline. It stops at 'Order Confirmed' once a quotation is accepted — the Order/Dispatch module beyond that hasn't been built yet.",
+    sections: [
+      {
+        id: "leads-idea",
+        title: "How Lead FMS works",
+        audience: "LEAD_FMS",
+        summary:
+          "Every lead moves through a fixed pipeline — from New to either Order Confirmed (won) or Lost — and every step is recorded as an activity on that lead's own history.",
+        how: [
+          "Pipeline: New → Qualified (or Junk, ends here) → Follow-up (stays put on Call Back Later) → Meeting Scheduled (stays put on Reschedule) → Negotiation → Quotation Sent → Order Confirmed (won) / Lost (can happen from anywhere).",
+          "Opening a lead's detail shows only the one action relevant to its current stage — e.g. just Qualify on a New lead, or Negotiation notes plus a Create Quotation button at Negotiation.",
+          "Every action (Qualify, Follow-up, Meeting, Negotiation, Quotation, Won, Lost) immediately becomes a line in that lead's History — who did what, and when, all in one place.",
+        ],
+        notes: [
+          "Lost can happen at any point from any non-finished stage — a reason is required.",
+          "'Call Back Later' and 'Reschedule' are loops — the lead stays at that same stage, with a new follow-up/meeting date, until the Doer actually moves it forward.",
+        ],
+      },
+      {
+        id: "leads-punch",
+        title: "Punching In or Importing a New Lead",
+        audience: "LEAD_FMS",
+        summary: "A lead's name alone is enough to get started — fill in whatever else you know.",
+        steps: [
+          "On the Leads page, click '+ New Lead' — only Name is required; Phone/Company/City/Product Interest are all optional.",
+          "For bringing in many leads at once (e.g. from an exhibition or IndiaMART), use 'Bulk Upload' — download the template, fill it in Excel, and upload it.",
+        ],
+        notes: [
+          "If a lead with the same name and phone already exists, a warning shows — but the lead is still created either way; a duplicate never blocks the save, only flags it.",
+        ],
+      },
+      {
+        id: "leads-pipeline",
+        title: "What each pipeline stage means",
+        audience: "LEAD_FMS",
+        summary: "Which button to press when, and what it actually does.",
+        how: [
+          "New: a lead that just arrived. Qualify it as 'Qualified' (move it forward) or 'Junk' (not a real lead, ends here).",
+          "Qualified/Follow-up: use 'Log Follow-up' to record Interested / Not Interested / Call Back Later — Call Back Later requires a next date/time, and the lead stays at this stage. 'Schedule Meeting' is also available from here.",
+          "Meeting Scheduled: after the meeting, use 'Meeting Outcome' — Done (moves to Negotiation) / Reschedule (a new date) / Not Interested (Lost).",
+          "Negotiation: save requirement notes (as many times as needed), then click 'Create Quotation' once ready.",
+          "Quotation Sent: the quotation has gone out — once the customer replies, Accept or Reject it right from the Quotation page.",
+          "Order Confirmed / Lost: both are final — nothing left to do, just a summary is shown.",
+        ],
+      },
+      {
+        id: "leads-quotation",
+        title: "Building, Sending and Accepting a Quotation",
+        audience: "LEAD_FMS",
+        summary: "A header, an editable line-item grid (with a formula calculator), and GST/Freight totals — all on one page.",
+        steps: [
+          "From a lead's Negotiation stage, click 'Create Quotation' — party details, and the subject/note/terms, are pre-filled from Quotation Setup's own defaults.",
+          "Fill in each line's Particular/Specification/Description/UOM. In the Qty box, type either a plain number or a formula (e.g. 2.5*3+1.2) and click away — the answer fills in on its own, with the formula itself remembered alongside it.",
+          "Amount is computed automatically as soon as Rate is entered. Sub Total/GST/Payable at the bottom update the moment Freight or GST% changes.",
+          "Use 'Save Draft' as many times as needed. Once ready, click 'Send' — at least one line is required before it can go out.",
+          "Once the customer replies, click 'Mark Accepted' (the lead becomes 'Order Confirmed') or 'Mark Rejected'.",
+          "'PDF Download' renders a professional quotation PDF at any time — the company/bank letterhead comes from Quotation Setup, and the logo from the Organization Logo.",
+        ],
+        notes: [
+          "The Quotation Number (e.g. QN-0001) is allocated automatically in a series — the Admin sets the prefix/starting number in Quotation Setup.",
+          "Once a quotation is Accepted it can no longer be edited — only the PDF can be downloaded again.",
+          "Lead FMS's job ends right here — Order Confirmed only flips the lead's own status; the Dispatch/PDI module beyond that hasn't been built yet.",
+        ],
+      },
+      {
+        id: "leads-quotation-setup",
+        title: "Quotation Setup",
+        audience: "admin",
+        summary: "Set the quotation PDF's letterhead and every new quotation's defaults once.",
+        steps: [
+          "Open Admin → Settings → the Quotation — Setup section.",
+          "Fill in Company Name/Address/GSTIN and Bank Details — these print as the letterhead on every PDF.",
+          "Write the Default Subject/Note/Terms & Conditions — these fill in automatically on a new quotation (and can still be changed per quotation afterwards).",
+          "Set the Default GST%, how many days a Quotation stays Valid For, and the Number Prefix/Starting Number, then Save.",
+        ],
+        notes: [
+          "The Organization Logo isn't set here — it comes from Settings' own Logo section, so there's no need to upload it twice.",
+        ],
+      },
+    ],
+  },
+
+  {
     id: "bom",
     title: "BOM — what a product is made from",
     description: "Writing down what goes into a product, and how much.",
