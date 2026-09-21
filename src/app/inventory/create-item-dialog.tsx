@@ -49,7 +49,6 @@ export default function CreateItemDialog({
   initialItemName = "",
   trigger,
   uomOptions = [],
-  sizeUnitOptions = [],
   locationOptions = [],
 }: {
   onCreated: () => void;
@@ -67,15 +66,14 @@ export default function CreateItemDialog({
   /** Overrides the default "+ Naya Item" trigger button, e.g. for a per-row "+ Add" in
    * that same banner. */
   trigger?: ReactElement;
-  /** UOM/Size-Unit values already used elsewhere (usually every other item's own values,
-   * passed down by the board that already has them loaded) — merged with a small common
-   * base list for UOM. Both fields stay free text; this is autocomplete, not an enum. */
+  /** UOM values already used elsewhere (usually every other item's own values, passed
+   * down by the board that already has them loaded), merged with a small common base
+   * list. UOM stays free text (autocomplete, not an enum) — Unit, below, is a closed
+   * dropdown off the same base list instead. */
   uomOptions?: string[];
-  sizeUnitOptions?: string[];
   locationOptions?: string[];
 }) {
   const mergedUomOptions = [...new Set([...COMMON_UOMS, ...uomOptions])].sort();
-  const mergedSizeUnitOptions = [...new Set(sizeUnitOptions)].sort();
   const mergedLocationOptions = [...new Set(locationOptions)].sort();
   const t = useT();
   const [open, setOpen] = useState(false);
@@ -178,14 +176,22 @@ export default function CreateItemDialog({
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="sizeUnit">Size / Unit</Label>
-              <AutocompleteInput
-                id="sizeUnit"
-                value={form.sizeUnit}
-                onChange={(v) => set("sizeUnit", v)}
-                options={mergedSizeUnitOptions}
-                placeholder={t("Jaise 8x40mm, 2 inch")}
-              />
+              <Label htmlFor="sizeUnit">{t("Unit")}</Label>
+              <Select
+                value={form.sizeUnit || undefined}
+                onValueChange={(v) => v && set("sizeUnit", v)}
+              >
+                <SelectTrigger id="sizeUnit" className="w-full">
+                  <SelectValue placeholder={t("Chunein")} />
+                </SelectTrigger>
+                <SelectContent>
+                  {COMMON_UOMS.map((u) => (
+                    <SelectItem key={u} value={u}>
+                      {u}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
           </div>
 

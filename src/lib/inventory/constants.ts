@@ -13,9 +13,16 @@ export type ItemCategory = (typeof ITEM_CATEGORIES)[number];
  * A starting point for the UOM autocomplete (src/components/ui/autocomplete-input.tsx),
  * not an enum — an item's UOM is never validated against this list, so a genuinely new
  * unit can still be typed. This just saves retyping "PCS" from scratch on every new item.
+ *
+ * The New Item dialog's own "Unit" field (Size_Unit in the schema — the name stuck from
+ * before this list existed) picks from this same set, but as a closed dropdown: a unit is
+ * always one of these, never a free-typed size description like "8x40mm" — that confused
+ * people expecting a plain unit picker when the field showed years of old free-text sizes
+ * as suggestions instead.
  */
 export const COMMON_UOMS = [
   "PCS",
+  "NOS",
   "KG",
   "GM",
   "MTR",
