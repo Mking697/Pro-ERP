@@ -171,7 +171,11 @@ export default function ManageUserDialog({
                 id="edit-phone"
                 value={phoneNumber}
                 onChange={(e) => setPhoneNumber(e.target.value)}
+                placeholder="9876543210"
               />
+              <p className="text-xs text-muted-foreground">
+                {t("Bina country code ke 10-digit number bhi chalega — 91 apne aap lag jaata hai.")}
+              </p>
             </div>
           </div>
           <div className="space-y-2">

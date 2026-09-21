@@ -607,6 +607,8 @@ export const EN: Record<string, string> = {
   "Value": "Value",
   "Add": "Add",
   "FMS Shift": "FMS Shift",
+  "Bina country code ke 10-digit number bhi chalega — 91 apne aap lag jaata hai.":
+    "A bare 10-digit number without a country code works too — 91 is added automatically.",
 
   // --- inward IQC TAT ----------------------------------------------------------------
   "IQC Deadline": "IQC Deadline",

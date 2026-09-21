@@ -7,6 +7,22 @@ interface SendResult {
   error?: string;
 }
 
+/**
+ * ChatXFlow expects a full number with country code (e.g. "919876543210") — the same shape
+ * the org's own WhatsApp Mobile Number in Settings already uses. A user's own "Phone
+ * (WhatsApp)" field has no country-code hint on it, so a bare 10-digit Indian mobile
+ * number (the thing most admins actually type) silently fails to deliver otherwise — this
+ * was the real cause behind FMS step notifications and task-completion confirmations never
+ * arriving even though nothing anywhere reported an error. Anything that already looks
+ * like it carries a country code is left untouched rather than guessed at.
+ */
+function normalizePhone(raw: string): string {
+  const digits = raw.replace(/\D/g, "");
+  if (digits.length === 10) return `91${digits}`;
+  if (digits.length === 11 && digits.startsWith("0")) return `91${digits.slice(1)}`;
+  return digits;
+}
+
 async function getConfig(): Promise<{ baseUrl: string; token: string } | null> {
   const [baseUrl, token] = await Promise.all([
     getSetting("CHATXFLOW_BASE_URL"),
@@ -31,7 +47,7 @@ export async function sendWhatsAppMessage(phone: string, message: string): Promi
         "Content-Type": "application/json",
         Authorization: `Bearer ${config.token}`,
       },
-      body: JSON.stringify({ phone, message }),
+      body: JSON.stringify({ phone: normalizePhone(phone), message }),
     });
 
     const body = await res.json().catch(() => ({}) as Record<string, unknown>);
