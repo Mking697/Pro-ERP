@@ -1,6 +1,6 @@
 import type { InferInsertModel, InferSelectModel } from "drizzle-orm";
 import { and, eq } from "drizzle-orm";
-import { leads, quotationItems, quotations } from "@/db/schema";
+import { customers, leads, quotationItems, quotations } from "@/db/schema";
 import { db } from "@/db/client";
 import { findById, insertRecord, updateById } from "@/db/repo";
 import { getTenantOrgId } from "@/lib/tenant";
@@ -8,6 +8,7 @@ import { generateId } from "@/lib/id";
 import { getSetting } from "@/lib/settings";
 import { uploadAttachment } from "@/lib/storage";
 import { emitFmsEvent } from "@/lib/fms/engine";
+import { createCustomer } from "@/lib/parties/customers";
 import { computeTotals, lineAmount, round2, round3 } from "@/lib/leads/quotationMath";
 import { logLeadActivity, markOrderConfirmed, markQuotationSent } from "@/lib/leads/leads";
 import { getQuotationSetup } from "@/lib/leads/quotationSetup";
@@ -198,18 +199,30 @@ function isUniqueViolation(error: unknown, constraintName: string): boolean {
   return typeof e.message === "string" && e.message.includes(constraintName);
 }
 
-/** Negotiation -> a new Draft quotation, seeded from the lead and from Quotation Setup's
- * own defaults. */
-export async function createQuotation(leadId: string, createdBy: string): Promise<QuotationRecord> {
-  const orgId = await getTenantOrgId();
-  const leadRow = await findById(leads, orgId, leadId);
-  if (!leadRow) throw new QuotationError("Lead nahi mila.");
-  if (leadRow.status !== "Negotiation") {
-    throw new QuotationError(
-      `Ye lead "${leadRow.status}" hai — Quotation sirf Negotiation stage se banti hai.`
-    );
-  }
+interface QuotationSeed {
+  leadId: string;
+  partyName: string;
+  contactPerson: string;
+  customerMobile: string;
+  customerEmail: string;
+  customerGst: string;
+  billingAddress: string;
+  billingCity: string;
+  billingState: string;
+  billingPincode: string;
+}
 
+/**
+ * The one place a `quotations` row actually gets inserted — used by both a lead's own
+ * Quotation and a walk-in one, so both agree on numbering, retry-on-collision, and
+ * Quotation Setup's defaults. See `allocateQuotationNumber`'s own comment for why the retry
+ * loop exists (a real `(org_id, quotation_no)` unique constraint, not just a fresh read).
+ */
+async function insertQuotationRow(
+  orgId: string,
+  seed: QuotationSeed,
+  createdBy: string
+): Promise<QuotationRecord> {
   const setup = await getQuotationSetup();
   const validUntil = new Date();
   validUntil.setDate(validUntil.getDate() + setup.validityDays);
@@ -223,13 +236,16 @@ export async function createQuotation(leadId: string, createdBy: string): Promis
         orgId,
         quotationNo,
         status: "Draft",
-        leadId,
-        partyName: leadRow.companyName || leadRow.personName,
-        contactPerson: leadRow.personName,
-        customerMobile: leadRow.phone,
-        customerEmail: leadRow.email,
-        billingCity: leadRow.city,
-        billingState: leadRow.state,
+        leadId: seed.leadId,
+        partyName: seed.partyName,
+        contactPerson: seed.contactPerson,
+        customerMobile: seed.customerMobile,
+        customerEmail: seed.customerEmail,
+        customerGst: seed.customerGst,
+        billingAddress: seed.billingAddress,
+        billingCity: seed.billingCity,
+        billingState: seed.billingState,
+        billingPincode: seed.billingPincode,
         subject: setup.defaultSubject,
         note: setup.defaultNote,
         terms: setup.defaultTerms,
@@ -238,7 +254,9 @@ export async function createQuotation(leadId: string, createdBy: string): Promis
         createdBy,
       });
 
-      await logLeadActivity(orgId, leadId, "Quotation", `Quotation ${quotationNo} shuru kiya gaya.`, createdBy);
+      if (seed.leadId) {
+        await logLeadActivity(orgId, seed.leadId, "Quotation", `Quotation ${quotationNo} shuru kiya gaya.`, createdBy);
+      }
 
       return rowToQuotation(row, []);
     } catch (error) {
@@ -248,6 +266,138 @@ export async function createQuotation(leadId: string, createdBy: string): Promis
     }
   }
   throw new QuotationError("Quotation number allocate nahi ho paya. Dobara try karein.");
+}
+
+/** Negotiation -> a new Draft quotation, seeded from the lead and from Quotation Setup's
+ * own defaults. */
+export async function createQuotation(leadId: string, createdBy: string): Promise<QuotationRecord> {
+  const orgId = await getTenantOrgId();
+  const leadRow = await findById(leads, orgId, leadId);
+  if (!leadRow) throw new QuotationError("Lead nahi mila.");
+  if (leadRow.status !== "Negotiation") {
+    throw new QuotationError(
+      `Ye lead "${leadRow.status}" hai — Quotation sirf Negotiation stage se banti hai.`
+    );
+  }
+
+  return insertQuotationRow(
+    orgId,
+    {
+      leadId,
+      partyName: leadRow.companyName || leadRow.personName,
+      contactPerson: leadRow.personName,
+      customerMobile: leadRow.phone,
+      customerEmail: leadRow.email,
+      customerGst: "",
+      billingAddress: "",
+      billingCity: leadRow.city,
+      billingState: leadRow.state,
+      billingPincode: "",
+    },
+    createdBy
+  );
+}
+
+export interface NewWalkInCustomerInput {
+  customerName: string;
+  phone?: string;
+  email?: string;
+  gstin?: string;
+  billingAddress?: string;
+  city?: string;
+  state?: string;
+}
+
+export interface CreateWalkInQuotationInput {
+  /** An existing row from this salesperson's own Customer Master. */
+  customerId?: string;
+  /** Or a brand-new customer, added to the master (createdBy = this salesperson) on the
+   *  spot and then quoted immediately. */
+  newCustomer?: NewWalkInCustomerInput;
+}
+
+/**
+ * A quotation with no lead behind it — e.g. a repeat customer who calls in directly rather
+ * than arriving through the pipeline. Picks up Pro-ERP's existing Customer Master
+ * (`src/lib/parties/customers.ts`, Module 13) rather than inventing a second customer
+ * concept: "Existing Customer" reads from it, "New Customer" writes to it (tagged
+ * `createdBy` = whoever is quoting, same as every other master record) before quoting.
+ */
+export async function createWalkInQuotation(
+  input: CreateWalkInQuotationInput,
+  createdBy: string
+): Promise<QuotationRecord> {
+  const orgId = await getTenantOrgId();
+
+  let customerId = input.customerId ?? "";
+  let customerName: string;
+  let phone: string;
+  let email: string;
+  let gstin: string;
+  let billingAddress: string;
+  let city: string;
+  let state: string;
+
+  if (customerId) {
+    const row = await findById(customers, orgId, customerId);
+    if (!row) throw new QuotationError("Customer nahi mila.");
+    customerName = row.customerName;
+    phone = row.phone;
+    email = row.email;
+    gstin = row.gstin;
+    billingAddress = row.billingAddress;
+    city = row.city;
+    state = row.state;
+  } else if (input.newCustomer?.customerName?.trim()) {
+    const { customer } = await createCustomer({
+      customerName: input.newCustomer.customerName,
+      phone: input.newCustomer.phone,
+      email: input.newCustomer.email,
+      gstin: input.newCustomer.gstin,
+      billingAddress: input.newCustomer.billingAddress,
+      city: input.newCustomer.city,
+      state: input.newCustomer.state,
+      createdBy,
+    });
+    customerId = customer.Customer_ID;
+    customerName = customer.Customer_Name;
+    phone = customer.Phone;
+    email = customer.Email;
+    gstin = customer.GSTIN;
+    billingAddress = customer.Billing_Address;
+    city = customer.City;
+    state = customer.State;
+  } else {
+    throw new QuotationError("Ek Customer chunein ya naya Customer ka naam bharein.");
+  }
+
+  return insertQuotationRow(
+    orgId,
+    {
+      leadId: "",
+      partyName: customerName,
+      contactPerson: customerName,
+      customerMobile: phone,
+      customerEmail: email,
+      customerGst: gstin,
+      billingAddress,
+      billingCity: city,
+      billingState: state,
+      billingPincode: "",
+    },
+    createdBy
+  );
+}
+
+/** Every quotation for the org — lead-linked and walk-in alike. */
+export async function listAllQuotations(): Promise<QuotationRecord[]> {
+  const orgId = await getTenantOrgId();
+  const rows = await db.select().from(quotations).where(eq(quotations.orgId, orgId));
+  const result: QuotationRecord[] = [];
+  for (const row of rows) {
+    result.push(rowToQuotation(row, await loadItems(orgId, row.id)));
+  }
+  return result.sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
 }
 
 function assertEditable(status: QuotationStatus): void {

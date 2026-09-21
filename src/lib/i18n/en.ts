@@ -1054,4 +1054,26 @@ export const EN: Record<string, string> = {
     "This quotation has been Accepted — it can no longer be edited, only the PDF can be downloaded again.",
   "khaali chhodein agar billing jaisa hi hai": "leave blank if same as billing",
   "+ Line Add Karein": "+ Add Line",
+  "Pipeline": "Pipeline",
+  "Quotations load nahi ho payi.": "Could not load quotations.",
+  "Quotations load ho rahi hain": "Loading quotations",
+  "Abhi koi Quotation nahi hai": "No quotations yet",
+  "Kisi Lead ko Negotiation stage me le jaakar, ya seedha 'Nayi Quotation' se banayein.":
+    "Take a Lead to the Negotiation stage, or start one directly with 'New Quotation'.",
+  "Quotation No": "Quotation No",
+  "Payable": "Payable",
+  "Bani": "Created",
+  "walk-in": "walk-in",
+  "Ek Customer chunein.": "Choose a Customer.",
+  "Customer ka naam zaroori hai.": "Customer name is required.",
+  "+ Nayi Quotation": "+ New Quotation",
+  "Nayi Quotation (bina Lead ke)": "New Quotation (without a Lead)",
+  "Koi purana Customer chunein, ya naya Customer bana kar seedha quotation shuru karein.":
+    "Pick an existing Customer, or add a new one and start the quotation right away.",
+  "Existing Customer": "Existing Customer",
+  "New Customer": "New Customer",
+  "Naam ya phone se search karein...": "Search by name or phone...",
+  "Aapke naam se koi Customer nahi mila — New Customer tab try karein.":
+    "No Customer found under your name — try the New Customer tab.",
+  "Quotation Shuru Karein": "Start Quotation",
 };

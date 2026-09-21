@@ -3,8 +3,10 @@ import { redirect } from "next/navigation";
 import { verifySession, SESSION_COOKIE } from "@/lib/auth/session";
 import AppShell from "@/components/app-shell";
 import PageHeader from "@/components/page-header";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { getT } from "@/lib/i18n/server";
 import LeadsBoard from "./leads-board";
+import QuotationsBoard from "./quotations-board";
 
 export default async function LeadsPage() {
   const t = await getT();
@@ -24,7 +26,18 @@ export default async function LeadsPage() {
             "Lead punch/import se le kar Qualify, Follow-up, Meeting, Negotiation aur Quotation tak — poora sales pipeline."
           )}
         />
-        <LeadsBoard />
+        <Tabs defaultValue="pipeline">
+          <TabsList>
+            <TabsTrigger value="pipeline">{t("Pipeline")}</TabsTrigger>
+            <TabsTrigger value="quotations">Quotations</TabsTrigger>
+          </TabsList>
+          <TabsContent value="pipeline" className="mt-4">
+            <LeadsBoard />
+          </TabsContent>
+          <TabsContent value="quotations" className="mt-4">
+            <QuotationsBoard />
+          </TabsContent>
+        </Tabs>
       </div>
     </AppShell>
   );
