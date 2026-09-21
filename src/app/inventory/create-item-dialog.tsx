@@ -21,8 +21,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { ITEM_CATEGORIES, type ItemCategory } from "@/lib/inventory/constants";
+import { ITEM_CATEGORIES, COMMON_UOMS, type ItemCategory } from "@/lib/inventory/constants";
 import { useT } from "@/components/preferences-provider";
+import AutocompleteInput from "@/components/ui/autocomplete-input";
 
 function blank(defaultCategory: ItemCategory, initialSku: string, initialItemName: string) {
   return {
@@ -47,6 +48,9 @@ export default function CreateItemDialog({
   initialSku = "",
   initialItemName = "",
   trigger,
+  uomOptions = [],
+  sizeUnitOptions = [],
+  locationOptions = [],
 }: {
   onCreated: () => void;
   /** The Finished Goods board opens this pre-set to "FG" — nobody adding a product from
@@ -63,7 +67,16 @@ export default function CreateItemDialog({
   /** Overrides the default "+ Naya Item" trigger button, e.g. for a per-row "+ Add" in
    * that same banner. */
   trigger?: ReactElement;
+  /** UOM/Size-Unit values already used elsewhere (usually every other item's own values,
+   * passed down by the board that already has them loaded) — merged with a small common
+   * base list for UOM. Both fields stay free text; this is autocomplete, not an enum. */
+  uomOptions?: string[];
+  sizeUnitOptions?: string[];
+  locationOptions?: string[];
 }) {
+  const mergedUomOptions = [...new Set([...COMMON_UOMS, ...uomOptions])].sort();
+  const mergedSizeUnitOptions = [...new Set(sizeUnitOptions)].sort();
+  const mergedLocationOptions = [...new Set(locationOptions)].sort();
   const t = useT();
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState(() => blank(defaultCategory, initialSku, initialItemName));
@@ -155,20 +168,23 @@ export default function CreateItemDialog({
             </div>
             <div className="space-y-2">
               <Label htmlFor="uom">UOM</Label>
-              <Input
+              <AutocompleteInput
                 id="uom"
                 value={form.uom}
-                onChange={(e) => set("uom", e.target.value)}
+                onChange={(v) => set("uom", v)}
+                options={mergedUomOptions}
                 placeholder="PCS, KG, M"
                 required
               />
             </div>
             <div className="space-y-2">
               <Label htmlFor="sizeUnit">Size / Unit</Label>
-              <Input
+              <AutocompleteInput
                 id="sizeUnit"
                 value={form.sizeUnit}
-                onChange={(e) => set("sizeUnit", e.target.value)}
+                onChange={(v) => set("sizeUnit", v)}
+                options={mergedSizeUnitOptions}
+                placeholder={t("Jaise 8x40mm, 2 inch")}
               />
             </div>
           </div>
@@ -189,19 +205,31 @@ export default function CreateItemDialog({
                   ["rate", "Rate"],
                   ["location", "Location"],
                 ] as const
-              ).map(([key, label]) => (
-                <div key={key} className="space-y-2">
-                  <Label htmlFor={key}>{label}</Label>
-                  <Input
-                    id={key}
-                    type={key === "location" ? "text" : "number"}
-                    step="any"
-                    min="0"
-                    value={form[key]}
-                    onChange={(e) => set(key, e.target.value)}
-                  />
-                </div>
-              ))}
+              ).map(([key, label]) =>
+                key === "location" ? (
+                  <div key={key} className="space-y-2">
+                    <Label htmlFor={key}>{label}</Label>
+                    <AutocompleteInput
+                      id={key}
+                      value={form.location}
+                      onChange={(v) => set("location", v)}
+                      options={mergedLocationOptions}
+                    />
+                  </div>
+                ) : (
+                  <div key={key} className="space-y-2">
+                    <Label htmlFor={key}>{label}</Label>
+                    <Input
+                      id={key}
+                      type="number"
+                      step="any"
+                      min="0"
+                      value={form[key]}
+                      onChange={(e) => set(key, e.target.value)}
+                    />
+                  </div>
+                )
+              )}
             </div>
           </div>
 

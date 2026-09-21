@@ -91,6 +91,7 @@ export const EN: Record<string, string> = {
   "product ki BOM ban chuki hai lekin unka Item abhi FG me nahi hai — production complete hone par inki FG stock write nahi ho paayegi, jab tak ye add na ho jaayein.":
     "product(s) have a BOM but no matching Item in FG yet — their FG stock write will keep failing on production completion until these are added.",
   "Iska FG Item nahi bana": "Its FG item hasn't been created",
+  "Jaise 8x40mm, 2 inch": "e.g. 8x40mm, 2 inch",
   "+ FG Banayein": "+ Create FG",
   "FG Items Bulk Import Karein": "Bulk Import FG Items",
   "Template download karein, usi format me apna data bharein, phir upload karein — Category column me chahe kuch bhi likhein, sab items":

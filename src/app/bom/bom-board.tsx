@@ -57,6 +57,9 @@ export default function BomBoard({
   const [expanded, setExpanded] = useState<string | null>(null);
   const [version, setVersion] = useState(0);
   const [existingSkus, setExistingSkus] = useState<Set<string> | null>(null);
+  const [uomOptions, setUomOptions] = useState<string[]>([]);
+  const [sizeUnitOptions, setSizeUnitOptions] = useState<string[]>([]);
+  const [locationOptions, setLocationOptions] = useState<string[]>([]);
 
   useEffect(() => {
     fetch("/api/bom")
@@ -75,9 +78,20 @@ export default function BomBoard({
   useEffect(() => {
     fetch("/api/inventory/items")
       .then((res) => (res.ok ? res.json() : null))
-      .then((data: { items?: { SKU: string }[] } | null) => {
-        if (data) setExistingSkus(new Set(data.items?.map((i) => i.SKU) ?? []));
-      })
+      .then(
+        (
+          data: {
+            items?: { SKU: string; UOM: string; Size_Unit: string; Location: string }[];
+          } | null
+        ) => {
+          if (!data) return;
+          const items = data.items ?? [];
+          setExistingSkus(new Set(items.map((i) => i.SKU)));
+          setUomOptions([...new Set(items.map((i) => i.UOM).filter(Boolean))]);
+          setSizeUnitOptions([...new Set(items.map((i) => i.Size_Unit).filter(Boolean))]);
+          setLocationOptions([...new Set(items.map((i) => i.Location).filter(Boolean))]);
+        }
+      )
       .catch(() => {});
   }, [version]);
 
@@ -157,6 +171,9 @@ export default function BomBoard({
                                 categoryOptions={["FG"]}
                                 initialSku={bom.productSku}
                                 initialItemName={bom.productName}
+                                uomOptions={uomOptions}
+                                sizeUnitOptions={sizeUnitOptions}
+                                locationOptions={locationOptions}
                                 trigger={
                                   <Button variant="outline" size="sm">
                                     {t("+ FG Banayein")}

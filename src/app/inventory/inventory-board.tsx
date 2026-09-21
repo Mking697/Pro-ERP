@@ -86,6 +86,22 @@ export default function InventoryBoard({
       .catch(() => {});
   }, [scope, canSetup, version]);
 
+  // Suggestions for the New Item dialog's UOM/Size-Unit autocomplete — whatever every
+  // other item in the org already uses, so a new item's units almost never need typing
+  // from scratch.
+  const uomOptions = useMemo(
+    () => [...new Set(items.map((i) => i.UOM).filter(Boolean))],
+    [items]
+  );
+  const sizeUnitOptions = useMemo(
+    () => [...new Set(items.map((i) => i.Size_Unit).filter(Boolean))],
+    [items]
+  );
+  const locationOptions = useMemo(
+    () => [...new Set(items.map((i) => i.Location).filter(Boolean))],
+    [items]
+  );
+
   const missingFgItems = useMemo(() => {
     if (scope !== "finished") return [];
     const existingSkus = new Set(items.map((i) => i.SKU));
@@ -172,6 +188,9 @@ export default function InventoryBoard({
               onCreated={() => setVersion((v) => v + 1)}
               defaultCategory={scope === "finished" ? "FG" : "Raw Material"}
               categoryOptions={scope === "finished" ? FG_CATEGORIES : GOODS_CATEGORIES}
+              uomOptions={uomOptions}
+              sizeUnitOptions={sizeUnitOptions}
+              locationOptions={locationOptions}
             />
           </div>
         )}
@@ -194,6 +213,9 @@ export default function InventoryBoard({
                 categoryOptions={FG_CATEGORIES}
                 initialSku={p.productSku}
                 initialItemName={p.productName}
+                uomOptions={uomOptions}
+                sizeUnitOptions={sizeUnitOptions}
+                locationOptions={locationOptions}
                 trigger={
                   <Button variant="outline" size="sm">
                     {`+ ${p.productName}`}

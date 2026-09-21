@@ -9,6 +9,26 @@
 export const ITEM_CATEGORIES = ["Raw Material", "Consumable", "Semi-FG", "FG"] as const;
 export type ItemCategory = (typeof ITEM_CATEGORIES)[number];
 
+/**
+ * A starting point for the UOM autocomplete (src/components/ui/autocomplete-input.tsx),
+ * not an enum — an item's UOM is never validated against this list, so a genuinely new
+ * unit can still be typed. This just saves retyping "PCS" from scratch on every new item.
+ */
+export const COMMON_UOMS = [
+  "PCS",
+  "KG",
+  "GM",
+  "MTR",
+  "LTR",
+  "BOX",
+  "SET",
+  "PAIR",
+  "ROLL",
+  "SQM",
+  "SQFT",
+  "TON",
+] as const;
+
 export const DIRECTIONS = ["In", "Out"] as const;
 export type Direction = (typeof DIRECTIONS)[number];
 
