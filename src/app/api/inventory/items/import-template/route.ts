@@ -15,9 +15,20 @@ import { buildCsv, csvResponseHeaders } from "@/lib/csv";
  * reordering these columns still works; this is only the friendliest starting point, not
  * the only accepted shape.
  */
-export async function GET() {
+export async function GET(request: Request) {
   const guard = await requireModule("INVENTORY_SETUP");
   if (!guard.ok) return guard.response;
+
+  // The Finished Goods board passes ?category=FG so its own downloaded template shows a
+  // correct example row — without this every board shared the same "Raw Material"
+  // example, which was actively misleading on the FG page (see import route: a request
+  // scoped to one category also forces every row to it, so this is cosmetic/example-only,
+  // not the actual enforcement).
+  const requestedCategory = new URL(request.url).searchParams.get("category");
+  const exampleCategory =
+    requestedCategory && ITEM_CATEGORIES.includes(requestedCategory as (typeof ITEM_CATEGORIES)[number])
+      ? requestedCategory
+      : ITEM_CATEGORIES[0];
 
   const csv = buildCsv([
     [
@@ -39,7 +50,7 @@ export async function GET() {
     [
       "EXAMPLE - delete this row before uploading",
       "",
-      ITEM_CATEGORIES[0],
+      exampleCategory,
       "PCS",
       "",
       "",

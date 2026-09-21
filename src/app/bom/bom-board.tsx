@@ -20,6 +20,8 @@ import { CardListSkeleton } from "@/components/loading-states";
 import { ClipboardList } from "lucide-react";
 import EmptyState from "@/components/empty-state";
 import { useT } from "@/components/preferences-provider";
+import CreateItemDialog from "@/app/inventory/create-item-dialog";
+import BulkImportDialog from "@/app/inventory/bulk-import-dialog";
 
 interface BomLine {
   lineNo: number;
@@ -40,13 +42,21 @@ interface Bom {
   lines: BomLine[];
 }
 
-export default function BomBoard() {
+export default function BomBoard({
+  canCreateFgItem,
+}: {
+  /** Whether this viewer holds INVENTORY_SETUP — the "+ FG Banayein" button only
+   * appears for them, since the API it calls needs that same grant. Everyone else still
+   * sees the "FG nahi bani" note, just without a button that would only 403 for them. */
+  canCreateFgItem: boolean;
+}) {
   const t = useT();
   const [boms, setBoms] = useState<Bom[]>([]);
   const [loading, setLoading] = useState(true);
   const [showArchived, setShowArchived] = useState(false);
   const [expanded, setExpanded] = useState<string | null>(null);
   const [version, setVersion] = useState(0);
+  const [existingSkus, setExistingSkus] = useState<Set<string> | null>(null);
 
   useEffect(() => {
     fetch("/api/bom")
@@ -58,12 +68,29 @@ export default function BomBoard() {
       .finally(() => setLoading(false));
   }, [version, t]);
 
+  // Whether each product's own Item already exists — only relevant for surfacing a "FG
+  // nahi bani" nudge, so a 403 (a BOM_MANAGE-only viewer without INVENTORY_VIEW) is
+  // simply swallowed and the nudge stays off, same degrade-quietly pattern as every other
+  // cross-module read in this app.
+  useEffect(() => {
+    fetch("/api/inventory/items")
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data: { items?: { SKU: string }[] } | null) => {
+        if (data) setExistingSkus(new Set(data.items?.map((i) => i.SKU) ?? []));
+      })
+      .catch(() => {});
+  }, [version]);
+
   if (loading) {
     return <CardListSkeleton label={t("BOMs load ho rahi hain")} />;
   }
 
   const visible = boms.filter((b) => showArchived || b.status === "Active");
   const archivedCount = boms.filter((b) => b.status !== "Active").length;
+  const missingFgCount =
+    existingSkus === null
+      ? 0
+      : boms.filter((b) => b.status === "Active" && !existingSkus.has(b.productSku)).length;
 
   return (
     <div className="space-y-4">
@@ -75,6 +102,13 @@ export default function BomBoard() {
             onClick={() => setShowArchived((v) => !v)}
           >{t("Purani versions")}<span className="ml-1.5 tabular-nums opacity-70">{archivedCount}</span>
           </Button>
+        )}
+        {canCreateFgItem && missingFgCount > 0 && (
+          <BulkImportDialog
+            onImported={() => setVersion((v) => v + 1)}
+            forcedCategory="FG"
+            triggerLabel={t("FG Items Bulk Import Karein")}
+          />
         )}
         <div className="ml-auto">
           <BomForm
@@ -109,6 +143,29 @@ export default function BomBoard() {
                         {bom.lines.length} item · {formatDueDisplay(bom.createdAt)} ·{" "}
                         {bom.createdBy}
                       </p>
+                      {bom.status === "Active" &&
+                        existingSkus !== null &&
+                        !existingSkus.has(bom.productSku) && (
+                          <div className="mt-2 flex flex-wrap items-center gap-2">
+                            <Badge variant="destructive">
+                              {t("Iska FG Item nahi bana")}
+                            </Badge>
+                            {canCreateFgItem && (
+                              <CreateItemDialog
+                                onCreated={() => setVersion((v) => v + 1)}
+                                defaultCategory="FG"
+                                categoryOptions={["FG"]}
+                                initialSku={bom.productSku}
+                                initialItemName={bom.productName}
+                                trigger={
+                                  <Button variant="outline" size="sm">
+                                    {t("+ FG Banayein")}
+                                  </Button>
+                                }
+                              />
+                            )}
+                          </div>
+                        )}
                     </div>
                     <Button
                       variant="outline"

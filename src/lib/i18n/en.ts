@@ -90,6 +90,13 @@ export const EN: Record<string, string> = {
   "Inventory kholein": "Open Inventory",
   "product ki BOM ban chuki hai lekin unka Item abhi FG me nahi hai — production complete hone par inki FG stock write nahi ho paayegi, jab tak ye add na ho jaayein.":
     "product(s) have a BOM but no matching Item in FG yet — their FG stock write will keep failing on production completion until these are added.",
+  "Iska FG Item nahi bana": "Its FG item hasn't been created",
+  "+ FG Banayein": "+ Create FG",
+  "FG Items Bulk Import Karein": "Bulk Import FG Items",
+  "Template download karein, usi format me apna data bharein, phir upload karein — Category column me chahe kuch bhi likhein, sab items":
+    "Download the template, fill in your data in the same format, then upload it — whatever you type in the Category column, every item created this way will become",
+  "category ke ban jaayenge. Opening Stock column me kuch likhenge to us item ka stock bhi turant record ho jaayega.":
+    "category. Fill in the Opening Stock column and that item's stock is recorded immediately too.",
   "Raw Material, Consumable aur Semi-FG ka live stock — Finished Goods yahan nahi, alag page par hai. Stock kahin store nahi hota — har baar In/Out entries se nikala jaata hai.":
     "Live stock for Raw Material, Consumable and Semi-FG — Finished Goods isn't here, it has its own page. Stock is never stored — it is worked out from the In and Out entries every time.",
   "Finished Goods": "Finished Goods",

@@ -16,6 +16,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useT } from "@/components/preferences-provider";
+import type { ItemCategory } from "@/lib/inventory/constants";
 
 interface ImportError {
   row: number;
@@ -28,7 +29,20 @@ interface ImportResult {
   errors: ImportError[];
 }
 
-export default function BulkImportDialog({ onImported }: { onImported: () => void }) {
+export default function BulkImportDialog({
+  onImported,
+  forcedCategory,
+  triggerLabel,
+}: {
+  onImported: () => void;
+  /** The Finished Goods board passes "FG" — every imported row becomes that category
+   * regardless of what the sheet's own Category column says (server-enforced, see the
+   * import route), and the downloaded template's example row reflects it too. */
+  forcedCategory?: ItemCategory;
+  /** Overrides the default "Bulk Import" trigger label — e.g. the BOM board's shortcut
+   * names what it's actually importing, since "Bulk Import" alone is ambiguous there. */
+  triggerLabel?: string;
+}) {
   const t = useT();
   const [open, setOpen] = useState(false);
   const [file, setFile] = useState<File | null>(null);
@@ -42,6 +56,10 @@ export default function BulkImportDialog({ onImported }: { onImported: () => voi
     if (inputRef.current) inputRef.current.value = "";
   }
 
+  const templateUrl = forcedCategory
+    ? `/api/inventory/items/import-template?category=${encodeURIComponent(forcedCategory)}`
+    : "/api/inventory/items/import-template";
+
   async function handleImport() {
     if (!file) return;
     setImporting(true);
@@ -49,6 +67,7 @@ export default function BulkImportDialog({ onImported }: { onImported: () => voi
     try {
       const formData = new FormData();
       formData.append("file", file);
+      if (forcedCategory) formData.append("category", forcedCategory);
       const res = await fetch("/api/inventory/items/import", { method: "POST", body: formData });
       const data = await res.json().catch(() => null);
 
@@ -81,13 +100,27 @@ export default function BulkImportDialog({ onImported }: { onImported: () => voi
         if (!next) reset();
       }}
     >
-      <DialogTrigger render={<Button variant="outline" size="sm">{t("Bulk Import")}</Button>} />
+      <DialogTrigger
+        render={<Button variant="outline" size="sm">{triggerLabel ?? t("Bulk Import")}</Button>}
+      />
       <DialogContent className="max-w-lg">
         <DialogHeader>
           <DialogTitle>{t("Bulk Import — Items")}</DialogTitle>
           <DialogDescription>
-            {t(
-              "Template download karein, usi format me apna data bharein, phir upload karein — sab items ek baar me ban jaayenge. Opening Stock column me kuch likhenge to us item ka stock bhi turant record ho jaayega."
+            {forcedCategory ? (
+              <>
+                {t(
+                  "Template download karein, usi format me apna data bharein, phir upload karein — Category column me chahe kuch bhi likhein, sab items"
+                )}{" "}
+                <strong>{forcedCategory}</strong>{" "}
+                {t(
+                  "category ke ban jaayenge. Opening Stock column me kuch likhenge to us item ka stock bhi turant record ho jaayega."
+                )}
+              </>
+            ) : (
+              t(
+                "Template download karein, usi format me apna data bharein, phir upload karein — sab items ek baar me ban jaayenge. Opening Stock column me kuch likhenge to us item ka stock bhi turant record ho jaayega."
+              )
             )}
           </DialogDescription>
         </DialogHeader>
@@ -98,7 +131,7 @@ export default function BulkImportDialog({ onImported }: { onImported: () => voi
             variant="outline"
             size="sm"
             render={
-              <a href="/api/inventory/items/import-template" download>
+              <a href={templateUrl} download>
                 <Download className="size-4" />
                 {t("Template Download karein")}
               </a>

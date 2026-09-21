@@ -23,7 +23,7 @@ export default async function BomPage() {
           description={t("Har product ke liye kaun se item kitne lagte hain. BOM badalne par purani version archive ho jaati hai, mitti nahi — taaki puraane record padhe ja sakein.")}
         />
 
-        <BomBoard />
+        <BomBoard canCreateFgItem={session.access.includes("INVENTORY_SETUP")} />
       </div>
     </AppShell>
   );

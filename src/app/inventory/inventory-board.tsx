@@ -164,7 +164,10 @@ export default function InventoryBoard({
               size="sm"
               render={<Link href="/inventory/setup">Bulk Setup</Link>}
             />
-            <BulkImportDialog onImported={() => setVersion((v) => v + 1)} />
+            <BulkImportDialog
+              onImported={() => setVersion((v) => v + 1)}
+              forcedCategory={scope === "finished" ? "FG" : undefined}
+            />
             <CreateItemDialog
               onCreated={() => setVersion((v) => v + 1)}
               defaultCategory={scope === "finished" ? "FG" : "Raw Material"}

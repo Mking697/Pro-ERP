@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireModule } from "@/lib/auth/guard";
-import { createItemsBulk } from "@/lib/inventory/items";
+import { createItemsBulk, ITEM_CATEGORIES } from "@/lib/inventory/items";
 import { parseItemsFile } from "@/lib/inventory/itemsImport";
 import { recordMovementsBulk, type BulkMovementInput } from "@/lib/inventory/ledger";
 
@@ -70,7 +70,22 @@ export async function POST(request: Request) {
     );
   }
 
-  const result = await createItemsBulk(parsed.rows, guard.session.email);
+  // The Finished Goods board sends this so every row it imports becomes an FG item
+  // regardless of what the sheet's own Category column says — matching how its New Item
+  // dialog restricts the dropdown to FG outright rather than merely validating it. This
+  // is what makes "wrong category typed in the sheet, item silently vanished from the
+  // page you imported it from" impossible instead of just documented.
+  const forcedCategoryRaw = formData?.get("category");
+  const forcedCategory =
+    typeof forcedCategoryRaw === "string" &&
+    ITEM_CATEGORIES.includes(forcedCategoryRaw as (typeof ITEM_CATEGORIES)[number])
+      ? forcedCategoryRaw
+      : null;
+  const rows = forcedCategory
+    ? parsed.rows.map((row) => ({ ...row, category: forcedCategory }))
+    : parsed.rows;
+
+  const result = await createItemsBulk(rows, guard.session.email);
 
   // A row's Opening Stock is written as one ledger entry per item, in the same batch —
   // looked up by row number (not SKU) because a blank-SKU row's real SKU only exists on
