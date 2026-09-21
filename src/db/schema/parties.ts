@@ -81,6 +81,13 @@ export const customers = pgTable("customers", {
   city: text("city").notNull().default(""),
   state: text("state").notNull().default(""),
   creditTerms: text("credit_terms").notNull().default(""),
+  // Structured credit control for Order FMS (src/db/schema/orders.ts) — null on either
+  // means this customer has no credit extended at all, so an order against them requires
+  // an advance instead of a credit check. `creditTerms` above stays free text (whatever a
+  // human wants to note, e.g. "50% advance, balance on delivery") — these two columns are
+  // what Order FMS's automated credit-limit/overdue check actually reads.
+  creditLimit: numeric("credit_limit"),
+  creditDays: integer("credit_days"),
   status: customerStatusEnum("status").notNull().default("Active"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   createdBy: text("created_by").notNull().default(""),

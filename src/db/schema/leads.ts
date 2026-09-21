@@ -148,6 +148,11 @@ export const quotations = pgTable(
   sentAt: timestamp("sent_at", { withTimezone: true }),
   acceptedAt: timestamp("accepted_at", { withTimezone: true }),
   attachmentUrl: text("attachment_url").notNull().default(""),
+  // "" until Order FMS punches this Accepted quotation into an Order — same forward-
+  // pointer convention as indents.poId (src/db/schema/inventory.ts): the upstream record
+  // carries the link, so Order FMS's own intake queue is a cheap `status = 'Accepted' AND
+  // order_id = ''` scan rather than a reverse join.
+  orderId: text("order_id").notNull().default(""),
   createdBy: text("created_by").notNull().default(""),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },

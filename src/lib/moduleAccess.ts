@@ -114,6 +114,12 @@ export const MODULE_ACCESS = [
     description: "Leads punch/import kar sakta hai, follow-up/meeting/negotiation chala sakta hai, Quotation bana sakta hai",
     href: "/leads",
   },
+  {
+    key: "ORDER_FMS",
+    label: "Order",
+    description: "Order punch/map kar sakta hai, payment/credit review, stock reserve aur dispatch commit chala sakta hai",
+    href: "/orders",
+  },
 ] as const;
 
 export type ModuleAccessKey = (typeof MODULE_ACCESS)[number]["key"];
