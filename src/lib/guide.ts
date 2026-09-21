@@ -178,6 +178,18 @@ export const GUIDE: GuideChapter[] = [
           "Dashboard ke Performance tab me har task ki alag line hai: kya hua aur kitni penalty bani.",
         ],
       },
+      {
+        id: "whats-new",
+        title: "Upar ki ghanti — Naye updates",
+        audience: "everyone",
+        summary:
+          "Header me Settings ke bagal wali ghanti (bell) dabane se pata chalta hai ki system me kya-kya naya aaya hai.",
+        notes: [
+          "Jab bhi koi naya update hota hai jo aapne abhi tak nahi dekha, ghanti par ek chhota number dikhta hai.",
+          "Ghanti dabate hi wo sab 'dekh liya' maan liya jaata hai — agli baar naya update aane tak number wapas nahi aayega.",
+          "Ye sirf aapke is browser me yaad rehta hai — doosre device ya browser par khola to ho sakta hai wahi updates dobara 'naye' dikhein.",
+        ],
+      },
     ],
   },
 
@@ -252,7 +264,7 @@ export const GUIDE: GuideChapter[] = [
         summary: "Material aaya hai to uski entry karna.",
         steps: [
           "Inward page par New Inward Entry dabayein.",
-          "Party Name, Invoice No. aur Inward Type (Raw Material / Consumable / Other) daalein.",
+          "Party Name type karein — Vendor Master me registered ho to list se chun sakte hain, warna naya naam bhi likh sakte hain. Invoice No. aur Inward Type (Raw Material / Consumable / Other) bhi daalein.",
           "Invoice ya photo attach karein, remark likhein.",
           "Save karein — entry IQC Status 'Pending' ke saath bann jaati hai.",
         ],

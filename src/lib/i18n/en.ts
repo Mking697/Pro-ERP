@@ -202,6 +202,8 @@ export const EN: Record<string, string> = {
 
   // --- inward and IQC --------------------------------------------------------------
   "Naya Inward Entry": "New inward entry",
+  "Vendor Master se linked hai.": "Linked to Vendor Master.",
+  "Naam type karein, vendor list se chunein ya naya likhein": "Type a name, pick from the vendor list or enter a new one",
   "Material aane par yeh form bharein.": "Fill this in when material arrives.",
   "Inward entry submit ho gayi.": "Inward entry submitted.",
   "Entry save nahi ho payi.": "Could not save the entry.",
@@ -965,4 +967,36 @@ export const EN: Record<string, string> = {
   "Har 'Specific person' step ke liye ek user chunein.": "Choose a user for every 'Specific person' step.",
   "Leave approval chain me 'Reporting Manager' step yahi resolve hota hai.":
     "This is what the Leave approval chain's 'Reporting Manager' step resolves to.",
+
+  // --- changelog ("what's new") -----------------------------------------------------
+  "Naye updates": "What's new",
+  "Inward ab Vendor Master se juda hai": "Inward is now linked to the Vendor Master",
+  "Inward entry ka Party Name ab free text nahi — Vendor Master se chuna jaata hai, jaisa Purchase FMS me pehle se hota hai.":
+    "An inward entry's Party Name is no longer free text — it's chosen from the Vendor Master, the same way Purchase FMS already does it.",
+  "Production plan ab sirf apni chuni hui Line start karta hai":
+    "A production plan now starts only its own chosen Line",
+  "Start Production dabate hi sirf plan ki apni Line chalti hai — pehle jaisa har Active Line ko ek saath try karna band ho gaya.":
+    "Pressing Start Production now runs only the plan's own Line — it no longer tries every Active Line at once the way it used to.",
+  "BOM save karte hi uska product Items master me ban jaata hai":
+    "Saving a BOM now creates its product in the Items master",
+  "Kisi product ki pehli BOM save hote hi uska Item apne aap ban jaata hai — ab production ke waqt 'SKU nahi mila' wali error nahi aayegi.":
+    "The first time a product's BOM is saved, its Item is created automatically — production no longer fails with a 'SKU not found' error.",
+  "Holiday List ab Admin khud manage kar sakta hai": "Admin can now manage the Holiday List directly",
+  "Settings me ab Holiday List add, edit, delete aur bulk import (Excel/CSV) se seedha manage hoti hai.":
+    "The Holiday List in Settings can now be added to, edited, deleted, and bulk-imported (Excel/CSV) directly.",
+  "WhatsApp message ab sahi number par jaata hai": "WhatsApp messages now reach the right number",
+  "Bina '91' wale 10-digit number par bhi Task aur FMS ke WhatsApp message ab sahi se pahunchte hain.":
+    "Task and FMS WhatsApp messages now reach a 10-digit number even without a leading '91'.",
+  "Purchase FMS shuru se aakhir tak": "Purchase FMS, start to finish",
+  "Indent Approve se PO Issue, Follow Up aur Material Received tak — poora Purchase flow ab system me hai.":
+    "From Indent Approve through PO Issue, Follow Up, and Material Received — the whole Purchase flow is now in the system.",
+  "Finished Goods ka apna alag page": "Finished Goods has its own page",
+  "Finished Goods ab Inventory se alag apne page par dikhta hai, taaki raw material ke saath mix na ho.":
+    "Finished Goods now shows on its own page, separate from Inventory, so it never mixes with raw material.",
+  "Leave (buddy system) jud gaya": "Leave (buddy system) has been added",
+  "Ab leave apply, approval chain se paas, aur chhutti ke dauraan tasks/FMS steps ka buddy ko automatic reassignment — sab ek jagah.":
+    "Filing leave, getting it approved through a chain, and having your tasks/FMS steps automatically reassign to your buddy while you're away — all in one place now.",
+  "Upar ka nav bar groups me bant gaya": "The top nav bar is now grouped",
+  "Menu ab MDO, PMS, Stock, FMS aur Others groups me bant gaya hai, taaki roz ke kaam aur setup wale link mix na hon.":
+    "The menu is now grouped into MDO, PMS, Stock, FMS, and Others, so day-to-day links and setup links never sit mixed together.",
 };

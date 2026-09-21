@@ -136,6 +136,18 @@ export const GUIDE_EN: GuideChapter[] = [
           "The Performance tab gives every task its own line: what happened, and what it cost.",
         ],
       },
+      {
+        id: "whats-new",
+        title: "The header bell — What's new",
+        audience: "everyone",
+        summary:
+          "The bell icon next to Settings in the header shows what has recently shipped in the system.",
+        notes: [
+          "A small number appears on the bell whenever there's an update you haven't seen yet.",
+          "Opening the bell marks everything as seen — the number won't come back until something new ships.",
+          "This is only remembered on this browser — opening the app on another device or browser may show the same updates as 'new' again.",
+        ],
+      },
     ],
   },
 
@@ -210,7 +222,7 @@ export const GUIDE_EN: GuideChapter[] = [
         summary: "Recording material that has arrived.",
         steps: [
           "Press New Inward Entry on the Inward page.",
-          "Enter the party name, invoice number and inward type (Raw Material / Consumable / Other).",
+          "Type the party name — pick it from the list if it's a registered vendor, or just type a new name. Also enter the invoice number and inward type (Raw Material / Consumable / Other).",
           "Attach the invoice or a photo, and add a remark.",
           "Save — the entry is created with its IQC status set to 'Pending'.",
         ],
