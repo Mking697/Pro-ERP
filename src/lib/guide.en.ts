@@ -32,6 +32,23 @@ export const GUIDE_EN: GuideChapter[] = [
         ],
       },
       {
+        id: "nav-groups",
+        title: "The top nav bar — MDO, PMS, Stock, FMS, Others",
+        audience: "everyone",
+        summary:
+          "The top menu is now grouped, so day-to-day links and setup links never sit mixed together.",
+        how: [
+          "MDO (day-to-day work) — Tasks, Flow (your FMS steps), Leave, Reports, and Performance if you have access.",
+          "PMS (production) — BOM, PPC, and every FMS Line a production plan actually runs.",
+          "Stock — Inventory (raw material/consumable) and Finished Goods, kept separate.",
+          "FMS — Inward, Purchase, and every other flow that isn't a production Line.",
+          "Others — Vendors/Customers, Users, Settings, and (for a platform operator) Platform.",
+        ],
+        notes: [
+          "A group only shows the links you actually have access to — an empty group doesn't show at all.",
+        ],
+      },
+      {
         id: "login",
         title: "Signing in and passwords",
         audience: "everyone",
@@ -520,6 +537,161 @@ export const GUIDE_EN: GuideChapter[] = [
           "The item's SKU has to be filled in on the inward entry — without it the system has no way of knowing whose stock to raise.",
         ],
       },
+      {
+        id: "fg-inventory",
+        title: "Finished Goods have their own home",
+        audience: "INVENTORY_VIEW",
+        summary:
+          "The Stock group has two separate boards, Inventory and Finished Goods — so finished product never sits mixed in with raw material or consumables.",
+        how: [
+          "Both use exactly the same ledger — the only thing that decides which board an item shows on is whether its Category is 'FG'.",
+          "The main Inventory page now leaves FG out entirely. The FG page (/inventory/fg) shows only FG, and creating a New Item from there pre-selects Category 'FG' automatically.",
+          "The FG stock a completed production run creates (from PPC's 'ppc-start' step, or from an FMS Production Line's final-step Action) lands and shows up on this same FG board.",
+        ],
+      },
+    ],
+  },
+
+  {
+    id: "parties",
+    title: "Purchase Vendor & Customer Master",
+    description: "Vendor and customer master data — every future PO and sales order will hang off this.",
+    sections: [
+      {
+        id: "parties-idea",
+        title: "This form is for Purchase Vendors only",
+        audience: "PARTY_MASTER",
+        summary:
+          "What you create here today is a 'Purchase Vendor' — someone you buy material from. Other vendor types, like an OEM or Manufacturing Vendor, may be added later, which is why the name is deliberately specific.",
+        notes: [
+          "A duplicate name (ignoring case and spacing) doesn't get blocked, only warned about — whether it matches an existing row or another row in the same import file.",
+        ],
+      },
+      {
+        id: "vendor-create",
+        title: "Creating a Purchase Vendor",
+        audience: "PARTY_MASTER",
+        summary: "A vendor's master record.",
+        steps: [
+          "Vendors/Customers page → Purchase Vendors tab → press '+ Add'.",
+          "Fill in the vendor's name and contact details.",
+          "Save.",
+        ],
+        notes: [
+          "For creating many vendors at once, use Bulk Import (Excel/CSV, the same download-template-fill-upload pattern as Items).",
+        ],
+      },
+      {
+        id: "vendor-items",
+        title: "Linking a vendor to an item — lead time and price",
+        audience: "PARTY_MASTER",
+        summary:
+          "Which items a vendor supplies, in how many days (lead time), and at what price — creating this link is what lets Purchase FMS and reorder actually use it.",
+        steps: [
+          "Press 'Items' against the vendor.",
+          "Choose the item, and fill in its Lead Time (days) and Unit Price.",
+          "Save — saving the same vendor-item pair again updates the existing figures rather than creating a new row.",
+        ],
+        notes: [
+          "When an indent is raised for an item, every vendor linked to it is suggested — cheapest (by last price) first. A vendor with no price filled in sorts to the bottom.",
+          "The PO Issue screen relies on this same link — an item's indent will never be suggested against a vendor until that item is linked to it.",
+        ],
+      },
+      {
+        id: "customer-create",
+        title: "Creating a Customer",
+        audience: "PARTY_MASTER",
+        summary: "A customer's master record — the future Sales chain will hang off this.",
+        steps: [
+          "Vendors/Customers page → Customers tab → press '+ Add'.",
+          "Fill in the name and contact details, then save.",
+        ],
+        notes: ["Customers have their own Bulk Import too, same as Vendors."],
+      },
+    ],
+  },
+
+  {
+    id: "purchase",
+    title: "Purchase (from Indent to material arriving)",
+    description:
+      "A flow that starts itself the moment an indent is approved — PO Issue, Follow Up, and Material Received.",
+    sections: [
+      {
+        id: "purchase-idea",
+        title: "How the Purchase flow works",
+        audience: "PURCHASE_FMS",
+        summary:
+          "The moment an indent is approved, this flow starts on its own — nobody has to start it by hand.",
+        how: [
+          "Step 1 — Indent Approve: this happens on Inventory's own Indents page (see the indent-approve section) — this is what triggers the whole flow.",
+          "Step 2 — PO Issue: choose a vendor and every Approved indent linked to that vendor is suggested at once — several items can be bundled into a single PO.",
+          "Step 3 — Follow Up: an actual, actionable step for chasing the vendor after the PO. Its deadline is worked out from the vendor's own Lead Time (one day before it), so a reminder lands before the material is actually due.",
+          "Step 4 — Material Received: enter the invoice and each item's quantity (full or partial) to receive the material — this reuses the exact same receive logic an Indent's own Receive step uses, so stock updates correctly right away.",
+        ],
+        notes: [
+          "This is an FMS-style flow, but it isn't built with the generic Template builder — these four steps are fixed, so each one has its own dedicated screen.",
+        ],
+      },
+      {
+        id: "purchase-setup",
+        title: "Purchase Setup — each step's Doer and TAT",
+        audience: "admin",
+        summary:
+          "Admin → Settings → Purchase Setup decides who each step goes to and how many days/hours it should take.",
+        steps: [
+          "Open Admin → Settings and find the Purchase Setup section.",
+          "Fill in a Doer and TAT for Step 1 (PO Issue) and Step 2 (Follow Up).",
+          "Fill in only a Doer for Step 3 (Material Received) — its TAT is worked out from the vendor's own Lead Time, there's nothing to enter.",
+          "Save.",
+        ],
+        notes: [
+          "If this is left unset, the flow still runs once an indent is approved — a default is used for TAT, but filling this in gives better advice.",
+        ],
+      },
+      {
+        id: "purchase-po-issue",
+        title: "Issuing a PO",
+        audience: "PURCHASE_FMS",
+        summary: "Choose a vendor and bundle all its pending indents into one PO.",
+        steps: [
+          "Purchase page → PO Issue tab.",
+          "Choose a vendor — every Approved indent linked to that vendor is ticked automatically, with its last price shown.",
+          "Untick anything not needed, and change the New Price where required.",
+          "Attach the PO/quotation and press 'Issue PO'.",
+        ],
+        notes: [
+          "An item with no vendor link at all will never appear against any vendor here — link it to that vendor from Parties first.",
+          "Whatever New Price is entered here becomes this PO's own record — the Old Price (the vendor link's last price) is always shown alongside it, so a price change is visible immediately.",
+        ],
+      },
+      {
+        id: "purchase-follow-up",
+        title: "Doing a Follow Up",
+        audience: "PURCHASE_FMS",
+        summary: "Chasing the vendor after a PO, and marking it done.",
+        steps: [
+          "Purchase page → Follow Up tab — POs whose follow-up deadline has arrived or is coming up show up here.",
+          "Talk to the vendor, write a remark, and mark it 'Done'.",
+        ],
+        notes: [
+          "This deadline is set automatically to one day before the PO's Lead Time — there's nothing to set by hand.",
+        ],
+      },
+      {
+        id: "purchase-material-received",
+        title: "Recording Material Received",
+        audience: "PURCHASE_FMS",
+        summary: "Entering the quantity against the invoice when material arrives — this is where stock rises.",
+        steps: [
+          "Purchase page → Material Received tab.",
+          "Attach the invoice on the line for the PO that arrived, and enter each item's quantity (full or partial, whatever actually arrived).",
+          "Save — the stock In is written for you automatically, with no separate stock entry needed.",
+        ],
+        notes: [
+          "A partial delivery leaves the PO 'Partially Received'; repeating this step once the rest arrives completes it.",
+        ],
+      },
     ],
   },
 
@@ -569,6 +741,7 @@ export const GUIDE_EN: GuideChapter[] = [
           "Quantities can be fractional — 1.5 or 0.25 are fine.",
           "Putting the same item on two rows is refused, and the item is named. The reason: silently adding 12 and 4 into 16 looks perfectly correct, and that mistake becomes impossible to spot afterwards. Put the whole quantity on one line.",
           "The product SKU is generated from the name, so 'Sliding Door 80mm' becomes FG-SLIDING-DOOR-80MM. Change it if you have your own coding scheme.",
+          "Saving a new product's BOM also creates its Item automatically in Inventory → Finished Goods (Category FG, unit PCS) if one doesn't already exist — so recording FG stock once production completes never gets blocked. Planning figures like Lead Time and Max Level are still left blank; fill those in from the item itself whenever you're ready.",
         ],
       },
       {
@@ -776,6 +949,7 @@ export const GUIDE_EN: GuideChapter[] = [
         steps: [
           "Admin → Users → Add User.",
           "Enter the name, email, password, role, department and WhatsApp number.",
+          "Choose a Reporting Manager — this is what the Leave System's 'Reporting Manager' approval step resolves against for this user.",
           "Tick the modules that person needs under System Access.",
           "Create the user, and send them the password.",
         ],
@@ -784,6 +958,7 @@ export const GUIDE_EN: GuideChapter[] = [
           "An Admin holds access to every module automatically.",
           "The modules you tick are the ones that appear as tabs on that person's dashboard.",
           "If a password is forgotten, set a new one from Manage → Reset Password. The old one can never be read back.",
+          "The WhatsApp number should start with the country code (91), or just enter a 10-digit Indian mobile number — the system prepends 91 automatically if it's missing. Without this, WhatsApp messages never arrive.",
         ],
       },
       {
@@ -816,6 +991,23 @@ export const GUIDE_EN: GuideChapter[] = [
         ],
       },
       {
+        id: "holidays",
+        title: "Building the Holiday List",
+        audience: "admin",
+        summary:
+          "No Recurring Task, FMS or IQC deadline counts against these dates — on top of the weekly-off (Sunday, set in FMS Shifts), these are the extra non-working days.",
+        steps: [
+          "Open Admin → Settings → Holiday List.",
+          "To add one at a time, fill in the date and an optional name, then press Add.",
+          "To add many at once, use Import at the top — download the template, fill it in, and upload it.",
+          "A holiday's name can be edited straight in the table and saved, or removed entirely with 'Remove'.",
+        ],
+        notes: [
+          "Adding the same date twice updates the existing row rather than creating a duplicate.",
+          "Skipping Sunday is not something you set here — it comes automatically from FMS Shifts' weekly-off. The Holiday List is only for the extra dates on top of that (like Diwali or another specific day off).",
+        ],
+      },
+      {
         id: "troubleshooting",
         title: "When something does not work",
         audience: "admin",
@@ -824,6 +1016,98 @@ export const GUIDE_EN: GuideChapter[] = [
           "Somebody cannot sign in — do not have them copy the password from anywhere (only its encrypted hash is ever stored). Give them a new one with Reset Password.",
           "Somebody sees no tabs at all — nothing is ticked under their System Access.",
           "WhatsApp is not sending — check with Send Test Message under Settings, then check the ChatXFlow session.",
+        ],
+      },
+    ],
+  },
+
+  {
+    id: "leave",
+    title: "Leave System (Buddy System)",
+    description:
+      "From filing a leave request to work moving to a buddy's name and back — the system's leave arrangement end to end.",
+    sections: [
+      {
+        id: "leave-idea",
+        title: "How the buddy system works",
+        audience: "everyone",
+        summary:
+          "When a Doer goes on leave, it needs approval from their Reporting Manager (or whoever the Admin has set up). The moment it's fully approved, that Doer's pending work moves — automatically — to a Buddy they chose themselves, for however many days the leave lasts, then moves back once it ends.",
+        how: [
+          "The Doer picks their own Buddy while filing the leave — nobody else can choose it, because the Doer is the one who knows who can actually pick up their work.",
+          "Approval can be a single step or several, however the Admin has built the chain in Settings (say: Reporting Manager first, then HR). Each org decides this chain to fit its own needs.",
+          "Reassignment only happens once a leave is fully Approved. While any step is still Pending, the work stays with the Doer.",
+          "The moment the leave starts (or immediately, if it starts today), every Task and FMS step still Pending for the Doer moves to the Buddy's name. The moment it ends, whatever is still Pending and still held by the Buddy moves back to the Doer — nothing else.",
+          "Anything the Buddy actually finished during the leave stays finished — it does not move back, since it already happened under the Buddy's name.",
+        ],
+        notes: [
+          "V1 does not track a leave balance or quota — only approval and reassignment. How many days of leave remain is not tracked yet.",
+          "The Doer's work sits alongside the Buddy's own work — both show up in the same place (the Tasks/FMS page), nothing separate to go hunting for.",
+        ],
+      },
+      {
+        id: "leave-apply",
+        title: "Applying for your own leave",
+        audience: "everyone",
+        summary: "File your leave from the Leave page.",
+        steps: [
+          "Leave page → press 'Apply for Leave'.",
+          "Choose the Leave Type (Casual/Sick/Earned/Other), and set the Start and End Date.",
+          "Choose a Buddy — any active user other than yourself.",
+          "Write a reason and press Apply.",
+        ],
+        notes: [
+          "If the approval chain is empty (the Admin hasn't set one up), the leave is Approved instantly — nothing to wait on.",
+          "A leave that is still Pending or Approved can be cancelled — cancelling immediately reverts any reassignment that had already happened.",
+        ],
+      },
+      {
+        id: "leave-approve",
+        title: "Approving or rejecting someone's leave",
+        audience: "everyone",
+        summary:
+          "If you're a step in someone's approval chain, their request shows up for you under the 'Approvals' tab.",
+        steps: [
+          "Open the Leave page's Approvals tab.",
+          "Read the reason for the request you need to decide on, and add a remark if you want.",
+          "Press Approve or Reject.",
+        ],
+        notes: [
+          "In a multi-step chain, approving one step reveals it to the next approver — the leave only becomes 'Approved' once every step has approved it.",
+          "Rejecting at any single step rejects the whole leave immediately; no further step runs.",
+        ],
+      },
+      {
+        id: "leave-emergency",
+        title: "Emergency Leave — filed by HR",
+        audience: "LEAVE_HR",
+        summary:
+          "When a Doer genuinely cannot file their own leave (a sudden emergency), HR can file it on their behalf — choosing both the Doer and the Buddy themselves.",
+        steps: [
+          "Leave page → press 'File Emergency Leave'.",
+          "Choose the Doer this is being filed for.",
+          "Fill in the Leave Type, Buddy, Start/End Date and Reason.",
+          "Press File.",
+        ],
+        notes: [
+          "Everything after filing — approval and reassignment — runs exactly like a normal leave; only who filed it is different.",
+        ],
+      },
+      {
+        id: "leave-approval-setup",
+        title: "Setting up the approval chain",
+        audience: "admin",
+        summary:
+          "Admin → Settings → Leave Approval Setup decides who needs to approve a leave, and in what order, before it takes effect.",
+        steps: [
+          "Open Admin → Settings → Leave — Approval Setup.",
+          "Press 'Add a step' to add one.",
+          "For each step choose either 'Reporting Manager' (each Doer's own Reporting Manager, as set on their User profile) or 'Specific person' (always the same fixed user, e.g. HR or MD).",
+          "Reorder steps with the up/down arrows, then save.",
+        ],
+        notes: [
+          "An empty chain means every leave is Approved instantly — nothing is waited on.",
+          "A 'Reporting Manager' step only works once that Doer's own profile has a Reporting Manager set (when creating or editing the user) — if not, that step is simply skipped for them.",
         ],
       },
     ],

@@ -74,6 +74,23 @@ export const GUIDE: GuideChapter[] = [
         ],
       },
       {
+        id: "nav-groups",
+        title: "Upar ka nav bar — MDO, PMS, Stock, FMS, Others",
+        audience: "everyone",
+        summary:
+          "Upar ka menu ab groups me bant gaya hai, taaki roz ke kaam aur setup wale link ek dusre me na mile.",
+        how: [
+          "MDO (day-to-day kaam) — Tasks, Flow (aapke FMS steps), Leave, Reports, aur access ho to Performance.",
+          "PMS (production) — BOM, PPC, aur har wo FMS Line jise koi production plan sach me chalata hai.",
+          "Stock — Inventory (raw material/consumable) aur alag se Finished Goods.",
+          "FMS — Inward, Purchase, aur har doosra flow jo production Line nahi hai.",
+          "Others — Vendors/Customers, Users, Settings, aur (platform operator ke liye) Platform.",
+        ],
+        notes: [
+          "Ek group me sirf wahi links dikhte hain jinka access aapke paas hai — koi group khali ho to wo poora hi nahi dikhta.",
+        ],
+      },
+      {
         id: "login",
         title: "Login aur password",
         audience: "everyone",
@@ -562,6 +579,161 @@ export const GUIDE: GuideChapter[] = [
           "Inward entry me item ka SKU daalna zaroori hai — SKU ke bina system ko pata hi nahi chalega ki stock kis item ka badhana hai.",
         ],
       },
+      {
+        id: "fg-inventory",
+        title: "Finished Goods apni alag jagah",
+        audience: "INVENTORY_VIEW",
+        summary:
+          "Stock (Others) group me Inventory aur Finished Goods do alag boards hain — taaki bana hua maal raw material/consumable ki list me kabhi mix na ho.",
+        how: [
+          "Dono ek hi tarah ka ledger istemaal karte hain — sirf yahi tay hota hai ki ek item Category me 'FG' hai ya nahi, usi se wo kis board par dikhega.",
+          "Main Inventory page ab FG chhod kar sab dikhata hai. FG page (/inventory/fg) sirf FG dikhata hai, aur wahan New Item banane par Category apne aap 'FG' chuni hui aati hai.",
+          "Production complete hone par jo FG stock banta hai (PPC ke 'ppc-start' section me, ya kisi FMS Production Line ke last step ki Action se), wo isi FG board par aa kar dikhta hai.",
+        ],
+      },
+    ],
+  },
+
+  {
+    id: "parties",
+    title: "Purchase Vendor & Customer Master",
+    description: "Vendor aur customer ka master data — aage PO aur sales order isi se juden ge.",
+    sections: [
+      {
+        id: "parties-idea",
+        title: "Ye form sirf Purchase Vendor ke liye hai",
+        audience: "PARTY_MASTER",
+        summary:
+          "Abhi jo Vendor banaya jaata hai, wo 'Purchase Vendor' hai — jisse aap material khareedte hain. Aage OEM ya Manufacturing Vendor jaise dusre types alag se aa sakte hain, isliye naam khaas kar ke 'Purchase Vendor' rakha gaya hai.",
+        notes: [
+          "Ek naam duplicate (chhote-bade letters/space ka farak chhod kar) dikhe to system rok-ta nahi, sirf warning deta hai — chahe wo pehle se maujood ek row ho ya isi import file ki koi doosri row.",
+        ],
+      },
+      {
+        id: "vendor-create",
+        title: "Naya Purchase Vendor banana",
+        audience: "PARTY_MASTER",
+        summary: "Ek vendor ka master record.",
+        steps: [
+          "Vendors/Customers page → Purchase Vendors tab → '+ Add' dabayein.",
+          "Vendor ka naam aur contact details bharein.",
+          "Save karein.",
+        ],
+        notes: [
+          "Bahut saare vendor ek saath banane ho to Bulk Import (Excel/CSV, Items ki tarah hi template-download-fill-upload) istemaal karein.",
+        ],
+      },
+      {
+        id: "vendor-items",
+        title: "Vendor ko Item se jodna — lead time aur price",
+        audience: "PARTY_MASTER",
+        summary:
+          "Ek vendor kaun se item supply karta hai, kitne din me (lead time), aur kis price par — ye link banate hi Purchase FMS aur reorder isko istemaal karne lagte hain.",
+        steps: [
+          "Vendor ke saamne 'Items' dabayein.",
+          "Item chunein, uska Lead Time (din) aur Unit Price bharein.",
+          "Save karein — ek hi vendor-item pair par dobara save karne se purana number update ho jaata hai (naya row nahi banta).",
+        ],
+        notes: [
+          "Jab kisi item ka indent raise hota hai, to us item ke jitne vendor jude hain sab suggest hote hain — sabse sasta (last price ke hisaab se) sabse upar. Jis vendor ka price hi nahi bhara, wo list me sabse neeche aata hai.",
+          "PO Issue screen par bhi ye link hi kaam aata hai — jab tak ek vendor kisi item se linked nahi hoga, us item ka indent us vendor ki PO list me suggest hi nahi hoga.",
+        ],
+      },
+      {
+        id: "customer-create",
+        title: "Naya Customer banana",
+        audience: "PARTY_MASTER",
+        summary: "Ek customer ka master record — aage Sales chain (jab banegi) isi se judegi.",
+        steps: [
+          "Vendors/Customers page → Customers tab → '+ Add' dabayein.",
+          "Naam aur contact details bharein, Save karein.",
+        ],
+        notes: ["Customers ka bhi apna Bulk Import hai, Vendors jaisa hi."],
+      },
+    ],
+  },
+
+  {
+    id: "purchase",
+    title: "Purchase (Indent se Material aane tak)",
+    description:
+      "Indent Approve hote hi khud shuru ho jaane wala flow — PO Issue, Follow Up, aur Material Received.",
+    sections: [
+      {
+        id: "purchase-idea",
+        title: "Purchase flow kaam kaise karta hai",
+        audience: "PURCHASE_FMS",
+        summary:
+          "Jaise hi koi indent Approve hoti hai, ye flow khud shuru ho jaata hai — kisi ko haath se start nahi karna padta.",
+        how: [
+          "Step 1 — Indent Approve: ye Inventory ke Indents page se hi hota hai (indent-approve section dekhein), yahin se ye poora flow trigger hota hai.",
+          "Step 2 — PO Issue: ek vendor chunte hi us vendor se jude saare Approved indent suggest ho jaate hain — ek hi PO me kai items bundle kiye ja sakte hain.",
+          "Step 3 — Follow Up: PO ke baad vendor se follow-up lene ka actionable step. Iski deadline vendor ke Lead Time se khud nikalti hai (Lead Time se ek din pehle) — taaki maal aane se pehle hi ek reminder mil jaaye.",
+          "Step 4 — Material Received: invoice aur per-item quantity (poora ya adha) daal kar maal receive karna — yahi wahi 'receive' logic hai jo Indent ke apne Receive step me bhi chalta hai, isliye stock turant sahi jud jaata hai.",
+        ],
+        notes: [
+          "Ye ek FMS jaisa hi flow hai lekin generic Template builder se nahi banaya — ye chaar step fix hain, isliye har step ka apna alag screen hai.",
+        ],
+      },
+      {
+        id: "purchase-setup",
+        title: "Purchase Setup — har step ka Doer aur TAT",
+        audience: "admin",
+        summary:
+          "Admin → Settings → Purchase Setup me tay karein har step kisko milega aur kitne din/ghante me karna hai.",
+        steps: [
+          "Admin → Settings kholein, Purchase Setup section dhoondhein.",
+          "Step 1 (PO Issue) aur Step 2 (Follow Up) ke liye Doer aur TAT bharein.",
+          "Step 3 (Material Received) ke liye sirf Doer bharein — iska TAT khud vendor ke Lead Time se nikalta hai, alag se nahi bharna.",
+          "Save karein.",
+        ],
+        notes: [
+          "Ye setup na bhara ho to bhi indent approve hoke flow ban jaayega — TAT ke liye ek default use hoga, par sahi salaah ke liye ise bhar dena chahiye.",
+        ],
+      },
+      {
+        id: "purchase-po-issue",
+        title: "PO Issue karna",
+        audience: "PURCHASE_FMS",
+        summary: "Ek vendor chun kar uske saare pending indent ek PO me bundle karna.",
+        steps: [
+          "Purchase page → PO Issue tab.",
+          "Vendor chunein — us vendor se jude saare Approved indent apne aap tick ho kar dikh jaate hain, unke last price ke saath.",
+          "Jo item nahi chahiye uska tick hata dein, chahiye to New Price badal dein.",
+          "PO Attachment (quotation/PO copy) laga kar 'PO Issue karein' dabayein.",
+        ],
+        notes: [
+          "Jis item ka koi vendor link hi nahi hai, wo kisi vendor ki list me kabhi nahi aayega — pehle Parties me us item ko us vendor se jodna hoga.",
+          "New Price yahan se jo bharenge, wo hi is PO ka record ban jaata hai — Old Price (vendor ke link wala last price) hamesha saath dikhta hai, taaki price badlav turant nazar aaye.",
+        ],
+      },
+      {
+        id: "purchase-follow-up",
+        title: "Follow Up karna",
+        audience: "PURCHASE_FMS",
+        summary: "PO ke baad vendor se follow-up lena aur mark karna ki ho gaya.",
+        steps: [
+          "Purchase page → Follow Up tab — jin PO ki follow-up deadline aa gayi/aane wali hai wo yahan dikhte hain.",
+          "Vendor se baat karke, remark likh kar 'Done' mark karein.",
+        ],
+        notes: [
+          "Iski deadline PO ke Lead Time se ek din pehle khud set hoti hai — isse haath se badalna nahi padta.",
+        ],
+      },
+      {
+        id: "purchase-material-received",
+        title: "Material Received karna",
+        audience: "PURCHASE_FMS",
+        summary: "Maal aane par invoice ke saath quantity daalna — stock yahi se badhta hai.",
+        steps: [
+          "Purchase page → Material Received tab.",
+          "Jis PO ka maal aaya uski line par invoice attach karein aur per-item quantity daalein (poora ya adha, jitna sach me aaya).",
+          "Save karein — stock In apne aap ban jaata hai, alag se koi stock entry nahi karni.",
+        ],
+        notes: [
+          "Adha maal aane par PO 'Partially Received' rehta hai, baaki maal aane par dobara yahi step karke poora kiya ja sakta hai.",
+        ],
+      },
     ],
   },
 
@@ -611,6 +783,7 @@ export const GUIDE: GuideChapter[] = [
           "Quantity aadhi-adhoori bhi ho sakti hai — 1.5 ya 0.25 chalta hai.",
           "Ek hi item do baar daalne par system rok dega aur naam bata dega. Wajah: 12 aur 4 ko chupchaap jod kar 16 kar dena bilkul sahi dikhta hai, aur wo galti baad me pakadna namumkin ho jaata hai. Dono quantity ek hi line me jodkar likhein.",
           "Product SKU khud ban jaata hai naam se, jaise 'Sliding Door 80mm' se FG-SLIDING-DOOR-80MM. Aapka apna coding system ho to badal lein.",
+          "Naye product ki BOM banate hi uska Item bhi khud-ba-khud Inventory → Finished Goods me ban jaata hai (Category FG, unit PCS) — agar wo pehle se maujood nahi tha. Isse production complete hone par FG stock likhne me kabhi rukawat nahi aati. Lead Time, Max Level jaise planning number abhi bhi khaali rehte hain — wo baad me Item ke andar ja kar bhar sakte hain.",
         ],
       },
       {
@@ -817,6 +990,7 @@ export const GUIDE: GuideChapter[] = [
         steps: [
           "Admin → Users → Add User.",
           "Naam, email, password, role, department aur WhatsApp number daalein.",
+          "Reporting Manager chunein — Leave System me isi user ki approval chain me 'Reporting Manager' step yahi resolve karta hai.",
           "System Access me wahi modules tick karein jo us user ko chahiye.",
           "Create karein — aur password user ko bhej dein.",
         ],
@@ -825,6 +999,7 @@ export const GUIDE: GuideChapter[] = [
           "Admin ke paas har module ka access apne aap hota hai.",
           "Jo modules aap tick karenge, wahi us user ke dashboard par tabs banke dikhenge.",
           "Password bhool jaane par Manage → Reset Password se naya banayein. Purana kabhi dekha nahi ja sakta.",
+          "WhatsApp number ke shuru me country code (91) hona chahiye, ya 10-digit Indian mobile daalein — system khud 91 laga deta hai agar bhoole se na daalein. Bina iske WhatsApp messages kabhi nahi pahunchte.",
         ],
       },
       {
@@ -856,6 +1031,23 @@ export const GUIDE: GuideChapter[] = [
         ],
       },
       {
+        id: "holidays",
+        title: "Holiday List banana",
+        audience: "admin",
+        summary:
+          "In dates par koi bhi Recurring Task, FMS ya IQC deadline nahi ginti — weekly-off (Sunday, FMS Shifts me set) ke alawa ye extra non-working days hain.",
+        steps: [
+          "Admin → Settings → Holiday List kholein.",
+          "Ek-ek karke add karna ho to Date aur (optional) naam bhar kar Add dabayein.",
+          "Bahut si dates ek saath daalni ho to upar 'Import' se template download karein, bhar kar upload karein.",
+          "Kisi bhi holiday ka naam seedhe table me badal kar Save kar sakte hain, ya 'Hatayein' se poora hata sakte hain.",
+        ],
+        notes: [
+          "Ek hi date do baar add karne par purani wahi date update ho jaati hai, dobara nahi banti.",
+          "Sunday ka skip alag se kahin nahi likhna — wo FMS Shifts ke weekly-off se khud aata hai. Holiday List sirf usse alawa ki extra dates ke liye hai (jaise Diwali, kisi khaas chhutti ke din).",
+        ],
+      },
+      {
         id: "troubleshooting",
         title: "Kuch kaam na kare to",
         audience: "admin",
@@ -864,6 +1056,98 @@ export const GUIDE: GuideChapter[] = [
           "User login nahi kar pa raha — password kahin se copy mat karwayein (sirf uska encrypted hash store hota hai). Reset Password se naya dein.",
           "User ko koi tab nahi dikh raha — uske System Access me kuch tick nahi hua hai.",
           "WhatsApp nahi ja raha — Settings me Send Test Message se check karein, phir ChatXFlow ka session dekhein.",
+        ],
+      },
+    ],
+  },
+
+  {
+    id: "leave",
+    title: "Leave System (Buddy System)",
+    description:
+      "Leave file karne se lekar buddy ke naam kaam chale jaane tak — poore system me leave ka intezaam.",
+    sections: [
+      {
+        id: "leave-idea",
+        title: "Buddy system kaam kaise karta hai",
+        audience: "everyone",
+        summary:
+          "Jab koi Doer leave par jaata hai, uske Reporting Manager (ya Admin ne jo bhi tay kiya ho) se approval leni hoti hai. Approve hote hi, leave ke jitne din hain unme uska pending kaam apne chune hue Buddy ke naam chala jaata hai — khud-ba-khud, khatam hote hi wapas.",
+        how: [
+          "Leave file karte waqt Doer khud apna Buddy chunta hai — koi doosra chun nahi sakta, kyunki Doer hi jaanta hai ki uska kaam sabse sahi kisko samajhaya jaa sakta hai.",
+          "Approval single ho sakta hai ya multi-step — Admin ne Settings me jaisa chain banaya ho (jaise: pehle Reporting Manager, phir HR). Har org apni zaroorat ke hisaab se ye chain khud tay karta hai.",
+          "Sirf poori tarah Approved leave par hi reassignment hota hai. Jab tak koi step Pending hai, Doer ka kaam usi ke paas rehta hai.",
+          "Leave shuru hote hi (ya turant, agar leave aaj hi shuru ho rahi hai) Doer ke jitne Tasks aur FMS steps abhi Pending hain, sab Buddy ke naam ho jaate hain. Leave khatam hote hi — jo abhi bhi Pending hai aur abhi bhi Buddy ke paas hai, wahi wapas Doer ke naam aata hai.",
+          "Jo kaam Buddy ne leave ke dauraan khud complete kar diya, wo wapas nahi jaata — kyunki wo ho chuka hai, Buddy ke naam se hi record rahega.",
+        ],
+        notes: [
+          "V1 me leave balance/quota ka hisaab nahi rakha jaata — sirf approval aur reassignment. Kitni leave bachi hai, ye abhi track nahi hota.",
+          "Buddy ke apne kaam ke saath Doer ka kaam bhi jud jaata hai — dono ek hi jagah (Tasks/FMS page par) dikhte hain, alag se kahin dhoondhna nahi padta.",
+        ],
+      },
+      {
+        id: "leave-apply",
+        title: "Apni leave apply karna",
+        audience: "everyone",
+        summary: "Leave page se apni leave file karein.",
+        steps: [
+          "Leave page → 'Leave ke liye Apply karein' dabayein.",
+          "Leave Type chunein (Casual/Sick/Earned/Other), Start aur End Date daalein.",
+          "Buddy chunein — koi bhi active user, khud ko chhod kar.",
+          "Reason likhein aur Apply karein dabayein.",
+        ],
+        notes: [
+          "Approval chain khaali ho (Admin ne kuch set na kiya ho) to leave turant Approved ban jaati hai — kisi ke wait ki zaroorat nahi.",
+          "Leave abhi Pending ya Approved hai to use Cancel bhi kiya ja sakta hai — Cancel karne par agar reassignment ho chuka tha, wo turant wapas ho jaata hai.",
+        ],
+      },
+      {
+        id: "leave-approve",
+        title: "Kisi ki leave approve/reject karna",
+        audience: "everyone",
+        summary:
+          "Jinki leave approval chain me aap ek step hain, unki request 'Approvals' tab me aapko dikhti hai.",
+        steps: [
+          "Leave page → Approvals tab kholein.",
+          "Jis request par decision lena hai, Reason padhein, remark likhein (optional).",
+          "Approve ya Reject dabayein.",
+        ],
+        notes: [
+          "Multi-step chain me ek step Approve karne se agla step us next approver ko dikhne lagta hai — sab steps Approve hone ke baad hi leave 'Approved' banti hai.",
+          "Kisi ek step par Reject hote hi poori leave 'Rejected' ho jaati hai, aage koi step nahi chalta.",
+        ],
+      },
+      {
+        id: "leave-emergency",
+        title: "Emergency Leave — HR dwara file karna",
+        audience: "LEAVE_HR",
+        summary:
+          "Jab Doer khud leave file nahi kar sakta (achanak emergency), HR uske liye file kar sakta hai — Doer aur Buddy dono HR khud chunta hai.",
+        steps: [
+          "Leave page → 'Emergency Leave File Karein' dabayein.",
+          "Doer chunein jiske liye file kar rahe hain.",
+          "Leave Type, Buddy, Start/End Date aur Reason bharein.",
+          "File karein dabayein.",
+        ],
+        notes: [
+          "Iske aage ka approval aur reassignment bilkul normal leave jaisa hi chalta hai — sirf filing HR ne ki, baaki sab wahi flow.",
+        ],
+      },
+      {
+        id: "leave-approval-setup",
+        title: "Approval chain set karna",
+        audience: "admin",
+        summary:
+          "Admin → Settings → Leave Approval Setup me tay karein leave approve karne se pehle kis-kis se, kis order me approval chahiye.",
+        steps: [
+          "Admin → Settings → Leave — Approval Setup kholein.",
+          "'Ek aur step' dabakar step jodein.",
+          "Har step ke liye chunein — 'Reporting Manager' (har Doer ke apne Reporting Manager se, jo unki User profile me set hai) ya 'Specific person' (hamesha wahi ek fixed user, jaise HR ya MD).",
+          "Steps ka order upar-neeche arrow se badal sakte hain. Save karein.",
+        ],
+        notes: [
+          "Koi step na ho (khaali chain) to sab leave turant Approved ban jaati hain — koi approval ka wait nahi hota.",
+          "'Reporting Manager' step tab hi kaam karega jab Doer ki apni profile me Reporting Manager set ho (Users banate/badalte waqt) — na ho to ye step us Doer ke liye khud skip ho jaata hai.",
         ],
       },
     ],
