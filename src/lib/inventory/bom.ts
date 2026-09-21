@@ -4,7 +4,7 @@ import { bom } from "@/db/schema";
 import { db } from "@/db/client";
 import { getTenantOrgId } from "@/lib/tenant";
 import { generateId } from "@/lib/id";
-import { numOr0 } from "@/lib/inventory/items";
+import { numOr0, findItem, createItem } from "@/lib/inventory/items";
 import { suggestProductSku } from "@/lib/inventory/constants";
 import { byNewest } from "@/lib/timestamp";
 
@@ -267,6 +267,26 @@ export async function createBom(input: CreateBomInput): Promise<Bom> {
   // first and then failing to write would leave the product with no BOM at all.
   if (existing) {
     await setBomStatus(existing.bomId, "Archived");
+  }
+
+  // A product's BOM used to be the only place its SKU existed — nothing ever created a
+  // matching Items-master row, so completePlan()/an FMS Action's Stock Ledger Movement
+  // would fail with "Items master me nahi hai" the very first time anyone tried to record
+  // its FG stock, even though the product had clearly already been planned for. Auto-
+  // creating it here (once, only if missing) means a new product shows up in
+  // Inventory/Finished Goods — with Free/On Hand/ADC/ROP live like any other item — the
+  // moment its BOM exists, not only after someone remembers to add it by hand. Planning
+  // fields (Lead Time, Safety Factor, MOQ, Max Level) are deliberately left blank, same as
+  // a manually created item — the Admin fills those in from the item detail page or Bulk
+  // Setup whenever they're known. Best-effort: a BOM must not fail to save over this.
+  if (productSku && !(await findItem(productSku))) {
+    await createItem({
+      sku: productSku,
+      itemName: productName,
+      category: "FG",
+      uom: "PCS",
+      createdBy: input.createdBy,
+    }).catch(() => {});
   }
 
   return {

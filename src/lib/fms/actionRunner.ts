@@ -36,7 +36,9 @@ export async function runLedgerMovementAction(
 
   const item = await findItem(sku);
   if (!item) {
-    throw new Error(`SKU "${sku}" Items me nahi mila — action nahi chal saka.`);
+    throw new Error(
+      `SKU "${sku}" Items master me nahi hai — pehle ise ek item (Category: FG ya Semi-FG) ke roop me add karein, phir ye step complete karein.`
+    );
   }
 
   const uom = (action.uomField ? resolvedFields[action.uomField]?.trim() : "") || item.UOM;
