@@ -37,8 +37,11 @@ export const productionPlans = pgTable("production_plans", {
   jobNo: text("job_no").notNull().default(""),
   // Free text, e.g. a customer's PO number — not validated (no Sales Order module yet).
   orderNo: text("order_no").notNull().default(""),
-  // Which FMS Template ("Line") Start Production should run for this plan. Blank keeps
-  // the old behaviour: every Active template triggered on PRODUCTION_STARTED fires.
+  // Which FMS Template ("Line") Start Production should run for this plan. Blank means no
+  // Line runs for this plan — there is deliberately no broadcast fallback that fires every
+  // Active PRODUCTION_STARTED template instead (that used to be the behavior and was
+  // dropped: two products each needing a different Line would both fire for any plan that
+  // hadn't picked one, which is exactly the ambiguity picking a Line exists to remove).
   fmsTemplateId: text("fms_template_id").notNull().default(""),
 });
 

@@ -10,7 +10,7 @@ import {
   PlanError,
 } from "@/lib/inventory/plans";
 import { InsufficientStockError } from "@/lib/inventory/ledger";
-import { emitFmsEvent, startFmsInstance } from "@/lib/fms/engine";
+import { startFmsInstance } from "@/lib/fms/engine";
 
 const bodySchema = z.discriminatedUnion("action", [
   z.object({
@@ -67,28 +67,23 @@ export async function PATCH(
         // itself never imports it, to avoid a circular import back through the Action
         // engine's own use of plans.ts.
         //
-        // A plan with its own chosen Line (fmsTemplateId) starts only that one, directly
-        // — not the broadcast every other plan still gets. Without this, two products each
-        // needing a different Line would both have every Active PRODUCTION_STARTED
-        // template fire for them, which is exactly the ambiguity picking a Line exists to
-        // remove.
-        try {
-          if (plan.fmsTemplateId) {
+        // Only a plan with its own chosen Line (fmsTemplateId) starts one — directly, by
+        // that exact template id. A blank fmsTemplateId starts no Line at all; it used to
+        // broadcast-fire every Active PRODUCTION_STARTED template instead, which meant two
+        // products each needing a different Line would both fire for every plan that hadn't
+        // picked one — exactly the ambiguity picking a Line exists to remove. Explicit
+        // "no Line for this plan" is safer than an implicit guess.
+        if (plan.fmsTemplateId) {
+          try {
             await startFmsInstance({
               templateId: plan.fmsTemplateId,
               contextRef: `PRODUCTION_PLANS:${planId}`,
               startedBy: "SYSTEM",
               initialQuantity: plan.actualQty ?? undefined,
             });
-          } else {
-            await emitFmsEvent(
-              "PRODUCTION_STARTED",
-              `PRODUCTION_PLANS:${planId}`,
-              plan.actualQty ?? undefined
-            );
+          } catch (error) {
+            console.error(`[ppc] FMS Line start failed for ${planId}:`, error);
           }
-        } catch (error) {
-          console.error(`[ppc] FMS event emit failed for ${planId}:`, error);
         }
 
         return NextResponse.json({ plan });

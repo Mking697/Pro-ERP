@@ -87,7 +87,8 @@ export interface Plan {
    * anything, since there is no Sales Order module yet. */
   orderNo: string;
   /** Which FMS Template ("Line") Start Production should run for this plan — blank means
-   * the old behaviour (every Active PRODUCTION_STARTED template fires for every plan). */
+   * no Line runs for this plan at all (no broadcast fallback; a Line only ever starts when
+   * a plan names it explicitly). */
   fmsTemplateId: string;
 }
 
