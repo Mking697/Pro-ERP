@@ -8,6 +8,7 @@ import { isPlatformAdmin } from "@/lib/platform/admin";
 import { getSetting } from "@/lib/settings";
 import { OrgLogo } from "@/components/logo-picker";
 import SettingsMenu from "@/components/settings-menu";
+import ChangelogMenu from "@/components/changelog-menu";
 import { listNavFmsTemplates } from "@/lib/fms/templates";
 import { listUsedFmsTemplateIds } from "@/lib/inventory/plans";
 import { tenantCached } from "@/lib/cache";
@@ -175,6 +176,9 @@ export default async function AppShell({
             <Badge variant="secondary" className="hidden shrink-0 sm:inline-flex">
               {session.role}
             </Badge>
+            {/* What's new is reachable by everyone too, same reasoning as Settings below —
+                a doer with no Admin access still deserves to know what shipped. */}
+            <ChangelogMenu />
             {/* Theme and language belong to the person, so they sit with their name —
                 reachable by everyone, not only by an Admin who can open Settings. */}
             <SettingsMenu />
