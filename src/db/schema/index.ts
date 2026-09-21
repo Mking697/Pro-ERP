@@ -14,3 +14,4 @@ export * from "./fms";
 export * from "./leave";
 export * from "./parties";
 export * from "./purchase";
+export * from "./leads";

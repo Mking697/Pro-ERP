@@ -8,6 +8,20 @@
       "when": 1790005175984,
       "tag": "0000_mute_white_tiger",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1790009397019,
+      "tag": "0001_easy_mentor",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1790012395775,
+      "tag": "0002_lucky_princess_powerful",
+      "breakpoints": true
     }
   ]
 }

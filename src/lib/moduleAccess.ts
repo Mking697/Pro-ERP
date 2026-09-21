@@ -108,6 +108,12 @@ export const MODULE_ACCESS = [
     description: "Kisi bhi doer ke liye Emergency Leave file kar sakta hai (jab wo khud file na kar paaye)",
     href: "/leave",
   },
+  {
+    key: "LEAD_FMS",
+    label: "Lead & Quotation",
+    description: "Leads punch/import kar sakta hai, follow-up/meeting/negotiation chala sakta hai, Quotation bana sakta hai",
+    href: "/leads",
+  },
 ] as const;
 
 export type ModuleAccessKey = (typeof MODULE_ACCESS)[number]["key"];

@@ -1,0 +1,1 @@
+ALTER TABLE "quotations" ADD CONSTRAINT "quotations_org_id_quotation_no_unique" UNIQUE("org_id","quotation_no");
