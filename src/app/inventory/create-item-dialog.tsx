@@ -21,30 +21,40 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { ITEM_CATEGORIES } from "@/lib/inventory/constants";
+import { ITEM_CATEGORIES, type ItemCategory } from "@/lib/inventory/constants";
 import { useT } from "@/components/preferences-provider";
 
-const EMPTY = {
-  sku: "",
-  itemName: "",
-  category: "Raw Material",
-  sizeUnit: "",
-  uom: "PCS",
-  rate: "",
-  leadTimeDays: "",
-  safetyFactor: "1",
-  moq: "",
-  maxLevel: "",
-  location: "",
-};
+function blank(defaultCategory: ItemCategory) {
+  return {
+    sku: "",
+    itemName: "",
+    category: defaultCategory,
+    sizeUnit: "",
+    uom: "PCS",
+    rate: "",
+    leadTimeDays: "",
+    safetyFactor: "1",
+    moq: "",
+    maxLevel: "",
+    location: "",
+  };
+}
 
-export default function CreateItemDialog({ onCreated }: { onCreated: () => void }) {
+export default function CreateItemDialog({
+  onCreated,
+  defaultCategory = "Raw Material",
+}: {
+  onCreated: () => void;
+  /** The Finished Goods board opens this pre-set to "FG" — nobody adding a product from
+   * that screen should have to remember to change the dropdown every time. */
+  defaultCategory?: ItemCategory;
+}) {
   const t = useT();
   const [open, setOpen] = useState(false);
-  const [form, setForm] = useState(EMPTY);
+  const [form, setForm] = useState(() => blank(defaultCategory));
   const [saving, setSaving] = useState(false);
 
-  function set<K extends keyof typeof EMPTY>(key: K, value: string) {
+  function set<K extends keyof ReturnType<typeof blank>>(key: K, value: string) {
     setForm((f) => ({ ...f, [key]: value }));
   }
 
@@ -65,7 +75,7 @@ export default function CreateItemDialog({ onCreated }: { onCreated: () => void 
       }
 
       toast.success(`${data.item.Item_Name} ban gaya (${data.item.SKU}).`);
-      setForm(EMPTY);
+      setForm(blank(defaultCategory));
       setOpen(false);
       onCreated();
     } catch {

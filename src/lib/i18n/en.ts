@@ -88,8 +88,11 @@ export const EN: Record<string, string> = {
   "Items load ho rahe hain": "Loading items",
   "Items load nahi ho paye.": "Could not load items.",
   "Inventory kholein": "Open Inventory",
-  "Har item ka live stock. Stock kahin store nahi hota — har baar In/Out entries se nikala jaata hai.":
-    "Live stock for every item. Stock is never stored — it is worked out from the In and Out entries every time.",
+  "Raw Material, Consumable aur Semi-FG ka live stock — Finished Goods yahan nahi, alag page par hai. Stock kahin store nahi hota — har baar In/Out entries se nikala jaata hai.":
+    "Live stock for Raw Material, Consumable and Semi-FG — Finished Goods isn't here, it has its own page. Stock is never stored — it is worked out from the In and Out entries every time.",
+  "Finished Goods": "Finished Goods",
+  "Sirf FG category ke items ka live stock — raw material/consumable se alag, taaki dono kabhi mix na hon.":
+    "Live stock for FG-category items only — kept apart from raw material/consumable so the two never mix.",
   "Planning ke number bharne se pehle item master me item banane honge.":
     "Items have to exist in the item master before their planning figures can be filled in.",
   "Planning fields": "Planning fields",

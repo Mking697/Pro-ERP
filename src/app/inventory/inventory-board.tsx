@@ -35,9 +35,15 @@ const STATUS_FILTERS: (StockStatus | "All")[] = [
 export default function InventoryBoard({
   canTransact,
   canSetup,
+  scope = "goods",
 }: {
   canTransact: boolean;
   canSetup: boolean;
+  /** "goods" (default, the main /inventory page) shows everything except Finished Goods
+   * — FG gets its own board (scope="finished", /inventory/fg) so it never sits mixed in
+   * with raw material/consumable/semi-FG stock. Both read the same live items+ledger
+   * data; this is a display split, not a separate stock system. */
+  scope?: "goods" | "finished";
 }) {
   const t = useT();
   const [items, setItems] = useState<ItemRow[]>([]);
@@ -56,9 +62,14 @@ export default function InventoryBoard({
       .finally(() => setLoading(false));
   }, [version, t]);
 
+  const scoped = useMemo(
+    () => items.filter((i) => (scope === "finished" ? i.Category === "FG" : i.Category !== "FG")),
+    [items, scope]
+  );
+
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
-    return items.filter((i) => {
+    return scoped.filter((i) => {
       if (status !== "All" && i.status !== status) return false;
       if (!q) return true;
       return (
@@ -68,17 +79,17 @@ export default function InventoryBoard({
         i.Size_Unit.toLowerCase().includes(q)
       );
     });
-  }, [items, search, status]);
+  }, [scoped, search, status]);
 
-  // Counts come from the unfiltered list so the chips keep showing what exists
-  // even while a filter is narrowing the table.
+  // Counts come from the scoped-but-unfiltered list so the chips keep showing what
+  // exists in this board (goods or finished) even while a status filter narrows the table.
   const counts = useMemo(() => {
-    const c: Record<string, number> = { All: items.length };
-    for (const i of items) c[i.status] = (c[i.status] ?? 0) + 1;
+    const c: Record<string, number> = { All: scoped.length };
+    for (const i of scoped) c[i.status] = (c[i.status] ?? 0) + 1;
     return c;
-  }, [items]);
+  }, [scoped]);
 
-  const needsSetup = items.filter((i) => i.missingFields.length > 0).length;
+  const needsSetup = scoped.filter((i) => i.missingFields.length > 0).length;
 
   if (loading) {
     return <TableSkeleton columns={6} label={t("Items load ho rahe hain")} />;
@@ -94,27 +105,32 @@ export default function InventoryBoard({
           placeholder={t("Item ya SKU search karein...")}
           className="h-9 max-w-xs"
         />
-        <div className="ml-auto flex gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            render={<Link href="/inventory/reorder">Reorder</Link>}
-          />
-          <Button
-            variant="outline"
-            size="sm"
-            render={<Link href="/inventory/indents">Indents</Link>}
-          />
-        </div>
+        {scope === "goods" && (
+          <div className="ml-auto flex gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              render={<Link href="/inventory/reorder">Reorder</Link>}
+            />
+            <Button
+              variant="outline"
+              size="sm"
+              render={<Link href="/inventory/indents">Indents</Link>}
+            />
+          </div>
+        )}
         {canSetup && (
-          <div className="flex gap-2">
+          <div className={cn("flex gap-2", scope === "finished" && "ml-auto")}>
             <Button
               variant="outline"
               size="sm"
               render={<Link href="/inventory/setup">Bulk Setup</Link>}
             />
             <BulkImportDialog onImported={() => setVersion((v) => v + 1)} />
-            <CreateItemDialog onCreated={() => setVersion((v) => v + 1)} />
+            <CreateItemDialog
+              onCreated={() => setVersion((v) => v + 1)}
+              defaultCategory={scope === "finished" ? "FG" : "Raw Material"}
+            />
           </div>
         )}
       </div>

@@ -90,12 +90,16 @@ export default async function AppShell({
     items.push({ icon: "pms", label: "PMS", items: pmsItems });
   }
 
-  // Stock — Inventory today; Finished Goods lands here once it exists.
+  // Stock — Inventory (Raw Material/Consumable/Semi-FG) and Finished Goods, kept as two
+  // separate boards so FG never sits mixed in with raw material stock.
   if (session.access.includes("INVENTORY_VIEW")) {
     items.push({
       icon: "stock",
       label: "Stock",
-      items: [{ icon: "inventory", href: "/inventory", label: "Inventory" }],
+      items: [
+        { icon: "inventory", href: "/inventory", label: "Inventory" },
+        { icon: "inventory", href: "/inventory/fg", label: "Finished Goods" },
+      ],
     });
   }
 
