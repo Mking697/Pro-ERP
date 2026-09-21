@@ -31,6 +31,8 @@ export interface InwardRecord {
   Entry_ID: string;
   Timestamp: string;
   Party_Name: string;
+  /** Set only when Party_Name was picked from Vendor Master, not typed free. */
+  Vendor_ID: string;
   Invoice_No: string;
   Inward_Type: string;
   Attachment_URL: string;
@@ -88,6 +90,7 @@ function rowToRecord(row: InwardRow): InwardRecord {
     Entry_ID: row.id,
     Timestamp: row.timestamp.toISOString(),
     Party_Name: row.partyName,
+    Vendor_ID: row.vendorId,
     Invoice_No: row.invoiceNo,
     Inward_Type: row.inwardType,
     Attachment_URL: row.attachmentUrl,
@@ -173,6 +176,8 @@ export async function listImsInward(): Promise<ImsInwardRecord[]> {
 
 interface CreateInwardInput {
   partyName: string;
+  /** Set only when the party was picked from Vendor Master rather than typed free. */
+  vendorId?: string;
   invoiceNo: string;
   inwardType: string;
   attachmentUrl: string;
@@ -202,6 +207,7 @@ export async function createInwardEntry(input: CreateInwardInput): Promise<Inwar
     id: generateId("INW"),
     orgId,
     partyName: input.partyName,
+    vendorId: input.vendorId ?? "",
     invoiceNo: input.invoiceNo,
     inwardType: input.inwardType,
     attachmentUrl: input.attachmentUrl,

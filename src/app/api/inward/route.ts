@@ -16,6 +16,7 @@ export async function GET() {
 
 const createInwardSchema = z.object({
   partyName: z.string().min(1, "Party Name zaroori hai."),
+  vendorId: z.string().trim().optional().default(""),
   invoiceNo: z.string().min(1, "Invoice No. zaroori hai."),
   inwardType: z.enum(["Raw Material", "Consumable", "Other"]),
   attachmentUrl: z.string().optional().default(""),

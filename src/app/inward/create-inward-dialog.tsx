@@ -2,6 +2,7 @@
 
 import { useState, type FormEvent } from "react";
 import ItemPicker, { type PickerItem } from "@/components/item-picker";
+import VendorPicker from "@/components/vendor-picker";
 import { toast } from "sonner";
 import {
   Dialog,
@@ -38,6 +39,7 @@ export default function CreateInwardDialog({
   const [loading, setLoading] = useState(false);
 
   const [partyName, setPartyName] = useState("");
+  const [vendorId, setVendorId] = useState("");
   const [invoiceNo, setInvoiceNo] = useState("");
   const [inwardType, setInwardType] = useState("Raw Material");
   const [attachmentUrl, setAttachmentUrl] = useState("");
@@ -46,6 +48,7 @@ export default function CreateInwardDialog({
 
   function resetForm() {
     setPartyName("");
+    setVendorId("");
     setInvoiceNo("");
     setInwardType("Raw Material");
     setAttachmentUrl("");
@@ -61,6 +64,7 @@ export default function CreateInwardDialog({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           partyName,
+          vendorId,
           invoiceNo,
           inwardType,
           attachmentUrl,
@@ -106,15 +110,15 @@ export default function CreateInwardDialog({
             </p>
           )}
 
-          <div className="space-y-2">
-            <Label htmlFor="partyName">Party Name</Label>
-            <Input
-              id="partyName"
-              value={partyName}
-              onChange={(e) => setPartyName(e.target.value)}
-              required
-            />
-          </div>
+          <VendorPicker
+            name={partyName}
+            vendorId={vendorId}
+            onChange={(nextName, nextVendorId) => {
+              setPartyName(nextName);
+              setVendorId(nextVendorId);
+            }}
+            required
+          />
           <div className="space-y-2">
             <Label htmlFor="invoiceNo">Invoice No.</Label>
             <Input

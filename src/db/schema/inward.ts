@@ -18,6 +18,12 @@ export const inwardIqcFms = pgTable("inward_iqc_fms", {
     .references(() => organizations.id),
   timestamp: timestamp("timestamp", { withTimezone: true }).notNull().defaultNow(),
   partyName: text("party_name").notNull(),
+  // Set only when Party_Name was picked from Vendor Master rather than typed free — an
+  // inward entry can still name a party that isn't a registered vendor yet, so this is
+  // additive, not a replacement for the free-text field. Plain text, not FK-enforced,
+  // matching every other cross-entity reference in this schema (vendorItems.vendorId,
+  // indents.sku, …).
+  vendorId: text("vendor_id").notNull().default(""),
   invoiceNo: text("invoice_no").notNull().default(""),
   inwardType: text("inward_type").notNull().default(""),
   attachmentUrl: text("attachment_url").notNull().default(""),
