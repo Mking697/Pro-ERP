@@ -21,6 +21,16 @@ import StockMovementDialog from "./stock-movement-dialog";
 import { qty, statusVariant, type ItemRow, type StockStatus } from "./types";
 import { TableSkeleton } from "@/components/loading-states";
 import { useT } from "@/components/preferences-provider";
+import type { ItemCategory } from "@/lib/inventory/constants";
+
+const GOODS_CATEGORIES: ItemCategory[] = ["Raw Material", "Consumable", "Semi-FG"];
+const FG_CATEGORIES: ItemCategory[] = ["FG"];
+
+interface BomProductRow {
+  productName: string;
+  productSku: string;
+  status: string;
+}
 
 const STATUS_FILTERS: (StockStatus | "All")[] = [
   "All",
@@ -51,6 +61,7 @@ export default function InventoryBoard({
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState<StockStatus | "All">("All");
   const [version, setVersion] = useState(0);
+  const [boms, setBoms] = useState<BomProductRow[]>([]);
 
   useEffect(() => {
     fetch("/api/inventory/items")
@@ -61,6 +72,33 @@ export default function InventoryBoard({
       .catch(() => toast.error(t("Items load nahi ho paye.")))
       .finally(() => setLoading(false));
   }, [version, t]);
+
+  // A product's Item is only auto-created going forward, the moment its BOM is next
+  // saved (see createBom()) — a product whose BOM predates that fix still has no Item,
+  // and its FG stock write will keep failing until one exists. Best-effort: a viewer
+  // without BOM_MANAGE simply never sees this banner, same as any other degrade-quietly
+  // read in this app (e.g. the Dashboard's per-module charts).
+  useEffect(() => {
+    if (scope !== "finished" || !canSetup) return;
+    fetch("/api/bom")
+      .then((res) => (res.ok ? res.json() : { boms: [] }))
+      .then((data: { boms?: BomProductRow[] }) => setBoms(data.boms ?? []))
+      .catch(() => {});
+  }, [scope, canSetup, version]);
+
+  const missingFgItems = useMemo(() => {
+    if (scope !== "finished") return [];
+    const existingSkus = new Set(items.map((i) => i.SKU));
+    const seen = new Set<string>();
+    const missing: { productName: string; productSku: string }[] = [];
+    for (const b of boms) {
+      if (b.status !== "Active" || !b.productSku) continue;
+      if (existingSkus.has(b.productSku) || seen.has(b.productSku)) continue;
+      seen.add(b.productSku);
+      missing.push({ productName: b.productName, productSku: b.productSku });
+    }
+    return missing;
+  }, [scope, items, boms]);
 
   const scoped = useMemo(
     () => items.filter((i) => (scope === "finished" ? i.Category === "FG" : i.Category !== "FG")),
@@ -130,10 +168,39 @@ export default function InventoryBoard({
             <CreateItemDialog
               onCreated={() => setVersion((v) => v + 1)}
               defaultCategory={scope === "finished" ? "FG" : "Raw Material"}
+              categoryOptions={scope === "finished" ? FG_CATEGORIES : GOODS_CATEGORIES}
             />
           </div>
         )}
       </div>
+
+      {missingFgItems.length > 0 && (
+        <div className="space-y-2 rounded-lg border border-dashed p-3">
+          <p className="text-sm text-muted-foreground">
+            <strong className="text-foreground">{missingFgItems.length}</strong>{" "}
+            {t(
+              "product ki BOM ban chuki hai lekin unka Item abhi FG me nahi hai — production complete hone par inki FG stock write nahi ho paayegi, jab tak ye add na ho jaayein."
+            )}
+          </p>
+          <div className="flex flex-wrap gap-2">
+            {missingFgItems.map((p) => (
+              <CreateItemDialog
+                key={p.productSku}
+                onCreated={() => setVersion((v) => v + 1)}
+                defaultCategory="FG"
+                categoryOptions={FG_CATEGORIES}
+                initialSku={p.productSku}
+                initialItemName={p.productName}
+                trigger={
+                  <Button variant="outline" size="sm">
+                    {`+ ${p.productName}`}
+                  </Button>
+                }
+              />
+            ))}
+          </div>
+        </div>
+      )}
 
       <div className="flex flex-wrap gap-1.5">
         {STATUS_FILTERS.filter((s) => s === "All" || counts[s]).map((s) => (

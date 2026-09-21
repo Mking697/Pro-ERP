@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
+import { useState, type FormEvent, type ReactElement } from "react";
 import { toast } from "sonner";
 import {
   Dialog,
@@ -24,10 +24,10 @@ import {
 import { ITEM_CATEGORIES, type ItemCategory } from "@/lib/inventory/constants";
 import { useT } from "@/components/preferences-provider";
 
-function blank(defaultCategory: ItemCategory) {
+function blank(defaultCategory: ItemCategory, initialSku: string, initialItemName: string) {
   return {
-    sku: "",
-    itemName: "",
+    sku: initialSku,
+    itemName: initialItemName,
     category: defaultCategory,
     sizeUnit: "",
     uom: "PCS",
@@ -43,15 +43,30 @@ function blank(defaultCategory: ItemCategory) {
 export default function CreateItemDialog({
   onCreated,
   defaultCategory = "Raw Material",
+  categoryOptions = ITEM_CATEGORIES,
+  initialSku = "",
+  initialItemName = "",
+  trigger,
 }: {
   onCreated: () => void;
   /** The Finished Goods board opens this pre-set to "FG" — nobody adding a product from
    * that screen should have to remember to change the dropdown every time. */
   defaultCategory?: ItemCategory;
+  /** The Category dropdown's own choices — scoped per board so picking one that would
+   * make the new item vanish from the page it was just created on (e.g. "Raw Material"
+   * from the Finished Goods board) isn't even offered. */
+  categoryOptions?: readonly ItemCategory[];
+  /** Pre-fills SKU/Item Name — used by the "BOM product missing its Item" banner so the
+   * Admin never has to retype a SKU by hand. */
+  initialSku?: string;
+  initialItemName?: string;
+  /** Overrides the default "+ Naya Item" trigger button, e.g. for a per-row "+ Add" in
+   * that same banner. */
+  trigger?: ReactElement;
 }) {
   const t = useT();
   const [open, setOpen] = useState(false);
-  const [form, setForm] = useState(() => blank(defaultCategory));
+  const [form, setForm] = useState(() => blank(defaultCategory, initialSku, initialItemName));
   const [saving, setSaving] = useState(false);
 
   function set<K extends keyof ReturnType<typeof blank>>(key: K, value: string) {
@@ -75,7 +90,7 @@ export default function CreateItemDialog({
       }
 
       toast.success(`${data.item.Item_Name} ban gaya (${data.item.SKU}).`);
-      setForm(blank(defaultCategory));
+      setForm(blank(defaultCategory, initialSku, initialItemName));
       setOpen(false);
       onCreated();
     } catch {
@@ -87,7 +102,7 @@ export default function CreateItemDialog({
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger render={<Button>{t("Naya Item")}</Button>} />
+      <DialogTrigger render={trigger ?? <Button>{t("Naya Item")}</Button>} />
       <DialogContent className="max-h-[85vh] max-w-2xl overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{t("Naya Item")}</DialogTitle>
@@ -130,7 +145,7 @@ export default function CreateItemDialog({
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {ITEM_CATEGORIES.map((c) => (
+                  {categoryOptions.map((c) => (
                     <SelectItem key={c} value={c}>
                       {c}
                     </SelectItem>

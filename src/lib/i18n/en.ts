@@ -88,6 +88,8 @@ export const EN: Record<string, string> = {
   "Items load ho rahe hain": "Loading items",
   "Items load nahi ho paye.": "Could not load items.",
   "Inventory kholein": "Open Inventory",
+  "product ki BOM ban chuki hai lekin unka Item abhi FG me nahi hai — production complete hone par inki FG stock write nahi ho paayegi, jab tak ye add na ho jaayein.":
+    "product(s) have a BOM but no matching Item in FG yet — their FG stock write will keep failing on production completion until these are added.",
   "Raw Material, Consumable aur Semi-FG ka live stock — Finished Goods yahan nahi, alag page par hai. Stock kahin store nahi hota — har baar In/Out entries se nikala jaata hai.":
     "Live stock for Raw Material, Consumable and Semi-FG — Finished Goods isn't here, it has its own page. Stock is never stored — it is worked out from the In and Out entries every time.",
   "Finished Goods": "Finished Goods",
