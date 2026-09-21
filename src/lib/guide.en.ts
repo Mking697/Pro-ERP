@@ -952,7 +952,7 @@ export const GUIDE_EN: GuideChapter[] = [
         summary: "Define a multi-step process once — it can then run as many times as needed.",
         steps: [
           "On the Templates tab of the FMS page, press \"New FMS Template\".",
-          "For each step, fill in its name, who it's assigned to, and its TAT (in Hours or Days).",
+          "For each step, fill in its name, who it's assigned to, and its TAT (in Minutes, Hours, or Days).",
           "Choose the step's Outcome Type — Done, Pass and Fail, Pass/Fail/Scrap Qty, Number, Text, Attachment, or Custom (type your own outcomes). Then choose which step runs next for each outcome, or that the FMS ends there.",
           "Press Create Template.",
         ],

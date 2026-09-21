@@ -994,7 +994,7 @@ export const GUIDE: GuideChapter[] = [
         summary: "Ek multi-step process ko ek baar define karna — phir wo baar-baar chal sakta hai.",
         steps: [
           "FMS page ke Templates tab me 'Naya FMS Template' dabayein.",
-          "Har step ka naam, kise assign hoga, aur TAT (Hours ya Days me) bharein.",
+          "Har step ka naam, kise assign hoga, aur TAT (Minutes, Hours ya Days me) bharein.",
           "Step ka Outcome Type chunein — Done, Pass aur Fail, Pass/Fail/Scrap Qty, Number, Text, Attachment, ya Custom (khud outcomes typing karein). Phir har outcome ke aage decide karein agla kaunsa step chalega, ya FMS yahin khatam ho.",
           "Template banayein dabayein.",
         ],

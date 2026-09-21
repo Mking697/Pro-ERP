@@ -8,7 +8,7 @@ export const stepSchema = z
     stepName: z.string().trim().min(1, "Har step ka naam zaroori hai."),
     assignedTo: z.string().trim().min(1, "Har step kisi user ko assign hona chahiye."),
     tatValue: z.coerce.number().positive("TAT 0 se zyada hona chahiye."),
-    tatUnit: z.enum(["Hours", "Days"]),
+    tatUnit: z.enum(["Minutes", "Hours", "Days"]),
     outcomeOptions: z.array(z.string().trim().min(1)).min(1, "Kam se kam ek outcome chahiye."),
     nextStepMap: z.record(z.string(), z.union([z.literal("END"), z.coerce.number().int().positive()])),
     dataSourceConfig: z.string().trim().default(""),
