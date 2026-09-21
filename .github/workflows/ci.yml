@@ -1,0 +1,40 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    # DATABASE_URL is a required env var for this app (src/db/client.ts throws at import
+    # time without it) — the build step imports route modules that pull it in transitively,
+    # not just the DB-backed tests, so it's set at job level rather than per-step.
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Type-check
+        run: npx tsc --noEmit
+
+      - name: Lint
+        run: npm run lint
+
+      - name: i18n coverage check
+        run: npm run i18n:check
+
+      - name: Build
+        run: npm run build
+
+      - name: Test
+        run: npm test
