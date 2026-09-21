@@ -86,6 +86,10 @@ export const holidayList = pgTable(
       .notNull()
       .references(() => organizations.id),
     date: date("date").notNull(),
+    // What the holiday actually is (e.g. "Diwali") — optional, purely for the Admin's own
+    // list to be readable; every date-matching/scheduling use of this table only ever
+    // reads the date itself.
+    name: text("name").notNull().default(""),
   },
   (table) => [primaryKey({ columns: [table.orgId, table.date] })]
 );
