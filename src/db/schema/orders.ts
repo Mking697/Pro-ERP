@@ -126,6 +126,15 @@ export const orderItems = pgTable(
     // Column defaults use elsewhere in this schema (e.g. plan_materials before allocation).
     reservedQty: numeric("reserved_qty").notNull().default("0"),
     shortageQty: numeric("shortage_qty").notNull().default("0"),
+    // Set by Dispatch (leg 5, src/db/schema/dispatch.ts) once this line's quantity is
+    // actually written to stock_ledger as a real "Out" — mirrors plan_materials'
+    // allocatedQty/consumedQty split exactly, for the identical reason: `orderReservedBySku()`
+    // (src/lib/orders/orders.ts) must subtract this from `reservedQty` (matching
+    // `committedBySku()`'s own `allocatedQty - consumedQty`), or a dispatched order's stock
+    // would stay double-counted forever — genuinely gone from on-hand (the ledger Out already
+    // reduced it) AND still "reserved" against Free stock, since nothing else ever advances
+    // an Order FMS order's own `status` past `Ready_For_PDI`.
+    consumedQty: numeric("consumed_qty").notNull().default("0"),
   },
   (table) => [primaryKey({ columns: [table.orderId, table.lineNo] })]
 );

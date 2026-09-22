@@ -50,6 +50,13 @@
       "when": 1790061012894,
       "tag": "0006_closed_ultimo",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1790061111530,
+      "tag": "0007_mysterious_quentin_quire",
+      "breakpoints": true
     }
   ]
 }

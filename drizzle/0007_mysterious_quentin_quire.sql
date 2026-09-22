@@ -1,0 +1,1 @@
+ALTER TABLE "order_items" ADD COLUMN "consumed_qty" numeric DEFAULT '0' NOT NULL;
