@@ -1,5 +1,6 @@
-import { numeric, pgEnum, pgTable, text, timestamp } from "drizzle-orm/pg-core";
+import { boolean, integer, numeric, pgEnum, pgTable, primaryKey, text, timestamp, unique } from "drizzle-orm/pg-core";
 import { organizations } from "./platform";
+import { orderPaymentModeEnum } from "./orders";
 
 /**
  * Accounts — Receivables leg, seeded from a real trigger (dispatch documentation for a
@@ -41,5 +42,128 @@ export const invoices = pgTable("invoices", {
   issuedBy: text("issued_by").notNull().default(""),
   issuedAt: timestamp("issued_at", { withTimezone: true }),
   createdBy: text("created_by").notNull().default(""),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+/**
+ * The General Ledger (2026-09-22) — real double-entry bookkeeping underneath Receivables
+ * (`invoices` above, `order_payments` in orders.ts) and Payables (`bills`/`bill_payments`
+ * below), rather than either standing alone as an isolated document log. `chart_of_accounts`
+ * is seeded per org with a small default set (`seedDefaultChartOfAccounts()` in
+ * src/lib/accounts/ledger.ts) an Admin can extend; `is_system` marks the seeded rows so
+ * they can't be deleted out from under the auto-posting logic that assumes they exist.
+ *
+ * A journal entry always balances (sum of debits = sum of credits across its lines) —
+ * enforced in application code (`postJournalEntry()`), not by a DB constraint, since
+ * Drizzle/Postgres has no clean way to check a cross-row sum at insert time here. Every
+ * entry is posted automatically from a real business event (an invoice issued, a bill
+ * issued, a payment recorded either direction) via `sourceType`/`sourceId`, or created
+ * directly for a manual adjustment — never edited or deleted after posting, matching every
+ * other append-only timeline in this schema (`lead_activities`, `order_activities`, ...);
+ * a correction is its own new, reversing entry.
+ */
+export const accountTypeEnum = pgEnum("account_type", [
+  "Asset",
+  "Liability",
+  "Equity",
+  "Income",
+  "Expense",
+]);
+
+export const chartOfAccounts = pgTable(
+  "chart_of_accounts",
+  {
+    // Account_ID, e.g. "ACC-xxxx".
+    id: text("id").primaryKey(),
+    orgId: text("org_id")
+      .notNull()
+      .references(() => organizations.id),
+    code: text("code").notNull().default(""),
+    name: text("name").notNull(),
+    type: accountTypeEnum("type").notNull(),
+    // Seeded by seedDefaultChartOfAccounts() — the auto-posting logic below hard-codes
+    // which of these it debits/credits, so a system account is not user-deletable.
+    isSystem: boolean("is_system").notNull().default(false),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [unique("chart_of_accounts_org_id_code_unique").on(table.orgId, table.code)]
+);
+
+export const journalEntries = pgTable("journal_entries", {
+  // Journal_Entry_ID, e.g. "JE-xxxx".
+  id: text("id").primaryKey(),
+  orgId: text("org_id")
+    .notNull()
+    .references(() => organizations.id),
+  entryDate: timestamp("entry_date", { withTimezone: true }).notNull().defaultNow(),
+  description: text("description").notNull().default(""),
+  // "Invoice" | "Bill" | "ReceivablePayment" | "PayablePayment" | "Manual" — which real
+  // event produced this entry, and the row in that table, so a report can link back to
+  // the source document rather than just showing a number.
+  sourceType: text("source_type").notNull().default(""),
+  sourceId: text("source_id").notNull().default(""),
+  createdBy: text("created_by").notNull().default(""),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+/** One row per debit/credit line, grouped by Journal_Entry_ID — same flat-rows-by-group
+ * shape as `quotation_items`/`bom`, composite PK (entry_id, line_no). Exactly one of
+ * debit/credit is non-zero on any given line; which one is which account is what encodes
+ * the actual accounting meaning, not a sign. */
+export const journalLines = pgTable(
+  "journal_lines",
+  {
+    entryId: text("entry_id").notNull(),
+    orgId: text("org_id")
+      .notNull()
+      .references(() => organizations.id),
+    lineNo: integer("line_no").notNull(),
+    accountId: text("account_id").notNull(),
+    debit: numeric("debit").notNull().default("0"),
+    credit: numeric("credit").notNull().default("0"),
+  },
+  (table) => [primaryKey({ columns: [table.entryId, table.lineNo] })]
+);
+
+/**
+ * Payables — the mirror of Receivables above, against a Purchase Order (`purchase_orders`
+ * in purchase.ts) instead of a Sales Order. Deliberately the same narrow shape `invoices`
+ * used before the GL existed: one bill per PO, an append-only payment log
+ * (`bill_payments`, mirroring `order_payments` exactly, down to reusing its own
+ * `orderPaymentModeEnum` rather than declaring a second identical Postgres enum type).
+ */
+export const billStatusEnum = pgEnum("bill_status", ["Draft", "Issued"]);
+
+export const bills = pgTable("bills", {
+  // Bill_ID, e.g. "BILL-xxxx".
+  id: text("id").primaryKey(),
+  orgId: text("org_id")
+    .notNull()
+    .references(() => organizations.id),
+  poId: text("po_id").notNull(),
+  vendorId: text("vendor_id").notNull(),
+  // The vendor's own invoice/bill number — free text, same reasoning as invoices.invoiceNo.
+  billNo: text("bill_no").notNull().default(""),
+  billAttachmentUrl: text("bill_attachment_url").notNull().default(""),
+  amount: numeric("amount").notNull().default("0"),
+  status: billStatusEnum("status").notNull().default("Draft"),
+  issuedBy: text("issued_by").notNull().default(""),
+  issuedAt: timestamp("issued_at", { withTimezone: true }),
+  createdBy: text("created_by").notNull().default(""),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const billPayments = pgTable("bill_payments", {
+  // Bill_Payment_ID, e.g. "BPY-xxxx".
+  id: text("id").primaryKey(),
+  orgId: text("org_id")
+    .notNull()
+    .references(() => organizations.id),
+  billId: text("bill_id").notNull(),
+  amount: numeric("amount").notNull(),
+  mode: orderPaymentModeEnum("mode").notNull().default("Bank_Transfer"),
+  reference: text("reference").notNull().default(""),
+  paidAt: timestamp("paid_at", { withTimezone: true }).notNull().defaultNow(),
+  recordedBy: text("recorded_by").notNull().default(""),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });

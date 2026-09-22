@@ -1,4 +1,4 @@
-import { boolean, date, integer, pgEnum, pgTable, text, timestamp } from "drizzle-orm/pg-core";
+import { boolean, date, integer, numeric, pgEnum, pgTable, text, timestamp, unique } from "drizzle-orm/pg-core";
 import { organizations } from "./platform";
 
 /**
@@ -112,3 +112,30 @@ export const leaveReassignments = pgTable("leave_reassignments", {
   reassignedAt: timestamp("reassigned_at", { withTimezone: true }).notNull().defaultNow(),
   revertedAt: timestamp("reverted_at", { withTimezone: true }),
 });
+
+/**
+ * Leave balance/quota (2026-09-22) — simple v1 by explicit choice: a fixed annual day
+ * count per leave type, no accrual and no carry-forward. Quotas are opt-in per org per
+ * leave type — a leave type with no row here has no limit at all, so an org that only
+ * wants to cap "Casual" leaves doesn't have to also configure "Sick"/"Earned"/"Other".
+ * Enforced in `createLeave()` (src/lib/leave/leaves.ts): a request that would push the
+ * doer's used days for that type, in the calendar year of its own startDate, over this
+ * quota is refused outright — a hard block, not a warn-and-allow, so every leave that
+ * ever exists is by construction within quota (this is also what keeps Payroll v1 simple:
+ * approved leave never needs an "unpaid" flag, because it can never have gone over quota
+ * to begin with).
+ */
+export const leaveQuotas = pgTable(
+  "leave_quotas",
+  {
+    // Leave_Quota_ID, e.g. "LQ-xxxx".
+    id: text("id").primaryKey(),
+    orgId: text("org_id")
+      .notNull()
+      .references(() => organizations.id),
+    // Matches LEAVE_TYPES in src/lib/leave/leaves.ts ("Casual" | "Sick" | "Earned" | "Other").
+    leaveType: text("leave_type").notNull(),
+    annualDays: numeric("annual_days").notNull().default("0"),
+  },
+  (table) => [unique("leave_quotas_org_id_leave_type_unique").on(table.orgId, table.leaveType)]
+);

@@ -20,3 +20,4 @@ export * from "./pdi";
 export * from "./tms";
 export * from "./accounts";
 export * from "./dispatch";
+export * from "./payroll";

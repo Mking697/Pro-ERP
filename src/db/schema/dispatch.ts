@@ -22,10 +22,18 @@ import { organizations } from "./platform";
  * 2. **Mark Dispatched** — the assignee (or anyone holding the module grant) closes it out
  *    once the transit is done, with an optional "Proof of Dispatch" attachment (evidence the
  *    transit itself completed — a signed LR, transporter's own confirmation — deliberately
- *    NOT the customer-side Proof of Delivery, which is out of scope for this pass by
- *    explicit user choice).
+ *    NOT the customer-side Proof of Delivery).
+ * 3. **Mark Delivered** (added 2026-09-22, previously deferred) — the customer-side close:
+ *    the assignee or anyone holding the module grant confirms the goods actually reached
+ *    the customer, with an optional photo/signature attachment. Simple by explicit choice
+ *    over a customer-facing OTP/link confirmation flow — the driver or office marks it,
+ *    the same way "Mark Dispatched" already works, not a new public-facing surface.
  */
-export const dispatchStatusEnum = pgEnum("dispatch_status", ["In_Transit", "Dispatched"]);
+export const dispatchStatusEnum = pgEnum("dispatch_status", [
+  "In_Transit",
+  "Dispatched",
+  "Delivered",
+]);
 
 export const dispatches = pgTable(
   "dispatches",
@@ -52,6 +60,10 @@ export const dispatches = pgTable(
     proofOfDispatchUrl: text("proof_of_dispatch_url").notNull().default(""),
     dispatchedBy: text("dispatched_by").notNull().default(""),
     dispatchedAt: timestamp("dispatched_at", { withTimezone: true }),
+    // Optional — a photo/signature confirming the customer actually received the goods.
+    podAttachmentUrl: text("pod_attachment_url").notNull().default(""),
+    deliveredBy: text("delivered_by").notNull().default(""),
+    deliveredAt: timestamp("delivered_at", { withTimezone: true }),
     createdBy: text("created_by").notNull().default(""),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
@@ -64,6 +76,7 @@ export const dispatchActivityKindEnum = pgEnum("dispatch_activity_kind", [
   "Gate_Pass_Issued",
   "Assigned",
   "Dispatched",
+  "Delivered",
 ]);
 
 export const dispatchActivities = pgTable("dispatch_activities", {

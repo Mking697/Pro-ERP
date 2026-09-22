@@ -44,9 +44,14 @@ import type { ModuleAccessKey } from "@/lib/moduleAccess";
 
 export class DispatchError extends Error {}
 
-export type DispatchStatus = "In_Transit" | "Dispatched";
+export type DispatchStatus = "In_Transit" | "Dispatched" | "Delivered";
 
-export type DispatchActivityKind = "Note" | "Gate_Pass_Issued" | "Assigned" | "Dispatched";
+export type DispatchActivityKind =
+  | "Note"
+  | "Gate_Pass_Issued"
+  | "Assigned"
+  | "Dispatched"
+  | "Delivered";
 
 export interface DispatchItemRecord {
   lineNo: string;
