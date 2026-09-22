@@ -76,6 +76,9 @@ export interface DispatchRecord {
   proofOfDispatchUrl: string;
   dispatchedBy: string;
   dispatchedAt: string;
+  podAttachmentUrl: string;
+  deliveredBy: string;
+  deliveredAt: string;
   createdBy: string;
   createdAt: string;
   items: DispatchItemRecord[];
@@ -142,6 +145,9 @@ async function rowToDispatch(row: DispatchRow): Promise<DispatchRecord> {
     proofOfDispatchUrl: row.proofOfDispatchUrl,
     dispatchedBy: row.dispatchedBy,
     dispatchedAt: row.dispatchedAt ? row.dispatchedAt.toISOString() : "",
+    podAttachmentUrl: row.podAttachmentUrl,
+    deliveredBy: row.deliveredBy,
+    deliveredAt: row.deliveredAt ? row.deliveredAt.toISOString() : "",
     createdBy: row.createdBy,
     createdAt: row.createdAt.toISOString(),
     items: items.map(itemRowToRecord),
@@ -201,6 +207,27 @@ export async function isOrderFullyDispatched(orderId: string): Promise<boolean> 
     if (!row.dispatchId) return false;
     const dispatchRow = await findById(dispatches, orgId, row.dispatchId);
     if (!dispatchRow || dispatchRow.status !== "Dispatched") return false;
+  }
+  return true;
+}
+
+/** True once every one of an order's own `tms_shipments` rows has both a `dispatch_id` set
+ * AND that dispatch's own status is `Delivered` — the customer-side close, one step further
+ * than isOrderFullyDispatched() above (which only requires the transit itself to be done).
+ * Live-computed, never stored, same convention. An order with zero shipments is never
+ * "fully delivered" — there is nothing to have delivered yet. */
+export async function isOrderFullyDelivered(orderId: string): Promise<boolean> {
+  const orgId = await getTenantOrgId();
+  const shipmentRows = await db
+    .select()
+    .from(tmsShipments)
+    .where(and(eq(tmsShipments.orgId, orgId), eq(tmsShipments.orderId, orderId)));
+  if (shipmentRows.length === 0) return false;
+
+  for (const row of shipmentRows) {
+    if (!row.dispatchId) return false;
+    const dispatchRow = await findById(dispatches, orgId, row.dispatchId);
+    if (!dispatchRow || dispatchRow.status !== "Delivered") return false;
   }
   return true;
 }
@@ -286,6 +313,7 @@ export async function listIntakeCandidates(): Promise<DispatchCandidate[]> {
 export interface DispatchListRow extends DispatchRecord {
   partyName: string;
   orderFullyDispatched: boolean;
+  orderFullyDelivered: boolean;
 }
 
 export async function listDispatches(status?: DispatchStatus): Promise<DispatchListRow[]> {
@@ -301,7 +329,8 @@ export async function listDispatches(status?: DispatchStatus): Promise<DispatchL
     const record = await rowToDispatch(row);
     const order = await getOrder(row.orderId);
     const orderFullyDispatched = await isOrderFullyDispatched(row.orderId);
-    result.push({ ...record, partyName: order?.partyName ?? "", orderFullyDispatched });
+    const orderFullyDelivered = await isOrderFullyDelivered(row.orderId);
+    result.push({ ...record, partyName: order?.partyName ?? "", orderFullyDispatched, orderFullyDelivered });
   }
   return result;
 }
@@ -311,6 +340,7 @@ export interface DispatchDetail {
   order: OrderRecord;
   activities: DispatchActivityRecord[];
   orderFullyDispatched: boolean;
+  orderFullyDelivered: boolean;
 }
 
 export async function getDispatchDetail(dispatchId: string): Promise<DispatchDetail | null> {
@@ -327,12 +357,14 @@ export async function getDispatchDetail(dispatchId: string): Promise<DispatchDet
     .where(and(eq(dispatchActivities.orgId, orgId), eq(dispatchActivities.orderId, row.orderId)))
     .orderBy(dispatchActivities.createdAt);
   const orderFullyDispatched = await isOrderFullyDispatched(row.orderId);
+  const orderFullyDelivered = await isOrderFullyDelivered(row.orderId);
 
   return {
     dispatch,
     order,
     activities: activityRows.map(rowToActivity).reverse(),
     orderFullyDispatched,
+    orderFullyDelivered,
   };
 }
 
@@ -643,6 +675,82 @@ export async function markDispatched(
     }
   } catch (error) {
     console.error(`[dispatch] fully-dispatched follow-up failed for order ${row.orderId}:`, error);
+  }
+
+  const updated = await findById(dispatches, orgId, dispatchId);
+  if (!updated) throw new DispatchError("Update ho gaya lekin dispatch load nahi ho paya.");
+  return rowToDispatch(updated);
+}
+
+// ---------------------------------------------------------------------------
+// Step 3 — Mark Delivered: the customer-side close (added 2026-09-22, previously
+// deferred). Same authorization shape as Mark Dispatched — the assignee, or anyone
+// holding DISPATCH_FMS.
+// ---------------------------------------------------------------------------
+
+export interface MarkDeliveredInput {
+  podAttachmentUrl?: string;
+}
+
+/**
+ * Confirms the goods actually reached the customer — the driver/office marks it, the same
+ * simple mechanism as markDispatched() above, deliberately not a customer-facing OTP/link
+ * confirmation flow (see this table's own header comment in src/db/schema/dispatch.ts). Not
+ * load-bearing like confirmDispatch() — the real stock_ledger "Out" already happened there;
+ * this is a simple status-close action, same as markDispatched().
+ *
+ * Refuses unless the dispatch is currently Dispatched — not In_Transit (the transit itself
+ * must be marked done first) and not already Delivered (no double-close).
+ */
+export async function markDelivered(
+  dispatchId: string,
+  input: MarkDeliveredInput,
+  actor: DispatchActor
+): Promise<DispatchRecord> {
+  const orgId = await getTenantOrgId();
+  const row = await findById(dispatches, orgId, dispatchId);
+  if (!row) throw new DispatchError("Dispatch nahi mila.");
+  if (row.status !== "Dispatched") {
+    throw new DispatchError(
+      row.status === "Delivered"
+        ? "Ye dispatch pehle se Delivered hai."
+        : "Ye dispatch abhi Dispatched nahi hai — pehle Mark Dispatched karein."
+    );
+  }
+
+  const authorized = actor.access.includes("DISPATCH_FMS") || actor.userId === row.assignedTo;
+  if (!authorized) {
+    throw new DispatchError("Sirf assigned user ya DISPATCH_FMS access wala hi ise Mark Delivered kar sakta hai.");
+  }
+
+  const podAttachmentUrl = input.podAttachmentUrl?.trim() ?? "";
+  await updateById(dispatches, orgId, dispatchId, {
+    status: "Delivered",
+    deliveredBy: actor.userId,
+    deliveredAt: new Date(),
+    ...(podAttachmentUrl ? { podAttachmentUrl } : {}),
+  });
+
+  await logActivity(
+    orgId,
+    row.orderId,
+    "Delivered",
+    `Shipment ${row.shipmentId} Deliver ho gayi — Gate Pass ${row.gatePassNo}.${
+      podAttachmentUrl ? " Proof of Delivery attach kiya gaya." : ""
+    }`,
+    actor.userId
+  );
+
+  // Best-effort, optional — same convention as markDispatched()'s own fully-dispatched
+  // follow-up above.
+  try {
+    const fullyDelivered = await isOrderFullyDelivered(row.orderId);
+    if (fullyDelivered) {
+      await logActivity(orgId, row.orderId, "Note", "Order ab poora Deliver ho chuka hai.", "SYSTEM");
+      await emitFmsEvent("ORDER_FULLY_DELIVERED", `ORDERS:${row.orderId}`);
+    }
+  } catch (error) {
+    console.error(`[dispatch] fully-delivered follow-up failed for order ${row.orderId}:`, error);
   }
 
   const updated = await findById(dispatches, orgId, dispatchId);

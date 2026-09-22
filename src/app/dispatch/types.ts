@@ -1,4 +1,4 @@
-export type DispatchStatus = "In_Transit" | "Dispatched";
+export type DispatchStatus = "In_Transit" | "Dispatched" | "Delivered";
 
 export interface DispatchItemRow {
   lineNo: string;
@@ -23,6 +23,9 @@ export interface DispatchRow {
   proofOfDispatchUrl: string;
   dispatchedBy: string;
   dispatchedAt: string;
+  podAttachmentUrl: string;
+  deliveredBy: string;
+  deliveredAt: string;
   createdBy: string;
   createdAt: string;
   items: DispatchItemRow[];
@@ -31,6 +34,7 @@ export interface DispatchRow {
 export interface DispatchListRow extends DispatchRow {
   partyName: string;
   orderFullyDispatched: boolean;
+  orderFullyDelivered: boolean;
 }
 
 export interface DispatchActivityRow {
@@ -77,6 +81,7 @@ export interface DispatchDetailRow {
   order: DispatchOrderRow;
   activities: DispatchActivityRow[];
   orderFullyDispatched: boolean;
+  orderFullyDelivered: boolean;
 }
 
 export interface UserOption {

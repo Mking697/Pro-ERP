@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { requireModule } from "@/lib/auth/guard";
 import { listDispatches, type DispatchStatus } from "@/lib/dispatch/dispatch";
 
-const VALID_STATUSES: readonly DispatchStatus[] = ["In_Transit", "Dispatched"];
+const VALID_STATUSES: readonly DispatchStatus[] = ["In_Transit", "Dispatched", "Delivered"];
 
 /** In-Transit / Dispatched boards — `?status=` optional (mirrors TMS's own
  * /api/tms/shipments). */

@@ -33,6 +33,7 @@ export default function DispatchDetailDialog({
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [proofOfDispatchUrl, setProofOfDispatchUrl] = useState("");
+  const [podAttachmentUrl, setPodAttachmentUrl] = useState("");
 
   function load() {
     fetch(`/api/dispatch/${dispatchId}`)
@@ -68,6 +69,27 @@ export default function DispatchDetailDialog({
     }
   }
 
+  async function markDelivered() {
+    setBusy(true);
+    try {
+      const res = await fetch(`/api/dispatch/${dispatchId}/mark-delivered`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ podAttachmentUrl }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) {
+        toast.error(t(data?.error ?? "Mark Delivered nahi ho paya."));
+        return;
+      }
+      toast.success(t("Shipment Deliver ho gayi."));
+      load();
+      onChanged();
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-lg">
@@ -75,8 +97,15 @@ export default function DispatchDetailDialog({
           <DialogTitle className="flex items-center gap-2">
             {detail?.dispatch.gatePassNo || dispatchId}
             {detail && (
-              <Badge variant={detail.dispatch.status === "Dispatched" ? "default" : "secondary"}>
-                {detail.dispatch.status === "Dispatched" ? t("Dispatched") : t("In Transit")}
+              <Badge
+                variant={detail.dispatch.status === "Delivered" ? "default" : detail.dispatch.status === "Dispatched" ? "default" : "secondary"}
+                className={detail.dispatch.status === "Delivered" ? "bg-emerald-600 text-white hover:bg-emerald-600" : undefined}
+              >
+                {detail.dispatch.status === "Delivered"
+                  ? t("Delivered")
+                  : detail.dispatch.status === "Dispatched"
+                    ? t("Dispatched")
+                    : t("In Transit")}
               </Badge>
             )}
           </DialogTitle>
@@ -124,7 +153,7 @@ export default function DispatchDetailDialog({
               </ul>
             </div>
 
-            {detail.dispatch.status === "In_Transit" ? (
+            {detail.dispatch.status === "In_Transit" && (
               <div className="space-y-2 rounded-lg border p-3">
                 <p className="text-sm font-medium">{t("Mark Dispatched")}</p>
                 <FileUploadField
@@ -136,7 +165,9 @@ export default function DispatchDetailDialog({
                   {t("Mark Dispatched")}
                 </Button>
               </div>
-            ) : (
+            )}
+
+            {(detail.dispatch.status === "Dispatched" || detail.dispatch.status === "Delivered") && (
               <div className="space-y-2 rounded-lg border border-emerald-500/40 bg-emerald-500/5 p-3 text-sm">
                 <p>
                   {t("Dispatch ho gaya")}: {detail.dispatch.dispatchedBy} ·{" "}
@@ -152,9 +183,47 @@ export default function DispatchDetailDialog({
                     {t("Proof of Dispatch dekhein")}
                   </a>
                 )}
-                {detail.orderFullyDispatched && (
+                {detail.orderFullyDispatched && detail.dispatch.status !== "Delivered" && (
                   <p className="font-medium">
                     {t("Ye order ab poora Dispatch ho chuka hai — Sales chain ka safar yahan poora hota hai.")}
+                  </p>
+                )}
+              </div>
+            )}
+
+            {detail.dispatch.status === "Dispatched" && (
+              <div className="space-y-2 rounded-lg border p-3">
+                <p className="text-sm font-medium">{t("Mark Delivered")}</p>
+                <FileUploadField
+                  label={t("Proof of Delivery (optional)")}
+                  value={podAttachmentUrl}
+                  onChange={setPodAttachmentUrl}
+                />
+                <Button size="sm" disabled={busy} onClick={markDelivered}>
+                  {t("Mark Delivered")}
+                </Button>
+              </div>
+            )}
+
+            {detail.dispatch.status === "Delivered" && (
+              <div className="space-y-2 rounded-lg border border-emerald-500/40 bg-emerald-500/5 p-3 text-sm">
+                <p>
+                  {t("Deliver ho gaya")}: {detail.dispatch.deliveredBy} ·{" "}
+                  {detail.dispatch.deliveredAt ? new Date(detail.dispatch.deliveredAt).toLocaleString("en-IN") : ""}
+                </p>
+                {detail.dispatch.podAttachmentUrl && (
+                  <a
+                    href={detail.dispatch.podAttachmentUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-primary underline"
+                  >
+                    {t("Proof of Delivery dekhein")}
+                  </a>
+                )}
+                {detail.orderFullyDelivered && (
+                  <p className="font-medium">
+                    {t("Ye order ab poora Deliver ho chuka hai — Sales chain ka safar yahan poora hota hai.")}
                   </p>
                 )}
               </div>

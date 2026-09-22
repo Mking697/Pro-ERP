@@ -24,6 +24,7 @@ const TABS = [
   { value: "intake", label: "Candidates" },
   { value: "In_Transit", label: "In Transit" },
   { value: "Dispatched", label: "Dispatched" },
+  { value: "Delivered", label: "Delivered" },
 ] as const;
 
 type TabValue = (typeof TABS)[number]["value"];
@@ -114,7 +115,7 @@ export default function DispatchBoard() {
           )}
         </TabsContent>
 
-        {(["In_Transit", "Dispatched"] as const).map((status) => (
+        {(["In_Transit", "Dispatched", "Delivered"] as const).map((status) => (
           <TabsContent key={status} value={status} className="mt-4">
             {loading ? (
               <TableSkeleton columns={5} label={t("Load ho raha hai")} />
@@ -133,6 +134,7 @@ export default function DispatchBoard() {
                       <TableHead>Order</TableHead>
                       <TableHead>{t("Party")}</TableHead>
                       <TableHead>{t("Assignee")}</TableHead>
+                      <TableHead>{t("Status")}</TableHead>
                       <TableHead>{t("Order Status")}</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -144,7 +146,20 @@ export default function DispatchBoard() {
                         <TableCell>{r.partyName}</TableCell>
                         <TableCell>{r.assignedToName || r.assignedTo}</TableCell>
                         <TableCell>
-                          {r.orderFullyDispatched ? (
+                          {r.status === "Delivered" ? (
+                            <Badge className="bg-emerald-600 text-white hover:bg-emerald-600">{t("Delivered")}</Badge>
+                          ) : r.status === "Dispatched" ? (
+                            <Badge variant="default">{t("Dispatched")}</Badge>
+                          ) : (
+                            <Badge variant="secondary">{t("In Transit")}</Badge>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          {r.orderFullyDelivered ? (
+                            <Badge className="bg-emerald-600 text-white hover:bg-emerald-600">
+                              {t("Order Poora Deliver Ho Gaya")}
+                            </Badge>
+                          ) : r.orderFullyDispatched ? (
                             <Badge variant="default">{t("Order Poora Dispatch Ho Gaya")}</Badge>
                           ) : (
                             <Badge variant="outline">{t("Aur Shipments Baaki")}</Badge>
