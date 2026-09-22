@@ -19,3 +19,4 @@ export * from "./orders";
 export * from "./pdi";
 export * from "./tms";
 export * from "./accounts";
+export * from "./dispatch";

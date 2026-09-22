@@ -43,6 +43,13 @@
       "when": 1790056787969,
       "tag": "0005_orange_franklin_storm",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1790061012894,
+      "tag": "0006_closed_ultimo",
+      "breakpoints": true
     }
   ]
 }

@@ -138,6 +138,12 @@ export const MODULE_ACCESS = [
     description: "Order ki Invoice, E-way Bill aur dispatch documents bana sakta hai",
     href: "/accounts",
   },
+  {
+    key: "DISPATCH_FMS",
+    label: "Dispatch",
+    description: "Gate Pass issue kar sakta hai, stock dispatch kar sakta hai, In-Transit shipment track kar sakta hai",
+    href: "/dispatch",
+  },
 ] as const;
 
 export type ModuleAccessKey = (typeof MODULE_ACCESS)[number]["key"];

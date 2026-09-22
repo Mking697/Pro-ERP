@@ -3,6 +3,8 @@ import { db } from "@/db/client";
 import {
   bom,
   customers,
+  dispatchActivities,
+  dispatches,
   failureLog,
   fmsRuns,
   fmsTemplates,
@@ -193,6 +195,8 @@ export async function deleteOrganization(orgId: string): Promise<void> {
     db.delete(leaveApprovals).where(eq(leaveApprovals.orgId, orgId)),
     db.delete(leaves).where(eq(leaves.orgId, orgId)),
     db.delete(leaveApprovalSteps).where(eq(leaveApprovalSteps.orgId, orgId)),
+    db.delete(dispatchActivities).where(eq(dispatchActivities.orgId, orgId)),
+    db.delete(dispatches).where(eq(dispatches.orgId, orgId)),
     db.delete(invoices).where(eq(invoices.orgId, orgId)),
     db.delete(tmsActivities).where(eq(tmsActivities.orgId, orgId)),
     db.delete(tmsShipmentItems).where(eq(tmsShipmentItems.orgId, orgId)),

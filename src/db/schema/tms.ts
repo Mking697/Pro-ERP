@@ -68,6 +68,9 @@ export const tmsShipments = pgTable("tms_shipments", {
   status: tmsShipmentStatusEnum("status").notNull().default("Pending"),
   loadingDockConfirmedBy: text("loading_dock_confirmed_by").notNull().default(""),
   loadingDockConfirmedAt: timestamp("loading_dock_confirmed_at", { withTimezone: true }),
+  // "" until Dispatch (leg 5, src/db/schema/dispatch.ts) confirms this shipment — same
+  // forward-pointer convention as quotations.orderId/orders.pdiId.
+  dispatchId: text("dispatch_id").notNull().default(""),
   createdBy: text("created_by").notNull().default(""),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
