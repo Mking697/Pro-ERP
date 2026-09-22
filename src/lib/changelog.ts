@@ -21,6 +21,14 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    id: "2026-09-22-dispatch",
+    date: "2026-09-22",
+    module: "Dispatch",
+    title: "Dispatch shuru ho gaya — Sales chain ab poori tarah ban gayi",
+    description:
+      "TMS me shipment Loading Dock par confirm hote hi (aur order ka Invoice Issue hote hi) wo ab Dispatch me aati hai — sequential Gate Pass issue hota hai, shipment ka asal stock Stock Ledger me 'Out' likha jaata hai, ek Assignee + TAT diya jaata hai, aur Mark Dispatched se shipment band hoti hai. Jab order ke saare shipments Dispatched ho jaate hain, order 'Poora Dispatch Ho Gaya' dikhta hai — ye Lead se shuru hui poori Sales chain ka aakhri kadam hai.",
+  },
+  {
     id: "2026-09-22-tms-accounts",
     date: "2026-09-22",
     module: "TMS / Accounts",

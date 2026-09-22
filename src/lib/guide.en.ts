@@ -1014,6 +1014,46 @@ export const GUIDE_EN: GuideChapter[] = [
   },
 
   {
+    id: "dispatch",
+    title: "Dispatch — Sales chain, part five (the last one)",
+    description:
+      "Once a shipment is confirmed at the Loading Dock in TMS (and the order's own Invoice has been Issued), it lands here — issuing a Gate Pass and actually dispatching the real stock, then Mark Dispatched to close the shipment out. This is the final step of the whole Sales chain (Lead → Order → PDI → TMS → Dispatch).",
+    sections: [
+      {
+        id: "dispatch-idea",
+        title: "Gate Pass and the real stock dispatch",
+        audience: "DISPATCH_FMS",
+        summary:
+          "Dispatch board's 'Candidates' tab lists every shipment confirmed at the Loading Dock but not yet dispatched — until the order's Invoice is Issued, a candidate shows 'Waiting on Invoice'.",
+        how: [
+          "Clicking a candidate opens 'Confirm Dispatch' — a sequential Gate Pass number (e.g. GP-0001) is generated automatically.",
+          "This is also where the real stock actually leaves — whatever item/quantity is on the shipment gets a real 'Out' entry written to the Stock Ledger. This is never best-effort: if stock is genuinely short for some reason, the whole Confirm Dispatch fails and nothing is left half-saved.",
+          "At the same time, an Assignee (who will track this shipment) and a TAT (Value + Unit — Minutes/Hours/Days) are given — the deadline is worked out from that assignee's own working-hours calendar, exactly the way FMS steps do it. This TAT isn't a fixed org-wide setting like Purchase/Order Setup's — it's given fresh, right here, for each shipment.",
+          "A Gate Pass attachment (e.g. a scanned copy) is optional.",
+        ],
+        notes: [
+          "One order can have several shipments (e.g. two trucks) — each shipment gets its own Gate Pass and its own separate Confirm/Mark-Dispatched lifecycle.",
+        ],
+      },
+      {
+        id: "dispatch-mark",
+        title: "Mark Dispatched — closing a shipment out",
+        audience: "DISPATCH_FMS",
+        summary:
+          "Once the truck has actually left, move that shipment from 'In Transit' to 'Dispatched' — either the assigned user themselves, or anyone with Dispatch access, can do this.",
+        steps: [
+          "Click the shipment on the 'In Transit' tab.",
+          "Optionally attach 'Proof of Dispatch' (e.g. a signed LR or the transporter's own confirmation slip) — this isn't proof the goods reached the customer, only that the truck actually left.",
+          "Click 'Mark Dispatched'.",
+        ],
+        notes: [
+          "Once every one of an order's shipments is 'Dispatched', that order shows 'Order Fully Dispatched' — this is genuinely the final stop of the whole Sales chain (from Lead all the way to Dispatch). No module picks up from here.",
+        ],
+      },
+    ],
+  },
+
+  {
     id: "bom",
     title: "BOM — what a product is made from",
     description: "Writing down what goes into a product, and how much.",

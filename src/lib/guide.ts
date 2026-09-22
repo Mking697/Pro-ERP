@@ -1056,6 +1056,46 @@ export const GUIDE: GuideChapter[] = [
   },
 
   {
+    id: "dispatch",
+    title: "Dispatch — Sales chain ka paanchwa aur aakhri hissa",
+    description:
+      "Shipment jab TMS me Loading Dock par confirm ho jaati hai (aur order ka Invoice bhi Issue ho chuka hota hai), tab wo Dispatch me aa jaati hai — Gate Pass issue karke asal stock dispatch karna, phir Mark Dispatched karke shipment band karna. Ye poori Sales chain (Lead → Order → PDI → TMS → Dispatch) ka aakhri kadam hai.",
+    sections: [
+      {
+        id: "dispatch-idea",
+        title: "Gate Pass aur asal stock dispatch",
+        audience: "DISPATCH_FMS",
+        summary:
+          "Dispatch board ke 'Candidates' tab me har wo shipment dikhti hai jo Loading Dock par confirm ho chuki hai lekin abhi Dispatch nahi hui — jab tak order ka Invoice Issue nahi hota, candidate 'Invoice Ka Wait Hai' dikhata hai.",
+        how: [
+          "Candidate par click karke 'Dispatch Confirm Karein' kholein — ek sequential Gate Pass number (jaise GP-0001) apne aap ban jaata hai.",
+          "Yahi par asal stock bhi nikal jaata hai — shipment me jo bhi item/quantity hai, uska ek real 'Out' entry Stock Ledger me likha jaata hai. Ye kabhi best-effort nahi hai: agar kisi wajah se stock genuinely kam pad jaaye, to poora Confirm Dispatch fail ho jaata hai aur kuch bhi adhoora save nahi hota.",
+          "Isi waqt ek Assignee (jo is shipment ko track karega) aur TAT (Value + Unit — Minutes/Hours/Days) diya jaata hai — deadline us assignee ke apne working-hours calendar se nikaali jaati hai, bilkul waise hi jaise FMS steps me hota hai. Ye TAT Purchase/Order Setup jaisi fixed org-wide setting nahi hai — har shipment ke liye alag se yahin diya jaata hai.",
+          "Gate Pass ka attachment (jaise scanned copy) optional hai.",
+        ],
+        notes: [
+          "Ek order ke kai shipments ho sakte hain (jaise do truck) — har shipment ka apna alag Gate Pass aur apna alag Confirm/Mark Dispatched lifecycle chalta hai.",
+        ],
+      },
+      {
+        id: "dispatch-mark",
+        title: "Mark Dispatched — shipment band karna",
+        audience: "DISPATCH_FMS",
+        summary:
+          "Jab truck asal me nikal jaaye, us shipment ko 'In Transit' se 'Dispatched' me le jaayein — ye assigned user khud kar sakta hai, ya Dispatch access wala koi bhi user.",
+        steps: [
+          "'In Transit' tab me shipment par click karein.",
+          "Chahe to 'Proof of Dispatch' attach karein (jaise signed LR ya transporter ki confirmation slip) — ye customer tak maal pahunchne ka proof nahi hai, sirf itna proof hai ki truck nikal gaya.",
+          "'Mark Dispatched' dabayein.",
+        ],
+        notes: [
+          "Jab order ke saare shipments 'Dispatched' ho jaate hain, wo order 'Order Poora Dispatch Ho Gaya' dikhta hai — yehi poori Sales chain (Lead se lekar Dispatch tak) ka asli, aakhri padaav hai. Isse aage koi module is order ko nahi le jaata.",
+        ],
+      },
+    ],
+  },
+
+  {
     id: "bom",
     title: "BOM — product kis cheez se banta hai",
     description: "Ek product banane me kya-kya aur kitna lagta hai, wo likh dena.",

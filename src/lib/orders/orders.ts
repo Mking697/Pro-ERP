@@ -88,6 +88,11 @@ export interface OrderItemRecord {
   amount: number;
   reservedQty: number;
   shortageQty: number;
+  /** Set by Dispatch once this line's quantity is actually written to stock_ledger as a
+   * real "Out" — see this record's own schema comment (src/db/schema/orders.ts) and
+   * orderReservedBySku()'s own doc comment for why this must be subtracted from
+   * reservedQty everywhere Free stock is computed. */
+  consumedQty: number;
 }
 
 export interface OrderRecord {
@@ -159,6 +164,7 @@ function rowToItem(row: OrderItemRow): OrderItemRecord {
     amount: Number(row.amount) || 0,
     reservedQty: Number(row.reservedQty) || 0,
     shortageQty: Number(row.shortageQty) || 0,
+    consumedQty: Number(row.consumedQty) || 0,
   };
 }
 
@@ -303,6 +309,15 @@ export async function listOrderPayments(orderId: string): Promise<OrderPaymentRe
  * function to build their own free-stock maps, so calling back into them here would be a
  * real circular import (mirrors why plans.ts's hasFmsLine() imports fms/engine.ts
  * dynamically instead of statically) — this file simply never imports service.ts at all.
+ *
+ * Sums `reservedQty - consumedQty`, not plain `reservedQty` — the identical fix
+ * `committedBySku()` already applies (`allocatedQty - consumedQty`), for the identical
+ * reason. Once Dispatch (src/lib/dispatch/dispatch.ts) writes a real `stock_ledger` "Out"
+ * and sets `order_items.consumedQty` for what actually left, that quantity is genuinely gone
+ * from on-hand — but nothing ever advances an order's own `status` past `Ready_For_PDI`, so
+ * without this subtraction the same quantity would stay "reserved" here forever even after
+ * on-hand already reflects it as gone, permanently understating Free stock with no way to
+ * ever clear it (see src/db/schema/orders.ts's own comment on `consumedQty`).
  */
 export async function orderReservedBySku(): Promise<Map<string, number>> {
   const orgId = await getTenantOrgId();
@@ -318,7 +333,7 @@ export async function orderReservedBySku(): Promise<Map<string, number>> {
   const out = new Map<string, number>();
   for (const row of itemRows) {
     if (!reserving.has(row.orderId) || !row.sku) continue;
-    const qty = Number(row.reservedQty) || 0;
+    const qty = round3((Number(row.reservedQty) || 0) - (Number(row.consumedQty) || 0));
     if (qty <= 0) continue;
     out.set(row.sku, round3((out.get(row.sku) ?? 0) + qty));
   }

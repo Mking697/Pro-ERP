@@ -53,6 +53,11 @@ export const LEDGER_SOURCES = [
   // caused it lives in Reference_ID/Remark, not here, so this never needs extending
   // again per new template. See src/lib/fms/actionRunner.ts.
   "FMS",
+  // Dispatch (leg 5, src/lib/dispatch/dispatch.ts) — the real "Out" movement written at
+  // Confirm Dispatch time, for exactly what a shipment carries. `source` is a plain text
+  // column (see src/db/schema/inventory.ts's own comment), so adding this value is an
+  // application-level change only, not a schema migration.
+  "Dispatch",
 ] as const;
 export type LedgerSource = (typeof LEDGER_SOURCES)[number];
 
