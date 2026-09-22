@@ -1561,7 +1561,7 @@ export const GUIDE: GuideChapter[] = [
         summary: "Is install ki asli seemaayein.",
         notes: [
           "Ek hi record ko do log theek ek hi samay par edit karein to ek ka badlaav dab sakta hai. Alag-alag log apna-apna kaam karein to koi dikkat nahi.",
-          "File upload ki seema 4MB hai.",
+          "File upload ab seedhe browser se storage me jaati hai, isliye badi video/photo files bhi chal jaati hain.",
           "Automated kaam din me ek baar chalte hain.",
         ],
       },

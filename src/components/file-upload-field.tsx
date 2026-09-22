@@ -1,6 +1,7 @@
 "use client";
 
 import { useId, useRef, useState, type ChangeEvent } from "react";
+import { upload } from "@vercel/blob/client";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -9,7 +10,6 @@ import { useT } from "@/components/preferences-provider";
 
 const ACCEPTED_TYPES =
   "image/*,video/*,application/pdf,.xls,.xlsx,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
-const MAX_SIZE_MB = 4;
 
 export default function FileUploadField({
   label,
@@ -31,42 +31,30 @@ export default function FileUploadField({
     const file = event.target.files?.[0];
     if (!file) return;
 
-    if (file.size > MAX_SIZE_MB * 1024 * 1024) {
-      toast.error(`File ${MAX_SIZE_MB}MB se chhoti honi chahiye.`);
-      if (inputRef.current) inputRef.current.value = "";
-      return;
-    }
-
     setUploading(true);
     try {
-      const formData = new FormData();
-      formData.append("file", file);
-      const res = await fetch("/api/drive/upload", { method: "POST", body: formData });
+      // Uploads straight from the browser to Blob storage — the file never passes through
+      // this app's own serverless function, so there's no ~4.5MB Vercel body-size ceiling
+      // to hit. /api/blob/upload only ever hands out a scoped, one-time token; the real
+      // size/type limits it enforces live there (src/app/api/blob/upload/route.ts).
+      const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_").slice(0, 100) || "file";
+      const pathname = `attachments/${crypto.randomUUID()}-${safeName}`;
 
-      // Not every failure comes back as JSON — a platform-level 413 or a gateway error
-      // is plain text, and parsing it blindly threw, leaving the user with no message
-      // at all and an upload that silently did nothing.
-      const data = await res.json().catch(() => null);
+      const blob = await upload(pathname, file, {
+        access: "public",
+        handleUploadUrl: "/api/blob/upload",
+        contentType: file.type,
+        clientPayload: file.type,
+      });
 
-      if (!res.ok) {
-        toast.error(
-          data?.error ??
-            (res.status === 413
-              ? `File ${MAX_SIZE_MB}MB se chhoti honi chahiye.`
-              : `Upload nahi ho paya (${res.status}).`)
-        );
-        return;
-      }
-
-      if (!data?.url) {
-        toast.error(t("Upload nahi ho paya — server se file ka link nahi mila."));
-        return;
-      }
-
-      onChange(data.url);
+      onChange(blob.url);
       toast.success(t("File upload ho gayi."));
-    } catch {
-      toast.error(t("Upload nahi ho paya. Internet check karke dobara try karein."));
+    } catch (err) {
+      toast.error(
+        err instanceof Error && err.message
+          ? err.message
+          : t("Upload nahi ho paya. Internet check karke dobara try karein.")
+      );
     } finally {
       setUploading(false);
       if (inputRef.current) inputRef.current.value = "";
@@ -100,7 +88,7 @@ export default function FileUploadField({
           disabled={uploading}
         />
       )}
-      {/* A 4MB upload is otherwise entirely silent for a screen-reader user. */}
+      {/* An upload is otherwise entirely silent for a screen-reader user. */}
       {uploading && (
         <p role="status" className="text-xs text-muted-foreground">
           Uploading...

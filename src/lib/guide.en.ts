@@ -1519,7 +1519,7 @@ export const GUIDE_EN: GuideChapter[] = [
         summary: "This install's real limits.",
         notes: [
           "If two people edit the very same record at exactly the same moment, one of the changes can be lost. Different people doing their own work is not a problem.",
-          "File uploads are capped at 4MB.",
+          "File uploads now go straight from the browser to storage, so large videos and photos work too.",
           "The automated jobs run once a day.",
         ],
       },
