@@ -148,7 +148,7 @@ export default function TaskBoard({ currentUserId }: { currentUserId: string }) 
 
   return (
     <Tabs defaultValue="my-tasks">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <TabsList>
           <TabsTrigger value="my-tasks">My Tasks</TabsTrigger>
           <TabsTrigger value="delegated">Delegated by Me</TabsTrigger>
@@ -156,7 +156,7 @@ export default function TaskBoard({ currentUserId }: { currentUserId: string }) 
             <TabsTrigger value="recurring">Recurring Rules</TabsTrigger>
           )}
         </TabsList>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           {canAssignRecurring && (
             <CreateRecurringDialog onCreated={() => {
                 setRulesVersion((v) => v + 1);

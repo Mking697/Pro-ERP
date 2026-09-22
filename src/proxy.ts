@@ -60,5 +60,14 @@ export async function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/((?!_next/static|_next/image|favicon.ico).*)"],
+  // PWA static assets (manifest, service worker, its offline fallback, and its icons)
+  // must be reachable with no session, exactly like favicon.ico already was — a visitor
+  // on /login before ever signing in is precisely who "Add to Home Screen" needs these
+  // for, and the service worker itself fetches its own manifest/icons at install time
+  // regardless of who's currently signed in. Without this, every one of them 307'd to
+  // /login (wrong content, wrong content-type) and `serviceWorker.register()` failed
+  // silently for anyone not already authenticated.
+  matcher: [
+    "/((?!_next/static|_next/image|favicon.ico|manifest\\.json|sw\\.js|offline\\.html|icon-192\\.png|icon-512\\.png|icon-maskable-512\\.png).*)",
+  ],
 };
