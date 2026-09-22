@@ -11,10 +11,12 @@ import { todayIST } from "@/lib/dateUtil";
  * started — every one of their Pending Tasks and Pending FMS runs, individually recorded
  * in leave_reassignments so revertLeave() below knows exactly what to hand back later.
  *
- * Deliberately does NOT recompute any FMS step's TAT deadline for the buddy's own working
- * calendar — the deadline stays whatever it already was, the buddy just inherits the same
- * clock. Recomputing it against the buddy's own shift/queue would be more correct but is
- * a materially bigger change; this is the pragmatic v1 boundary.
+ * An FMS run's TAT_Start/TAT_Deadline is recomputed against the buddy's own working
+ * calendar (shift, lunch/tea, weekly-off/holidays, their own open-TAT queue) via
+ * `recomputeRunTat()` — a fresh full TAT window starting now, not the original doer's
+ * already-computed deadline inherited as-is. Dynamic import to break the same
+ * leave<->fms circular-import shape this codebase already avoids elsewhere (e.g.
+ * plans.ts <-> fms/engine.ts).
  */
 export async function activateLeave(leaveId: string): Promise<void> {
   const orgId = await getTenantOrgId();
@@ -51,8 +53,10 @@ export async function activateLeave(leaveId: string): Promise<void> {
         eq(fmsRuns.status, "Pending")
       )
     );
+  const { recomputeRunTat } = await import("@/lib/fms/engine");
   for (const run of openRuns) {
     await updateById(fmsRuns, orgId, run.id, { assignedTo: leave.buddyId });
+    await recomputeRunTat(orgId, run.id, leave.buddyId);
     await insertRecord(leaveReassignments, {
       id: generateId("LRA"),
       orgId,
@@ -84,6 +88,7 @@ export async function revertLeave(leaveId: string): Promise<void> {
     .from(leaveReassignments)
     .where(and(eq(leaveReassignments.orgId, orgId), eq(leaveReassignments.leaveId, leaveId)));
 
+  const { recomputeRunTat } = await import("@/lib/fms/engine");
   for (const r of openReassignments) {
     if (r.revertedAt) continue;
 
@@ -96,6 +101,7 @@ export async function revertLeave(leaveId: string): Promise<void> {
       const run = await findById(fmsRuns, orgId, r.entityId);
       if (run && run.status === "Pending" && run.assignedTo === r.buddyId) {
         await updateById(fmsRuns, orgId, r.entityId, { assignedTo: r.originalAssignee });
+        await recomputeRunTat(orgId, r.entityId, r.originalAssignee);
       }
     }
 

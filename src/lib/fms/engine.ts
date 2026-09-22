@@ -111,7 +111,7 @@ export function isFmsStepOverdue(run: FmsRunRecord): boolean {
  * the new one's clock starts only once the furthest-out existing deadline arrives — pushed
  * forward through the working calendar, never added on top of "now" naively.
  */
-async function queueOpenTatStart(
+export async function queueOpenTatStart(
   orgId: string,
   assignedTo: string,
   naturalStartEpochMs: number
@@ -150,7 +150,7 @@ async function queueOpenTatStart(
  * the source step hasn't run yet, or its field wasn't a number) — a step must always get
  * *some* deadline, never none.
  */
-async function resolveTatValue(
+export async function resolveTatValue(
   orgId: string,
   step: FmsTemplateStepRecord,
   instanceId: string
@@ -230,6 +230,37 @@ async function appendStepRun(input: AppendStepRunInput): Promise<FmsRunRecord> {
   });
 
   return runToRecord(row);
+}
+
+/**
+ * Recomputes a Pending run's TAT_Start/TAT_Deadline against `newAssignedTo`'s own working
+ * calendar (shift, lunch/tea, weekly-off/holidays, their own open-TAT queue) — starting
+ * fresh from now, using the step's own TAT_Value/TAT_Unit (resolved the same way a brand
+ * new run would be, including a step-sourced TAT). Called by Leave's reassignment (see
+ * src/lib/leave/reassignment.ts) so a run handed to a buddy — or handed back — gets a
+ * deadline computed against *their* calendar, not whoever held the run when it was created.
+ * A no-op for a run that has already left Pending (nothing left to recompute).
+ */
+export async function recomputeRunTat(orgId: string, runId: string, newAssignedTo: string): Promise<void> {
+  const run = await findById(fmsRuns, orgId, runId);
+  if (!run || run.status !== "Pending") return;
+
+  const step = await getFmsTemplateStep(run.templateId, run.stepNo);
+  if (!step) return;
+
+  const tatValue = await resolveTatValue(orgId, step, run.instanceId);
+  const tatStartMs = await queueOpenTatStart(orgId, newAssignedTo, Date.now());
+  const tatDeadlineMs = await computeTatDeadline(
+    newAssignedTo,
+    tatStartMs,
+    tatValue,
+    step.TAT_Unit as FmsTatUnit
+  );
+
+  await updateById(fmsRuns, orgId, runId, {
+    tatStart: new Date(tatStartMs),
+    tatDeadline: new Date(tatDeadlineMs),
+  });
 }
 
 interface StartFmsInstanceInput {
