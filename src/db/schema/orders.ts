@@ -81,6 +81,9 @@ export const orders = pgTable("orders", {
   creditApprovedBy: text("credit_approved_by").notNull().default(""),
   creditApprovedAt: timestamp("credit_approved_at", { withTimezone: true }),
   dispatchCommitDate: timestamp("dispatch_commit_date", { withTimezone: true }),
+  // "" until PDI punches this Ready_For_PDI order into an inspection — same forward-pointer
+  // convention as quotations.orderId (see that column's own comment).
+  pdiId: text("pdi_id").notNull().default(""),
   createdBy: text("created_by").notNull().default(""),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });

@@ -120,6 +120,12 @@ export const MODULE_ACCESS = [
     description: "Order punch/map kar sakta hai, payment/credit review, stock reserve aur dispatch commit chala sakta hai",
     href: "/orders",
   },
+  {
+    key: "PDI_FMS",
+    label: "PDI (Pre-Dispatch Inspection)",
+    description: "Dispatch se pehle order ke goods inspect kar sakta hai",
+    href: "/pdi",
+  },
 ] as const;
 
 export type ModuleAccessKey = (typeof MODULE_ACCESS)[number]["key"];
