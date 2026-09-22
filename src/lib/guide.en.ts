@@ -894,7 +894,7 @@ export const GUIDE_EN: GuideChapter[] = [
     id: "pdi",
     title: "PDI (Pre-Dispatch Inspection) — Sales chain, part three",
     description:
-      "Inspecting an order's goods before dispatch. An order lands here in Intake the moment it becomes 'Ready For PDI'; TMS/Dispatch beyond this hasn't been built as its own module yet.",
+      "Inspecting an order's goods before dispatch. An order lands here in Intake the moment it becomes 'Ready For PDI'; once PDI passes, the order moves forward independently into both TMS (Transport) and Accounts (Invoice). Dispatch itself (actually sending the truck off) hasn't been built as its own module yet.",
     sections: [
       {
         id: "pdi-idea",
@@ -923,6 +923,91 @@ export const GUIDE_EN: GuideChapter[] = [
         notes: [
           "Passing sets the inspection to 'Passed', and who passed it and when is recorded in History.",
           "Failing leaves the inspection right where it was — 'Pending'. No new inspection is created; the same one stays open for another Pass/Fail attempt. Writing the reason for the fail as a remark helps whoever re-inspects it know exactly what to check.",
+        ],
+      },
+    ],
+  },
+
+  {
+    id: "tms",
+    title: "TMS (Transport) — Sales chain, part four",
+    description:
+      "An order lands here once PDI passes — arranging the vehicle/truck and recording its Loading Dock confirmation. Every order runs one of two ways, 'Self' (we arrange it ourselves, Freight Paid) or 'Party' (the customer arranges their own pickup, To Pay) — decided right when the Order itself is created.",
+    sections: [
+      {
+        id: "tms-idea",
+        title: "Self vs. Party, and what 'Fully Shipped' means",
+        audience: "TMS_FMS",
+        summary:
+          "Every new Order now states, on its own Order Form, who arranges its transport — Self or Party. That's what decides what happens to it in TMS.",
+        how: [
+          "Self (Freight Paid): we ourselves pick a Transport Vendor, vehicle size and freight price to plan a shipment.",
+          "Party (To Pay): the customer is sending their own vehicle — all we do is expect it, Follow Up if it's late, and confirm the Loading Dock once it shows up. Vendor/vehicle price don't even apply here.",
+          "An order is 'Fully Shipped' once every one of its lines' full quantity has been allocated across one or more shipments — this is never stored, it's worked out fresh every time by adding it up. One order can need more than one shipment (e.g. two trucks).",
+        ],
+        notes: [
+          "If an order predates this column (so Self/Party was never set), TMS's own Intake shows it as 'Decision Needed' — the transport arrangement has to be set before any shipment can be planned for it.",
+        ],
+      },
+      {
+        id: "tms-plan",
+        title: "Planning a shipment and confirming the Loading Dock",
+        audience: "TMS_FMS",
+        summary: "Open a candidate order to plan a shipment, then confirm the Loading Dock once the truck actually arrives.",
+        steps: [
+          "Click an order on the TMS board's 'Candidates' tab.",
+          "For Self, fill in the Transport Vendor, Vehicle Size and Freight Price; for Party, go straight ahead.",
+          "Fill in From Warehouse/To Address (To Address is pre-filled from the order's own shipping address, editable if needed), and give the quantity of each line riding on this shipment — every line defaults to its full remaining quantity, which can be reduced if only part of it is going out.",
+          "Click 'Plan Shipment' and the shipment is created in 'Pending' status.",
+          "Once the truck actually shows up, click 'Confirm Loading Dock' on that shipment — the Vehicle No./Driver Contact No. can also be entered here if they weren't given earlier.",
+        ],
+        notes: [
+          "'Follow Up' on a Party-arranged shipment is a plain reminder — no field changes, just a note logged in History that the truck hasn't shown up yet.",
+          "Planning several shipments against one order is completely normal — e.g. a large order going out on two trucks means planning the shipment twice, giving each truck its own lines/quantities.",
+        ],
+      },
+      {
+        id: "tms-vendors",
+        title: "Transport Vendor Master",
+        audience: "TMS_FMS",
+        summary: "Transport Vendors have their own small master — separate from Purchase Vendor, inside TMS's own board under its 'Vendors' tab.",
+        steps: [
+          "On the TMS board's 'Vendors' tab, add vendors one at a time with '+ Add Transport Vendor', or use 'Bulk Upload' to download a template and add several at once from Excel/CSV.",
+        ],
+      },
+    ],
+  },
+
+  {
+    id: "accounts",
+    title: "Accounts — Invoice (Receivables)",
+    description:
+      "Creating and issuing an order's Invoice — with an Invoice No., E-way Bill and supporting documents. This is only the first, small piece of a future full Accounts module — bigger things like a GL or aging reports haven't been built yet.",
+    sections: [
+      {
+        id: "accounts-idea",
+        title: "One Order, One Invoice",
+        audience: "ACCOUNTS_FMS",
+        summary: "Once PDI passes, an order lands in Accounts' own 'Needs Invoicing' tab, until its Invoice is created.",
+        how: [
+          "Each order can only ever have one Invoice — trying to create a second one is blocked.",
+          "When creating an Invoice, 'Final Value' is suggested automatically: the Order Value, plus — only when transport was arranged 'Self' — that order's own shipments' freight added in. Party-arranged freight never gets added, since that's the customer's own cost.",
+          "This suggested value is only a suggestion — it can be adjusted before saving.",
+        ],
+      },
+      {
+        id: "accounts-issue",
+        title: "Creating a Draft and Issuing it",
+        audience: "ACCOUNTS_FMS",
+        summary: "An invoice starts life as a Draft — Issue it once the real document/number is ready.",
+        steps: [
+          "From 'Needs Invoicing', click an order and 'Create Invoice' — check/adjust the Final Value and save. Everything else (Invoice No., documents, E-way Bill) stays optional at Draft.",
+          "Once the Invoice No. is known and the Invoice Document is ready, open the Draft, fill them in, then click 'Issue'.",
+        ],
+        notes: [
+          "Both the Invoice No. and the Invoice Document are required to Issue — the E-way Bill always stays optional (not every dispatch needs one).",
+          "Once issued, an Invoice can no longer be edited — it's a real business document, so it doesn't change once it exists.",
+          "An invoice's own detail shows both 'Invoiced' and 'Received' — 'Received' is read straight from Order FMS's own payments; Accounts doesn't keep a second payments record of its own.",
         ],
       },
     ],

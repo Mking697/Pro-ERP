@@ -13,6 +13,13 @@ import {
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import ItemPicker, { type PickerItem } from "@/components/item-picker";
 import { useT } from "@/components/preferences-provider";
 import CustomerPicker, { EMPTY_NEW_CUSTOMER, type NewCustomerDraft } from "./customer-picker";
@@ -39,6 +46,7 @@ export default function IntakeMapDialog({
   const [selectedId, setSelectedId] = useState("");
   const [newCustomer, setNewCustomer] = useState<NewCustomerDraft>(EMPTY_NEW_CUSTOMER);
   const [mapping, setMapping] = useState<Record<string, PickerItem | null>>({});
+  const [transportArrangedBy, setTransportArrangedBy] = useState<"Self" | "Party">("Self");
   const [saving, setSaving] = useState(false);
 
   async function handleSubmit() {
@@ -67,6 +75,7 @@ export default function IntakeMapDialog({
         body: JSON.stringify({
           quotationId: candidate.quotationId,
           items,
+          transportArrangedBy,
           ...(mode === "existing" ? { customerId: selectedId } : { newCustomer }),
         }),
       });
@@ -129,6 +138,22 @@ export default function IntakeMapDialog({
               newCustomer={newCustomer}
               onNewCustomerChange={setNewCustomer}
             />
+          </div>
+
+          <div className="space-y-2">
+            <Label>{t("Transport Arrangement")}</Label>
+            <Select
+              value={transportArrangedBy}
+              onValueChange={(v) => v && setTransportArrangedBy(v as "Self" | "Party")}
+            >
+              <SelectTrigger className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="Self">{t("Self (Hum Arrange Karenge — Freight Paid)")}</SelectItem>
+                <SelectItem value="Party">{t("Party (Customer Khud Arrange Karega — To Pay)")}</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
         </div>
 

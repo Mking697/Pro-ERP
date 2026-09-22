@@ -936,7 +936,7 @@ export const GUIDE: GuideChapter[] = [
     id: "pdi",
     title: "PDI (Pre-Dispatch Inspection) — Sales chain ka teesra hissa",
     description:
-      "Dispatch se pehle order ke goods inspect karna. Order 'Ready For PDI' hote hi yahan Intake me aa jaata hai; aage TMS/Dispatch abhi alag module nahi bana hai.",
+      "Dispatch se pehle order ke goods inspect karna. Order 'Ready For PDI' hote hi yahan Intake me aa jaata hai; PDI Pass hote hi order TMS (Transport) aur Accounts (Invoice) — dono me alag-alag aage badh jaata hai. Dispatch (asal me truck rawana karna) abhi alag module nahi bana hai.",
     sections: [
       {
         id: "pdi-idea",
@@ -965,6 +965,91 @@ export const GUIDE: GuideChapter[] = [
         notes: [
           "Pass karne par inspection 'Passed' ho jaati hai aur History me record ho jaata hai kisne/kab Pass kiya.",
           "Fail karne par inspection wahi ki wahi 'Pending' rehti hai — koi nayi inspection nahi banti, wahi ek dobara Pass/Fail ke liye khuli rehti hai. Fail ki wajah remark me likh dena madadgar hota hai, taaki dobara inspect karne wale ko pata rahe kya theek karna hai.",
+        ],
+      },
+    ],
+  },
+
+  {
+    id: "tms",
+    title: "TMS (Transport) — Sales chain ka chautha hissa",
+    description:
+      "PDI Pass hote hi order yahan aata hai — vehicle/truck arrange karna aur uski Loading Dock confirmation record karna. Ek order 'Self' (hum khud arrange karte hain, Freight Paid) ya 'Party' (customer khud pickup arrange karta hai, To Pay) me se ek tareeke se chalta hai — ye decide Order banate waqt hi ho jaata hai.",
+    sections: [
+      {
+        id: "tms-idea",
+        title: "Self vs Party, aur 'Fully Shipped' ka matlab",
+        audience: "TMS_FMS",
+        summary:
+          "Har naya Order ab Order Form me hi bataata hai ki uska transport kaun arrange karega — Self ya Party. Yahi decide karta hai TMS me us order ke saath kya hota hai.",
+        how: [
+          "Self (Freight Paid): hum khud Transport Vendor, vehicle size aur freight price chun kar shipment plan karte hain.",
+          "Party (To Pay): customer khud apna vehicle bhej raha hai — hume sirf 'expect' karna hai, jab tak wo aaye Follow Up kar sakte hain, aur aane par Loading Dock confirm karna hai. Vendor/vehicle price yahan lagta hi nahi.",
+          "Ek order 'Fully Shipped' tab kehlaata hai jab uski har line ki poori quantity kisi-na-kisi shipment me allocate ho chuki ho — ye kahin store nahi hota, har baar taaza jod kar nikaala jaata hai. Ek order me ek se zyada shipment (jaise do truck) lag sakte hain.",
+        ],
+        notes: [
+          "Agar koi Order is column ke bane se pehle ka hai (isliye Self/Party set hi nahi hai), to TMS ke Intake me wo 'Decision Chahiye' dikhega — pehle transport arrangement set karna hoga, tabhi shipment plan ho payegi.",
+        ],
+      },
+      {
+        id: "tms-plan",
+        title: "Shipment Plan karna aur Loading Dock Confirm karna",
+        audience: "TMS_FMS",
+        summary: "Candidate order kholkar shipment plan karein, phir jab truck aa jaaye tab Loading Dock confirm karein.",
+        steps: [
+          "TMS board ke 'Candidates' tab me order par click karein.",
+          "Self ho to Transport Vendor, Vehicle Size, Freight Price bharein; Party ho to seedha aage badhein.",
+          "From Warehouse/To Address bharein (To Address order ke shipping address se pehle se bhara aata hai, chahen to badal sakte hain), aur jo lines is shipment me jaa rahi hain unki quantity dein — default me poori bachi hui quantity bhari hoti hai, kam bhi kar sakte hain agar sirf ek hissa jaa raha hai.",
+          "'Shipment Plan Karein' dabate hi shipment 'Pending' status me ban jaati hai.",
+          "Jab truck actually aa jaaye, us shipment par 'Loading Dock Confirm Karein' dabayein — Vehicle No./Driver Contact No. yahi par bhi de sakte hain agar pehle nahi diya tha.",
+        ],
+        notes: [
+          "Party-arranged shipment me 'Follow Up' ek simple reminder hai — koi field nahi badalta, bas ek note History me chala jaata hai ki truck abhi tak nahi aaya.",
+          "Ek order ke liye kai shipment lagana bilkul theek hai — jaise ek bada order do truck me jaaye, to do baar shipment plan karke har truck me alag-alag lines/quantity dena.",
+        ],
+      },
+      {
+        id: "tms-vendors",
+        title: "Transport Vendor Master",
+        audience: "TMS_FMS",
+        summary: "Transport Vendors ka apna chhota master hai — Purchase Vendor se alag, TMS ke apne board ke andar hi 'Vendors' tab me.",
+        steps: [
+          "TMS board ke 'Vendors' tab me '+ Add Transport Vendor' se ek-ek karke add karein, ya 'Bulk Upload' se template download karke Excel/CSV se ek saath kai vendor daalein.",
+        ],
+      },
+    ],
+  },
+
+  {
+    id: "accounts",
+    title: "Accounts — Invoice (Receivables)",
+    description:
+      "Ek order ke liye Invoice banana aur Issue karna — Invoice No., E-way Bill aur documents ke saath. Ye poore Accounts module ka sirf pehla, chhota hissa hai — GL, aging jaisi badi cheezein abhi nahi bani hain.",
+    sections: [
+      {
+        id: "accounts-idea",
+        title: "Ek Order, Ek Invoice",
+        audience: "ACCOUNTS_FMS",
+        summary: "PDI Pass hote hi order Accounts ke 'Needs Invoicing' tab me aa jaata hai, jab tak uski Invoice na ban jaaye.",
+        how: [
+          "Har order ki sirf ek hi Invoice ban sakti hai — dobara banane ki koshish rok di jaati hai.",
+          "Invoice banate waqt 'Final Value' apne aap suggest hota hai: Order Value, aur agar transport 'Self' se arrange hua hai to us order ki saari shipments ka freight bhi jud kar. Party-arranged order me freight kabhi nahi judta — wo customer ka apna kharch hai.",
+          "Ye suggested value sirf ek suggestion hai — save karne se pehle chahen to badal sakte hain.",
+        ],
+      },
+      {
+        id: "accounts-issue",
+        title: "Draft banana aur Issue karna",
+        audience: "ACCOUNTS_FMS",
+        summary: "Invoice pehle Draft banti hai — jab asli document/number taiyaar ho jaaye, tab Issue karein.",
+        steps: [
+          "'Needs Invoicing' se order chunkar 'Invoice Banayein' dabayein — Final Value check/badal kar save karein. Baaki sab (Invoice No., documents, E-way Bill) Draft me optional hain.",
+          "Jab Invoice No. mil jaaye aur Invoice Document attach ho jaaye, Draft khol kar bhar dein, phir 'Issue Karein' dabayein.",
+        ],
+        notes: [
+          "Issue karne ke liye Invoice No. aur Invoice Document dono zaroori hain — E-way Bill hamesha optional hai (har dispatch me E-way Bill nahi lagta).",
+          "Ek baar Issue ho jaane ke baad Invoice edit nahi hoti — ek asal business document hai, isliye ban jaane ke baad usme badlaav nahi hota.",
+          "Invoice detail me 'Invoiced' aur 'Received' dono dikhte hain — 'Received' Order FMS ke apne payments se seedha padha jaata hai, Accounts khud koi doosra payment record nahi rakhta.",
         ],
       },
     ],

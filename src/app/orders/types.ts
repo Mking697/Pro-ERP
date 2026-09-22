@@ -19,9 +19,12 @@ export interface OrderItemRow {
   shortageQty: number;
 }
 
+export type TransportArrangedBy = "Self" | "Party" | null;
+
 export interface OrderRow {
   id: string;
   source: string;
+  transportArrangedBy: TransportArrangedBy;
   leadId: string;
   quotationId: string;
   customerId: string;

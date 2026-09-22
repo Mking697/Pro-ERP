@@ -22,6 +22,7 @@ const bodySchema = z
     customerId: z.string().trim().optional(),
     newCustomer: newCustomerSchema.optional(),
     poAttachmentUrl: z.string().trim().optional(),
+    transportArrangedBy: z.enum(["Self", "Party"]),
   })
   .refine((v) => v.customerId || v.newCustomer, {
     message: "Ek Customer chunein ya naya Customer ka naam bharein.",

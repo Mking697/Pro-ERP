@@ -47,6 +47,7 @@ const bodySchema = z
     newCustomer: newCustomerSchema.optional(),
     items: z.array(itemSchema).min(1, "Kam se kam ek item chunein."),
     poAttachmentUrl: z.string().trim().optional(),
+    transportArrangedBy: z.enum(["Self", "Party"]),
   })
   .refine((v) => v.customerId || v.newCustomer, {
     message: "Ek Customer chunein ya naya Customer ka naam bharein.",
@@ -72,6 +73,7 @@ export async function POST(request: Request) {
         newCustomer: parsed.data.newCustomer,
         items: parsed.data.items,
         poAttachmentUrl: parsed.data.poAttachmentUrl,
+        transportArrangedBy: parsed.data.transportArrangedBy,
       },
       guard.session.userId
     );

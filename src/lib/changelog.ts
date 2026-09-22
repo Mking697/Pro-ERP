@@ -21,6 +21,14 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    id: "2026-09-22-tms-accounts",
+    date: "2026-09-22",
+    module: "TMS / Accounts",
+    title: "TMS (Transport) aur Accounts (Invoice) shuru ho gaye",
+    description:
+      "PDI Pass hote hi order ab TMS me transport arrange karne (Self shipment plan ya Party ke pickup ka Follow Up/Loading Dock confirm) aur Accounts me Invoice banane/Issue karne ke liye alag-alag aage badhta hai. Naya Order banate waqt ab 'Self' ya 'Party' transport arrangement bhi choose karna hota hai.",
+  },
+  {
     id: "2026-09-22-pdi",
     date: "2026-09-22",
     module: "PDI",

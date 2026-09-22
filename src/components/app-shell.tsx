@@ -127,6 +127,12 @@ export default async function AppShell({
   if (session.access.includes("PDI_FMS")) {
     fmsItems.push({ icon: "fms", href: "/pdi", label: "PDI" });
   }
+  if (session.access.includes("TMS_FMS")) {
+    fmsItems.push({ icon: "fms", href: "/tms", label: "TMS" });
+  }
+  if (session.access.includes("ACCOUNTS_FMS")) {
+    fmsItems.push({ icon: "fms", href: "/accounts", label: "Accounts" });
+  }
   for (const tpl of otherFmsTemplates) {
     fmsItems.push({ icon: "fms", href: `/fms/${tpl.templateId}`, label: tpl.templateName });
   }

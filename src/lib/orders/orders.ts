@@ -58,6 +58,12 @@ export type OrderActivityKind =
 
 export type OrderPaymentMode = "Cash" | "UPI" | "Bank_Transfer" | "Cheque" | "Card" | "Other";
 
+/** Who arranges dispatch transport — decides TMS's own branch (src/db/schema/tms.ts).
+ * `null` means "not yet decided" — every order created before this column existed, and
+ * TMS's own intake must surface that rather than silently guessing (see
+ * setTransportArrangedBy() below). */
+export type OrderTransportArrangedBy = "Self" | "Party" | null;
+
 /** Terminal — nothing in this module can move an order out of these. Ready_For_PDI is
  * Order FMS's own successful end (a future PDI module picks up from there); Cancelled is
  * reachable from every other status. */
@@ -87,6 +93,7 @@ export interface OrderItemRecord {
 export interface OrderRecord {
   id: string;
   source: string;
+  transportArrangedBy: OrderTransportArrangedBy;
   leadId: string;
   quotationId: string;
   customerId: string;
@@ -159,6 +166,7 @@ function rowToOrder(row: OrderRow, items: OrderItemRecord[]): OrderRecord {
   return {
     id: row.id,
     source: row.source,
+    transportArrangedBy: row.transportArrangedBy,
     leadId: row.leadId,
     quotationId: row.quotationId,
     customerId: row.customerId,
@@ -501,6 +509,9 @@ export interface CreateOrderFromQuotationInput {
   customerId?: string;
   newCustomer?: NewCustomerInput;
   poAttachmentUrl?: string;
+  /** Who arranges dispatch transport — collected up front now (see CLAUDE.md's Order FMS
+   * retrofit note) so TMS's own intake never has to guess it later. */
+  transportArrangedBy: "Self" | "Party";
 }
 
 /**
@@ -527,6 +538,9 @@ export async function createOrderFromQuotation(
   }
   if (quotationRow.orderId) {
     throw new OrderError("Is quotation se pehle hi ek Order ban chuka hai.");
+  }
+  if (input.transportArrangedBy !== "Self" && input.transportArrangedBy !== "Party") {
+    throw new OrderError('Transport arrangement "Self" ya "Party" hona chahiye.');
   }
 
   const quotationLineRows = await db
@@ -577,6 +591,7 @@ export async function createOrderFromQuotation(
     id: orderId,
     orgId,
     source: "Lead",
+    transportArrangedBy: input.transportArrangedBy,
     leadId: quotationRow.leadId,
     quotationId: input.quotationId,
     customerId: customer.customerId,
@@ -645,6 +660,8 @@ export interface CreateDirectOrderInput {
   newCustomer?: NewCustomerInput;
   items: DirectOrderItemInput[];
   poAttachmentUrl?: string;
+  /** Who arranges dispatch transport — see CreateOrderFromQuotationInput's own comment. */
+  transportArrangedBy: "Self" | "Party";
 }
 
 /** No Lead/Quotation behind it — a salesperson's own Order Form. Starts straight at
@@ -655,6 +672,9 @@ export async function createDirectOrder(
 ): Promise<OrderRecord> {
   if (input.items.length === 0) {
     throw new OrderError("Kam se kam ek item chunein.");
+  }
+  if (input.transportArrangedBy !== "Self" && input.transportArrangedBy !== "Party") {
+    throw new OrderError('Transport arrangement "Self" ya "Party" hona chahiye.');
   }
 
   const orgId = await getTenantOrgId();
@@ -699,6 +719,7 @@ export async function createDirectOrder(
     id: orderId,
     orgId,
     source: "Direct",
+    transportArrangedBy: input.transportArrangedBy,
     leadId: "",
     quotationId: "",
     customerId: customer.customerId,
@@ -1338,6 +1359,41 @@ async function topUpOneOrderForSku(orgId: string, orderId: string, sku: string):
       console.error(`[orders] noteStockAvailable failed for order ${orderId}:`, error);
     }
   }
+}
+
+// ---------------------------------------------------------------------------
+// Transport-arrangement backfill — for an order created before this column
+// existed (transportArrangedBy = null). TMS's own intake surfaces this gap
+// rather than guessing; this is the one action that closes it.
+// ---------------------------------------------------------------------------
+
+export async function setTransportArrangedBy(
+  orderId: string,
+  value: "Self" | "Party",
+  actorId: string
+): Promise<OrderRecord> {
+  if (value !== "Self" && value !== "Party") {
+    throw new OrderError('Transport arrangement "Self" ya "Party" hona chahiye.');
+  }
+  const orgId = await getTenantOrgId();
+  const order = await findById(orders, orgId, orderId);
+  if (!order) throw new OrderError("Order nahi mila.");
+  if (order.transportArrangedBy) {
+    throw new OrderError("Is order ka transport arrangement pehle se set hai.");
+  }
+
+  await updateById(orders, orgId, orderId, { transportArrangedBy: value });
+  await logOrderActivity(
+    orgId,
+    orderId,
+    "Note",
+    `Transport arrangement set kiya gaya: ${value === "Self" ? "Self (Freight Paid)" : "Party (To Pay)"}.`,
+    actorId
+  );
+
+  const updated = await getOrder(orderId);
+  if (!updated) throw new OrderError("Update ho gaya lekin order load nahi ho paya.");
+  return updated;
 }
 
 export async function cancelOrder(orderId: string, reason: string, actorId: string): Promise<OrderRecord> {

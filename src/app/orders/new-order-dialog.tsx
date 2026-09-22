@@ -15,6 +15,13 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import ItemPicker, { type PickerItem } from "@/components/item-picker";
 import FileUploadField from "@/components/file-upload-field";
 import { useT } from "@/components/preferences-provider";
@@ -42,6 +49,7 @@ export default function NewOrderDialog({ onCreated }: { onCreated: (order: Order
   const [lines, setLines] = useState<DraftLine[]>([emptyLine(0)]);
   const [nextKey, setNextKey] = useState(1);
   const [poAttachmentUrl, setPoAttachmentUrl] = useState("");
+  const [transportArrangedBy, setTransportArrangedBy] = useState<"Self" | "Party">("Self");
   const [saving, setSaving] = useState(false);
 
   function reset() {
@@ -51,6 +59,7 @@ export default function NewOrderDialog({ onCreated }: { onCreated: (order: Order
     setLines([emptyLine(0)]);
     setNextKey(1);
     setPoAttachmentUrl("");
+    setTransportArrangedBy("Self");
   }
 
   const total = lines.reduce((sum, l) => sum + (Number(l.qty) || 0) * (Number(l.rate) || 0), 0);
@@ -84,6 +93,7 @@ export default function NewOrderDialog({ onCreated }: { onCreated: (order: Order
         body: JSON.stringify({
           items,
           poAttachmentUrl,
+          transportArrangedBy,
           ...(mode === "existing" ? { customerId: selectedId } : { newCustomer }),
         }),
       });
@@ -200,7 +210,22 @@ export default function NewOrderDialog({ onCreated }: { onCreated: (order: Order
             </p>
           </div>
 
-          <div className="max-w-sm">
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div className="space-y-2">
+              <Label>{t("Transport Arrangement")}</Label>
+              <Select
+                value={transportArrangedBy}
+                onValueChange={(v) => v && setTransportArrangedBy(v as "Self" | "Party")}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Self">{t("Self (Hum Arrange Karenge — Freight Paid)")}</SelectItem>
+                  <SelectItem value="Party">{t("Party (Customer Khud Arrange Karega — To Pay)")}</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
             <FileUploadField
               label={t("PO Attachment (optional)")}
               value={poAttachmentUrl}
