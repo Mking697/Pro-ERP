@@ -21,6 +21,14 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    id: "2026-09-22-pdi",
+    date: "2026-09-22",
+    module: "PDI",
+    title: "PDI (Pre-Dispatch Inspection) shuru ho gaya",
+    description:
+      "Order 'Ready For PDI' hote hi PDI ke Intake me aata hai — 'Waiting for Stock'/'Ready to Inspect' khud dikhta hai, aur Pass/Fail record kiya ja sakta hai. Naya FG stock aane par shortage bhi khud clear ho jaata hai.",
+  },
+  {
     id: "2026-09-21-inward-vendor-lookup",
     date: "2026-09-21",
     module: "Inward",

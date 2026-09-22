@@ -295,6 +295,23 @@ export async function recordMovement(
     userId: input.userId,
   });
 
+  if (input.direction === "In" && input.sku) {
+    // Best-effort: FG stock arriving might clear a shortage some Order was waiting on
+    // (src/lib/orders/orders.ts's own recheckShortfallForSku(), which never throws on its
+    // own account). Dynamic import because this file is foundational and imported almost
+    // everywhere — a static import of orders.ts here would be a real circular-import risk
+    // (mirrors plans.ts's own dynamic import of fms/engine.ts for hasFmsLine()). Awaited,
+    // not fire-and-forget, so it actually finishes before a serverless function's response
+    // is sent and the runtime is frozen — but wrapped so it can never undo or fail the
+    // movement that already committed above.
+    try {
+      const { recheckShortfallForSku } = await import("@/lib/orders/orders");
+      await recheckShortfallForSku(input.sku);
+    } catch (error) {
+      console.error(`[ledger] recheckShortfallForSku(${input.sku}) failed:`, error);
+    }
+  }
+
   return rowToRecord(row);
 }
 
@@ -339,4 +356,22 @@ export async function recordMovementsBulk(inputs: BulkMovementInput[]): Promise<
   }));
 
   await db.insert(stockLedger).values(rows);
+
+  // Same best-effort recheck as the single-movement path above, run once per distinct SKU
+  // that just received an `In` — every caller of this bulk path today only ever inserts
+  // `In` rows (see this function's own doc comment), so no direction filter is dropped
+  // silently by not checking it per-row.
+  const inSkus = Array.from(
+    new Set(inputs.filter((i) => i.direction === "In" && i.sku).map((i) => i.sku))
+  );
+  if (inSkus.length > 0) {
+    try {
+      const { recheckShortfallForSku } = await import("@/lib/orders/orders");
+      for (const sku of inSkus) {
+        await recheckShortfallForSku(sku);
+      }
+    } catch (error) {
+      console.error("[ledger] recheckShortfallForSku (bulk) failed:", error);
+    }
+  }
 }

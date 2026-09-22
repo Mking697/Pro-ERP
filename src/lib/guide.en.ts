@@ -797,7 +797,7 @@ export const GUIDE_EN: GuideChapter[] = [
     id: "orders",
     title: "Order (Sales chain, part two)",
     description:
-      "After a Quotation is Accepted, or a Direct order altogether — through Payment/Credit review, Stock reservation, and Dispatch commit. Order FMS's own job ends here; PDI/Dispatch as its own module hasn't been built yet.",
+      "After a Quotation is Accepted, or a Direct order altogether — through Payment/Credit review, Stock reservation, and Dispatch commit. Order FMS's own job ends here; the moment dispatch is committed, the order moves into PDI's own intake.",
     sections: [
       {
         id: "orders-idea",
@@ -858,7 +858,7 @@ export const GUIDE_EN: GuideChapter[] = [
         summary: "A Dispatch Pending order just needs a commit date.",
         steps: [
           "On the order's detail, at the Dispatch Pending stage, pick a Date and click 'Commit'.",
-          "The order becomes 'Ready For PDI' — Order FMS's own job ends right here; the PDI/Dispatch module beyond that hasn't been built as its own piece yet.",
+          "The order becomes 'Ready For PDI' — Order FMS's own job ends right here; from here it shows up in PDI's (Pre-Dispatch Inspection) own intake queue.",
         ],
       },
       {
@@ -885,6 +885,44 @@ export const GUIDE_EN: GuideChapter[] = [
         ],
         notes: [
           "Doer/TAT are informational/planning fields only — any user with ORDER_FMS access can work any order's any step, same as Purchase FMS. Only the Credit-Hold Approver is actually locked down — only that user (or an Admin) may clear a Credit Hold.",
+        ],
+      },
+    ],
+  },
+
+  {
+    id: "pdi",
+    title: "PDI (Pre-Dispatch Inspection) — Sales chain, part three",
+    description:
+      "Inspecting an order's goods before dispatch. An order lands here in Intake the moment it becomes 'Ready For PDI'; TMS/Dispatch beyond this hasn't been built as its own module yet.",
+    sections: [
+      {
+        id: "pdi-idea",
+        title: "Waiting for Stock vs. Ready to Inspect",
+        audience: "PDI_FMS",
+        summary:
+          "Once an order goes 'Ready For PDI' in Order FMS, it becomes a candidate on PDI's own Intake tab — punching it in creates a new PDI inspection, which starts out Pending.",
+        how: [
+          "'Waiting for Stock' and 'Ready to Inspect' are never stored anywhere — they're worked out fresh every time from the order's own items: if any line still has a shortage greater than 0, it's 'Waiting for Stock'; otherwise it's 'Ready to Inspect'.",
+          "While an order is 'Waiting for Stock', the Inspect action (Pass/Fail) isn't offered at all — goods that haven't actually arrived yet can't be inspected.",
+          "The moment new FG stock arrives — from production, a manual stock-in, or a bulk import, it doesn't matter which — Order FMS automatically tries to clear this order's remaining shortage on its own; there is no manual 'recheck' button anywhere. Once the shortage clears, the PDI board shows 'Ready to Inspect' the next time it's opened.",
+        ],
+        notes: [
+          "If two orders are both waiting on the same SKU and the stock that arrives isn't enough to clear both, the order that was created first is fully satisfied before whatever's left goes to the newer order.",
+        ],
+      },
+      {
+        id: "pdi-inspect",
+        title: "Recording a Pass or Fail",
+        audience: "PDI_FMS",
+        summary: "Once an order is 'Ready to Inspect', its detail lets you record Pass or Fail — a remark and a report attachment are both optional.",
+        steps: [
+          "Click the inspection on the PDI board and look over the order's items (qty/reserved/short).",
+          "Optionally write a remark and/or attach a report, then click 'Pass' or 'Fail'.",
+        ],
+        notes: [
+          "Passing sets the inspection to 'Passed', and who passed it and when is recorded in History.",
+          "Failing leaves the inspection right where it was — 'Pending'. No new inspection is created; the same one stays open for another Pass/Fail attempt. Writing the reason for the fail as a remark helps whoever re-inspects it know exactly what to check.",
         ],
       },
     ],

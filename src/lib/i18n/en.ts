@@ -1141,4 +1141,33 @@ export const EN: Record<string, string> = {
   "Sirf ye user (ya Admin) hi kisi order ka Credit Hold clear kar sakta hai — ye step ka Doer nahi hai.":
     "Only this user (or an Admin) may clear an order's Credit Hold — this is not the same as that step's own Doer.",
   "Approver": "Approver",
+
+  // --- pdi -----------------------------------------------------------------------------
+  "PDI": "PDI",
+  "Order Ready For PDI hote hi Intake me aata hai — inspect karne se pehle dekhein ki stock ka wait to nahi ho raha, phir Pass ya Fail record karein.":
+    "Once an Order is Ready For PDI it lands in Intake — before inspecting, check it isn't still waiting on stock, then record Pass or Fail.",
+  "PDI list load nahi ho payi.": "Could not load the PDI list.",
+  "PDI shuru ho gayi.": "PDI started.",
+  "Abhi koi naya PDI candidate nahi hai": "There are no new PDI candidates yet",
+  "Koi order Ready For PDI hote hi wo yahan aa jaayega.": "Once an order is Ready For PDI it will appear here.",
+  "PDI Shuru Karein (Waiting)": "Start PDI (Waiting)",
+  "PDI Shuru Karein": "Start PDI",
+  "Abhi koi PDI inspection nahi hai": "There are no PDI inspections yet",
+  "Intake se koi order punch hote hi wo yahan aa jaayega.": "Once an order is punched in from Intake it will appear here.",
+  "Waiting for Stock": "Waiting for Stock",
+  "Ready to Inspect": "Ready to Inspect",
+  "Overdue": "Overdue",
+  "PDI load nahi ho payi.": "Could not load the PDI inspection.",
+  "Inspection Pass ho gayi.": "Inspection passed.",
+  "Inspection Fail record ho gayi.": "Inspection failure recorded.",
+  "Details aur inspection action": "Details and the inspection action",
+  "Order Items": "Order Items",
+  "Inspection Pass ho chuki hai": "Inspection has already passed",
+  "Report dekhein": "View report",
+  "Ye order abhi stock ka wait kar raha hai — jab tak har line ka shortage clear na ho, inspect nahi ho sakta. Naya stock aane par ye automatically clear ho jaayega.":
+    "This order is still waiting on stock — it can't be inspected until every line's shortage clears. That will happen automatically once new stock arrives.",
+  "Inspection": "Inspection",
+  "Report (optional)": "Report (optional)",
+  "Pass": "Pass",
+  "Fail": "Fail",
 };

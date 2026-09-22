@@ -1200,6 +1200,146 @@ export async function commitDispatch(
 // Cancel — from any non-terminal status
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Automatic shortfall recheck — fired (best-effort) from ledger.ts's own recordMovement()/
+// recordMovementsBulk() whenever FG stock arrives, from ANY source (a Production Line's
+// final Action, a manual stock-in, a bulk import's opening stock — anything at all). This
+// lives here, not in PDI's own lib, because the reservation data
+// (order_items.reservedQty/shortageQty) is Order FMS's own — PDI only ever reads it live,
+// never touches it (see src/lib/pdi/pdi.ts's own header comment).
+// ---------------------------------------------------------------------------
+
+/**
+ * Tops up every order still short on `sku`, as far as the newly-available Free stock
+ * allows, and clears the shortage exactly as much as that permits — no manual "recheck"
+ * button anywhere, this runs automatically the instant stock is recorded.
+ *
+ * Never throws — this is called from deep inside recordMovement()'s own hot path (a bad
+ * SKU or a network blip here must never be able to undo or fail a real stock write that
+ * already committed), so every failure is caught and logged internally.
+ *
+ * FAIRNESS when two+ orders compete for the same newly-arrived stock: orders are processed
+ * one at a time, strictly oldest (`createdAt`) first, and the Free-stock snapshot is
+ * re-read fresh before each order is topped up — so an earlier (older) order "spends" the
+ * units it just claimed before the next one even looks, rather than every order racing off
+ * one stale snapshot and over-allocating the same units on paper. This is a simple
+ * first-come-first-served rule, not proportional splitting — the oldest unmet order always
+ * wins whatever is available before a newer one sees anything.
+ */
+export async function recheckShortfallForSku(sku: string): Promise<void> {
+  if (!sku) return;
+  try {
+    const orgId = await getTenantOrgId();
+
+    const [orderRows, itemRows] = await Promise.all([
+      listByOrg(orders, orgId).catch(() => [] as OrderRow[]),
+      listByOrg(orderItems, orgId).catch(() => [] as OrderItemRow[]),
+    ]);
+
+    const orderById = new Map(orderRows.map((o) => [o.id, o]));
+    const reservingOrderIds = new Set(
+      orderRows.filter((o) => RESERVING_ORDER_STATUSES.includes(o.status)).map((o) => o.id)
+    );
+
+    const shortOrderIds = Array.from(
+      new Set(
+        itemRows
+          .filter(
+            (r) =>
+              r.sku === sku && reservingOrderIds.has(r.orderId) && (Number(r.shortageQty) || 0) > 0
+          )
+          .map((r) => r.orderId)
+      )
+    ).sort((a, b) => {
+      const ta = orderById.get(a)?.createdAt.getTime() ?? 0;
+      const tb = orderById.get(b)?.createdAt.getTime() ?? 0;
+      return ta - tb; // oldest first — see this function's own fairness note above.
+    });
+
+    for (const orderId of shortOrderIds) {
+      await topUpOneOrderForSku(orgId, orderId, sku);
+    }
+  } catch (error) {
+    console.error(`[orders] recheckShortfallForSku(${sku}) failed:`, error);
+  }
+}
+
+/** Tops up exactly one order's own lines for `sku`, against a Free-stock snapshot read
+ * fresh for this order alone (see recheckShortfallForSku()'s fairness note). */
+async function topUpOneOrderForSku(orgId: string, orderId: string, sku: string): Promise<void> {
+  const order = await findById(orders, orgId, orderId);
+  if (!order || !RESERVING_ORDER_STATUSES.includes(order.status)) return;
+
+  const lineRows = await db
+    .select()
+    .from(orderItems)
+    .where(and(eq(orderItems.orgId, orgId), eq(orderItems.orderId, orderId), eq(orderItems.sku, sku)));
+  const shortLines = lineRows
+    .filter((r) => (Number(r.shortageQty) || 0) > 0)
+    .sort((a, b) => Number(a.lineNo) - Number(b.lineNo));
+  if (shortLines.length === 0) return;
+
+  const [ledger, committed, inTransit, reserved] = await Promise.all([
+    listLedger(),
+    committedBySku(),
+    inTransitBySku(),
+    orderReservedBySku(),
+  ]);
+  let available = positionFor(sku, onHandBySku(ledger), committed, inTransit, reserved).free;
+  if (available <= 0) return;
+
+  let totalToppedUp = 0;
+  for (const line of shortLines) {
+    if (available <= 0) break;
+    const shortage = Number(line.shortageQty) || 0;
+    const topUp = round3(Math.min(shortage, available));
+    if (topUp <= 0) continue;
+
+    const newReserved = round3((Number(line.reservedQty) || 0) + topUp);
+    const newShortage = round3(shortage - topUp);
+    available = round3(available - topUp);
+    totalToppedUp = round3(totalToppedUp + topUp);
+
+    await db
+      .update(orderItems)
+      .set({ reservedQty: String(newReserved), shortageQty: String(newShortage) })
+      .where(
+        and(
+          eq(orderItems.orgId, orgId),
+          eq(orderItems.orderId, orderId),
+          eq(orderItems.lineNo, line.lineNo)
+        )
+      );
+  }
+
+  if (totalToppedUp <= 0) return;
+
+  const allLines = await loadOrderItems(orgId, orderId);
+  const stillShort = allLines.some((l) => l.shortageQty > 0);
+
+  await logOrderActivity(
+    orgId,
+    orderId,
+    "Stock_Reserved",
+    stillShort
+      ? `Naya stock aane par SKU ${sku} ka ${totalToppedUp} reserve ho gaya — kuch shortage abhi bhi baaki hai.`
+      : `Naya stock aane par SKU ${sku} ka bacha hua shortage automatically clear ho gaya (${totalToppedUp} reserve hua) — order ab poora reserved hai.`,
+    "SYSTEM"
+  );
+
+  if (!stillShort && order.pdiId) {
+    try {
+      const { noteStockAvailable } = await import("@/lib/pdi/pdi");
+      await noteStockAvailable(
+        order.pdiId,
+        `Order ${orderId} ka stock ab pura available hai — inspection ke liye ready hai.`
+      );
+    } catch (error) {
+      console.error(`[orders] noteStockAvailable failed for order ${orderId}:`, error);
+    }
+  }
+}
+
 export async function cancelOrder(orderId: string, reason: string, actorId: string): Promise<OrderRecord> {
   const orgId = await getTenantOrgId();
   const order = await findById(orders, orgId, orderId);

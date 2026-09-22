@@ -839,7 +839,7 @@ export const GUIDE: GuideChapter[] = [
     id: "orders",
     title: "Order (Sales chain ka doosra hissa)",
     description:
-      "Quotation Accept ho jaane ke baad, ya seedha Direct — payment/credit review, stock reserve aur dispatch commit tak. Yahan Order FMS ka kaam khatam hota hai; aage PDI/Dispatch abhi alag module nahi bana hai.",
+      "Quotation Accept ho jaane ke baad, ya seedha Direct — payment/credit review, stock reserve aur dispatch commit tak. Yahan Order FMS ka kaam khatam hota hai; dispatch commit hote hi order PDI ke intake me chala jaata hai.",
     sections: [
       {
         id: "orders-idea",
@@ -900,7 +900,7 @@ export const GUIDE: GuideChapter[] = [
         summary: "Dispatch Pending order ke liye bas ek commit date daalni hai.",
         steps: [
           "Order detail me 'Dispatch Pending' stage par Date chunein aur 'Commit Karein' dabayein.",
-          "Order 'Ready For PDI' ho jaata hai — Order FMS ka apna kaam yahin khatam ho jaata hai; aage ka PDI/Dispatch module abhi alag se bana nahi hai.",
+          "Order 'Ready For PDI' ho jaata hai — Order FMS ka apna kaam yahin khatam ho jaata hai; aage PDI (Pre-Dispatch Inspection) me ye order intake queue me dikhne lagta hai.",
         ],
       },
       {
@@ -927,6 +927,44 @@ export const GUIDE: GuideChapter[] = [
         ],
         notes: [
           "Doer/TAT sirf jaankari/planning ke liye hain — koi bhi ORDER_FMS access wala user kisi bhi order ka koi bhi step kaam kar sakta hai, jaise Purchase FMS me hota hai. Sirf Credit-Hold Approver hi asal me lock hai — sirf wahi user (ya Admin) Credit Hold clear kar sakta hai.",
+        ],
+      },
+    ],
+  },
+
+  {
+    id: "pdi",
+    title: "PDI (Pre-Dispatch Inspection) — Sales chain ka teesra hissa",
+    description:
+      "Dispatch se pehle order ke goods inspect karna. Order 'Ready For PDI' hote hi yahan Intake me aa jaata hai; aage TMS/Dispatch abhi alag module nahi bana hai.",
+    sections: [
+      {
+        id: "pdi-idea",
+        title: "Waiting for Stock vs Ready to Inspect",
+        audience: "PDI_FMS",
+        summary:
+          "Ek order jab Order FMS se 'Ready For PDI' hota hai, PDI ke Intake tab me candidate ban kar aa jaata hai — punch karte hi ek naya PDI inspection ban jaata hai, jo Pending se shuru hota hai.",
+        how: [
+          "'Waiting for Stock' ya 'Ready to Inspect' — ye do label kahin store nahi hote, har baar order ke apne items dekh kar taaza nikaale jaate hain: agar kisi bhi line ka shortage 0 se zyada hai, to 'Waiting for Stock'; warna 'Ready to Inspect'.",
+          "Jab tak order 'Waiting for Stock' hai, Inspect action (Pass/Fail) diya hi nahi jaata — kyunki jo maal abhi tak aaya hi nahi, use inspect nahi kiya ja sakta.",
+          "Naya FG stock aate hi (chahe production se, chahe manual stock-in se, chahe bulk import se) Order FMS khud-ba-khud is order ka bacha hua shortage clear karne ki koshish karta hai — koi manual 'recheck' button dabana nahi padta. Shortage clear hote hi PDI board apne aap agli baar khulte hi 'Ready to Inspect' dikhayega.",
+        ],
+        notes: [
+          "Agar do orders ek hi SKU ke liye stock ka wait kar rahe hain aur utna stock nahi aata ki dono ka pura shortage clear ho jaaye, to jo order pehle bana tha (purana order) pehle poora satisfy kiya jaata hai, phir bacha hua stock naye order ke liye jaata hai.",
+        ],
+      },
+      {
+        id: "pdi-inspect",
+        title: "Pass ya Fail record karna",
+        audience: "PDI_FMS",
+        summary: "Jab order 'Ready to Inspect' hai, uske detail me Pass ya Fail record kiya ja sakta hai — remark aur report attachment dono optional hain.",
+        steps: [
+          "PDI board me us inspection par click karein, order ke items (qty/reserved/short) dekh lein.",
+          "Chahe to Remark likhein aur/ya report attach karein, phir 'Pass' ya 'Fail' dabayein.",
+        ],
+        notes: [
+          "Pass karne par inspection 'Passed' ho jaati hai aur History me record ho jaata hai kisne/kab Pass kiya.",
+          "Fail karne par inspection wahi ki wahi 'Pending' rehti hai — koi nayi inspection nahi banti, wahi ek dobara Pass/Fail ke liye khuli rehti hai. Fail ki wajah remark me likh dena madadgar hota hai, taaki dobara inspect karne wale ko pata rahe kya theek karna hai.",
         ],
       },
     ],
