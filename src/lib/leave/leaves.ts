@@ -9,6 +9,7 @@ import { getUserById } from "@/lib/auth/users";
 import { listLeaveApprovalSteps } from "@/lib/leave/approvalSetup";
 import { activateLeave } from "@/lib/leave/reassignment";
 import { todayIST } from "@/lib/dateUtil";
+import { daysBetween, getLeaveQuotas, getUsedDaysThisYear } from "@/lib/leave/quotas";
 
 export const LEAVE_TYPES = ["Casual", "Sick", "Earned", "Other"] as const;
 export type LeaveType = (typeof LEAVE_TYPES)[number];
@@ -150,6 +151,22 @@ export async function createLeave(input: CreateLeaveInput): Promise<LeaveRecord>
   if (!doer) throw new LeaveError("Doer nahi mila.");
   if (!buddy || buddy.Status !== "Active") {
     throw new LeaveError("Buddy ek active user hona chahiye.");
+  }
+
+  // Quota gate — a hard refusal, not a warning, so every leave that ever exists is by
+  // construction within its type's annual quota (a type with no quota row is unlimited).
+  const requestedDays = daysBetween(input.startDate, input.endDate);
+  const quotas = await getLeaveQuotas();
+  const quota = quotas[input.leaveType];
+  if (quota) {
+    const year = Number(input.startDate.slice(0, 4));
+    const used = await getUsedDaysThisYear(input.doerId, input.leaveType, year);
+    const remaining = quota - used;
+    if (requestedDays > remaining) {
+      throw new LeaveError(
+        `${input.leaveType} leave ka is saal ka balance ${remaining} din bacha hai — ${requestedDays} din ki request quota se zyada hai.`
+      );
+    }
   }
 
   const approverIds = await resolveApprovers(input.doerId);

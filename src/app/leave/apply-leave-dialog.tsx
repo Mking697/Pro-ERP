@@ -42,6 +42,7 @@ export default function ApplyLeaveDialog({
   const [form, setForm] = useState(EMPTY);
   const [saving, setSaving] = useState(false);
   const [userOptions, setUserOptions] = useState<UserOption[]>([]);
+  const [balances, setBalances] = useState<Record<string, number | null>>({});
 
   useEffect(() => {
     if (!open) return;
@@ -49,7 +50,16 @@ export default function ApplyLeaveDialog({
       .then((res) => res.json())
       .then((data: { users?: UserOption[] }) => setUserOptions(data.users ?? []))
       .catch(() => toast.error(t("Users load nahi ho paye.")));
+    fetch("/api/leave/my-balance")
+      .then((res) => res.json())
+      .then((data: { balances?: Record<string, number | null> }) => setBalances(data.balances ?? {}))
+      .catch(() => {
+        // Balance display is a convenience, not a gate — createLeave() enforces the real
+        // quota server-side regardless, so a failed fetch here just shows nothing.
+      });
   }, [open, t]);
+
+  const selectedBalance = balances[form.leaveType];
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -107,6 +117,11 @@ export default function ApplyLeaveDialog({
                   ))}
                 </SelectContent>
               </Select>
+              {selectedBalance !== undefined && selectedBalance !== null && (
+                <p className="text-xs text-muted-foreground">
+                  {t("Is saal ka balance:")} {selectedBalance} {t("din bache hain")}
+                </p>
+              )}
             </div>
             <div className="space-y-2">
               <Label htmlFor="buddy">{t("Buddy")}</Label>

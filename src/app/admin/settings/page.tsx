@@ -6,6 +6,7 @@ import HolidayListForm from "./holiday-list-form";
 import InwardIqcTatForm from "./inward-iqc-tat-form";
 import PurchaseSetupForm from "./purchase-setup-form";
 import LeaveApprovalSetupForm from "./leave-approval-setup-form";
+import LeaveQuotaSetupForm from "./leave-quota-setup-form";
 import QuotationSetupForm from "./quotation-setup-form";
 import OrderSetupForm from "./order-setup-form";
 import { getT } from "@/lib/i18n/server";
@@ -28,6 +29,7 @@ export default async function AdminSettingsPage() {
       <QuotationSetupForm />
       <OrderSetupForm />
       <LeaveApprovalSetupForm />
+      <LeaveQuotaSetupForm />
     </div>
   );
 }
