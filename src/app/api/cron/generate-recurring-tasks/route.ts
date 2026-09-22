@@ -3,6 +3,7 @@ import { requireRole } from "@/lib/auth/guard";
 import { generateDueRecurringOccurrences } from "@/lib/recurringGenerator";
 import { processLeaveTransitions } from "@/lib/leave/reassignment";
 import { forEachActiveOrganization } from "@/lib/platform/runner";
+import { logError } from "@/lib/errorLog";
 
 // Walking every tenant sequentially takes longer than a single-org run ever did.
 export const maxDuration = 60;
@@ -27,6 +28,18 @@ export async function POST(request: Request) {
   // A scheduled run belongs to no logged-in user, so it generates for every organization.
   if (isCronCall(request)) {
     const organizations = await forEachActiveOrganization(() => runDailyJobs());
+    // forEachActiveOrganization already isolates one org's failure from the rest, but
+    // nothing was previously watching that result — a broken org's daily jobs could throw
+    // every night with nobody noticing. Logged here so it shows up at /platform instead.
+    for (const org of organizations) {
+      if (!org.ok) {
+        await logError({
+          orgId: org.orgId,
+          routePath: "cron:generate-recurring-tasks",
+          message: org.error ?? "Unknown error",
+        });
+      }
+    }
     return NextResponse.json({ scope: "all-organizations", organizations });
   }
 

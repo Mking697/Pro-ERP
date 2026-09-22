@@ -96,3 +96,35 @@ export const rateLimitHits = pgTable("rate_limit_hits", {
   windowStart: timestamp("window_start", { withTimezone: true }).notNull(),
   count: integer("count").notNull().default(0),
 });
+
+/**
+ * Server error diagnostics, readable at `/platform` (Platform Admin only) — the
+ * self-hosted alternative to a Sentry-style tool (no external account/DSN needed).
+ * Written by `src/instrumentation.ts`'s `onRequestError` hook (catches anything an
+ * uncaught Route Handler/Server Component/Server Action throws) and by a small number of
+ * explicit call sites for failures that are already caught and would otherwise stay
+ * silent — a cron job's per-organization failure (`forEachActiveOrganization`'s own result
+ * already swallows these into a JSON field nobody's watching) and a WhatsApp send that
+ * fails (`sendWhatsAppMessage()` already never throws by design, so its callers can't
+ * "catch" it either). `logError()` (src/lib/errorLog.ts) is the one write path — always
+ * best-effort, wrapped in its own try/catch, since logging a failure must never itself
+ * throw and mask the original error.
+ *
+ * `orgId` is a plain string, deliberately NOT a foreign key to `organizations` — this is
+ * diagnostic/audit data, not tenant-owned business data, and is meant to survive an
+ * org's own deletion (a real incident's log entry shouldn't vanish just because the org
+ * was later removed). That also means this table is intentionally left OUT of
+ * `deleteOrganization()`'s cascade — the working notes' "every new tenant-scoped table
+ * must be added to that cascade" rule does not apply here, because this was never a
+ * tenant-owned table in the first place.
+ */
+export const errorLogs = pgTable("error_logs", {
+  id: text("id").primaryKey(),
+  orgId: text("org_id").notNull().default(""),
+  routePath: text("route_path").notNull().default(""),
+  routeType: text("route_type").notNull().default(""),
+  message: text("message").notNull(),
+  digest: text("digest").notNull().default(""),
+  stack: text("stack").notNull().default(""),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});

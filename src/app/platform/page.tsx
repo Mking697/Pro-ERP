@@ -5,6 +5,7 @@ import { isPlatformAdmin } from "@/lib/platform/admin";
 import AppShell from "@/components/app-shell";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import OrganizationsTable from "./organizations-table";
+import ErrorLogsTable from "./error-logs-table";
 import PageHeader from "@/components/page-header";
 import { getT } from "@/lib/i18n/server";
 
@@ -40,6 +41,18 @@ export default async function PlatformPage() {
             </CardDescription>
           </CardHeader>
           <CardContent />
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>{t("Server Errors")}</CardTitle>
+            <CardDescription>
+              {t("Kisi bhi organization me hui uncaught server error yahan dikhti hai — koi bhi cron job ki nakami ya WhatsApp send fail bhi. Sirf padhne ke liye.")}
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <ErrorLogsTable />
+          </CardContent>
         </Card>
       </div>
     </AppShell>

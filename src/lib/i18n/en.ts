@@ -274,6 +274,15 @@ export const EN: Record<string, string> = {
   "Suspend karne ka matlab": "What suspending does",
   "Is install par chal rahe saare organizations. Ye sirf platform operator ke liye hai — kisi organization ke Admin ko ye page dikhta hi nahi.":
     "Every organization running on this install. This is for the platform operator only — an organization's own Admin never sees this page.",
+  "Server Errors": "Server Errors",
+  "Kisi bhi organization me hui uncaught server error yahan dikhti hai — koi bhi cron job ki nakami ya WhatsApp send fail bhi. Sirf padhne ke liye.":
+    "Any uncaught server error across every organization shows up here — including a cron job's own failure or a failed WhatsApp send. Read only.",
+  "Error logs load nahi ho paye.": "Could not load error logs.",
+  "Abhi tak koi server error record nahi hua hai.": "No server errors have been recorded yet.",
+  "Waqt": "Time",
+  "Organization": "Organization",
+  "Route": "Route",
+  "Message": "Message",
 
   // --- empty and filtered states ---------------------------------------------------
   "Abhi koi data nahi.": "No data yet.",

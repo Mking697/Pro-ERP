@@ -1,4 +1,6 @@
 import { getSetting } from "@/lib/settings";
+import { getTenantOrgId } from "@/lib/tenant";
+import { logError } from "@/lib/errorLog";
 
 const DEFAULT_BASE_URL = "https://chatxflow.online";
 
@@ -52,8 +54,21 @@ export async function sendWhatsAppMessage(phone: string, message: string): Promi
 
     const body = await res.json().catch(() => ({}) as Record<string, unknown>);
     if (res.ok && body.success) return { ok: true };
-    return { ok: false, error: (body.error as string) || `HTTP ${res.status}` };
+
+    const apiError = (body.error as string) || `HTTP ${res.status}`;
+    await logWhatsAppFailure(apiError);
+    return { ok: false, error: apiError };
   } catch (err) {
-    return { ok: false, error: err instanceof Error ? err.message : "Unknown error" };
+    const message = err instanceof Error ? err.message : "Unknown error";
+    await logWhatsAppFailure(message);
+    return { ok: false, error: message };
   }
+}
+
+/** A genuine send failure (not "ChatXFlow isn't configured", which is expected state for
+ * most orgs) — logged so it shows up at /platform instead of only ever being a silently
+ * swallowed { ok: false } nobody happened to check. */
+async function logWhatsAppFailure(message: string): Promise<void> {
+  const orgId = await getTenantOrgId().catch(() => "");
+  await logError({ orgId, routePath: "whatsapp:send", message });
 }
