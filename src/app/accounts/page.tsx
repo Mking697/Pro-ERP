@@ -3,8 +3,11 @@ import { redirect } from "next/navigation";
 import { verifySession, SESSION_COOKIE } from "@/lib/auth/session";
 import AppShell from "@/components/app-shell";
 import PageHeader from "@/components/page-header";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { getT } from "@/lib/i18n/server";
 import AccountsBoard from "./accounts-board";
+import PayablesBoard from "./payables-board";
+import LedgerBoard from "./ledger-board";
 
 export default async function AccountsPage() {
   const t = await getT();
@@ -21,10 +24,25 @@ export default async function AccountsPage() {
         <PageHeader
           title={t("Accounts")}
           description={t(
-            "PDI Pass hote hi order yahan Invoice banane ke liye aata hai — Invoice No., E-way Bill aur documents dekar Issue karein."
+            "Receivables (Invoice), Payables (Bill) aur poori General Ledger — Chart of Accounts, Trial Balance, P&L aur Balance Sheet."
           )}
         />
-        <AccountsBoard />
+        <Tabs defaultValue="receivables">
+          <TabsList>
+            <TabsTrigger value="receivables">{t("Receivables")}</TabsTrigger>
+            <TabsTrigger value="payables">{t("Payables")}</TabsTrigger>
+            <TabsTrigger value="ledger">{t("Ledger")}</TabsTrigger>
+          </TabsList>
+          <TabsContent value="receivables" className="mt-4">
+            <AccountsBoard />
+          </TabsContent>
+          <TabsContent value="payables" className="mt-4">
+            <PayablesBoard />
+          </TabsContent>
+          <TabsContent value="ledger" className="mt-4">
+            <LedgerBoard />
+          </TabsContent>
+        </Tabs>
       </div>
     </AppShell>
   );

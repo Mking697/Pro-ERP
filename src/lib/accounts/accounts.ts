@@ -7,6 +7,7 @@ import { getTenantOrgId } from "@/lib/tenant";
 import { generateId } from "@/lib/id";
 import { getOrder, listOrderPayments, type OrderRecord } from "@/lib/orders/orders";
 import { round2 } from "@/lib/leads/quotationMath";
+import { postJournalEntry, SYSTEM_ACCOUNT_CODES } from "@/lib/accounts/ledger";
 
 /**
  * Accounts — Receivables seed, leg 5 alongside TMS (both pick up independently from
@@ -274,5 +275,28 @@ export async function issueInvoice(invoiceId: string, actorId: string): Promise<
     issuedAt: new Date(),
   });
   if (!updated) throw new AccountsError("Issue nahi ho paya.");
+
+  // GL posting — best-effort, matching this codebase's "never let a broken downstream
+  // write undo something already saved" convention (see emitFmsEvent/notifyStepComplete):
+  // the invoice is already Issued by this point regardless of whether this succeeds.
+  const finalValue = Number(updated.finalValue) || 0;
+  if (finalValue > 0) {
+    try {
+      await postJournalEntry({
+        orgId,
+        description: `Invoice ${invoiceId} issued — Order ${updated.orderId}`,
+        sourceType: "Invoice",
+        sourceId: invoiceId,
+        createdBy: actorId,
+        lines: [
+          { accountCode: SYSTEM_ACCOUNT_CODES.ACCOUNTS_RECEIVABLE, debit: finalValue },
+          { accountCode: SYSTEM_ACCOUNT_CODES.SALES_REVENUE, credit: finalValue },
+        ],
+      });
+    } catch (error) {
+      console.error(`[accounts] postJournalEntry failed for invoice ${invoiceId}:`, error);
+    }
+  }
+
   return rowToInvoice(updated);
 }

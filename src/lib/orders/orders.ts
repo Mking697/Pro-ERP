@@ -835,6 +835,27 @@ export async function recordPayment(
     actorId
   );
 
+  // GL posting — best-effort (dynamic import: accounts/ledger.ts is a separate, generic
+  // module that never imports back into orders.ts, so this is not actually breaking a
+  // cycle, but it keeps the same "a broken downstream write must never undo the payment
+  // that already saved" shape every other best-effort chain in this file already follows).
+  try {
+    const { postJournalEntry, SYSTEM_ACCOUNT_CODES } = await import("@/lib/accounts/ledger");
+    await postJournalEntry({
+      orgId,
+      description: `Payment received — Order ${orderId}`,
+      sourceType: "ReceivablePayment",
+      sourceId: orderId,
+      createdBy: actorId,
+      lines: [
+        { accountCode: SYSTEM_ACCOUNT_CODES.CASH_BANK, debit: amount },
+        { accountCode: SYSTEM_ACCOUNT_CODES.ACCOUNTS_RECEIVABLE, credit: amount },
+      ],
+    });
+  } catch (error) {
+    console.error(`[orders] postJournalEntry failed for payment on order ${orderId}:`, error);
+  }
+
   const updated = await getOrder(orderId);
   if (!updated) throw new OrderError("Payment record ho gaya lekin order load nahi ho paya.");
   return updated;
