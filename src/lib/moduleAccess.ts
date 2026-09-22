@@ -126,6 +126,18 @@ export const MODULE_ACCESS = [
     description: "Dispatch se pehle order ke goods inspect kar sakta hai",
     href: "/pdi",
   },
+  {
+    key: "TMS_FMS",
+    label: "TMS (Transport)",
+    description: "Order ke liye vehicle/transport arrange kar sakta hai, Loading Dock confirm kar sakta hai",
+    href: "/tms",
+  },
+  {
+    key: "ACCOUNTS_FMS",
+    label: "Accounts (Invoice/Receivables)",
+    description: "Order ki Invoice, E-way Bill aur dispatch documents bana sakta hai",
+    href: "/accounts",
+  },
 ] as const;
 
 export type ModuleAccessKey = (typeof MODULE_ACCESS)[number]["key"];

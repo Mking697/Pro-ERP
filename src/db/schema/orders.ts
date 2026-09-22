@@ -33,6 +33,13 @@ export const orderStatusEnum = pgEnum("order_status", [
   "Cancelled",
 ]);
 
+// Who arranges the dispatch vehicle — decides TMS's own branch (src/db/schema/tms.ts):
+// "Self" runs the full vendor/vehicle/freight flow ("Freight Paid"); "Party" (the customer
+// arranges their own pickup) only needs a Follow-up + Loading-Dock confirmation ("To Pay").
+// Nullable, no default: orders created before this column existed have neither, and TMS's
+// own intake must treat that as "not yet decided" rather than silently guessing one.
+export const transportArrangedByEnum = pgEnum("transport_arranged_by", ["Self", "Party"]);
+
 export const orders = pgTable("orders", {
   // Order_ID, e.g. "ORD-xxxx".
   id: text("id").primaryKey(),
@@ -41,6 +48,7 @@ export const orders = pgTable("orders", {
     .references(() => organizations.id),
   // ORDER_SOURCES ("Lead" | "Direct") — closed but not itself a Status column, kept text.
   source: text("source").notNull().default("Direct"),
+  transportArrangedBy: transportArrangedByEnum("transport_arranged_by"),
   // "" for a Direct order.
   leadId: text("lead_id").notNull().default(""),
   quotationId: text("quotation_id").notNull().default(""),
