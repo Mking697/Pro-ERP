@@ -1399,7 +1399,7 @@ export const GUIDE_EN: GuideChapter[] = [
           "Anything the Buddy actually finished during the leave stays finished — it does not move back, since it already happened under the Buddy's name.",
         ],
         notes: [
-          "V1 does not track a leave balance or quota — only approval and reassignment. How many days of leave remain is not tracked yet.",
+          "Leave balance is a simple annual quota (whatever the Admin has set per type in Settings) — no accrual, no carry-forward, it resets automatically each calendar year. A type with no quota configured has no limit at all.",
           "The Doer's work sits alongside the Buddy's own work — both show up in the same place (the Tasks/FMS page), nothing separate to go hunting for.",
         ],
       },
@@ -1415,6 +1415,8 @@ export const GUIDE_EN: GuideChapter[] = [
           "Write a reason and press Apply.",
         ],
         notes: [
+          "As soon as you pick a Leave Type, if that type has a quota configured, this year's remaining balance shows up right there — before you even submit.",
+          "Requesting more days than the balance allows is refused outright (the error message shows both the balance and the days requested) — no warning, a hard block.",
           "If the approval chain is empty (the Admin hasn't set one up), the leave is Approved instantly — nothing to wait on.",
           "A leave that is still Pending or Approved can be cancelled — cancelling immediately reverts any reassignment that had already happened.",
         ],
@@ -1466,6 +1468,24 @@ export const GUIDE_EN: GuideChapter[] = [
         notes: [
           "An empty chain means every leave is Approved instantly — nothing is waited on.",
           "A 'Reporting Manager' step only works once that Doer's own profile has a Reporting Manager set (when creating or editing the user) — if not, that step is simply skipped for them.",
+        ],
+      },
+      {
+        id: "leave-quota-setup",
+        title: "Setting Leave Quotas",
+        audience: "admin",
+        summary:
+          "Admin → Settings → Leave — Quota Setup sets an annual day limit per Leave Type — opt-in per type, on top of the approval chain above.",
+        steps: [
+          "Open Admin → Settings → Leave — Quota Setup.",
+          "For any Leave Type you want capped, enter its annual days (e.g. Casual = 12).",
+          "Leave a type's field blank or 0 if you don't want a limit on it.",
+          "Save.",
+        ],
+        notes: [
+          "This is a flat annual quota — no accrual (building up month by month) and no carry-forward (rolling into next year), by design.",
+          "A request for more days than the balance allows is refused outright, at filing time — an 'over quota' state can never exist once a leave is approved.",
+          "Pending leaves count toward this year's used days too (not just Approved ones) — so two separate pending requests can't each look like they 'fit' the same remaining balance, only for both to later be approved.",
         ],
       },
     ],

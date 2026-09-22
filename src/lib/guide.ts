@@ -1439,7 +1439,7 @@ export const GUIDE: GuideChapter[] = [
           "Jo kaam Buddy ne leave ke dauraan khud complete kar diya, wo wapas nahi jaata — kyunki wo ho chuka hai, Buddy ke naam se hi record rahega.",
         ],
         notes: [
-          "V1 me leave balance/quota ka hisaab nahi rakha jaata — sirf approval aur reassignment. Kitni leave bachi hai, ye abhi track nahi hota.",
+          "Leave balance ek simple saalana quota hai (Admin ne Settings me jo type ke liye set kiya ho) — koi accrual ya carry-forward nahi, saal badalte hi apne aap reset ho jaata hai. Jis type ka koi quota set hi na ho, uski koi limit nahi hai.",
           "Buddy ke apne kaam ke saath Doer ka kaam bhi jud jaata hai — dono ek hi jagah (Tasks/FMS page par) dikhte hain, alag se kahin dhoondhna nahi padta.",
         ],
       },
@@ -1455,6 +1455,8 @@ export const GUIDE: GuideChapter[] = [
           "Reason likhein aur Apply karein dabayein.",
         ],
         notes: [
+          "Leave Type chunte hi, agar us type ka quota set hai to iss saal ka bacha hua balance dikh jaata hai — submit karne se pehle hi pata chal jaata hai.",
+          "Quota se zyada din maangne par request seedhe reject ho jaati hai (error message me balance aur maangi gayi days dono dikhti hain) — koi warning nahi, hard block hai.",
           "Approval chain khaali ho (Admin ne kuch set na kiya ho) to leave turant Approved ban jaati hai — kisi ke wait ki zaroorat nahi.",
           "Leave abhi Pending ya Approved hai to use Cancel bhi kiya ja sakta hai — Cancel karne par agar reassignment ho chuka tha, wo turant wapas ho jaata hai.",
         ],
@@ -1506,6 +1508,24 @@ export const GUIDE: GuideChapter[] = [
         notes: [
           "Koi step na ho (khaali chain) to sab leave turant Approved ban jaati hain — koi approval ka wait nahi hota.",
           "'Reporting Manager' step tab hi kaam karega jab Doer ki apni profile me Reporting Manager set ho (Users banate/badalte waqt) — na ho to ye step us Doer ke liye khud skip ho jaata hai.",
+        ],
+      },
+      {
+        id: "leave-quota-setup",
+        title: "Leave Quota set karna",
+        audience: "admin",
+        summary:
+          "Admin → Settings → Leave — Quota Setup me har Leave Type ke liye ek saalana din-limit tay karein — ye purani choice se aage badhkar hai, per-type opt-in hai.",
+        steps: [
+          "Admin → Settings → Leave — Quota Setup kholein.",
+          "Jis Leave Type par limit chahiye, uske saamne saalana din daalein (jaise Casual = 12).",
+          "Jis type par koi limit nahi chahiye, uska field khaali ya 0 hi rehne dein.",
+          "Save karein.",
+        ],
+        notes: [
+          "Ye ek flat saalana quota hai — koi accrual (mahine ke hisaab se jama hona) ya carry-forward (agle saal me le jaana) nahi hai, by design.",
+          "Quota se zyada din ki request seedhe reject hoti hai, filing ke waqt hi — approve hone ke baad koi 'over quota' state kabhi ban hi nahi sakti.",
+          "Pending leaves bhi is saal ke used-days me ginti hain (sirf Approved nahi) — taaki do alag-alag pending requests dono ek hi bache hue balance par 'fit' hoke, baad me dono approve na ho jaayein.",
         ],
       },
     ],
