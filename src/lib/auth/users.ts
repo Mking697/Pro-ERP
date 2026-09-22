@@ -5,12 +5,14 @@ import { users } from "@/db/schema";
 import { getTenantOrgId } from "@/lib/tenant";
 import { generateId } from "@/lib/id";
 import {
+  getOrganization,
   indexUser,
   isEmailTaken,
   removeIndexedUser,
   updateIndexedUserStatus,
 } from "@/lib/platform/registry";
 import { serializeModuleAccess } from "@/lib/moduleAccess";
+import { getPlanLimit } from "@/lib/platform/planLimits";
 
 /**
  * Mirrors the pre-Postgres SheetUser shape exactly (same field names, same casing) even
@@ -152,6 +154,24 @@ export async function createUser(input: CreateUserInput): Promise<SheetUser> {
   // account across the whole platform — not just within this organization.
   if (await isEmailTaken(normalizedEmail)) {
     throw new Error("Is email se pehle se ek user maujood hai.");
+  }
+
+  // Usage-limit gate (src/lib/platform/planLimits.ts) — the only billing enforcement this
+  // codebase has (no payment gateway; a Platform Admin changes `plan` by hand from
+  // /platform). Counts every Active row, mirroring the same "Active users" figure
+  // /api/platform/organizations already shows.
+  const org = await getOrganization(orgId);
+  const limit = getPlanLimit(org?.plan ?? "Free").maxActiveUsers;
+  if (limit !== null) {
+    const activeCount = await db
+      .select()
+      .from(users)
+      .where(and(eq(users.orgId, orgId), eq(users.status, "Active")));
+    if (activeCount.length >= limit) {
+      throw new Error(
+        `"${org?.plan ?? "Free"}" plan par sirf ${limit} active users ho sakte hain. Kisi user ko deactivate karein ya plan upgrade karayein.`
+      );
+    }
   }
 
   const userId = generateId("UID");

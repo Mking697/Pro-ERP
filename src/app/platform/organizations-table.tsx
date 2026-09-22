@@ -28,6 +28,13 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 interface OrgRow {
   orgId: string;
@@ -35,6 +42,7 @@ interface OrgRow {
   slug: string;
   ownerEmail: string;
   plan: string;
+  maxActiveUsers: number | null;
   status: string;
   createdAt: string;
   userCount: number | null;
@@ -74,14 +82,42 @@ export default function OrganizationsTable() {
   }
   const [loading, setLoading] = useState(true);
   const [savingId, setSavingId] = useState<string | null>(null);
+  const [planNames, setPlanNames] = useState<string[]>([]);
 
   useEffect(() => {
     fetch("/api/platform/organizations")
       .then((res) => res.json())
-      .then((data: { organizations?: OrgRow[] }) => setOrgs(data.organizations ?? []))
+      .then((data: { organizations?: OrgRow[]; planNames?: string[] }) => {
+        setOrgs(data.organizations ?? []);
+        setPlanNames(data.planNames ?? []);
+      })
       .catch(() => toast.error(t("Organizations load nahi ho paye.")))
       .finally(() => setLoading(false));
   }, [t]);
+
+  async function changePlan(org: OrgRow, plan: string) {
+    setSavingId(org.orgId);
+    try {
+      const res = await fetch(`/api/platform/organizations/${org.orgId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ plan }),
+      });
+      const data = await res.json().catch(() => null);
+
+      if (!res.ok) {
+        toast.error(t(data?.error ?? "Plan update nahi ho paya."));
+        return;
+      }
+
+      setOrgs((prev) => prev.map((o) => (o.orgId === org.orgId ? { ...o, plan } : o)));
+      toast.success(`${org.name} — plan ${plan} ho gaya.`);
+    } catch {
+      toast.error(t("Plan update nahi ho paya."));
+    } finally {
+      setSavingId(null);
+    }
+  }
 
   /**
    * Turning the switch off logs out every user in that organization on their next
@@ -168,7 +204,22 @@ export default function OrganizationsTable() {
                 </TableCell>
                 <TableCell className="text-sm">{org.ownerEmail}</TableCell>
                 <TableCell>
-                  <Badge variant="secondary">{org.plan}</Badge>
+                  <Select
+                    value={org.plan}
+                    onValueChange={(value) => value && changePlan(org, value)}
+                    disabled={savingId === org.orgId}
+                  >
+                    <SelectTrigger className="h-8 w-28" aria-label={`${org.name} ka plan`}>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {(planNames.length > 0 ? planNames : [org.plan]).map((p) => (
+                        <SelectItem key={p} value={p}>
+                          {p}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </TableCell>
                 <TableCell className="text-right tabular-nums">
                   {/* A read failure is worth surfacing: it usually means the org revoked
@@ -178,7 +229,16 @@ export default function OrganizationsTable() {
                       error
                     </span>
                   ) : (
-                    (org.userCount ?? "—")
+                    <span
+                      className={
+                        org.maxActiveUsers !== null && (org.userCount ?? 0) >= org.maxActiveUsers
+                          ? "text-destructive"
+                          : ""
+                      }
+                    >
+                      {org.userCount ?? "—"}
+                      {org.maxActiveUsers !== null && ` / ${org.maxActiveUsers}`}
+                    </span>
                   )}
                 </TableCell>
                 <TableCell className="whitespace-nowrap text-sm text-muted-foreground">

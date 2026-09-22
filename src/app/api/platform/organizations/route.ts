@@ -3,6 +3,7 @@ import { requirePlatformAdmin } from "@/lib/auth/guard";
 import { listOrganizations } from "@/lib/platform/registry";
 import { runWithTenant } from "@/lib/tenant";
 import { listUsers } from "@/lib/auth/users";
+import { getPlanLimit, PLAN_NAMES } from "@/lib/platform/planLimits";
 
 export const dynamic = "force-dynamic";
 
@@ -32,6 +33,7 @@ export async function GET() {
       slug: org.slug,
       ownerEmail: org.ownerEmail,
       plan: org.plan,
+      maxActiveUsers: getPlanLimit(org.plan).maxActiveUsers,
       status: org.status,
       createdAt: org.createdAt,
       userCount,
@@ -39,5 +41,5 @@ export async function GET() {
     });
   }
 
-  return NextResponse.json({ organizations: rows });
+  return NextResponse.json({ organizations: rows, planNames: PLAN_NAMES });
 }

@@ -246,6 +246,7 @@ export const EN: Record<string, string> = {
   "Save nahi ho paya.": "Could not save.",
   "Update nahi ho paya.": "Could not update.",
   "Status update nahi ho paya.": "Could not update the status.",
+  "Plan update nahi ho paya.": "Could not update the plan.",
   "Kaam nahi hua.": "That did not work.",
   "WhatsApp settings save ho gayi.": "WhatsApp settings saved.",
   "WhatsApp settings load ho rahi hain": "Loading WhatsApp settings",
