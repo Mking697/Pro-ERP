@@ -18,6 +18,7 @@ import {
   Settings,
   Truck,
   Users,
+  Wallet,
   Workflow,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -54,6 +55,7 @@ const ICONS = {
   stock: Package,
   others: MoreHorizontal,
   leave: CalendarOff,
+  payroll: Wallet,
 } as const;
 
 export type NavIcon = keyof typeof ICONS;
@@ -137,7 +139,18 @@ export default function NavLinks({ items }: { items: NavEntry[] }) {
                   </button>
                 }
               />
-              <DropdownMenuContent align="start" className="min-w-48">
+              <DropdownMenuContent
+                align="start"
+                className="min-w-48"
+                // The default `collisionBoundary` ("clipping-ancestors") walks up the
+                // anchor's own scrollable ancestors — which includes this bar's own
+                // `overflow-x-auto` — and that was letting a trigger near the right
+                // edge (e.g. "Others") open a popup that rendered partly off-screen at
+                // phone width instead of flipping/shifting to stay on it. Pinning the
+                // boundary to the real <body> makes every group use the actual visible
+                // viewport for that decision, regardless of the nav's own scroll state.
+                collisionBoundary={typeof document !== "undefined" ? document.body : undefined}
+              >
                 {entry.items.map((child) => {
                   const ChildIcon = child.icon ? ICONS[child.icon] : null;
                   const active = isActive(pathname, child.href);

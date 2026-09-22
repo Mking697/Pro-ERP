@@ -145,6 +145,10 @@ export default async function AppShell({
 
   // Others — master data and administration.
   const otherItems: NavItem[] = [];
+  // Visible to everyone — the page itself decides what each viewer sees ("My Payslips"
+  // for everyone, the Admin console only for role === "Admin"). Salary visibility is
+  // Role-gated, never a module grant, since this is sensitive data.
+  otherItems.push({ icon: "payroll", href: "/payroll", label: "Payroll" });
   if (session.access.includes("PARTY_MASTER")) {
     otherItems.push({ icon: "parties", href: "/parties", label: "Vendors/Customers" });
   }
