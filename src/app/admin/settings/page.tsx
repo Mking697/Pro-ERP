@@ -7,6 +7,7 @@ import InwardIqcTatForm from "./inward-iqc-tat-form";
 import PurchaseSetupForm from "./purchase-setup-form";
 import LeaveApprovalSetupForm from "./leave-approval-setup-form";
 import QuotationSetupForm from "./quotation-setup-form";
+import OrderSetupForm from "./order-setup-form";
 import { getT } from "@/lib/i18n/server";
 
 export default async function AdminSettingsPage() {
@@ -25,6 +26,7 @@ export default async function AdminSettingsPage() {
       <InwardIqcTatForm />
       <PurchaseSetupForm />
       <QuotationSetupForm />
+      <OrderSetupForm />
       <LeaveApprovalSetupForm />
     </div>
   );

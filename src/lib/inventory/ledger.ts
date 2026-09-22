@@ -101,6 +101,12 @@ export interface StockPosition {
   sku: string;
   onHand: number;
   committed: number;
+  /** FG stock reserved against Orders (Stock_Check/Dispatch_Pending/Ready_For_PDI) — see
+   * src/lib/orders/orders.ts's own orderReservedBySku(). A second, independent commitment
+   * source alongside `committed` (raw-material reservation for production plans): both are
+   * subtracted from on-hand to get `free`, but they are never conflated into one number,
+   * since a screen may one day want to explain *why* stock isn't free. */
+  orderReserved: number;
   /** What anything planning new work is allowed to see. */
   free: number;
   inTransit: number;
@@ -112,11 +118,13 @@ export function positionFor(
   sku: string,
   onHand: Map<string, number>,
   committed: Map<string, number>,
-  inTransit: Map<string, number>
+  inTransit: Map<string, number>,
+  orderReserved: Map<string, number>
 ): StockPosition {
   const oh = onHand.get(sku) ?? 0;
   const cm = committed.get(sku) ?? 0;
   const it = inTransit.get(sku) ?? 0;
+  const or_ = orderReserved.get(sku) ?? 0;
   // Rounded for the same reason the ledger sum is: `free` is what an Out is checked
   // against, so a trailing 0.0000000000003 here becomes a refused, self-contradicting
   // error on screen.
@@ -124,9 +132,10 @@ export function positionFor(
     sku,
     onHand: oh,
     committed: cm,
-    free: round3(oh - cm),
+    orderReserved: or_,
+    free: round3(oh - cm - or_),
     inTransit: it,
-    projected: round3(oh - cm + it),
+    projected: round3(oh - cm - or_ + it),
   };
 }
 
@@ -201,9 +210,10 @@ export function buildItemStock(
   onHand: Map<string, number>,
   committed: Map<string, number>,
   inTransit: Map<string, number>,
+  orderReserved: Map<string, number>,
   adcWindowDays = 30
 ): ItemStock {
-  const position = positionFor(item.SKU, onHand, committed, inTransit);
+  const position = positionFor(item.SKU, onHand, committed, inTransit, orderReserved);
 
   const manual = num(item.ADC_Manual);
   const adc = manual ?? adcFromLedger(ledger, item.SKU, adcWindowDays);

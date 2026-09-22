@@ -753,7 +753,7 @@ export const GUIDE: GuideChapter[] = [
     id: "leads",
     title: "Leads aur Quotation (Sales Pipeline)",
     description:
-      "Lead punch/import se le kar Qualify, Follow-up, Meeting, Negotiation aur Quotation tak — poora sales pipeline. Quotation accept hote hi 'Order Confirmed' par ruk jaata hai — aage ka Order/Dispatch module abhi nahi bana hai.",
+      "Lead punch/import se le kar Qualify, Follow-up, Meeting, Negotiation aur Quotation tak — poora sales pipeline. Quotation accept hote hi 'Order Confirmed' par ruk jaata hai — aage ka Order (Payment/Credit, Stock reserve, Dispatch commit) 'Order' chapter me hai.",
     sections: [
       {
         id: "leads-idea",
@@ -814,7 +814,7 @@ export const GUIDE: GuideChapter[] = [
         notes: [
           "Quotation Number (jaise QN-0001) ek series me apne aap milta hai — Admin Quotation Setup me prefix/starting number tay karta hai.",
           "Ek baar Accept ho jaane ke baad quotation edit nahi ho sakta — sirf PDF dobara download ho sakta hai.",
-          "Quotation FMS ka kaam yahin khatam ho jaata hai — Order Confirmed hote hi bas lead ka status badalta hai; aage ka Dispatch/PDI module abhi bana nahi hai.",
+          "Quotation FMS ka kaam yahin khatam ho jaata hai — Order Confirmed hote hi lead ka status badalta hai, aur wahi Accepted quotation Order FMS ki apni Intake list me aa jaata hai (dekhein 'Order' chapter).",
         ],
       },
       {
@@ -830,6 +830,103 @@ export const GUIDE: GuideChapter[] = [
         ],
         notes: [
           "Organization Logo yahin se nahi, Settings ke Logo section se aata hai — do jagah alag se upload karne ki zaroorat nahi.",
+        ],
+      },
+    ],
+  },
+
+  {
+    id: "orders",
+    title: "Order (Sales chain ka doosra hissa)",
+    description:
+      "Quotation Accept ho jaane ke baad, ya seedha Direct — payment/credit review, stock reserve aur dispatch commit tak. Yahan Order FMS ka kaam khatam hota hai; aage PDI/Dispatch abhi alag module nahi bana hai.",
+    sections: [
+      {
+        id: "orders-idea",
+        title: "Order FMS kaam kaise karta hai",
+        audience: "ORDER_FMS",
+        summary:
+          "Ek order do tariko se ban sakta hai — Lead se (Quotation Accept hone ke baad) ya Direct (seedha Order page se) — aur dono ek hi aage ke safar me mil jaate hain.",
+        how: [
+          "Lead-sourced: koi Quotation Accept hoti hai to wo Order page ke 'Intake' tab me aa jaati hai. Usme har line ko ek real Item se map karna hota hai aur Customer Master confirm/naya banana hota hai — ye teeno kaam ek hi 'Map Karein' button se ek saath hote hain.",
+          "Direct: '+ Naya Order' se seedha Customer chunein (ya naya banayein) aur Items/Qty/Rate bhar kar order bana dein — koi mapping nahi chahiye, kyunki shuru se hi real Items chuni ja rahi hain.",
+          "Dono ke baad ka safar ek hi hai: Payment Review → (zaroorat pade to) Credit Hold → Stock Check → Dispatch Pending → Ready For PDI. Cancel kisi bhi (Ready For PDI se pehle wale) stage se ho sakta hai.",
+          "Har action order ki History me ek line ban kar dikhta hai — order ek single status cell nahi, ek poori timeline hai.",
+        ],
+      },
+      {
+        id: "orders-payment-review",
+        title: "Payment Review — advance ya credit check",
+        audience: "ORDER_FMS",
+        summary: "Har order 'Payment Review Chalayein' dabane par customer ki credit/advance position check karta hai.",
+        how: [
+          "Agar customer ko koi credit nahi diya gaya (Customer Master me Credit Limit aur Credit Days dono khaali hain), to aage badhne se pehle kam se kam ek advance payment record karna zaroori hai — 'Payment Record Karein' se koi bhi amount, kisi bhi stage par, record kiya ja sakta hai.",
+          "Agar customer ko credit diya gaya hai, to system check karta hai: (a) is order ke saath customer ka total outstanding (sab open order milakar) Credit Limit se to nahi badh raha, aur (b) kya customer ka koi purana order Credit Days se zyada time se unpaid to nahi hai. Dono me se ek bhi sach hone par order 'Credit Hold' par chala jaata hai.",
+          "Dono theek hain to order seedha 'Stock Check' me chala jaata hai.",
+        ],
+        notes: [
+          "Outstanding hamesha taaza calculate hota hai — order value minus us order par ab tak jitna payment record hua hai, sab open (non-Cancelled) orders milakar. Kahin koi number store nahi hota.",
+        ],
+      },
+      {
+        id: "orders-credit-hold",
+        title: "Credit Hold clear karna",
+        audience: "ORDER_FMS",
+        summary: "Credit Hold ek insaan ka faisla hai — system khud apna hold nahi hataata.",
+        how: [
+          "Sirf Admin → Settings → Order — Setup me chuna gaya 'Credit-Hold Approver' (ya koi Admin) hi order detail me 'Approve Karein' dabaakar Credit Hold clear kar sakta hai.",
+          "Clear hote hi order 'Stock Check' me chala jaata hai, aur History me kisne/kab approve kiya, wo record ho jaata hai.",
+        ],
+      },
+      {
+        id: "orders-stock-check",
+        title: "Stock Check — FG stock reserve hona aur shortage",
+        audience: "ORDER_FMS",
+        summary: "Order detail me 'Stock Check Chalayein' dabate hi jitna Free stock mile utna is order ke liye turant reserve ho jaata hai.",
+        how: [
+          "Har line ke liye jo bhi Free FG stock us waqt available hai, usme se jitna mil sake utna reserve kar diya jaata hai (poori qty ya jitni mile). Bacha hua hissa 'shortage' ban jaata hai.",
+          "Reserve hone ke baad wo stock kisi doosre order ke liye Free nahi dikhta — Inventory page par bhi 'Free' isi hisab se kam dikhega, jaise ek production plan ka reserved raw material dikhta hai.",
+          "Reservation koi ledger entry nahi banata — maal abhi dispatch nahi hua, sirf itna tay hua hai ki wo is order ke liye rakha hua hai.",
+          "Poora reserve hone ke baad order 'Dispatch Pending' me chala jaata hai — shortage ho ya na ho, order aage badh jaata hai (shortage wale item baad me production se aa sakte hain).",
+        ],
+        notes: [
+          "Kisi bhi line me shortage aane par PPC_PLAN access wale har user ko ek Task aur ek WhatsApp message turant chala jaata hai — production plan banane ki yaad dilane ke liye. Ye best-effort hai: WhatsApp na jaaye (phone na ho, ChatXFlow set na ho) to bhi stock reservation par koi asar nahi padta.",
+        ],
+      },
+      {
+        id: "orders-dispatch",
+        title: "Dispatch Commit Date aur Ready For PDI",
+        audience: "ORDER_FMS",
+        summary: "Dispatch Pending order ke liye bas ek commit date daalni hai.",
+        steps: [
+          "Order detail me 'Dispatch Pending' stage par Date chunein aur 'Commit Karein' dabayein.",
+          "Order 'Ready For PDI' ho jaata hai — Order FMS ka apna kaam yahin khatam ho jaata hai; aage ka PDI/Dispatch module abhi alag se bana nahi hai.",
+        ],
+      },
+      {
+        id: "orders-cancel",
+        title: "Order Cancel karna",
+        audience: "ORDER_FMS",
+        summary: "Ready For PDI se pehle kisi bhi stage se order cancel ho sakta hai.",
+        steps: [
+          "Order detail me 'Order Cancel Karein' dabayein, reason likhein (optional) aur confirm karein.",
+        ],
+        notes: [
+          "Cancel hote hi is order ka koi bhi FG stock reservation turant chhoot jaata hai — wo stock doosre orders/plans ke liye Free ho jaata hai.",
+        ],
+      },
+      {
+        id: "orders-setup",
+        title: "Order — Setup",
+        audience: "admin",
+        summary: "Har step ka Doer/TAT (jaankari ke liye) aur Credit-Hold Approver (jo asal me enforce hota hai) ek baar set kar dein.",
+        steps: [
+          "Admin → Settings → Order — Setup section kholein.",
+          "Items Mapping/Payment Review/Stock Check/Dispatch Commit — chaaron ke liye Doer aur TAT bharein.",
+          "'Credit-Hold Approver' me wo user chunein jo Credit Hold clear karne ka akela adhikari ho — ye kisi step ka Doer nahi, ek alag, khaas access hai.",
+        ],
+        notes: [
+          "Doer/TAT sirf jaankari/planning ke liye hain — koi bhi ORDER_FMS access wala user kisi bhi order ka koi bhi step kaam kar sakta hai, jaise Purchase FMS me hota hai. Sirf Credit-Hold Approver hi asal me lock hai — sirf wahi user (ya Admin) Credit Hold clear kar sakta hai.",
         ],
       },
     ],

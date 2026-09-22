@@ -711,7 +711,7 @@ export const GUIDE_EN: GuideChapter[] = [
     id: "leads",
     title: "Leads and Quotations (Sales Pipeline)",
     description:
-      "From punching in or importing a lead through Qualify, Follow-up, Meeting, Negotiation and Quotation — the whole sales pipeline. It stops at 'Order Confirmed' once a quotation is accepted — the Order/Dispatch module beyond that hasn't been built yet.",
+      "From punching in or importing a lead through Qualify, Follow-up, Meeting, Negotiation and Quotation — the whole sales pipeline. It stops at 'Order Confirmed' once a quotation is accepted — the Order that follows (Payment/Credit review, Stock reservation, Dispatch commit) is its own 'Order' chapter.",
     sections: [
       {
         id: "leads-idea",
@@ -772,7 +772,7 @@ export const GUIDE_EN: GuideChapter[] = [
         notes: [
           "The Quotation Number (e.g. QN-0001) is allocated automatically in a series — the Admin sets the prefix/starting number in Quotation Setup.",
           "Once a quotation is Accepted it can no longer be edited — only the PDF can be downloaded again.",
-          "Lead FMS's job ends right here — Order Confirmed only flips the lead's own status; the Dispatch/PDI module beyond that hasn't been built yet.",
+          "Lead FMS's job ends right here — Order Confirmed only flips the lead's own status, and that same Accepted quotation lands in Order FMS's own Intake list (see the 'Order' chapter).",
         ],
       },
       {
@@ -788,6 +788,103 @@ export const GUIDE_EN: GuideChapter[] = [
         ],
         notes: [
           "The Organization Logo isn't set here — it comes from Settings' own Logo section, so there's no need to upload it twice.",
+        ],
+      },
+    ],
+  },
+
+  {
+    id: "orders",
+    title: "Order (Sales chain, part two)",
+    description:
+      "After a Quotation is Accepted, or a Direct order altogether — through Payment/Credit review, Stock reservation, and Dispatch commit. Order FMS's own job ends here; PDI/Dispatch as its own module hasn't been built yet.",
+    sections: [
+      {
+        id: "orders-idea",
+        title: "How Order FMS works",
+        audience: "ORDER_FMS",
+        summary:
+          "An order can start two ways — from a Lead (once its Quotation is Accepted) or Direct (straight from the Order page) — and both join the same pipeline afterwards.",
+        how: [
+          "Lead-sourced: an Accepted Quotation lands in the Order page's 'Intake' tab. Mapping every line to a real Item and confirming/creating the Customer Master row both happen in one 'Map' action.",
+          "Direct: click '+ New Order', pick a Customer (existing or new), and fill in Items/Qty/Rate directly — no mapping needed, since real Items are chosen from the start.",
+          "Both then follow the same path: Payment Review → (if needed) Credit Hold → Stock Check → Dispatch Pending → Ready For PDI. Cancel is available from any stage before Ready For PDI.",
+          "Every action becomes a line in the order's own History — an order is read as a timeline, not a single status cell.",
+        ],
+      },
+      {
+        id: "orders-payment-review",
+        title: "Payment Review — advance or credit check",
+        audience: "ORDER_FMS",
+        summary: "Clicking 'Run Payment Review' checks the customer's credit/advance position.",
+        how: [
+          "If the customer has no credit extended (Credit Limit and Credit Days are both blank in Customer Master), at least one advance payment must be recorded before it can proceed — 'Record Payment' works at any stage, for any amount.",
+          "If the customer has credit, two things are checked together: (a) would this order push their combined outstanding across all their open orders over the Credit Limit, and (b) does any of their past orders remain unpaid past its own Credit Days. Either being true sends the order to 'Credit Hold'.",
+          "If both check out, the order goes straight to 'Stock Check'.",
+        ],
+        notes: [
+          "Outstanding is always worked out fresh — order value minus whatever's been recorded as paid on it, summed across every open (non-Cancelled) order. Nothing is stored as a running total.",
+        ],
+      },
+      {
+        id: "orders-credit-hold",
+        title: "Clearing a Credit Hold",
+        audience: "ORDER_FMS",
+        summary: "A Credit Hold is a human decision — the system never clears its own hold.",
+        how: [
+          "Only the 'Credit-Hold Approver' chosen in Admin → Settings → Order — Setup (or an Admin) can click 'Approve' on an order's detail to clear its Credit Hold.",
+          "Clearing it moves the order to 'Stock Check', and who approved it, and when, is recorded in History.",
+        ],
+      },
+      {
+        id: "orders-stock-check",
+        title: "Stock Check — reserving FG stock, and shortages",
+        audience: "ORDER_FMS",
+        summary: "Clicking 'Run Stock Check' on an order's detail reserves whatever Free stock is available for it, immediately.",
+        how: [
+          "For every line, whatever Free FG stock is available at that moment is reserved — the full quantity, or as much as there is. Whatever's left over becomes a 'shortage'.",
+          "Once reserved, that stock no longer shows as Free for anyone else — the Inventory page's own Free figure drops by the same amount, exactly like a production plan's own reserved raw material.",
+          "A reservation writes nothing to the stock ledger — nothing has shipped yet, this only marks that stock as set aside for this order.",
+          "Once every line is processed the order moves to 'Dispatch Pending' — whether or not there was a shortage (a short item can still arrive later from production).",
+        ],
+        notes: [
+          "Any shortage immediately creates a Task and sends a WhatsApp message to every user holding PPC_PLAN access, as a reminder to plan production. This is best-effort — a failed WhatsApp send (no phone on file, ChatXFlow not configured) never affects the stock reservation itself.",
+        ],
+      },
+      {
+        id: "orders-dispatch",
+        title: "Dispatch Commit Date and Ready For PDI",
+        audience: "ORDER_FMS",
+        summary: "A Dispatch Pending order just needs a commit date.",
+        steps: [
+          "On the order's detail, at the Dispatch Pending stage, pick a Date and click 'Commit'.",
+          "The order becomes 'Ready For PDI' — Order FMS's own job ends right here; the PDI/Dispatch module beyond that hasn't been built as its own piece yet.",
+        ],
+      },
+      {
+        id: "orders-cancel",
+        title: "Cancelling an Order",
+        audience: "ORDER_FMS",
+        summary: "An order can be cancelled from any stage before Ready For PDI.",
+        steps: [
+          "On the order's detail, click 'Cancel Order', type a reason (optional), and confirm.",
+        ],
+        notes: [
+          "Cancelling immediately releases any FG stock this order had reserved — it becomes Free again for other orders/plans.",
+        ],
+      },
+      {
+        id: "orders-setup",
+        title: "Order — Setup",
+        audience: "admin",
+        summary: "Set each step's Doer/TAT (informational) and the Credit-Hold Approver (the one that's actually enforced) once.",
+        steps: [
+          "Open Admin → Settings → the Order — Setup section.",
+          "Fill in a Doer and TAT for each of Items Mapping/Payment Review/Stock Check/Dispatch Commit.",
+          "Pick the one user who may clear a Credit Hold in 'Credit-Hold Approver' — this is a separate, specific permission, not any step's own Doer.",
+        ],
+        notes: [
+          "Doer/TAT are informational/planning fields only — any user with ORDER_FMS access can work any order's any step, same as Purchase FMS. Only the Credit-Hold Approver is actually locked down — only that user (or an Admin) may clear a Credit Hold.",
         ],
       },
     ],

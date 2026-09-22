@@ -121,6 +121,9 @@ export default async function AppShell({
   if (session.access.includes("LEAD_FMS")) {
     fmsItems.push({ icon: "fms", href: "/leads", label: "Leads" });
   }
+  if (session.access.includes("ORDER_FMS")) {
+    fmsItems.push({ icon: "fms", href: "/orders", label: "Order" });
+  }
   for (const tpl of otherFmsTemplates) {
     fmsItems.push({ icon: "fms", href: `/fms/${tpl.templateId}`, label: tpl.templateName });
   }
