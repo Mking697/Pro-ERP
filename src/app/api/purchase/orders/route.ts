@@ -32,7 +32,12 @@ const lineSchema = z.object({
 const bodySchema = z.object({
   vendorId: z.string().trim().min(1, "Vendor chunein."),
   lines: z.array(lineSchema).min(1, "Kam se kam ek item chunein."),
-  attachmentUrl: z.string().trim().min(1, "PO attachment zaroori hai."),
+  // Either a manually uploaded file's URL, or generateAttachment: true to have
+  // createPurchaseOrder() auto-generate one right after the PO row is created — see its own
+  // doc comment. Not requiring one or the other here lets createPurchaseOrder() itself stay
+  // the single place that enforces "a PO needs an attachment."
+  attachmentUrl: z.string().trim().optional(),
+  generateAttachment: z.boolean().optional(),
 });
 
 export async function POST(request: Request) {
@@ -52,7 +57,8 @@ export async function POST(request: Request) {
     const order = await createPurchaseOrder({
       vendorId: parsed.data.vendorId,
       lines: parsed.data.lines,
-      attachmentUrl: parsed.data.attachmentUrl,
+      attachmentUrl: parsed.data.attachmentUrl ?? "",
+      generateAttachment: parsed.data.generateAttachment,
       issuedBy: guard.session.userId,
     });
     return NextResponse.json({ order });

@@ -9,6 +9,9 @@ import { getVendorItemLink, listVendorsForSkus, type VendorSuggestion } from "@/
 import { getPurchaseSetup } from "@/lib/purchase/settings";
 import { computeDefaultTatDeadline, computeTatDeadline } from "@/lib/fms/calendar";
 import { receiveIndent } from "@/lib/inventory/indents";
+import { getSetting } from "@/lib/settings";
+import { uploadAttachment } from "@/lib/storage";
+import { getQuotationSetup } from "@/lib/leads/quotationSetup";
 
 export class PurchaseOrderError extends Error {}
 
@@ -185,8 +188,75 @@ export interface CreatePurchaseOrderLineInput {
 export interface CreatePurchaseOrderInput {
   vendorId: string;
   lines: CreatePurchaseOrderLineInput[];
+  /** Blank is only allowed when `generateAttachment` is true — see below. */
   attachmentUrl: string;
+  /** When true and `attachmentUrl` is blank, a system-generated PDF (same layout
+   *  `generatePoPdf()`/`previewPoPdf()` below render) is attached automatically right after
+   *  the PO row is created, instead of requiring a manually uploaded file. The "PO needs an
+   *  attachment" rule itself is unchanged — this only adds a second way to satisfy it. */
+  generateAttachment?: boolean;
   issuedBy: string;
+}
+
+interface ResolvedPoLine {
+  indentId: string;
+  sku: string;
+  itemName: string;
+  uom: string;
+  qty: number;
+  oldPrice: string;
+  newPrice: string;
+  leadTimeDays: number;
+}
+
+/**
+ * Validates and resolves every candidate line against the chosen vendor — shared by
+ * `createPurchaseOrder()` (which then writes the rows) and `previewPoPdf()` (which only
+ * needs the same resolved data to render a draft document, before anything is written).
+ * Every line is checked before anything is written by either caller — no partial PO, and
+ * no preview built from a line that couldn't actually be ordered.
+ */
+async function resolvePoLines(
+  orgId: string,
+  vendorId: string,
+  lines: CreatePurchaseOrderLineInput[]
+): Promise<{ vendor: InferSelectModel<typeof vendors>; resolved: ResolvedPoLine[] }> {
+  const vendor = await findById(vendors, orgId, vendorId);
+  if (!vendor) {
+    throw new PurchaseOrderError("Vendor nahi mila.");
+  }
+
+  const resolved: ResolvedPoLine[] = [];
+  for (const line of lines) {
+    const indent = await findById(indents, orgId, line.indentId);
+    if (!indent) {
+      throw new PurchaseOrderError(`Indent ${line.indentId} nahi mila.`);
+    }
+    if (indent.status !== "Approved") {
+      throw new PurchaseOrderError(`${indent.itemName} ka indent "${indent.status}" hai, "Approved" nahi.`);
+    }
+    if (indent.poId) {
+      throw new PurchaseOrderError(`${indent.itemName} pehle se ek PO me hai.`);
+    }
+
+    const link = await getVendorItemLink(vendorId, indent.sku);
+    if (!link) {
+      throw new PurchaseOrderError(`${vendor.vendorName} "${indent.itemName}" supply nahi karta.`);
+    }
+
+    resolved.push({
+      indentId: indent.id,
+      sku: indent.sku,
+      itemName: indent.itemName,
+      uom: indent.uom,
+      qty: Number(indent.finalQty) || 0,
+      oldPrice: link.unitPrice,
+      newPrice:
+        line.newPrice !== undefined && line.newPrice !== null ? String(line.newPrice) : link.unitPrice,
+      leadTimeDays: link.leadTimeDays ?? 0,
+    });
+  }
+  return { vendor, resolved };
 }
 
 /**
@@ -202,50 +272,13 @@ export async function createPurchaseOrder(input: CreatePurchaseOrderInput): Prom
   if (input.lines.length === 0) {
     throw new PurchaseOrderError("Kam se kam ek item chunein.");
   }
-  if (!input.attachmentUrl.trim()) {
+  const attachmentUrl = input.attachmentUrl.trim();
+  if (!attachmentUrl && !input.generateAttachment) {
     throw new PurchaseOrderError("PO attachment zaroori hai.");
   }
 
   const orgId = await getTenantOrgId();
-  const vendor = await findById(vendors, orgId, input.vendorId);
-  if (!vendor) {
-    throw new PurchaseOrderError("Vendor nahi mila.");
-  }
-
-  const resolved: {
-    indentId: string;
-    sku: string;
-    oldPrice: string;
-    newPrice: string;
-    leadTimeDays: number;
-  }[] = [];
-
-  for (const line of input.lines) {
-    const indent = await findById(indents, orgId, line.indentId);
-    if (!indent) {
-      throw new PurchaseOrderError(`Indent ${line.indentId} nahi mila.`);
-    }
-    if (indent.status !== "Approved") {
-      throw new PurchaseOrderError(`${indent.itemName} ka indent "${indent.status}" hai, "Approved" nahi.`);
-    }
-    if (indent.poId) {
-      throw new PurchaseOrderError(`${indent.itemName} pehle se ek PO me hai.`);
-    }
-
-    const link = await getVendorItemLink(input.vendorId, indent.sku);
-    if (!link) {
-      throw new PurchaseOrderError(`${vendor.vendorName} "${indent.itemName}" supply nahi karta.`);
-    }
-
-    resolved.push({
-      indentId: indent.id,
-      sku: indent.sku,
-      oldPrice: link.unitPrice,
-      newPrice:
-        line.newPrice !== undefined && line.newPrice !== null ? String(line.newPrice) : link.unitPrice,
-      leadTimeDays: link.leadTimeDays ?? 0,
-    });
-  }
+  const { resolved } = await resolvePoLines(orgId, input.vendorId, input.lines);
 
   const maxLeadDays = Math.max(...resolved.map((r) => r.leadTimeDays));
   const purchaseSetup = await getPurchaseSetup();
@@ -266,7 +299,7 @@ export async function createPurchaseOrder(input: CreatePurchaseOrderInput): Prom
     orgId,
     vendorId: input.vendorId,
     status: "Open",
-    attachmentUrl: input.attachmentUrl,
+    attachmentUrl,
     issuedBy: input.issuedBy,
     issuedAt: new Date(issuedAt),
     followUpDueAt: new Date(followUpDueAtMs),
@@ -290,9 +323,155 @@ export async function createPurchaseOrder(input: CreatePurchaseOrderInput): Prom
     await updateById(indents, orgId, line.indentId, { status: "Ordered", poId });
   }
 
+  if (input.generateAttachment && !attachmentUrl) {
+    // The row now exists for real, so generatePoPdf() (below) can render against its actual
+    // saved data and set attachmentUrl itself. If it throws (a rendering error, Blob being
+    // unavailable, ...), the PO and its lines are already committed above — neon-http has no
+    // cross-call transaction to roll them back into, same as every other multi-statement
+    // sequential write in this file (see the "Sequential, not db.batch()" comment above).
+    // Rather than let a bare exception look like "nothing happened" when a real PO+lines now
+    // exist and the indent is already marked Ordered, name the PO so the caller can recover —
+    // either by retrying POST /api/purchase/orders/[poId]/generate-pdf, or by manually
+    // uploading and PATCHing attachmentUrl in some future screen.
+    try {
+      await generatePoPdf(poId);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      throw new PurchaseOrderError(
+        `PO ${poId} ban gaya hai (items reserve ho chuke hain), lekin PDF generate nahi ho paya: ${message}. ` +
+          `Dobara PDF generate karne ki koshish karein (PO ID: ${poId}).`
+      );
+    }
+  }
+
   const created = await getPurchaseOrder(poId);
   if (!created) throw new PurchaseOrderError("PO ban gaya lekin load nahi ho paya.");
   return created;
+}
+
+/**
+ * Renders a PO PDF and uploads it via Blob — used two ways: (1) `createPurchaseOrder()`
+ * above calls this right after inserting a new PO row, when the purchaser chose
+ * auto-generate instead of a manual upload; (2) the standalone
+ * `/api/purchase/orders/[poId]/generate-pdf` route calls it directly to (re)generate the
+ * document for a PO that already exists — e.g. to replace a manually uploaded scan with a
+ * proper one later. Either way it always renders from the PO's own saved rows, never from
+ * a caller-supplied draft, and always overwrites `attachmentUrl` with the result.
+ *
+ * Mirrors src/lib/leads/quotations.ts's own renderQuotationPdf(): the @react-pdf/renderer
+ * tree (`poPdf.tsx`) is imported dynamically, here alone, so nothing else in this file has
+ * to resolve that dependency tree.
+ */
+export async function generatePoPdf(poId: string): Promise<{ url: string }> {
+  const orgId = await getTenantOrgId();
+  const po = await findById(purchaseOrders, orgId, poId);
+  if (!po) throw new PurchaseOrderError("PO nahi mila.");
+
+  const vendor = await findById(vendors, orgId, po.vendorId);
+  if (!vendor) throw new PurchaseOrderError("Vendor nahi mila.");
+
+  const lines = await loadPoLines(orgId, poId);
+  if (lines.length === 0) throw new PurchaseOrderError("PO me koi item nahi hai.");
+
+  const setup = await getQuotationSetup();
+  const logoUrl = (await getSetting("ORG_LOGO_URL")) ?? "";
+  const dateText = po.issuedAt.toLocaleDateString("en-IN");
+
+  const { renderPurchaseOrderPdfBuffer } = await import("@/lib/purchase/poPdf");
+  const buffer = await renderPurchaseOrderPdfBuffer(
+    {
+      poId: po.id,
+      vendor: {
+        name: vendor.vendorName,
+        address: vendor.address,
+        city: vendor.city,
+        state: vendor.state,
+        gstin: vendor.gstin,
+        phone: vendor.phone,
+        email: vendor.email,
+      },
+      lines: lines.map((l) => ({
+        sku: l.sku,
+        itemName: l.itemName,
+        uom: l.uom,
+        qty: l.qty,
+        oldPrice: l.oldPrice,
+        newPrice: l.newPrice,
+      })),
+    },
+    setup,
+    logoUrl,
+    dateText
+  );
+
+  const { url } = await uploadAttachment({
+    fileName: `PO_${po.id}.pdf`,
+    mimeType: "application/pdf",
+    buffer,
+  });
+
+  await updateById(purchaseOrders, orgId, poId, { attachmentUrl: url });
+  return { url };
+}
+
+export interface PreviewPoPdfInput {
+  vendorId: string;
+  lines: CreatePurchaseOrderLineInput[];
+}
+
+/**
+ * Renders a DRAFT PO PDF from the purchaser's current vendor+line selection on the PO Issue
+ * screen — before any `purchase_orders` row exists (that screen picks a vendor and its
+ * candidate indents, then only creates the real PO once "PO Issue karein" is clicked).
+ * Writes nothing to the database (no PO, no lines, no indent status change) — it exists
+ * purely so the resulting URL can sit in the same `attachmentUrl` slot a manually uploaded
+ * file would, letting `createPurchaseOrder()` treat the two identically once Issue is
+ * actually clicked. The PDF itself shows "Draft" in place of a real PO number, since one
+ * hasn't been allocated yet.
+ */
+export async function previewPoPdf(input: PreviewPoPdfInput): Promise<{ url: string }> {
+  const orgId = await getTenantOrgId();
+  const { vendor, resolved } = await resolvePoLines(orgId, input.vendorId, input.lines);
+  if (resolved.length === 0) {
+    throw new PurchaseOrderError("Kam se kam ek item chunein.");
+  }
+
+  const setup = await getQuotationSetup();
+  const logoUrl = (await getSetting("ORG_LOGO_URL")) ?? "";
+  const dateText = new Date().toLocaleDateString("en-IN");
+
+  const { renderPurchaseOrderPdfBuffer } = await import("@/lib/purchase/poPdf");
+  const buffer = await renderPurchaseOrderPdfBuffer(
+    {
+      poId: "Draft",
+      vendor: {
+        name: vendor.vendorName,
+        address: vendor.address,
+        city: vendor.city,
+        state: vendor.state,
+        gstin: vendor.gstin,
+        phone: vendor.phone,
+        email: vendor.email,
+      },
+      lines: resolved.map((r) => ({
+        sku: r.sku,
+        itemName: r.itemName,
+        uom: r.uom,
+        qty: r.qty,
+        oldPrice: r.oldPrice,
+        newPrice: r.newPrice,
+      })),
+    },
+    setup,
+    logoUrl,
+    dateText
+  );
+
+  return uploadAttachment({
+    fileName: `PO_Draft_${Date.now()}.pdf`,
+    mimeType: "application/pdf",
+    buffer,
+  });
 }
 
 /** Step 3 — a real action the assigned Doer marks done, not a passive reminder. */

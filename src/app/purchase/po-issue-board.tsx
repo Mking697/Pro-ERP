@@ -60,6 +60,7 @@ export default function PoIssueBoard() {
   const [priceDraft, setPriceDraft] = useState<Record<string, string>>({});
   const [attachmentUrl, setAttachmentUrl] = useState("");
   const [saving, setSaving] = useState(false);
+  const [generatingPdf, setGeneratingPdf] = useState(false);
   const [version, setVersion] = useState(0);
 
   useEffect(() => {
@@ -99,6 +100,43 @@ export default function PoIssueBoard() {
   }
 
   const chosen = eligible.filter((r) => selected[r.candidate.indentId]);
+
+  /** Generates a draft PO PDF from the current vendor+line selection and drops its URL
+   *  straight into the same attachmentUrl slot a manual upload would fill — see
+   *  previewPoPdf() in src/lib/purchase/orders.ts for why nothing is saved to the database
+   *  by this call; "PO Issue karein" below still has to be clicked to actually create it. */
+  async function generatePdf() {
+    if (chosen.length === 0) {
+      toast.error(t("Kam se kam ek item chunein."));
+      return;
+    }
+
+    setGeneratingPdf(true);
+    try {
+      const res = await fetch("/api/purchase/orders/generate-pdf", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          vendorId,
+          lines: chosen.map((r) => ({
+            indentId: r.candidate.indentId,
+            newPrice: priceDraft[r.candidate.indentId] || undefined,
+          })),
+        }),
+      });
+      const data = await res.json().catch(() => null);
+
+      if (!res.ok) {
+        toast.error(t(data?.error ?? "PDF nahi ban paya."));
+        return;
+      }
+
+      setAttachmentUrl(data.url);
+      toast.success(t("PO PDF ban gaya."));
+    } finally {
+      setGeneratingPdf(false);
+    }
+  }
 
   async function issuePo() {
     if (chosen.length === 0) {
@@ -243,12 +281,23 @@ export default function PoIssueBoard() {
             </Table>
           </div>
 
-          <div className="max-w-sm">
+          <div className="max-w-sm space-y-2">
             <FileUploadField
               label={t("PO Attachment")}
               value={attachmentUrl}
               onChange={setAttachmentUrl}
             />
+            {!attachmentUrl && (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={generatingPdf || chosen.length === 0}
+                onClick={generatePdf}
+              >
+                {generatingPdf ? t("PDF ban raha hai...") : t("PDF Generate Karein")}
+              </Button>
+            )}
           </div>
 
           <div className="flex items-center gap-2">
