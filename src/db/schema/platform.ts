@@ -1,4 +1,4 @@
-import { pgEnum, pgTable, text, timestamp } from "drizzle-orm/pg-core";
+import { integer, pgEnum, pgTable, text, timestamp } from "drizzle-orm/pg-core";
 
 /**
  * The platform registry — mirrors src/lib/platform/registry.ts's two Google Sheets tabs
@@ -72,4 +72,27 @@ export const reportShares = pgTable("report_shares", {
   access: text("access").array().notNull().default([]),
   createdBy: text("created_by").notNull().default(""),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+/**
+ * Fixed-window request counters for a handful of public-ish, unauthenticated endpoints
+ * (`/api/signup`, `/api/auth/login`, `/share/[token]`) that have no session/org to scope
+ * a per-tenant limit by — lives alongside `usersIndex`/`reportShares` for the same reason:
+ * the request is identified by something outside any tenant (an IP, an email, a token),
+ * not by `org_id`. See src/lib/rateLimit.ts for the actual check/increment.
+ *
+ * One row per (scope, identifier, window) — `id` is the three joined into one string
+ * rather than a composite PK, since every caller already builds the row by that same key
+ * and an upsert-by-single-column `onConflictDoUpdate` is simpler than a 3-column target.
+ * Old rows are never read back once their window has passed; a stray row from an
+ * unlucky/malicious burst is harmless clutter, not a correctness issue, so there is
+ * deliberately no cleanup job for this table yet — cheap to add later if row count ever
+ * becomes a real concern.
+ */
+export const rateLimitHits = pgTable("rate_limit_hits", {
+  id: text("id").primaryKey(),
+  scope: text("scope").notNull(),
+  identifier: text("identifier").notNull(),
+  windowStart: timestamp("window_start", { withTimezone: true }).notNull(),
+  count: integer("count").notNull().default(0),
 });

@@ -5,11 +5,18 @@ import { signSession, SESSION_COOKIE } from "@/lib/auth/session";
 import { lookupUserOrg } from "@/lib/platform/registry";
 import { tenantFromOrgId, runWithTenant, TenantResolutionError } from "@/lib/tenant";
 import { effectiveModuleAccess } from "@/lib/moduleAccess";
+import { checkRateLimit, clientIp } from "@/lib/rateLimit";
 
 const loginSchema = z.object({
   email: z.string().email(),
   password: z.string().min(1),
 });
+
+// Keyed by IP+email together, not either alone: a single IP genuinely guessing many
+// accounts and a botnet spraying one account at a stolen-password list are both real
+// attacks, and neither should get a free pass just because the other axis is shared.
+const LOGIN_LIMIT = 10;
+const LOGIN_WINDOW_SECONDS = 5 * 60;
 
 export async function POST(request: Request) {
   const body = await request.json().catch(() => null);
@@ -23,6 +30,19 @@ export async function POST(request: Request) {
   }
 
   const { email, password } = parsed.data;
+
+  const rate = await checkRateLimit(
+    "login",
+    `${clientIp(request)}:${email.toLowerCase()}`,
+    LOGIN_LIMIT,
+    LOGIN_WINDOW_SECONDS
+  );
+  if (!rate.allowed) {
+    return NextResponse.json(
+      { error: "Bahut zyada koshishein ho gayi hain. Thodi der baad try karein." },
+      { status: 429, headers: { "Retry-After": String(rate.retryAfterSeconds) } }
+    );
+  }
   const invalid = NextResponse.json(
     { error: "Invalid email or password." },
     { status: 401 }

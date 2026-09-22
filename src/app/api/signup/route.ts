@@ -7,6 +7,10 @@ import { signSession, SESSION_COOKIE } from "@/lib/auth/session";
 import { effectiveModuleAccess } from "@/lib/moduleAccess";
 import { uploadOrgLogo, decodeDataUrl } from "@/lib/storage";
 import { upsertSetting } from "@/lib/settings";
+import { checkRateLimit, clientIp } from "@/lib/rateLimit";
+
+const SIGNUP_LIMIT = 5;
+const SIGNUP_WINDOW_SECONDS = 60 * 60;
 
 const signupSchema = z.object({
   orgName: z.string().trim().min(2, "Organization ka naam daalein."),
@@ -23,6 +27,16 @@ function fail(message: string, status = 400) {
 }
 
 export async function POST(request: Request) {
+  const rate = await checkRateLimit(
+    "signup",
+    clientIp(request),
+    SIGNUP_LIMIT,
+    SIGNUP_WINDOW_SECONDS
+  );
+  if (!rate.allowed) {
+    return fail("Bahut zyada koshishein ho gayi hain. Thodi der baad try karein.", 429);
+  }
+
   const body = await request.json().catch(() => null);
   const parsed = signupSchema.safeParse(body);
 

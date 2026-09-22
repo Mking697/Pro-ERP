@@ -444,6 +444,8 @@ export const EN: Record<string, string> = {
   "Jis kisi ke paas ye link hai, uske liye ye turant kaam karna band kar dega. Ye wapas nahi aayega — naya link banana padega.":
     "It stops working immediately for anyone holding it. This cannot be undone — a new link would have to be created.",
   "Ye link ab kaam nahi karta.": "This link no longer works.",
+  "Bahut zyada koshishein ho gayi hain. Thodi der baad try karein.":
+    "Too many attempts. Please try again in a little while.",
   "Live report — sirf padhne ke liye": "Live report — read only",
   "Ye report live hai — page refresh karne par taaza data aata hai.":
     "This report is live — refreshing the page shows the latest data.",

@@ -1,3 +1,4 @@
+import { headers } from "next/headers";
 import Link from "next/link";
 import { getReportShare } from "@/lib/platform/shares";
 import { runWithTenant, tenantFromOrgId } from "@/lib/tenant";
@@ -6,6 +7,10 @@ import { getSetting } from "@/lib/settings";
 import { OrgLogo } from "@/components/logo-picker";
 import Analytics from "@/app/dashboard/analytics";
 import { getT } from "@/lib/i18n/server";
+import { checkRateLimit, clientIpFromHeaders } from "@/lib/rateLimit";
+
+const SHARE_LIMIT = 60;
+const SHARE_WINDOW_SECONDS = 5 * 60;
 
 /**
  * A report, readable by anyone holding the link.
@@ -28,6 +33,12 @@ export default async function SharedReportPage({
 }: PageProps<"/share/[token]">) {
   const { token } = await params;
   const t = await getT();
+
+  const ip = clientIpFromHeaders(await headers());
+  const rate = await checkRateLimit("share", ip, SHARE_LIMIT, SHARE_WINDOW_SECONDS);
+  if (!rate.allowed) {
+    return <Unavailable message={t("Bahut zyada koshishein ho gayi hain. Thodi der baad try karein.")} />;
+  }
 
   const share = await getReportShare(token);
   if (!share) return <Unavailable message={t("Ye link ab kaam nahi karta.")} />;
