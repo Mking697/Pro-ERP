@@ -980,9 +980,9 @@ export const GUIDE_EN: GuideChapter[] = [
 
   {
     id: "accounts",
-    title: "Accounts — Invoice (Receivables)",
+    title: "Accounts — Receivables, Payables and Ledger",
     description:
-      "Creating and issuing an order's Invoice — with an Invoice No., E-way Bill and supporting documents. This is only the first, small piece of a future full Accounts module — bigger things like a GL or aging reports haven't been built yet.",
+      "An order's Invoice (Receivables), a Purchase Order's Bill (Payables), and the real double-entry Ledger underneath both — Chart of Accounts, Trial Balance, P&L, Balance Sheet. Bigger things like aging reports or GST return filing haven't been built yet.",
     sections: [
       {
         id: "accounts-idea",
@@ -1008,6 +1008,35 @@ export const GUIDE_EN: GuideChapter[] = [
           "Both the Invoice No. and the Invoice Document are required to Issue — the E-way Bill always stays optional (not every dispatch needs one).",
           "Once issued, an Invoice can no longer be edited — it's a real business document, so it doesn't change once it exists.",
           "An invoice's own detail shows both 'Invoiced' and 'Received' — 'Received' is read straight from Order FMS's own payments; Accounts doesn't keep a second payments record of its own.",
+        ],
+      },
+      {
+        id: "accounts-payables",
+        title: "Payables — billing and paying a vendor",
+        audience: "ACCOUNTS_FMS",
+        summary: "The mirror of Receivables — once a Purchase Order is 'Material Received' and Completed, it becomes a candidate in Payables' own 'Create Bill' tab.",
+        how: [
+          "Pick the candidate PO and create a Bill — enter the vendor's own invoice number, the amount, and the bill document they sent.",
+          "A bill starts as a Draft, then gets Issued — once Issued it can no longer be edited, same as a Receivables Invoice.",
+          "When a payment is made, use 'Record Payment' for the amount, mode and reference — this is a list, so one Bill can have several payments.",
+        ],
+        notes: [
+          "Each Purchase Order can only ever have one Bill.",
+        ],
+      },
+      {
+        id: "accounts-ledger",
+        title: "Ledger — Chart of Accounts, Trial Balance, P&L, Balance Sheet",
+        audience: "ACCOUNTS_FMS",
+        summary: "Every Invoice issued, every payment, every Bill issued, and every bill payment automatically posts a real double-entry behind the scenes — these four reports are built from that, never filled in by hand.",
+        how: [
+          "Chart of Accounts starts with five system accounts already seeded — Cash/Bank, Accounts Receivable, Accounts Payable, Sales Revenue, Purchases/COGS. An Admin/Accounts holder can add more on top.",
+          "Trial Balance shows each account's total Debit and Credit — the two totals should always match; this is the first check that the whole Ledger is sound.",
+          "P&L (Profit & Loss) shows Income minus Expense for a date range. Balance Sheet shows Assets vs Liabilities+Equity as of a date.",
+        ],
+        notes: [
+          "The Balance Sheet automatically adds one 'Retained Earnings (Current)' line — this isn't a real account, it's just there to show net profit to date, since this system has no period-close (closing the books for the year) mechanism yet.",
+          "This posting is always best-effort — issuing an Invoice or recording a payment will never itself get stuck even if the Ledger posting runs into a problem. When that happens it's recorded in the error log (Platform → Server Errors).",
         ],
       },
     ],
@@ -1047,7 +1076,22 @@ export const GUIDE_EN: GuideChapter[] = [
           "Click 'Mark Dispatched'.",
         ],
         notes: [
-          "Once every one of an order's shipments is 'Dispatched', that order shows 'Order Fully Dispatched' — this is genuinely the final stop of the whole Sales chain (from Lead all the way to Dispatch). No module picks up from here.",
+          "Once every one of an order's shipments is 'Dispatched', that order shows 'Order Fully Dispatched'.",
+        ],
+      },
+      {
+        id: "dispatch-deliver",
+        title: "Mark Delivered — Proof of Delivery",
+        audience: "DISPATCH_FMS",
+        summary: "Once the customer has genuinely received the goods, move that shipment from 'Dispatched' to 'Delivered' — this is genuinely the final stop of the whole Sales chain (from Lead all the way to Delivery).",
+        steps: [
+          "Click the shipment on the 'Dispatched' tab.",
+          "Optionally attach a Proof of Delivery photo/signature — this is optional.",
+          "Click 'Mark Delivered'.",
+        ],
+        notes: [
+          "This is a simple, driver/office-confirms-it mechanism — no OTP or link is sent to the customer.",
+          "Once every one of an order's shipments is 'Delivered', that order shows 'Order Fully Delivered' — no module picks up from here.",
         ],
       },
     ],
@@ -1486,6 +1530,72 @@ export const GUIDE_EN: GuideChapter[] = [
           "This is a flat annual quota — no accrual (building up month by month) and no carry-forward (rolling into next year), by design.",
           "A request for more days than the balance allows is refused outright, at filing time — an 'over quota' state can never exist once a leave is approved.",
           "Pending leaves count toward this year's used days too (not just Approved ones) — so two separate pending requests can't each look like they 'fit' the same remaining balance, only for both to later be approved.",
+        ],
+      },
+    ],
+  },
+
+  {
+    id: "payroll",
+    title: "Payroll",
+    description:
+      "Every employee's monthly salary and payslip — deliberately kept simple: there's no PF/ESI/TDS or other statutory calculation yet (that's a separate, later conversation), and since this system has no clock-in/clock-out, 'attendance' means counting days by join date, not day-to-day presence.",
+    sections: [
+      {
+        id: "payroll-idea",
+        title: "How Payroll works",
+        audience: "admin",
+        summary: "Pay is based entirely on day-proration — Approved Leave never reduces pay, since the Leave Quota is exactly what makes that time paid.",
+        how: [
+          "Each employee has their own Salary Structure (a monthly amount). A raise doesn't erase the old one — a new, dated-from row is added, so a past month's payroll always builds off the salary that was actually in effect then.",
+          "Generating a month's Payroll Run works out Gross Pay for each employee from 'how many days this month they were an Active employee' (from their join date through the last day of the month, or the whole month if they joined earlier).",
+          "No Approved leave ever reduces pay — no matter how many days, as long as it's within the Leave Quota (and every leave now is, by construction, since a request over quota can't even be filed).",
+        ],
+        notes: [
+          "An employee who has been deactivated shows zero pay for that entire run — even if they were Active for part of that same month. This is a deliberate simplification (there's no real exit date stored anywhere yet) — accurate exit-date pay is a future improvement, not a bug.",
+        ],
+      },
+      {
+        id: "payroll-salary",
+        title: "Setting a salary",
+        audience: "admin",
+        summary: "Enter each employee's monthly salary in the Payroll page's Admin console before any payroll run can include them.",
+        steps: [
+          "Open Payroll → Admin console.",
+          "Choose the employee, enter the Monthly Salary and the date it takes effect from (Effective From).",
+          "Save.",
+        ],
+        notes: [
+          "An employee with no salary set won't appear in any payroll run.",
+        ],
+      },
+      {
+        id: "payroll-run",
+        title: "Generating and Finalizing a Payroll Run",
+        audience: "admin",
+        summary: "Generate a Draft run for a month, regenerate it as needed, then Finalize once everything looks right.",
+        steps: [
+          "In Payroll → Admin console, press 'Generate New Run' and pick a month.",
+          "The run is created as a Draft — every employee's payslip (salary, days, Gross/Net Pay) shows up.",
+          "If a salary changes or something looks wrong, generate the same month again — the Draft's payslips are replaced, not duplicated.",
+          "Once everything looks right, press 'Finalize'.",
+        ],
+        notes: [
+          "Finalizing is one-way — a Finalized run can neither be regenerated nor finalized again. It becomes the month's permanent record.",
+          "Finalizing also generates a Payslip PDF for every employee.",
+        ],
+      },
+      {
+        id: "payroll-my-payslips",
+        title: "Viewing your own payslips",
+        audience: "everyone",
+        summary: "Any signed-in user, regardless of Role, can view their own payslips — no grant needed.",
+        steps: [
+          "Open the Payroll page — if you're not an Admin, you'll see 'My Payslips' directly.",
+          "Click any Finalized month to view/download its PDF.",
+        ],
+        notes: [
+          "Salary data is controlled purely by Role (the Admin console), not by any module grant — so everyone can see their own salary, but only an Admin can see or change anyone else's.",
         ],
       },
     ],

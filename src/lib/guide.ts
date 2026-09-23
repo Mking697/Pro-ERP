@@ -1022,9 +1022,9 @@ export const GUIDE: GuideChapter[] = [
 
   {
     id: "accounts",
-    title: "Accounts — Invoice (Receivables)",
+    title: "Accounts — Receivables, Payables aur Ledger",
     description:
-      "Ek order ke liye Invoice banana aur Issue karna — Invoice No., E-way Bill aur documents ke saath. Ye poore Accounts module ka sirf pehla, chhota hissa hai — GL, aging jaisi badi cheezein abhi nahi bani hain.",
+      "Order ke liye Invoice (Receivables), Purchase Order ke liye Bill (Payables), aur inke peeche chalne wala real double-entry Ledger — Chart of Accounts, Trial Balance, P&L, Balance Sheet. Aging aur GST return filing jaisi badi cheezein abhi nahi bani hain.",
     sections: [
       {
         id: "accounts-idea",
@@ -1050,6 +1050,35 @@ export const GUIDE: GuideChapter[] = [
           "Issue karne ke liye Invoice No. aur Invoice Document dono zaroori hain — E-way Bill hamesha optional hai (har dispatch me E-way Bill nahi lagta).",
           "Ek baar Issue ho jaane ke baad Invoice edit nahi hoti — ek asal business document hai, isliye ban jaane ke baad usme badlaav nahi hota.",
           "Invoice detail me 'Invoiced' aur 'Received' dono dikhte hain — 'Received' Order FMS ke apne payments se seedha padha jaata hai, Accounts khud koi doosra payment record nahi rakhta.",
+        ],
+      },
+      {
+        id: "accounts-payables",
+        title: "Payables — Vendor ko Bill aur payment",
+        audience: "ACCOUNTS_FMS",
+        summary: "Receivables ka hi ulta — jab ek Purchase Order 'Material Received' ho kar Complete ho jaaye, wo Payables ke 'Bill Banayein' tab me candidate ban jaata hai.",
+        how: [
+          "Candidate PO chunkar Bill banayein — vendor ka apna invoice number, amount, aur unka bhejaa hua bill document daalein.",
+          "Bill pehle Draft banti hai, phir Issue karein — ek baar Issue hone ke baad wo edit nahi hoti, bilkul Receivables Invoice ki tarah.",
+          "Payment karte hi 'Payment Record Karein' se amount, mode aur reference daal dein — ye ek list hai, ek Bill par kai payments ho sakte hain.",
+        ],
+        notes: [
+          "Ek Purchase Order ki sirf ek hi Bill ban sakti hai.",
+        ],
+      },
+      {
+        id: "accounts-ledger",
+        title: "Ledger — Chart of Accounts, Trial Balance, P&L, Balance Sheet",
+        audience: "ACCOUNTS_FMS",
+        summary: "Har Invoice Issue, har payment, har Bill Issue, aur har Bill payment ke peeche apne aap ek real double-entry likha jaata hai — isi se ye chaaro report banti hain, kahin bhi manually nahi bhari jaati.",
+        how: [
+          "Chart of Accounts me paanch shuru ke (system) accounts pehle se hain — Cash/Bank, Accounts Receivable, Accounts Payable, Sales Revenue, Purchases/COGS. Admin/Accounts access wala inpar aur accounts jod sakta hai.",
+          "Trial Balance har account ka total Debit aur Credit dikhata hai — dono ka total hamesha barabar hona chahiye, ye poore Ledger ke sahi hone ka sabse pehla check hai.",
+          "P&L (Profit & Loss) ek date-range ke liye Income minus Expense dikhata hai. Balance Sheet ek tareekh tak Assets vs Liabilities+Equity dikhata hai.",
+        ],
+        notes: [
+          "Balance Sheet me ek 'Retained Earnings (Current)' line khud-ba-khud jud jaati hai — ye asal account nahi hai, sirf abhi tak ke net profit ko dikhane ke liye hai, kyunki is system me abhi period-close (saal band karne) ka koi tareeka nahi hai.",
+          "Ye posting hamesha 'best-effort' hai — Invoice Issue ya payment record khud kabhi nahi rukega chahe Ledger posting me koi dikkat aa jaaye. Aisa hone par error log me record ho jaata hai (Platform → Server Errors).",
         ],
       },
     ],
@@ -1089,7 +1118,22 @@ export const GUIDE: GuideChapter[] = [
           "'Mark Dispatched' dabayein.",
         ],
         notes: [
-          "Jab order ke saare shipments 'Dispatched' ho jaate hain, wo order 'Order Poora Dispatch Ho Gaya' dikhta hai — yehi poori Sales chain (Lead se lekar Dispatch tak) ka asli, aakhri padaav hai. Isse aage koi module is order ko nahi le jaata.",
+          "Jab order ke saare shipments 'Dispatched' ho jaate hain, wo order 'Order Poora Dispatch Ho Gaya' dikhta hai.",
+        ],
+      },
+      {
+        id: "dispatch-deliver",
+        title: "Mark Delivered — Proof of Delivery",
+        audience: "DISPATCH_FMS",
+        summary: "Jab customer ko maal genuinely mil jaaye, us shipment ko 'Dispatched' se 'Delivered' me le jaayein — yehi poori Sales chain (Lead se lekar Delivery tak) ka asli, aakhri padaav hai.",
+        steps: [
+          "'Dispatched' tab me shipment par click karein.",
+          "Chahe to Proof of Delivery photo/signature attach karein — ye optional hai.",
+          "'Mark Delivered' dabayein.",
+        ],
+        notes: [
+          "Ye ek simple, driver/office khud confirm karne wala tareeka hai — customer ko koi OTP ya link nahi bheja jaata.",
+          "Jab order ke saare shipments 'Delivered' ho jaate hain, wo order 'Order Poora Deliver Ho Gaya' dikhta hai — isse aage koi module is order ko nahi le jaata.",
         ],
       },
     ],
@@ -1526,6 +1570,72 @@ export const GUIDE: GuideChapter[] = [
           "Ye ek flat saalana quota hai — koi accrual (mahine ke hisaab se jama hona) ya carry-forward (agle saal me le jaana) nahi hai, by design.",
           "Quota se zyada din ki request seedhe reject hoti hai, filing ke waqt hi — approve hone ke baad koi 'over quota' state kabhi ban hi nahi sakti.",
           "Pending leaves bhi is saal ke used-days me ginti hain (sirf Approved nahi) — taaki do alag-alag pending requests dono ek hi bache hue balance par 'fit' hoke, baad me dono approve na ho jaayein.",
+        ],
+      },
+    ],
+  },
+
+  {
+    id: "payroll",
+    title: "Payroll",
+    description:
+      "Har employee ki monthly salary aur payslip — jaan-boojh kar simple rakha gaya hai: PF/ESI/TDS jaisi statutory calculation abhi nahi hai (wo ek alag, baad ki conversation hai), aur is system me koi clock-in/clock-out nahi hai isliye 'attendance' ka matlab hai join-date ke hisaab se din ginna, roz ki haaziri nahi.",
+    sections: [
+      {
+        id: "payroll-idea",
+        title: "Payroll kaise kaam karta hai",
+        audience: "admin",
+        summary: "Salary poori tarah din-anupaat (proration) par based hai — Approved Leave se salary nahi katti, kyunki Leave Quota hi paid time-off ka matlab hai.",
+        how: [
+          "Har employee ki apni Salary Structure hoti hai (ek monthly amount). Salary badhne par purani nahi mitai jaati — ek nayi date-se-effective row jud jaati hai, taaki purane mahine ka payroll hamesha usi waqt ki sahi salary se bane.",
+          "Ek mahine ka Payroll Run banate waqt, har employee ke liye: 'kitne din is mahine me wo Active employee tha' (join-date se lekar mahine ke aakhri din tak, ya poora mahina agar pehle se Active tha) ke hisaab se Gross Pay nikalta hai.",
+          "Koi bhi Approved leave salary nahi katti — chahe kitne bhi din ki ho, jab tak wo Leave Quota ke andar hai (aur ab har leave quota ke andar hi hoti hai, kyunki quota se zyada request file hi nahi ho sakti).",
+        ],
+        notes: [
+          "Jo employee Inactive (deactivate) ho chuka ho, uss poore mahine ke run me uski pay zero aa jaati hai — chahe wo mahine ke kuch din tak Active raha ho. Ye is system ki ek jaani-boojhi simplification hai (kyunki exit ki asli tareekh kahin save nahi hoti), sahi exit-date wale hisaab ke liye ye ek future improvement hai, bug nahi.",
+        ],
+      },
+      {
+        id: "payroll-salary",
+        title: "Salary set karna",
+        audience: "admin",
+        summary: "Payroll page ke Admin console me har employee ki monthly salary daalein, isse pehle koi bhi payroll run nahi banega.",
+        steps: [
+          "Payroll → Admin console kholein.",
+          "Employee chunein, Monthly Salary aur 'kis tareekh se lagu hai' (Effective From) daalein.",
+          "Save karein.",
+        ],
+        notes: [
+          "Jis employee ki salary set hi nahi hai, wo kisi bhi payroll run me nahi aayega.",
+        ],
+      },
+      {
+        id: "payroll-run",
+        title: "Payroll Run banana aur Finalize karna",
+        audience: "admin",
+        summary: "Ek mahine ke liye Run banayein (Draft), zaroorat ho to dobara banayein, phir jab sab sahi lage tab Finalize karein.",
+        steps: [
+          "Payroll → Admin console me 'Naya Run Banayein' dabakar mahina chunein.",
+          "Run Draft me ban jaata hai — har employee ka payslip (salary, din, Gross/Net Pay) dikhta hai.",
+          "Kisi employee ki salary badal jaaye ya koi galti dikhe, wahi mahine ke liye dobara Run banayein — Draft ke payslips replace ho jaate hain, dobara nahi jud jaate.",
+          "Sab sahi lagne par 'Finalize Karein' dabayein.",
+        ],
+        notes: [
+          "Finalize ek-tarfa hai — Finalize hone ke baad na wo Run dobara banaya ja sakta hai, na dobara Finalize kiya ja sakta hai. Ye mahine ka pakka, permanent record ban jaata hai.",
+          "Finalize karte hi har employee ke liye ek Payslip PDF bhi ban jaata hai.",
+        ],
+      },
+      {
+        id: "payroll-my-payslips",
+        title: "Apni Payslip dekhna",
+        audience: "everyone",
+        summary: "Koi bhi signed-in user, chahe unka Role kuch bhi ho, apni khud ki payslips dekh sakta hai — kisi grant ki zaroorat nahi.",
+        steps: [
+          "Payroll page kholein — agar aap Admin nahi hain, to seedhe 'Meri Payslips' dikhengi.",
+          "Kisi bhi Finalized mahine par click karke uski PDF dekh/download kar sakte hain.",
+        ],
+        notes: [
+          "Salary data sirf Role se control hoti hai (Admin console), kisi module grant se nahi — isliye har koi apni salary dekh sakta hai, lekin sirf Admin hi doosron ki dekh/badal sakta hai.",
         ],
       },
     ],
