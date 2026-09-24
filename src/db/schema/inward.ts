@@ -66,6 +66,15 @@ export const failureLog = pgTable(
     failReason: text("fail_reason").notNull().default(""),
     attachmentUrl: text("attachment_url").notNull().default(""),
     verifiedBy: text("verified_by").notNull().default(""),
+    // Set once this failed quantity is accepted "Under Deviation" (a documented quality
+    // concession) and written into stock as a real ledger "In" — see
+    // src/lib/inward/deviation.ts. Null until then; a failed qty can sit unresolved
+    // indefinitely, same as before this feature existed.
+    movedToInventoryAt: timestamp("moved_to_inventory_at", { withTimezone: true }),
+    // "" until a Debit Note (src/db/schema/accounts.ts's debitNotes) is issued against the
+    // vendor for this failure — set once, never cleared, so the UI can show "Debit Note
+    // already issued: <no>" and this action stays a one-time thing per failure.
+    debitNoteId: text("debit_note_id").notNull().default(""),
   },
   (table) => [index("failure_log_org_id_idx").on(table.orgId)]
 );

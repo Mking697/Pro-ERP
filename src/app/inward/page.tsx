@@ -51,7 +51,7 @@ export default async function InwardPage() {
               <InwardBoard canVerify={canVerify} />
             </TabsContent>
             <TabsContent value="failures" className="mt-4">
-              <QualityRecords view="failures" />
+              <QualityRecords view="failures" canVerify={canVerify} />
             </TabsContent>
             <TabsContent value="ims" className="mt-4">
               <QualityRecords view="ims" />

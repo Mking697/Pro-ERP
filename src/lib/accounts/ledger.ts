@@ -60,11 +60,18 @@ export type AccountType = "Asset" | "Liability" | "Equity" | "Income" | "Expense
  * customer real money back — a liability, not a reduction of an asset that's already zero.
  * Keeping this as its own account works uniformly for both cases; whether a credit note's
  * value is later applied to a new order's payment or refunded in cash is decided at the
- * point of use (creditNotes.ts), not at issuance. */
+ * point of use (creditNotes.ts), not at issuance.
+ *
+ * VENDOR_CLAIM_RECEIVABLE (Asset) is the exact Payables-side mirror of
+ * CUSTOMER_CREDIT_BALANCE, for the same reason in the opposite direction: a Debit Note
+ * issued against a vendor (src/lib/accounts/debitNotes.ts, built for IQC failures) is a
+ * claim the org holds on the vendor, regardless of whether the related Bill is already
+ * paid — so it's booked as its own Asset rather than touching Accounts Payable directly. */
 export const SYSTEM_ACCOUNT_CODES = {
   CASH_BANK: "1000",
   PETTY_CASH: "1050",
   ACCOUNTS_RECEIVABLE: "1100",
+  VENDOR_CLAIM_RECEIVABLE: "1150",
   ACCOUNTS_PAYABLE: "2000",
   GST_PAYABLE: "2100",
   CUSTOMER_CREDIT_BALANCE: "2200",
@@ -81,6 +88,11 @@ const DEFAULT_ACCOUNTS: { code: string; name: string; type: AccountType }[] = [
   { code: SYSTEM_ACCOUNT_CODES.CASH_BANK, name: "Cash / Bank", type: "Asset" },
   { code: SYSTEM_ACCOUNT_CODES.PETTY_CASH, name: "Petty Cash", type: "Asset" },
   { code: SYSTEM_ACCOUNT_CODES.ACCOUNTS_RECEIVABLE, name: "Accounts Receivable", type: "Asset" },
+  {
+    code: SYSTEM_ACCOUNT_CODES.VENDOR_CLAIM_RECEIVABLE,
+    name: "Vendor Claim Receivable",
+    type: "Asset",
+  },
   { code: SYSTEM_ACCOUNT_CODES.ACCOUNTS_PAYABLE, name: "Accounts Payable", type: "Liability" },
   { code: SYSTEM_ACCOUNT_CODES.GST_PAYABLE, name: "GST Payable", type: "Liability" },
   {

@@ -224,6 +224,19 @@ export const EN: Record<string, string> = {
   "Records load nahi ho paye.": "Could not load records.",
   "Kyun": "Why",
 
+  // --- inward: Failure Log actions — Accept Under Deviation / Issue Debit Note ----------
+  "Actions": "Actions",
+  "Accept Under Deviation": "Accept Under Deviation",
+  "Stock me add ho gaya": "Added to stock",
+  "Stock me add ho gaya.": "Added to stock.",
+  "Issue Debit Note": "Issue Debit Note",
+  "Debit Note issued": "Debit Note issued",
+  "Debit Note": "Debit Note",
+  "Debit Note Issue Karein": "Issue Debit Note",
+  "Debit Note ban gaya.": "Debit Note created.",
+  "Vendor se defective goods ka compensation claim karein.": "Claim compensation from the vendor for defective goods.",
+  "Ek registered vendor chunein — Vendor Master me se.": "Choose a registered vendor — from Vendor Master.",
+
   // --- admin: users ----------------------------------------------------------------
   "Naya User Banayein": "Create a user",
   "Naye users banayein aur unke roles manage karein.":
@@ -1384,6 +1397,22 @@ export const EN: Record<string, string> = {
   "Order chunein": "Choose an order",
   "Order chunein.": "Choose an order.",
   "Is customer ka koi khula order nahi mila.": "No open orders found for this customer.",
+
+  // --- accounts: Debit Notes (the Payables mirror of a Credit Note) --------------------
+  "Debit Notes": "Debit Notes",
+  "Debit Notes load nahi ho paye.": "Could not load Debit Notes.",
+  "Abhi koi Debit Note nahi hai": "No Debit Notes yet",
+  "Failure Log ke kisi entry se 'Issue Debit Note' se shuru karein.":
+    "Start from a Failure Log entry's own 'Issue Debit Note'.",
+  "Debit Note No.": "Debit Note No.",
+  "Debit Note Apply Karein": "Apply Debit Note",
+  "Debit Note Payment Receive Karein": "Receive Debit Note Payment",
+  "Debit Note bill par apply ho gaya.": "Debit Note applied to the bill.",
+  "Debit Note payment receive ho gaya.": "Debit Note payment received.",
+  "Receive Karein": "Receive",
+  "Bill chunein": "Choose a bill",
+  "Bill chunein.": "Choose a bill.",
+  "Is vendor ki koi Issued bill nahi mili.": "No Issued bill found for this vendor.",
   "Amount": "Amount",
   "Amount 0 ya usse zyada honi chahiye.": "Amount must be 0 or more.",
   "Amount 0 se zyada hona chahiye.": "Amount must be greater than 0.",

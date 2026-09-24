@@ -1,5 +1,7 @@
 import type { InferSelectModel } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { inwardIqcFms, failureLog, imsInward } from "@/db/schema";
+import { db } from "@/db/client";
 import { findById, insertRecord, listByOrg, updateById } from "@/db/repo";
 import { getTenantOrgId } from "@/lib/tenant";
 import { generateId } from "@/lib/id";
@@ -68,6 +70,18 @@ export interface FailureLogRecord {
   Fail_Reason: string;
   Attachment_URL: string;
   Verified_By: string;
+  /** "" until "Accept Under Deviation" (src/lib/inward/deviation.ts) moves this failed
+   * quantity into real stock — idempotency guard, also what the UI disables its own button
+   * on. */
+  Moved_To_Inventory_At: string;
+  /** "" until a Debit Note (src/lib/accounts/debitNotes.ts) is issued against this entry —
+   * same idempotency purpose as Moved_To_Inventory_At, independent of it. */
+  Debit_Note_ID: string;
+  /** The LINKED inward_iqc_fms row's own Vendor_ID (failure_log carries no vendor column
+   * of its own) — lets the "Issue Debit Note" dialog show the vendor read-only when the
+   * original inward entry already named one from Vendor Master, instead of always asking
+   * again. "" when that inward entry named a party that isn't a registered vendor. */
+  Linked_Vendor_ID: string;
 }
 
 export interface ImsInwardRecord {
@@ -111,7 +125,7 @@ function rowToRecord(row: InwardRow): InwardRecord {
   };
 }
 
-function failureLogFromRow(row: FailureLogRow): FailureLogRecord {
+function failureLogFromRow(row: FailureLogRow, linkedVendorId: string): FailureLogRecord {
   return {
     Log_ID: row.id,
     Linked_Entry_ID: row.linkedEntryId,
@@ -123,6 +137,9 @@ function failureLogFromRow(row: FailureLogRow): FailureLogRecord {
     Fail_Reason: row.failReason,
     Attachment_URL: row.attachmentUrl,
     Verified_By: row.verifiedBy,
+    Moved_To_Inventory_At: row.movedToInventoryAt ? row.movedToInventoryAt.toISOString() : "",
+    Debit_Note_ID: row.debitNoteId,
+    Linked_Vendor_ID: linkedVendorId,
   };
 }
 
@@ -158,10 +175,20 @@ export function isIqcOverdue(entry: InwardRecord): boolean {
 export async function listFailureLog(): Promise<FailureLogRecord[]> {
   const orgId = await getTenantOrgId();
   const rows = await listByOrg(failureLog, orgId);
+
+  // One batched lookup of every linked inward_iqc_fms row (for Linked_Vendor_ID) instead of
+  // one query per failure row.
+  const linkedIds = [...new Set(rows.map((r) => r.linkedEntryId).filter(Boolean))];
+  const linkedRows =
+    linkedIds.length > 0
+      ? await db.select().from(inwardIqcFms).where(and(eq(inwardIqcFms.orgId, orgId), inArray(inwardIqcFms.id, linkedIds)))
+      : [];
+  const vendorIdByEntryId = new Map(linkedRows.map((r) => [r.id, r.vendorId]));
+
   return rows
     .slice()
     .sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime())
-    .map(failureLogFromRow);
+    .map((row) => failureLogFromRow(row, vendorIdByEntryId.get(row.linkedEntryId) ?? ""));
 }
 
 /** Accepted quantities routed here by submitQualityCheck, newest first. */

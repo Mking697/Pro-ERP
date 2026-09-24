@@ -28,6 +28,8 @@ export type BillStatus = "Draft" | "Issued";
 // "Credit_Note" is listed here only because bill_payments.mode reuses orderPaymentModeEnum
 // at the DB level (see accounts.ts's own comment on that column) — a Bill is never actually
 // paid via a customer's own Credit Note, this codebase's Payables logic never writes it.
+// "Debit_Note" IS real here — a vendor Debit Note (src/lib/accounts/debitNotes.ts) applied
+// against a Bill offsets it exactly the same way a real payment would.
 export type BillPaymentMode =
   | "Cash"
   | "UPI"
@@ -35,6 +37,7 @@ export type BillPaymentMode =
   | "Cheque"
   | "Card"
   | "Credit_Note"
+  | "Debit_Note"
   | "Other";
 
 export interface BillRecord {
@@ -157,6 +160,20 @@ export async function listBills(status?: BillStatus): Promise<BillRecord[]> {
   return rows
     .map((r) => rowToBill(r, vendorNameMap.get(r.vendorId) ?? ""))
     .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
+}
+
+/** Every Issued bill for one vendor — added for Debit Notes' own "Apply to a Bill" picker
+ * (src/lib/accounts/debitNotes.ts). Issued-only, since applyDebitNoteToBill() itself refuses
+ * a Draft bill (no real payable posted yet to offset) — same reasoning listOrdersForCustomer()
+ * (orders.ts) applies to Credit Notes' own order picker, one Accounts leg over. */
+export async function listIssuedBillsForVendor(vendorId: string): Promise<BillRecord[]> {
+  const orgId = await getTenantOrgId();
+  const rows = await db
+    .select()
+    .from(bills)
+    .where(and(eq(bills.orgId, orgId), eq(bills.vendorId, vendorId), eq(bills.status, "Issued")));
+  const vendorName = await vendorNameFor(orgId, vendorId);
+  return rows.map((r) => rowToBill(r, vendorName)).sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
 }
 
 export interface BillPaymentRecord {

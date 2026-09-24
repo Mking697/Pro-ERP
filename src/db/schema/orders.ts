@@ -165,6 +165,11 @@ export const orderPaymentModeEnum = pgEnum("order_payment_mode", [
   // reasoning as every other mode) purely so Order FMS's own credit-gate math
   // (computeCreditPosition()) sees it as a real payment with zero changes to that logic.
   "Credit_Note",
+  // The Payables-side mirror of Credit_Note above — a vendor Debit Note (see
+  // src/lib/accounts/debitNotes.ts) applied against a Bill instead of paid in real cash.
+  // Only ever written to bill_payments.mode, never order_payments.mode (this enum is
+  // shared between the two tables — see accounts.ts's own comment on that column).
+  "Debit_Note",
   "Other",
 ]);
 

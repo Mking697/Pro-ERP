@@ -56,6 +56,9 @@ export type OrderActivityKind =
   | "Dispatch_Committed"
   | "Cancelled";
 
+// "Debit_Note" is listed here only because order_payments.mode reuses orderPaymentModeEnum
+// at the DB level, shared with bill_payments (see accounts.ts's own comment on that column)
+// — an Order is never actually paid via a vendor Debit Note, Order FMS's logic never writes it.
 export type OrderPaymentMode =
   | "Cash"
   | "UPI"
@@ -63,6 +66,7 @@ export type OrderPaymentMode =
   | "Cheque"
   | "Card"
   | "Credit_Note"
+  | "Debit_Note"
   | "Other";
 
 /** Who arranges dispatch transport — decides TMS's own branch (src/db/schema/tms.ts).

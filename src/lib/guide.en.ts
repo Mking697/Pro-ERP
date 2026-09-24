@@ -257,6 +257,20 @@ export const GUIDE_EN: GuideChapter[] = [
           "Both carry a Linked Entry ID, which says which inward entry a row came from.",
         ],
       },
+      {
+        id: "inward-deviation",
+        title: "Deciding on a failed quantity — Accept Under Deviation, or a Debit Note",
+        audience: "IQC_CHECK",
+        summary: "Every Failure Log entry has two separate, fully independent actions available — either, both, or neither can be taken.",
+        how: [
+          "'Accept Under Deviation' — when the org decides a failed quantity should still be used anyway (a documented quality concession), press this. A real 'In' movement for that quantity is written straight to the Stock Ledger automatically — no separate entry needs to be made a second time. Once accepted, the button reads 'Added to stock' and won't fire again.",
+          "'Issue Debit Note' — when the vendor should compensate for defective goods, press this, pick the vendor (already shown if the original inward entry was already linked to one), and enter an Amount and a Reason. This creates a Debit Note — the full follow-up on getting money back from the vendor lives on Accounts' own 'Debit Notes' tab.",
+        ],
+        notes: [
+          "These two actions are completely independent of each other — the same entry can be both accepted 'Under Deviation' AND have a Debit Note issued against it, only one of the two, or neither.",
+          "Stock that came in via 'Under Deviation' shows separately from a normal 'IQC pass' in the Stock Ledger, so it's clear later that this was a documented concession, not a clean pass.",
+        ],
+      },
     ],
   },
 
@@ -1073,12 +1087,27 @@ export const GUIDE_EN: GuideChapter[] = [
         ],
       },
       {
+        id: "accounts-debit-notes",
+        title: "Debit Notes — compensation from a vendor, the reverse of a Credit Note",
+        audience: "ACCOUNTS_FMS",
+        summary: "Material from a vendor fails IQC and should be compensated for — a Debit Note creates a claim against that vendor, the exact mirror of a Credit Note (a vendor instead of a customer).",
+        how: [
+          "A Debit Note isn't issued from Accounts itself but from Inward's own Failure Log board — on the entry that failed, press 'Issue Debit Note' and enter the vendor, an Amount, and a Reason (IQC Fail / Other).",
+          "The 'Debit Notes' tab shows every Debit Note with its own live remaining balance — everything that happens with it after issuing happens here.",
+        ],
+        notes: [
+          "That balance can be used two ways: 'Apply' puts it against any of that same vendor's own Issued Bills exactly like a real payment (whatever was owed on that Bill goes down by that much), or 'Receive' records it when the vendor actually pays the money back in cash.",
+          "The moment a Debit Note is created, there's an 'available claim' against that vendor — whether or not any Bill for them is already paid, exactly like a Credit Note.",
+          "'Accept Under Deviation' (see the Inward chapter) is a completely separate, independent action — the same failed entry can get either, both, or neither. Under Deviation is only a decision about stock; a Debit Note is only about getting money back from the vendor.",
+        ],
+      },
+      {
         id: "accounts-ledger",
         title: "Ledger — Chart of Accounts, Trial Balance, P&L, Balance Sheet",
         audience: "ACCOUNTS_FMS",
         summary: "Every Invoice issued, every payment, every Bill issued, and every bill payment automatically posts a real double-entry behind the scenes — these four reports are built from that, never filled in by hand.",
         how: [
-          "Chart of Accounts starts with thirteen system accounts already seeded — Cash/Bank, Petty Cash, Accounts Receivable, Accounts Payable, GST Payable, Customer Credit Balance, Sales Revenue, Purchases/COGS, Rent/Salary/Utilities/Misc Expense, and Transit Loss Expense. An Admin/Accounts holder can add more on top.",
+          "Chart of Accounts starts with fourteen system accounts already seeded — Cash/Bank, Petty Cash, Accounts Receivable, Vendor Claim Receivable, Accounts Payable, GST Payable, Customer Credit Balance, Sales Revenue, Purchases/COGS, Rent/Salary/Utilities/Misc Expense, and Transit Loss Expense. An Admin/Accounts holder can add more on top.",
           "Trial Balance shows each account's total Debit and Credit — the two totals should always match; this is the first check that the whole Ledger is sound.",
           "P&L (Profit & Loss) shows Income minus Expense for a date range. Balance Sheet shows Assets vs Liabilities+Equity as of a date.",
         ],

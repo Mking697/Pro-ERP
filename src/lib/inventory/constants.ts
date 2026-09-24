@@ -58,6 +58,10 @@ export const LEDGER_SOURCES = [
   // column (see src/db/schema/inventory.ts's own comment), so adding this value is an
   // application-level change only, not a schema migration.
   "Dispatch",
+  // A Failure Log entry (src/lib/inward/deviation.ts) accepted "Under Deviation" — a failed
+  // IQC quantity the org decides to use anyway, distinct from a normal IQC pass so the
+  // ledger's own audit trail shows it was a documented concession, not a clean pass.
+  "IQC_Deviation",
 ] as const;
 export type LedgerSource = (typeof LEDGER_SOURCES)[number];
 

@@ -48,6 +48,7 @@ export type BillPaymentMode =
   | "Cheque"
   | "Card"
   | "Credit_Note"
+  | "Debit_Note"
   | "Other";
 
 export interface BillCandidateRow {
@@ -187,6 +188,24 @@ export interface CreditNoteRow {
   reason: string;
   amount: number;
   gstAmount: number;
+  remainingBalance: number;
+  attachmentUrl: string;
+  createdBy: string;
+  createdAt: string;
+}
+
+// --- Debit Notes (the Payables mirror of a Credit Note — a claim against a vendor) -----
+
+export type DebitNoteReason = "IQC_Fail" | "Other";
+
+export interface DebitNoteRow {
+  id: string;
+  debitNoteNo: string;
+  vendorId: string;
+  vendorName: string;
+  reason: string;
+  linkedFailureLogId: string;
+  amount: number;
   remainingBalance: number;
   attachmentUrl: string;
   createdBy: string;

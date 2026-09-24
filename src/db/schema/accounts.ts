@@ -356,3 +356,71 @@ export const creditNoteUsages = pgTable(
   },
   (table) => [index("credit_note_usages_org_id_credit_note_id_idx").on(table.orgId, table.creditNoteId)]
 );
+
+/**
+ * Debit Notes (2026-09-24) — the Payables-side mirror of `creditNotes` above: a claim
+ * against a Vendor instead of a reduction owed to a Customer. Built for IQC failures
+ * specifically — a Failure Log entry (`failure_log`, src/db/schema/inward.ts) that the org
+ * wants the vendor to compensate for, rather than (or alongside) accepting the failed
+ * quantity into stock "Under Deviation" (that path writes a real stock_ledger "In" and
+ * touches no accounting at all — see src/lib/inward/deviation.ts). Unlike `creditNotes`,
+ * a Debit Note is NOT required to reference an existing Bill — a vendor Bill may not exist
+ * yet at the point IQC fails a quantity (Bills happen later, against a Completed PO).
+ *
+ * Deliberately does NOT credit `Purchases / COGS` and debit `Accounts Payable` directly —
+ * mirrors `creditNotes`' own reasoning exactly (see SYSTEM_ACCOUNT_CODES.
+ * VENDOR_CLAIM_RECEIVABLE's own comment in ledger.ts): a Bill this claim relates to may
+ * already be fully paid, so a new Asset account works uniformly for both cases. Whether the
+ * claim later offsets a future Bill or is received back in real cash is decided at the point
+ * of use (`debit_note_usages` below), not at issuance.
+ */
+export const debitNotes = pgTable(
+  "debit_notes",
+  {
+    // Debit_Note_ID, e.g. "DBN-xxxx". debitNoteNo is a separate, sequential, human-facing
+    // document number, same reasoning as invoices.invoiceNo/credit_notes.credit_note_no.
+    id: text("id").primaryKey(),
+    orgId: text("org_id")
+      .notNull()
+      .references(() => organizations.id),
+    vendorId: text("vendor_id").notNull(),
+    debitNoteNo: text("debit_note_no").notNull().default(""),
+    // REASONS ("IQC_Fail" | "Other") — closed but not itself a Status column, kept text.
+    reason: text("reason").notNull().default(""),
+    // "" when not tied to a Failure Log entry at all (kept general on purpose, even though
+    // the only issuance path built so far is from one).
+    linkedFailureLogId: text("linked_failure_log_id").notNull().default(""),
+    // Manually entered in full by whoever actually works the Failure Log entry — no
+    // vendor-price auto-suggestion in this v1, per the user's own explicit choice.
+    amount: numeric("amount").notNull(),
+    attachmentUrl: text("attachment_url").notNull().default(""),
+    createdBy: text("created_by").notNull().default(""),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [index("debit_notes_org_id_vendor_id_idx").on(table.orgId, table.vendorId)]
+);
+
+// DebitNoteUsageRecord.Kind — Applied draws the claim down against a real bill_payments row
+// (mode "Debit_Note"); Received pays it back to the org in real cash. Same shape as
+// creditNoteUsageKindEnum's own Applied/Refunded pair, mirrored for the opposite direction
+// of money.
+export const debitNoteUsageKindEnum = pgEnum("debit_note_usage_kind", ["Applied", "Received"]);
+
+export const debitNoteUsages = pgTable(
+  "debit_note_usages",
+  {
+    // Debit_Note_Usage_ID, e.g. "DNU-xxxx".
+    id: text("id").primaryKey(),
+    orgId: text("org_id")
+      .notNull()
+      .references(() => organizations.id),
+    debitNoteId: text("debit_note_id").notNull(),
+    kind: debitNoteUsageKindEnum("kind").notNull(),
+    // Set only for "Applied" — which bill this usage's value was offset against.
+    billId: text("bill_id").notNull().default(""),
+    amount: numeric("amount").notNull(),
+    createdBy: text("created_by").notNull().default(""),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [index("debit_note_usages_org_id_debit_note_id_idx").on(table.orgId, table.debitNoteId)]
+);

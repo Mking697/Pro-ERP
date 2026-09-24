@@ -299,6 +299,20 @@ export const GUIDE: GuideChapter[] = [
           "Dono me Linked Entry ID hoti hai, jisse pata chalta hai wo kis inward entry se aayi.",
         ],
       },
+      {
+        id: "inward-deviation",
+        title: "Fail hui quantity ka faisla — Under Deviation accept, ya Debit Note",
+        audience: "IQC_CHECK",
+        summary: "Failure Log ke har entry par do alag-alag, ek dusre se bilkul independent action hote hain — dono, ek, ya koi bhi nahi liya ja sakta.",
+        how: [
+          "'Accept Under Deviation' — jab org faisla le ki fail hui quantity phir bhi use karni hai (ek documented quality concession), ye button dabayein. Us quantity ka ek 'In' movement seedha Stock Ledger me apne aap likh diya jaata hai — koi doosri entry dobara nahi karni padti. Ek baar accept hone ke baad button 'Stock me add ho gaya' dikhata hai aur dobara nahi dabta.",
+          "'Issue Debit Note' — jab vendor se defective goods ka compensation chahiye, ye button dabakar vendor chunein (agar original inward entry me vendor pehle se linked hai to naam seedha dikh jaata hai), Amount aur Reason daalein. Ye ek Debit Note bana deta hai — vendor se paisa wapas lene ka poora hisaab Accounts ke 'Debit Notes' tab me hota hai.",
+        ],
+        notes: [
+          "Ye dono action ek dusre se bilkul alag hain — ek entry ko 'Under Deviation' accept bhi kiya ja sakta hai aur usi par Debit Note bhi issue ho sakta hai, sirf ek bhi ho sakta hai, ya dono chhod bhi sakte hain.",
+          "Stock Ledger me 'Under Deviation' se aaya stock 'IQC pass' se alag dikhta hai, taaki baad me pata chal sake ki ye ek documented concession thi, clean pass nahi.",
+        ],
+      },
     ],
   },
 
@@ -1115,12 +1129,27 @@ export const GUIDE: GuideChapter[] = [
         ],
       },
       {
+        id: "accounts-debit-notes",
+        title: "Debit Notes — vendor se compensation, Credit Note ka ulta",
+        audience: "ACCOUNTS_FMS",
+        summary: "Vendor se aaya material IQC me fail ho jaaye aur uska compensation chahiye — Debit Note se us vendor ke against ek claim banta hai, ek Credit Note ka bilkul ulta (customer ki jagah vendor).",
+        how: [
+          "Debit Note khud Accounts se nahi, Inward ke Failure Log board se issue hota hai — jo entry fail hui uspar 'Issue Debit Note' dabakar vendor, Amount aur Reason (IQC Fail / Other) daale jaate hain.",
+          "'Debit Notes' tab par har Debit Note apne live remaining balance ke saath dikhta hai — issue karne ke baad iska age ka kaam yahin hota hai.",
+        ],
+        notes: [
+          "Ye balance do tarah se use ho sakta hai: 'Apply' se isi vendor ki kisi bhi Issued Bill par bilkul asli payment ki tarah laga sakte hain (jitna Bill par baaki tha utna kam ho jaata hai), ya 'Receive' se vendor se seedha cash me wapas mil jaane par record kar sakte hain.",
+          "Debit Note banate hi ek 'available claim' ban jaata hai — chahe us vendor ki koi Bill pehle se paid ho ya na ho, bilkul Credit Note ki tarah.",
+          "'Accept Under Deviation' (Inward chapter dekhein) ek bilkul alag, independent action hai — ek hi fail hui entry par dono, ek, ya koi bhi liya ja sakta hai. Under Deviation sirf stock ka faisla hai; Debit Note sirf vendor se paisa wapas lene ka.",
+        ],
+      },
+      {
         id: "accounts-ledger",
         title: "Ledger — Chart of Accounts, Trial Balance, P&L, Balance Sheet",
         audience: "ACCOUNTS_FMS",
         summary: "Har Invoice Issue, har payment, har Bill Issue, aur har Bill payment ke peeche apne aap ek real double-entry likha jaata hai — isi se ye chaaro report banti hain, kahin bhi manually nahi bhari jaati.",
         how: [
-          "Chart of Accounts me terah shuru ke (system) accounts pehle se hain — Cash/Bank, Petty Cash, Accounts Receivable, Accounts Payable, GST Payable, Customer Credit Balance, Sales Revenue, Purchases/COGS, Rent/Salary/Utilities/Misc Expense, aur Transit Loss Expense. Admin/Accounts access wala inpar aur accounts jod sakta hai.",
+          "Chart of Accounts me chaudah shuru ke (system) accounts pehle se hain — Cash/Bank, Petty Cash, Accounts Receivable, Vendor Claim Receivable, Accounts Payable, GST Payable, Customer Credit Balance, Sales Revenue, Purchases/COGS, Rent/Salary/Utilities/Misc Expense, aur Transit Loss Expense. Admin/Accounts access wala inpar aur accounts jod sakta hai.",
           "Trial Balance har account ka total Debit aur Credit dikhata hai — dono ka total hamesha barabar hona chahiye, ye poore Ledger ke sahi hone ka sabse pehla check hai.",
           "P&L (Profit & Loss) ek date-range ke liye Income minus Expense dikhata hai. Balance Sheet ek tareekh tak Assets vs Liabilities+Equity dikhata hai.",
         ],
