@@ -212,7 +212,16 @@ export default function OrganizationsTable() {
                     <SelectTrigger className="h-8 w-28" aria-label={`${org.name} ka plan`}>
                       <SelectValue />
                     </SelectTrigger>
-                    <SelectContent>
+                    <SelectContent
+                      // This trigger sits inside the Table's own horizontally-scrollable
+                      // wrapper (src/components/ui/table.tsx) — the default
+                      // `collisionBoundary="clipping-ancestors"` walks up into that
+                      // `overflow-x-auto` ancestor and can render the popup partly
+                      // off-screen at phone width, same root cause fixed for the nav bar
+                      // dropdown (src/components/nav-links.tsx). Pinning to <body> makes
+                      // it use the real viewport instead.
+                      collisionBoundary={typeof document !== "undefined" ? document.body : undefined}
+                    >
                       {(planNames.length > 0 ? planNames : [org.plan]).map((p) => (
                         <SelectItem key={p} value={p}>
                           {p}
