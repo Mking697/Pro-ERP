@@ -1,184 +1,101 @@
 # Pro ERP
 
-Multi-tenant SaaS ERP with Google Sheets as the database and Google Drive as file storage. Built with Next.js (App Router), Tailwind CSS, and Shadcn UI, deployable for free on Vercel.
+Multi-tenant SaaS ERP — Next.js (App Router), Tailwind CSS, and Shadcn UI, deployable on Vercel. One shared **Neon (serverless Postgres)** database via **Drizzle ORM** backs every organization; every tenant-scoped table carries an `org_id` column and every query is scoped through `getTenant()`/`getTenantOrgId()` (`src/lib/tenant.ts`). Attachments go to **Vercel Blob**.
 
-Any organization signs up, connects **its own** Google Sheets, Drive folder, and ChatXFlow credentials, and gets an isolated system. Every customer's data stays in their own Google account — Pro ERP only reads and writes it.
+> **This app used to store data in Google Sheets**, with each organization pasting its own Sheet/Drive URLs. That architecture was fully migrated away and removed on 2026-09-16–19 — no Sheets/Drive code, dependency, or onboarding screen remains. If you find a doc, comment, or script anywhere that still references a "System spreadsheet", `PLATFORM_SHEET_ID`, `GOOGLE_SERVICE_ACCOUNT_EMAIL`, or "paste a Sheet URL", it predates the migration and is wrong — fix it in place. **[CLAUDE.md](CLAUDE.md)** is the actively maintained, detailed architecture/history doc; this file is the shorter "how do I run this" guide.
 
-## Sheet architecture
+## What it does
 
-Three levels, and the distinction matters:
+An ERP covering the full order-to-cash and procure-to-pay cycle for a small manufacturer, plus the operational modules around it:
 
-- **Platform registry** (one, for the whole install, via `.env` — `PLATFORM_SHEET_ID`): the only spreadsheet Pro ERP itself owns. It holds no business data — just two tabs:
-  - `Organizations` — `Org_ID | Org_Name | Slug | System_Sheet_ID | Owner_Email | Plan | Status | Created_At`
-  - `Users_Index` — `Email | Org_ID | User_ID | Status`, so login can find which organization an email belongs to without scanning every tenant's sheet.
+- **Sales chain**: Lead → Quotation → Order → PDI (pre-dispatch inspection) → Transport (TMS) → Dispatch → Proof of Delivery.
+- **Purchase chain**: Indent → PO Issue → Follow Up → Material Received.
+- **Accounts**: Receivables (Invoices), Payables (Bills), a real double-entry General Ledger (Chart of Accounts, Trial Balance, P&L, Balance Sheet), Additional Payments, a Petty Cash book, Credit Notes and Debit Notes.
+- **Production**: Inventory & BOM, Production Planning (PPC), Inward & IQC (with an "Under Deviation" concession path and vendor Debit Notes for quality failures).
+- **FMS (Flow Management System)**: a generic engine so an Admin can build any other multi-step business process as data (forms, lookups, working-hours-aware TAT, stock-ledger actions, WhatsApp notify), without writing code.
+- **People ops**: Task delegation with MIS scoring, Leave (with buddy-based work reassignment), Payroll v1.
+- **Platform**: self-serve org signup, per-org user/module-access management, a Platform Admin console (suspend/delete an org, server error log), shareable live reports.
 
-  Both tabs and their header rows are created automatically on the first signup. You only need a blank spreadsheet shared with the service account.
+See **[CLAUDE.md](CLAUDE.md)** for the full module-by-module breakdown, every design decision and its reasoning, and a running list of what's still open.
 
-- **Per-organization System spreadsheet** (one per customer, connected at signup): holds that organization's `Users` and `Settings` tabs. Its ID is recorded in the registry — never in `.env`.
+## Stack
 
-- **Per-organization module spreadsheets** (connected from the app): `Tasks`, `Recurring Tasks`, `Holiday List`, `Inward & IQC FMS`, `Failure Log`, `IMS - Inward Sub-Sheet` — each its own Google Sheet, connected by pasting a URL under **Onboarding** or **Admin → Settings**. Header rows are created automatically on first write; you never type out columns.
+| Layer | Choice |
+|---|---|
+| Framework | Next.js 16 (App Router), React 19 |
+| Styling | Tailwind CSS 4, Shadcn UI, Base UI primitives |
+| Database | Neon serverless Postgres, via Drizzle ORM (`drizzle-orm/neon-http`) |
+| File storage | Vercel Blob |
+| Auth | Custom email/password (bcrypt), JWT session in an `httpOnly` cookie (`jose`) |
+| PDFs | `@react-pdf/renderer` (Quotations, Purchase Orders, Payslips) |
+| WhatsApp | ChatXFlow (per-org API token) |
+| Tests | Vitest, against a real throwaway org in the live database |
+| Deploy | Vercel, with Vercel Cron for daily jobs |
 
-## Platform setup (once, by whoever runs the install)
+## Local setup
 
-1. Google Cloud Console → APIs & Services → enable **Google Sheets API** and **Google Drive API**.
-2. IAM & Admin → Service Accounts → create one → Keys → Add Key → JSON (download it). This single service account serves every organization.
-3. Create a blank spreadsheet for the registry, share it with the service account's `client_email` as **Editor**, and copy its ID from the URL (`/d/<ID>/edit`).
-4. Copy `.env.example` to `.env.local` and fill in `GOOGLE_SERVICE_ACCOUNT_EMAIL`, `GOOGLE_PRIVATE_KEY`, `PLATFORM_SHEET_ID`, and `JWT_SECRET`.
-5. `npm install && npm run dev` → open `http://localhost:3000/signup`.
-
-## How an organization onboards itself
-
-No admin work on your side — this is the self-serve path:
-
-1. The organization visits `/signup` and creates a blank Google Sheet.
-2. They share it with the service account address shown right on the signup form, as **Editor**.
-3. They fill in organization name, their admin account (name, email, password), and paste the sheet URL. Pro ERP verifies access, refuses a sheet already in use, creates the `Users` + `Settings` tabs with headers, registers the organization, and logs them straight in as Admin.
-4. They land on `/onboarding` to paste their module sheet URLs, their Drive folder link, and their ChatXFlow token. Whatever they connect starts working immediately; the rest can be added later from **Admin → Settings**.
-
-### Tenant isolation
-
-Every sheet read/write resolves through `getTenant()` (`src/lib/tenant.ts`), which throws rather than falling back to a default spreadsheet. Cache entries are keyed by organization (`tenantCached`) because a warm serverless instance serves many tenants and the `Settings` tab holds each one's ChatXFlow API token. Cron jobs carrying `CRON_SECRET` walk every active organization in turn; the same routes triggered from the UI run only for the signed-in admin's organization.
-
-### Known scaling limit
-
-All tenants share one Google Cloud project's Sheets API quota, so the per-minute rate limit is split across every organization on the install. Reads are batched, retried with backoff, and cached per org, and cron runs sequentially rather than in parallel — but the ceiling is real. Measure it against your own quota before onboarding a large number of organizations.
-
-## Module 1: Authentication — how it works
-
-> Setup is now handled by the signup flow above; this section documents the mechanics. The manual steps below only apply if you are seeding an organization's `Users` tab by hand.
-
-1. **Create the System spreadsheet** (any Google account). Add a tab named exactly `Users` with this header row (row 1):
-
-   ```
-   User_ID | Full_Name | Email | Password_Hash | Role | Department | Phone_Number | Status | Created_At | Created_By
-   ```
-
-   Add a second tab named exactly `Settings` with this header row:
-
-   ```
-   Key | Value
-   ```
-
-2. **Create a Google Cloud Service Account**:
-   - Google Cloud Console → APIs & Services → enable **Google Sheets API** and **Google Drive API**.
-   - IAM & Admin → Service Accounts → create one → Keys → Add Key → JSON (download it).
-   - Open the System spreadsheet → Share → paste the service account's `client_email` → give **Editor** access.
-
-3. **Configure environment variables**: copy `.env.example` to `.env.local` and fill in:
-   - `GOOGLE_SERVICE_ACCOUNT_EMAIL` / `GOOGLE_PRIVATE_KEY` — from the downloaded JSON key.
-   - `GOOGLE_SHEET_ID` — the System spreadsheet's ID (`/d/<ID>/edit`).
-   - `JWT_SECRET` — any long random string (`openssl rand -base64 32`).
-
-4. **Create your first Admin user row** in the `Users` tab manually. Generate the password hash first:
-
+1. **Get a Postgres database.** The easiest path is [Neon](https://neon.tech) (serverless, has a free tier) — create a project and copy its pooled connection string. Any Postgres 14+ works if you'd rather self-host.
+2. **Copy the env file** and fill it in:
    ```bash
-   node scripts/hash-password.mjs "YourChosenPassword"
+   cp .env.example .env.local
    ```
-
-   Paste the printed hash into `Password_Hash`. Example row:
-
-   ```
-   UID001 | Admin | admin@example.com | <hash> | Admin | Management | +91xxxxxxxxxx | Active | 2026-08-18 | System
-   ```
-
-5. **Run the app**:
-
+   At minimum you need `DATABASE_URL` and `JWT_SECRET` — the app will not boot a single page without `DATABASE_URL`, login included. See [Environment variables](#environment-variables) below for the full list.
+3. **Install dependencies and apply the schema**:
    ```bash
    npm install
+   npx drizzle-kit migrate
+   ```
+   This runs every committed migration under `drizzle/` against your database — it's additive and safe to run repeatedly (already-applied migrations are skipped).
+4. **Run it**:
+   ```bash
    npm run dev
    ```
+   Visit `http://localhost:3000` — it redirects to `/login`. There's no seed data; go to `/signup` to create your first organization and admin account.
 
-   Visit `http://localhost:3000` — it redirects to `/login`. Log in with the row you created; you'll land on `/dashboard`.
+### Environment variables
 
-## Connecting the module sheets (Admin → Settings)
+| Variable | Required | Notes |
+|---|---|---|
+| `DATABASE_URL` | **Yes** | Neon's pooled connection string. The app cannot render any page without it. |
+| `JWT_SECRET` | **Yes** | Any long random string — `openssl rand -base64 32`. Signs the session cookie. |
+| `BLOB_READ_WRITE_TOKEN` | Yes, for attachments | Created automatically when you add a Blob store to the project in the Vercel dashboard and connect it. Without it, no upload (attachments, logos, PDFs) works. |
+| `PLATFORM_ADMIN_EMAILS` | No | Comma-separated emails allowed to see `/platform` (every organization on this install, suspend/delete, server error log). Deliberately an env var, not a role or database column — see `CLAUDE.md`'s working notes for why. Empty means nobody has platform access. |
+| `CRON_SECRET` | No, but needed for scheduled jobs | Any long random string, set the same value in Vercel's Cron config. A request carrying it runs a daily job (recurring tasks, leave activation/reversion, WhatsApp reminders) for every active organization; the same route triggered from the UI runs only for the signed-in admin's own org. |
 
-For each business sheet (Tasks, Inward & IQC FMS, Failure Log, IMS Inward):
+See `.env.example` for the exact, currently-accurate list with inline comments.
 
-1. Create a new blank Google Sheet.
-2. Share it with the same service account email (Editor access).
-3. Copy its URL and paste it into the matching field on `/admin/settings`, then Save — the app verifies access immediately.
-4. The header row appears automatically the first time real data is written to that sheet; nothing to type manually.
+## Migrations
 
-## Module 3: Task Delegation — Setup
+Schema lives in `src/db/schema/**`, one file per domain cluster. **Never run `npx drizzle-kit push`** — it's retired (see `CLAUDE.md`'s working notes for the incidents that led to that). The workflow is:
 
-1. On `/admin/settings`, connect the **Tasks** sheet URL (see "Connecting the module sheets" above).
-2. On the same page, under **File Storage**, create a blank Google Drive folder, share it with the service account email (Editor), and paste its folder link. Task attachments and completion proofs upload here.
-3. Roles `Admin`, `MD`, and `Delegator` can assign tasks from `/tasks` → **Assign Task**. Every other role only sees their own tasks and marks them Done.
-4. A task is "Done on Time" or "Delay Done" based on whether it was completed by its due date.
+```bash
+# after editing a schema file:
+npx drizzle-kit generate   # writes a new numbered .sql file under drizzle/ — review it
+npx drizzle-kit migrate    # applies it to the database in DATABASE_URL
+```
 
-**Free-tier note**: Vercel's Hobby serverless functions cap request bodies around 4.5MB, so file uploads (`/api/drive/upload`) are limited to 4MB — fine for images/PDFs/Excel, but large videos won't fit. If that becomes a blocker later, the fix is a client-side direct-to-Drive resumable upload instead of relaying through our API route.
+Every migration is a committed, reviewable `.sql` file — this is the audit/rollback story `push` never had.
 
-## Module 4: Dashboard & MIS Score
+## Tests and checks
 
-- Tasks carry `On_Time_Count` and `Delay_Count` columns (added to the Tasks sheet headers), incremented every time a task is completed. *(Recurring tasks originally rolled a single row forward on completion instead of getting a new row per occurrence — that mechanism was replaced by the proper occurrence-generating engine described in "Recurring Task Engine" below. The counters themselves are unaffected and still used the same way.)*
-  - **If you connected a Tasks sheet before this module**, its header row won't have these two columns yet — add `On_Time_Count` and `Delay_Count` as the next two column headers yourself; existing rows are unaffected (new writes just land in the new columns, positionally).
-- **"Not Done" is never stored** — it's derived at read time: a task counts as Not Done only while it's still `Pending` and its due date has passed. This is what "dynamic MIS score" means in practice: nothing needs a cron job to flip a status.
-- **Scoring formula** (`src/lib/mis.ts`): `score = round((onTime × 1 + delay × 0.5) / (onTime + delay + notDone) × 100)`, shown as `—` when a user has nothing evaluated yet. Weights are constants at the top of that file if the business wants different credit for a late completion.
-- `/dashboard` now shows each user's own pending/completed counts, MIS score, and upcoming tasks — computed server-side directly from the Tasks sheet, no extra client round-trip.
-- `/performance` (Admin/MD/Delegator only) shows the same breakdown for every active user, sorted by score — a simple team leaderboard.
+Run these before considering any change done — `.github/workflows/ci.yml` runs the same set on every push/PR:
 
-**Assign-task form fields** (updated): User Name (Department shows automatically once picked, read from that user's `Users` row — not duplicated onto the task), Priority (Low/Medium/High/Urgent), Task title + description, Attachment (optional), Completion — now a **date & time** picker (`Due_Date` stores `YYYY-MM-DDTHH:mm`), so on-time/delay is judged to the minute, not just the day. On the assignee's side (`/tasks` and `/dashboard`), the attachment shows as a plain **View** link that opens the file in a new tab, alongside Priority and Completion.
+```bash
+npx tsc --noEmit     # typecheck
+npm run lint         # eslint
+npm run build        # production build
+npm run i18n:check   # every Hindi/English string pair and Guidebook section is in sync
+npm test             # vitest, against a real throwaway org in the live database
+```
 
-**If you connected a Tasks sheet before this update**, add `Priority` as the next column header (after `Delay_Count`) — same non-breaking, position-based append as the counters above.
+Tests need `DATABASE_URL` set (they exercise real code against the actual database via a disposable organization they create and delete themselves — see `tests/*.test.ts`).
 
-## Module 5: WhatsApp Integration (ChatXFlow)
+## Deploy
 
-ChatXFlow's own WhatsApp QR-connect step happens entirely on **chatxflow.online** — Pro ERP never renders a QR code itself. Once an admin has connected their number there and grabbed a Developer API Token from ChatXFlow's dashboard, they just paste it into Pro ERP:
+Push to `main` (or your default branch) with the repo imported into Vercel — it auto-deploys. Add the same environment variables from `.env.local` in the Vercel project settings (Production + Preview). Vercel Cron entries live in `vercel.json` (daily recurring-task/leave/reminder job). `GET /api/health` reports the live commit hash and which env vars are configured, without exposing their values — useful for confirming a deploy actually landed.
 
-1. Go to `/admin/settings` → **WhatsApp (ChatXFlow)**.
-2. Paste the **API Token** (from ChatXFlow's Developer API panel), the **WhatsApp Mobile Number** (for reference), and confirm the **Base URL** (defaults to `https://chatxflow.online`).
-3. Save, then **Send Test Message** — this sends a real WhatsApp message to the saved number via `src/lib/chatxflow.ts`, which calls ChatXFlow's `POST /api/v1/send` with the token as a Bearer header. If that arrives, the integration is live.
+## Where to look next
 
-**Two automations**, both built on that same `sendWhatsAppMessage()` helper:
-
-- **Completion confirmation** (`src/app/api/tasks/[taskId]/complete/route.ts`): the instant a task is marked Done, the assigner gets a WhatsApp message naming who completed it and whether it was on time or late. Fire-and-forget — a WhatsApp failure never blocks the completion itself.
-- **Pending task reminders** (`src/lib/reminders.ts`, `POST /api/whatsapp/send-reminders`): messages every active user their current pending-task checklist (flagging overdue ones). Trigger it two ways:
-  - **Manually** — the "Send Reminders Now" button on the same Settings page (Admin-only).
-  - **Automatically** — `vercel.json` already schedules a daily Vercel Cron hit at 09:00 UTC. Set a `CRON_SECRET` env var (any random string) in both `.env.local`/Vercel and the route uses it to recognize a genuine Cron call vs. a stranger's request. Vercel's Hobby (free) tier supports cron jobs but only once-daily schedules, which is exactly what this needs.
-
-The API token is stored in the `Settings` tab like everything else — never sent to the browser; `/admin/settings` only ever receives a masked preview (`AQ.Ab8••••••••iCwQ`-style) of the currently saved token.
-
-## Module 6: Inward FMS & IQC Workflow
-
-Uses three of the module sheets connected back in "Connecting the module sheets" above: **Inward & IQC FMS**, **Failure Log**, **IMS - Inward Sub-Sheet**.
-
-1. **`/inward`** — any logged-in user submits a new entry (Party Name, Invoice No., Inward Type, optional Attachment, optional Remark) via **New Inward Entry**. It's appended to the Inward & IQC FMS sheet with a generated `Entry_ID`, a `Timestamp`, and `IQC_Status = Pending`.
-2. **IQC review** — anyone with the `IQC` or `Admin` role sees a **Quality Check** button on pending entries, both on `/inward` and as a dedicated "Pending Quality Checks" card on `/dashboard` (matching where the spec says this should surface). The modal has the "Verify material against invoice" checkbox, IQC Pass Qty, IQC Fail Qty, and a Fail Reason field that's required whenever Fail Qty > 0.
-3. **On Save** (`src/lib/inward.ts` → `submitQualityCheck`): the Inward entry itself is updated to `Verified`. If Fail Qty > 0, a row is appended to **Failure Log** (full entry + fail qty/reason, linked by `Linked_Entry_ID`). If Pass Qty > 0, a row is appended to **IMS - Inward Sub-Sheet** (linked the same way). An entry with both a pass and a fail quantity correctly lands in both sheets.
-
-`src/lib/moduleSheets.ts` now exports `recordToRow()`, a small generic used by both `tasks.ts` and `inward.ts` to map a record onto its sheet's declared header order — one place to get that mapping right instead of three.
-
-## Recurring Task Engine
-
-Replaces the earlier "single row rolls forward on completion" mechanism (Module 4) with proper occurrence generation — each scheduled occurrence is its own Tasks row with a real Plan date and, once done, a real Actual timestamp, which is what makes per-occurrence MIS history possible.
-
-**Two new module sheets** to connect from `/admin/settings` (same URL-paste flow as the others):
-
-- **Recurring Tasks (definitions)** — one row per repeating rule: `Recurring_ID`, `Task`, `Doer_ID`, `Assigned_By`, `Frequency`, `Assign_Date`, `Status`, `Created_At`. Created from `/tasks` → **Assign Recurring Task** (Doer Name, Department shown automatically, Frequency, Task, Assign Date).
-- **Holiday List** — just one column, header `Date` in A1, one holiday per row from A2 down. **Enter dates as plain text in `YYYY-MM-DD` format** (e.g. `2026-01-26`) — if you just type a date into a Google Sheets cell it auto-formats to your locale's date display and won't string-match; format the column as Plain Text first, or prefix each entry with `'` to force text.
-
-The Tasks sheet also gained a `Recurring_ID` column (append it as the next header if you connected Tasks before this) — it links a generated occurrence back to the rule that created it, and is how the generator avoids creating the same day's occurrence twice.
-
-**Frequency codes**: `D` Daily, `W` Weekly, `15D` every 15 days, `M` Monthly, `Q` Quarterly, `Y` Yearly.
-
-**Daily generation** (`src/lib/recurringGenerator.ts`, run by the second Vercel Cron entry in `vercel.json` at 01:30 UTC / 07:00 IST): for every `Active` rule, it checks whether today (computed in IST, `src/lib/dateUtil.ts`) matches the rule's cycle —
-
-- `D`: every day.
-- `W` / `15D`: every 7 / 15 days counted from `Assign_Date`.
-- `M` / `Q` / `Y`: same day-of-month as `Assign_Date`, every 1 / 3 / 12 months — if that day doesn't exist in the current month (e.g. the 31st against a 30-day month, or Feb 29 in a non-leap year), the month's last day counts instead, so the cycle never gets silently dropped.
-
-If today is in the **Holiday List**, that occurrence is skipped entirely for every frequency (not just Daily) — the next one still lands on its normal, unshifted cycle date. Skipped occurrences aren't backfilled.
-
-Once generated, an occurrence behaves exactly like a one-time task: the Doer marks it Done from `/tasks`, `Completed_At` is stamped, and `Status` becomes `Done on Time` or `Delay Done` for good — it does not reset back to Pending. There's no pause/deactivate UI yet; to stop a rule, edit its `Status` cell in the Recurring Tasks sheet directly (the generator only processes rows where `Status = Active`).
-
-## Architecture notes
-
-- All Google API calls happen **only** in Next.js Route Handlers (`src/app/api/**`) and server components — the service account key never reaches the browser.
-- Sessions are signed JWTs (`jose`, edge-compatible) in an `httpOnly` cookie, checked in `src/proxy.ts` (Next.js 16's "proxy", formerly "middleware") to protect every route except `/login`.
-- `src/lib/cache.ts` provides a short-TTL in-memory cache to reduce Sheets API calls for read-heavy pages; login and settings writes always read fresh.
-- `src/lib/moduleSheets.ts` resolves each module's configured URL to a spreadsheet + tab, and lazily creates that tab's header row on first write.
-- `src/lib/googleAuth.ts` holds the one shared service-account client that both `googleSheets.ts` and `googleDrive.ts` authenticate with.
-
-## Deploy on Vercel
-
-Push to a Git repo, import into Vercel, and add the same environment variables from `.env.local` in the Vercel project settings (Production + Preview).
+- **[CLAUDE.md](CLAUDE.md)** — the living architecture doc: every module, every non-obvious design decision and the reasoning behind it, a running "what's next" list, and working notes future sessions rely on. Read this before making any non-trivial change.
+- **[docs/INVENTORY-PPC-PLAN.md](docs/INVENTORY-PPC-PLAN.md)** — the original design spec for Inventory/BOM/Production Planning, still the source of truth for that subsystem's decisions.
+- **`/guide`** inside the running app — the in-app Guidebook, written for a non-technical user, covering every feature in plain language (Hindi and English, kept in parity by `npm run i18n:check`).
