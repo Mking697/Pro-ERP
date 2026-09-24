@@ -807,9 +807,12 @@ export const GUIDE_EN: GuideChapter[] = [
           "An order can start two ways — from a Lead (once its Quotation is Accepted) or Direct (straight from the Order page) — and both join the same pipeline afterwards.",
         how: [
           "Lead-sourced: an Accepted Quotation lands in the Order page's 'Intake' tab. Mapping every line to a real Item and confirming/creating the Customer Master row both happen in one 'Map' action.",
-          "Direct: click '+ New Order', pick a Customer (existing or new), and fill in Items/Qty/Rate directly — no mapping needed, since real Items are chosen from the start.",
+          "Direct: click '+ New Order', pick a Customer (existing or new), fill in Items/Qty/Rate, and set a GST% too (defaults to 18%, editable) — a Sub Total/GST/Total breakdown shows before you save. No mapping needed, since real Items are chosen from the start.",
           "Both then follow the same path: Payment Review → (if needed) Credit Hold → Stock Check → Dispatch Pending → Ready For PDI. Cancel is available from any stage before Ready For PDI.",
           "Every action becomes a line in the order's own History — an order is read as a timeline, not a single status cell.",
+        ],
+        notes: [
+          "Direct orders used to have no GST in their total at all. Now a Direct order is worked out the same way a Lead-sourced order already was (it always got its GST from its own Quotation) — the two are consistent for the first time.",
         ],
       },
       {
@@ -1030,11 +1033,12 @@ export const GUIDE_EN: GuideChapter[] = [
         audience: "ACCOUNTS_FMS",
         summary: "Every Invoice issued, every payment, every Bill issued, and every bill payment automatically posts a real double-entry behind the scenes — these four reports are built from that, never filled in by hand.",
         how: [
-          "Chart of Accounts starts with five system accounts already seeded — Cash/Bank, Accounts Receivable, Accounts Payable, Sales Revenue, Purchases/COGS. An Admin/Accounts holder can add more on top.",
+          "Chart of Accounts starts with six system accounts already seeded — Cash/Bank, Accounts Receivable, Accounts Payable, Sales Revenue, Purchases/COGS, and GST Payable. An Admin/Accounts holder can add more on top.",
           "Trial Balance shows each account's total Debit and Credit — the two totals should always match; this is the first check that the whole Ledger is sound.",
           "P&L (Profit & Loss) shows Income minus Expense for a date range. Balance Sheet shows Assets vs Liabilities+Equity as of a date.",
         ],
         notes: [
+          "GST Payable is a Liability account, not income — GST collected from a customer isn't the company's own earning, it's tax-department money the company is simply holding on its behalf. It's recorded here the moment an Invoice is Issued, and shows on the Balance Sheet as something the business owes, kept entirely separate from profit.",
           "The Balance Sheet automatically adds one 'Retained Earnings (Current)' line — this isn't a real account, it's just there to show net profit to date, since this system has no period-close (closing the books for the year) mechanism yet.",
           "This posting is always best-effort — issuing an Invoice or recording a payment will never itself get stuck even if the Ledger posting runs into a problem. When that happens it's recorded in the error log (Platform → Server Errors).",
         ],

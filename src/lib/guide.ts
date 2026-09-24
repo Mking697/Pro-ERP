@@ -849,9 +849,12 @@ export const GUIDE: GuideChapter[] = [
           "Ek order do tariko se ban sakta hai — Lead se (Quotation Accept hone ke baad) ya Direct (seedha Order page se) — aur dono ek hi aage ke safar me mil jaate hain.",
         how: [
           "Lead-sourced: koi Quotation Accept hoti hai to wo Order page ke 'Intake' tab me aa jaati hai. Usme har line ko ek real Item se map karna hota hai aur Customer Master confirm/naya banana hota hai — ye teeno kaam ek hi 'Map Karein' button se ek saath hote hain.",
-          "Direct: '+ Naya Order' se seedha Customer chunein (ya naya banayein) aur Items/Qty/Rate bhar kar order bana dein — koi mapping nahi chahiye, kyunki shuru se hi real Items chuni ja rahi hain.",
+          "Direct: '+ Naya Order' se seedha Customer chunein (ya naya banayein), Items/Qty/Rate bhar kar GST% bhi daalein (default 18%, chahein to badal sakte hain) — Save karne se pehle Sub Total/GST/Total ka poora breakdown dikh jaata hai. Koi mapping nahi chahiye, kyunki shuru se hi real Items chuni ja rahi hain.",
           "Dono ke baad ka safar ek hi hai: Payment Review → (zaroorat pade to) Credit Hold → Stock Check → Dispatch Pending → Ready For PDI. Cancel kisi bhi (Ready For PDI se pehle wale) stage se ho sakta hai.",
           "Har action order ki History me ek line ban kar dikhta hai — order ek single status cell nahi, ek poori timeline hai.",
+        ],
+        notes: [
+          "Pehle Direct order ke total me GST hota hi nahi tha. Ab Direct order bhi Lead-sourced order jaisa hi hisaab karta hai (jise GST hamesha apni source Quotation se milta tha) — dono ab pehli baar consistent hain.",
         ],
       },
       {
@@ -1072,11 +1075,12 @@ export const GUIDE: GuideChapter[] = [
         audience: "ACCOUNTS_FMS",
         summary: "Har Invoice Issue, har payment, har Bill Issue, aur har Bill payment ke peeche apne aap ek real double-entry likha jaata hai — isi se ye chaaro report banti hain, kahin bhi manually nahi bhari jaati.",
         how: [
-          "Chart of Accounts me paanch shuru ke (system) accounts pehle se hain — Cash/Bank, Accounts Receivable, Accounts Payable, Sales Revenue, Purchases/COGS. Admin/Accounts access wala inpar aur accounts jod sakta hai.",
+          "Chart of Accounts me chhah shuru ke (system) accounts pehle se hain — Cash/Bank, Accounts Receivable, Accounts Payable, Sales Revenue, Purchases/COGS, aur GST Payable. Admin/Accounts access wala inpar aur accounts jod sakta hai.",
           "Trial Balance har account ka total Debit aur Credit dikhata hai — dono ka total hamesha barabar hona chahiye, ye poore Ledger ke sahi hone ka sabse pehla check hai.",
           "P&L (Profit & Loss) ek date-range ke liye Income minus Expense dikhata hai. Balance Sheet ek tareekh tak Assets vs Liabilities+Equity dikhata hai.",
         ],
         notes: [
+          "GST Payable ek Liability (dena-baaki) account hai, income nahi — customer se jo GST collect kiya jaata hai wo company ki apni kamai nahi hoti, wo tax department ka paisa hai jo company sirf apne paas rakhe hue hai. Invoice Issue hote hi GST amount yahan record ho jaata hai, aur Balance Sheet par ye profit se bilkul alag, business ke 'kisi ko dena hai' wale hisse me dikhta hai.",
           "Balance Sheet me ek 'Retained Earnings (Current)' line khud-ba-khud jud jaati hai — ye asal account nahi hai, sirf abhi tak ke net profit ko dikhane ke liye hai, kyunki is system me abhi period-close (saal band karne) ka koi tareeka nahi hai.",
           "Ye posting hamesha 'best-effort' hai — Invoice Issue ya payment record khud kabhi nahi rukega chahe Ledger posting me koi dikkat aa jaaye. Aisa hone par error log me record ho jaata hai (Platform → Server Errors).",
         ],
