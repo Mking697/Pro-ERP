@@ -25,7 +25,17 @@ import { postJournalEntry, SYSTEM_ACCOUNT_CODES } from "@/lib/accounts/ledger";
 export class PayablesError extends Error {}
 
 export type BillStatus = "Draft" | "Issued";
-export type BillPaymentMode = "Cash" | "UPI" | "Bank_Transfer" | "Cheque" | "Card" | "Other";
+// "Credit_Note" is listed here only because bill_payments.mode reuses orderPaymentModeEnum
+// at the DB level (see accounts.ts's own comment on that column) — a Bill is never actually
+// paid via a customer's own Credit Note, this codebase's Payables logic never writes it.
+export type BillPaymentMode =
+  | "Cash"
+  | "UPI"
+  | "Bank_Transfer"
+  | "Cheque"
+  | "Card"
+  | "Credit_Note"
+  | "Other";
 
 export interface BillRecord {
   id: string;

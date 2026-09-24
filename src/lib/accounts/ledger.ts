@@ -46,19 +46,35 @@ export type AccountType = "Asset" | "Liability" | "Equity" | "Income" | "Expense
  * mixing into the main account. RENT/SALARY/UTILITIES/MISC_EXPENSE (added alongside
  * Additional Payments, src/lib/accounts/expenses.ts) are the category accounts a one-off
  * non-order expense posts against — seeded up front since there's no Chart-of-Accounts
- * "add account" UI yet (a real, documented gap — see CLAUDE.md's accounting review notes). */
+ * "add account" UI yet (a real, documented gap — see CLAUDE.md's accounting review notes).
+ *
+ * TRANSIT_LOSS_EXPENSE (added alongside Credit Notes, src/lib/accounts/creditNotes.ts) is
+ * for goods lost/damaged in transit that neither insurance nor the transporter reimburses —
+ * recorded as a plain Additional Payment against this category, same mechanism as Rent/
+ * Salary/etc, no dedicated claim-tracking workflow in this v1.
+ *
+ * CUSTOMER_CREDIT_BALANCE (Liability) is what a Credit Note actually credits — deliberately
+ * NOT Accounts Receivable itself: crediting AR directly would be correct only when the
+ * original invoice is still outstanding, but a Credit Note can just as easily be issued
+ * against an invoice that was already paid in full, in which case the business now owes the
+ * customer real money back — a liability, not a reduction of an asset that's already zero.
+ * Keeping this as its own account works uniformly for both cases; whether a credit note's
+ * value is later applied to a new order's payment or refunded in cash is decided at the
+ * point of use (creditNotes.ts), not at issuance. */
 export const SYSTEM_ACCOUNT_CODES = {
   CASH_BANK: "1000",
   PETTY_CASH: "1050",
   ACCOUNTS_RECEIVABLE: "1100",
   ACCOUNTS_PAYABLE: "2000",
   GST_PAYABLE: "2100",
+  CUSTOMER_CREDIT_BALANCE: "2200",
   SALES_REVENUE: "4000",
   PURCHASES_EXPENSE: "5000",
   RENT_EXPENSE: "5100",
   SALARY_EXPENSE: "5200",
   UTILITIES_EXPENSE: "5300",
   MISC_EXPENSE: "5400",
+  TRANSIT_LOSS_EXPENSE: "5500",
 } as const;
 
 const DEFAULT_ACCOUNTS: { code: string; name: string; type: AccountType }[] = [
@@ -67,12 +83,18 @@ const DEFAULT_ACCOUNTS: { code: string; name: string; type: AccountType }[] = [
   { code: SYSTEM_ACCOUNT_CODES.ACCOUNTS_RECEIVABLE, name: "Accounts Receivable", type: "Asset" },
   { code: SYSTEM_ACCOUNT_CODES.ACCOUNTS_PAYABLE, name: "Accounts Payable", type: "Liability" },
   { code: SYSTEM_ACCOUNT_CODES.GST_PAYABLE, name: "GST Payable", type: "Liability" },
+  {
+    code: SYSTEM_ACCOUNT_CODES.CUSTOMER_CREDIT_BALANCE,
+    name: "Customer Credit Balance",
+    type: "Liability",
+  },
   { code: SYSTEM_ACCOUNT_CODES.SALES_REVENUE, name: "Sales Revenue", type: "Income" },
   { code: SYSTEM_ACCOUNT_CODES.PURCHASES_EXPENSE, name: "Purchases / COGS", type: "Expense" },
   { code: SYSTEM_ACCOUNT_CODES.RENT_EXPENSE, name: "Rent Expense", type: "Expense" },
   { code: SYSTEM_ACCOUNT_CODES.SALARY_EXPENSE, name: "Salary Expense", type: "Expense" },
   { code: SYSTEM_ACCOUNT_CODES.UTILITIES_EXPENSE, name: "Utilities Expense", type: "Expense" },
   { code: SYSTEM_ACCOUNT_CODES.MISC_EXPENSE, name: "Miscellaneous Expense", type: "Expense" },
+  { code: SYSTEM_ACCOUNT_CODES.TRANSIT_LOSS_EXPENSE, name: "Transit Loss Expense", type: "Expense" },
 ];
 
 export interface ChartOfAccountRecord {

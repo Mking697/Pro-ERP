@@ -160,6 +160,11 @@ export const orderPaymentModeEnum = pgEnum("order_payment_mode", [
   "Bank_Transfer",
   "Cheque",
   "Card",
+  // Paid by drawing down a customer's own Credit Note balance instead of real cash — see
+  // src/lib/accounts/creditNotes.ts. Recorded as an ordinary order_payments row (same
+  // reasoning as every other mode) purely so Order FMS's own credit-gate math
+  // (computeCreditPosition()) sees it as a real payment with zero changes to that logic.
+  "Credit_Note",
   "Other",
 ]);
 

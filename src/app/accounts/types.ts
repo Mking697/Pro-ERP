@@ -41,7 +41,14 @@ export interface InvoiceSuggestionRow {
 // --- Payables (mirrors Receivables above, against a Purchase Order) --------------------
 
 export type BillStatus = "Draft" | "Issued";
-export type BillPaymentMode = "Cash" | "UPI" | "Bank_Transfer" | "Cheque" | "Card" | "Other";
+export type BillPaymentMode =
+  | "Cash"
+  | "UPI"
+  | "Bank_Transfer"
+  | "Cheque"
+  | "Card"
+  | "Credit_Note"
+  | "Other";
 
 export interface BillCandidateRow {
   poId: string;
@@ -164,4 +171,24 @@ export interface PettyCashEntryRow {
   createdBy: string;
   createdAt: string;
   balanceAfter: number;
+}
+
+// --- Credit Notes (the reverse of an Invoice — Sales Return, Transit Loss, Price Adjustment) ---
+
+export type CreditNoteReason = "Sales_Return" | "Transit_Loss" | "Price_Adjustment" | "Other";
+
+export interface CreditNoteRow {
+  id: string;
+  creditNoteNo: string;
+  invoiceId: string;
+  orderId: string;
+  customerId: string;
+  customerName: string;
+  reason: string;
+  amount: number;
+  gstAmount: number;
+  remainingBalance: number;
+  attachmentUrl: string;
+  createdBy: string;
+  createdAt: string;
 }

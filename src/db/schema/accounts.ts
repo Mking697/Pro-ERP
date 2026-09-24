@@ -284,3 +284,75 @@ export const billPayments = pgTable(
   },
   (table) => [index("bill_payments_org_id_bill_id_idx").on(table.orgId, table.billId)]
 );
+
+/**
+ * Credit Notes (2026-09-24) — the reverse of an Invoice, against a real business event: a
+ * Sales Return, a transit-loss write-off the customer shouldn't be billed for, or any other
+ * reason the original invoiced value no longer stands. v1 is deliberately whole-invoice-level
+ * (a single amount, not a line-item breakdown) — the same "narrow, seed-level" scope this
+ * codebase's own Receivables started at. Always issued against exactly one existing `invoices`
+ * row; `orderId`/`customerId` are denormalized from that invoice purely so a customer's own
+ * credit balance can be queried without joining back through orders every time.
+ *
+ * Deliberately does NOT credit `Accounts Receivable` directly — see
+ * SYSTEM_ACCOUNT_CODES.CUSTOMER_CREDIT_BALANCE's own comment in ledger.ts for why a separate
+ * Liability account is correct here regardless of whether the original invoice was already
+ * paid. Whether a Credit Note's value gets applied to a new order or refunded in cash is
+ * decided later, per `credit_note_usages` below — a note itself is just the fact that this
+ * much value was reversed, immutable once created (matches this schema's append-only-history
+ * convention everywhere else: `lead_activities`, `order_activities`, journal entries, ...).
+ */
+export const creditNotes = pgTable(
+  "credit_notes",
+  {
+    // Credit_Note_ID, e.g. "CRN-xxxx" — the real key. creditNoteNo is a separate,
+    // sequential, customer-facing document number, same reasoning as invoices.invoiceNo.
+    id: text("id").primaryKey(),
+    orgId: text("org_id")
+      .notNull()
+      .references(() => organizations.id),
+    invoiceId: text("invoice_id").notNull(),
+    orderId: text("order_id").notNull(),
+    customerId: text("customer_id").notNull(),
+    creditNoteNo: text("credit_note_no").notNull().default(""),
+    // REASONS ("Sales_Return" | "Transit_Loss" | "Price_Adjustment" | "Other") — closed but
+    // not itself a Status column, kept text.
+    reason: text("reason").notNull().default(""),
+    amount: numeric("amount").notNull(),
+    // GST portion of `amount` being reversed alongside it — capped to the original
+    // invoice's own gstAmount, same capping reasoning as invoices.gstAmount itself.
+    gstAmount: numeric("gst_amount").notNull().default("0"),
+    attachmentUrl: text("attachment_url").notNull().default(""),
+    createdBy: text("created_by").notNull().default(""),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("credit_notes_org_id_customer_id_idx").on(table.orgId, table.customerId),
+    index("credit_notes_org_id_invoice_id_idx").on(table.orgId, table.invoiceId),
+  ]
+);
+
+// CreditNoteUsageRecord.Kind — Applied draws down the credit against a real order's own
+// order_payments row (mode "Credit_Note"); Refunded pays it out in real cash. A credit
+// note's own remaining balance is always `amount - sum(usages for that note)`, live-derived,
+// never stored — same convention as every other running balance in this schema.
+export const creditNoteUsageKindEnum = pgEnum("credit_note_usage_kind", ["Applied", "Refunded"]);
+
+export const creditNoteUsages = pgTable(
+  "credit_note_usages",
+  {
+    // Credit_Note_Usage_ID, e.g. "CNU-xxxx".
+    id: text("id").primaryKey(),
+    orgId: text("org_id")
+      .notNull()
+      .references(() => organizations.id),
+    creditNoteId: text("credit_note_id").notNull(),
+    kind: creditNoteUsageKindEnum("kind").notNull(),
+    // Set only for "Applied" — which order this usage's value was credited against.
+    orderId: text("order_id").notNull().default(""),
+    amount: numeric("amount").notNull(),
+    createdBy: text("created_by").notNull().default(""),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [index("credit_note_usages_org_id_credit_note_id_idx").on(table.orgId, table.creditNoteId)]
+);

@@ -1056,12 +1056,29 @@ export const GUIDE_EN: GuideChapter[] = [
         ],
       },
       {
+        id: "accounts-credit-notes",
+        title: "Credit Notes — the reverse of an Invoice",
+        audience: "ACCOUNTS_FMS",
+        summary: "Goods get lost in transit, or a customer returns them (damaged/wrong item) and wants their money back — a Credit Note reverses part or all of an already-Issued Invoice's own value.",
+        how: [
+          "Open the detail view of the Invoice to reverse (this action only shows on an Issued Invoice) and press 'Issue Credit Note'.",
+          "Enter the Amount, pick a Reason (Sales Return / Transit Loss / Price Adjustment / Other), and optionally attach a supporting document — the GST portion is worked out automatically, based on that invoice's own GST%.",
+          "One Invoice can have several Credit Notes, but together they can never exceed the Invoice's own value.",
+        ],
+        notes: [
+          "The moment a Credit Note is created, the customer has an 'available credit' — shown on the 'Credit Notes' tab, whether or not the original Invoice was already paid.",
+          "That credit can be used two ways: 'Apply' puts it against any of that same customer's own open orders exactly like a cash payment (that order's own credit check sees it as a real payment immediately, nothing else needs changing), or 'Refund' pays it straight back in cash.",
+          "Sending a replacement (the same item again) is a completely separate, new Dispatch — it has nothing to do with the Credit Note.",
+          "If goods are lost in transit and neither insurance nor the transporter reimburses the company, that loss isn't recorded through a Credit Note — it's a separate Expense entry against the 'Transit Loss Expense' category on the 'Other Payments' tab. A Credit Note is only ever the credit given to the customer; the company's own loss is recorded separately.",
+        ],
+      },
+      {
         id: "accounts-ledger",
         title: "Ledger — Chart of Accounts, Trial Balance, P&L, Balance Sheet",
         audience: "ACCOUNTS_FMS",
         summary: "Every Invoice issued, every payment, every Bill issued, and every bill payment automatically posts a real double-entry behind the scenes — these four reports are built from that, never filled in by hand.",
         how: [
-          "Chart of Accounts starts with eleven system accounts already seeded — Cash/Bank, Petty Cash, Accounts Receivable, Accounts Payable, GST Payable, Sales Revenue, Purchases/COGS, and Rent/Salary/Utilities/Misc Expense. An Admin/Accounts holder can add more on top.",
+          "Chart of Accounts starts with thirteen system accounts already seeded — Cash/Bank, Petty Cash, Accounts Receivable, Accounts Payable, GST Payable, Customer Credit Balance, Sales Revenue, Purchases/COGS, Rent/Salary/Utilities/Misc Expense, and Transit Loss Expense. An Admin/Accounts holder can add more on top.",
           "Trial Balance shows each account's total Debit and Credit — the two totals should always match; this is the first check that the whole Ledger is sound.",
           "P&L (Profit & Loss) shows Income minus Expense for a date range. Balance Sheet shows Assets vs Liabilities+Equity as of a date.",
         ],

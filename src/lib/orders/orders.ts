@@ -56,7 +56,14 @@ export type OrderActivityKind =
   | "Dispatch_Committed"
   | "Cancelled";
 
-export type OrderPaymentMode = "Cash" | "UPI" | "Bank_Transfer" | "Cheque" | "Card" | "Other";
+export type OrderPaymentMode =
+  | "Cash"
+  | "UPI"
+  | "Bank_Transfer"
+  | "Cheque"
+  | "Card"
+  | "Credit_Note"
+  | "Other";
 
 /** Who arranges dispatch transport — decides TMS's own branch (src/db/schema/tms.ts).
  * `null` means "not yet decided" — every order created before this column existed, and
@@ -276,6 +283,26 @@ export async function listOrders(status?: OrderStatus): Promise<OrderRecord[]> {
 
   const result: OrderRecord[] = [];
   for (const row of rows) {
+    result.push(rowToOrder(row, await loadOrderItems(orgId, row.id)));
+  }
+  return result.sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
+}
+
+/** Every non-Cancelled order for one customer — added for Credit Notes' own "Apply to an
+ * Order" picker (src/lib/accounts/creditNotes.ts), same "any non-Cancelled status" scope
+ * recordPayment() below already uses (a Credit Note's value becomes a real order_payments
+ * row via that same table, so it should be offered against the same set of orders a normal
+ * payment could be recorded against). */
+export async function listOrdersForCustomer(customerId: string): Promise<OrderRecord[]> {
+  const orgId = await getTenantOrgId();
+  const rows = await db
+    .select()
+    .from(orders)
+    .where(and(eq(orders.orgId, orgId), eq(orders.customerId, customerId)));
+
+  const result: OrderRecord[] = [];
+  for (const row of rows) {
+    if (row.status === "Cancelled") continue;
     result.push(rowToOrder(row, await loadOrderItems(orgId, row.id)));
   }
   return result.sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));

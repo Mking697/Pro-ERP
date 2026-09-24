@@ -1098,12 +1098,29 @@ export const GUIDE: GuideChapter[] = [
         ],
       },
       {
+        id: "accounts-credit-notes",
+        title: "Credit Notes — Invoice ka ulta",
+        audience: "ACCOUNTS_FMS",
+        summary: "Goods transit me kho jaayein, ya customer wapas kar de (damaged/galat item) aur paisa wapas chahiye — Credit Note se ek Issued Invoice ki value ka kuch hissa ya poora reverse karein.",
+        how: [
+          "Jis Invoice ko reverse karna hai uski detail kholein (sirf Issued Invoice par ye action dikhta hai) aur 'Credit Note Issue Karein' dabayein.",
+          "Amount daalein, Reason chunein (Sales Return / Transit Loss / Price Adjustment / Other), aur chahe to ek supporting document jod dein — GST wala hissa apne aap, invoice ke apne GST% ke hisaab se, nikal liya jaata hai.",
+          "Ek Invoice par kai Credit Notes ban sakte hain, lekin sab milakar Invoice ki apni value se zyada kabhi nahi ho sakte.",
+        ],
+        notes: [
+          "Credit Note banate hi customer ka ek 'available credit' ban jaata hai — 'Credit Notes' tab me dikhta hai, chahe original Invoice pehle se paid ho ya na ho.",
+          "Ye credit do tarah se use ho sakta hai: 'Apply' se isi customer ke kisi bhi khule order par bilkul cash payment ki tarah laga sakte hain (order ka apna credit-check ise turant asli payment ki tarah dekh leta hai, kahin alag se badlaav nahi karna padta), ya 'Refund' se seedha cash me wapas kar sakte hain.",
+          "Replacement bhejna ho (wahi cheez dobara), to wo ek bilkul naya, alag Dispatch hai — Credit Note ka is se koi lena-dena nahi.",
+          "Transit me goods kho jaane par, agar insurance ya transporter paisa wapas nahi karta, to wo nuksaan Credit Note se nahi — 'Other Payments' tab me 'Transit Loss Expense' category se ek alag Expense entry ke through record hota hai. Credit Note sirf customer ko diya gaya credit hai; company ka apna nuksaan alag se record hota hai.",
+        ],
+      },
+      {
         id: "accounts-ledger",
         title: "Ledger — Chart of Accounts, Trial Balance, P&L, Balance Sheet",
         audience: "ACCOUNTS_FMS",
         summary: "Har Invoice Issue, har payment, har Bill Issue, aur har Bill payment ke peeche apne aap ek real double-entry likha jaata hai — isi se ye chaaro report banti hain, kahin bhi manually nahi bhari jaati.",
         how: [
-          "Chart of Accounts me gyarah shuru ke (system) accounts pehle se hain — Cash/Bank, Petty Cash, Accounts Receivable, Accounts Payable, GST Payable, Sales Revenue, Purchases/COGS, aur Rent/Salary/Utilities/Misc Expense. Admin/Accounts access wala inpar aur accounts jod sakta hai.",
+          "Chart of Accounts me terah shuru ke (system) accounts pehle se hain — Cash/Bank, Petty Cash, Accounts Receivable, Accounts Payable, GST Payable, Customer Credit Balance, Sales Revenue, Purchases/COGS, Rent/Salary/Utilities/Misc Expense, aur Transit Loss Expense. Admin/Accounts access wala inpar aur accounts jod sakta hai.",
           "Trial Balance har account ka total Debit aur Credit dikhata hai — dono ka total hamesha barabar hona chahiye, ye poore Ledger ke sahi hone ka sabse pehla check hai.",
           "P&L (Profit & Loss) ek date-range ke liye Income minus Expense dikhata hai. Balance Sheet ek tareekh tak Assets vs Liabilities+Equity dikhata hai.",
         ],

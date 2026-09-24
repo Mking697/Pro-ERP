@@ -17,6 +17,7 @@ import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import FileUploadField from "@/components/file-upload-field";
 import { useT } from "@/components/preferences-provider";
+import CreateCreditNoteDialog from "./create-credit-note-dialog";
 import type { InvoiceDetailRow } from "./types";
 
 export default function InvoiceDetailDialog({
@@ -41,6 +42,7 @@ export default function InvoiceDetailDialog({
   const [ewayBillAttachmentUrl, setEwayBillAttachmentUrl] = useState("");
   const [extraDocumentUrl, setExtraDocumentUrl] = useState("");
   const [finalValue, setFinalValue] = useState("");
+  const [creditNoteOpen, setCreditNoteOpen] = useState(false);
 
   function load() {
     fetch(`/api/accounts/invoices/${invoiceId}`)
@@ -210,14 +212,28 @@ export default function InvoiceDetailDialog({
                 </Button>
               </div>
             ) : (
-              <div className="rounded-lg border border-emerald-500/40 bg-emerald-500/5 p-3 text-sm">
-                {t("Issue ho chuki hai")} — {detail.invoice.issuedBy} ·{" "}
-                {detail.invoice.issuedAt ? new Date(detail.invoice.issuedAt).toLocaleString("en-IN") : ""}
-              </div>
+              <>
+                <div className="rounded-lg border border-emerald-500/40 bg-emerald-500/5 p-3 text-sm">
+                  {t("Issue ho chuki hai")} — {detail.invoice.issuedBy} ·{" "}
+                  {detail.invoice.issuedAt ? new Date(detail.invoice.issuedAt).toLocaleString("en-IN") : ""}
+                </div>
+                <Button size="sm" variant="outline" onClick={() => setCreditNoteOpen(true)}>
+                  {t("Credit Note Issue Karein")}
+                </Button>
+              </>
             )}
 
             <Separator />
           </div>
+        )}
+
+        {detail && (
+          <CreateCreditNoteDialog
+            invoice={detail.invoice}
+            open={creditNoteOpen}
+            onOpenChange={setCreditNoteOpen}
+            onCreated={() => onChanged()}
+          />
         )}
 
         <DialogFooter showCloseButton />
