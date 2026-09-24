@@ -15,7 +15,7 @@ import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { TableSkeleton } from "@/components/loading-states";
 import EmptyState from "@/components/empty-state";
-import { FileText, PackageSearch } from "lucide-react";
+import { Eye, FileText, PackageSearch } from "lucide-react";
 import { useT } from "@/components/preferences-provider";
 import CreateInvoiceDialog from "./create-invoice-dialog";
 import InvoiceDetailDialog from "./invoice-detail-dialog";
@@ -129,6 +129,7 @@ export default function AccountsBoard() {
                       <TableHead>{t("Invoice No.")}</TableHead>
                       <TableHead className="text-right">{t("Final Value")}</TableHead>
                       <TableHead>Status</TableHead>
+                      <TableHead className="w-10" />
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -145,6 +146,20 @@ export default function AccountsBoard() {
                         <TableCell className="text-right tabular-nums">₹{inv.finalValue}</TableCell>
                         <TableCell>
                           <Badge variant={inv.status === "Issued" ? "default" : "secondary"}>{inv.status}</Badge>
+                        </TableCell>
+                        <TableCell>
+                          {/* A keyboard-reachable way to open the same detail dialog the row's
+                              own onClick already opens for a mouse — a <tr> itself cannot take
+                              keyboard focus. */}
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon-sm"
+                            aria-label={`${inv.id} ke details dekhein`}
+                            onClick={() => setOpenInvoiceId(inv.id)}
+                          >
+                            <Eye />
+                          </Button>
                         </TableCell>
                       </TableRow>
                     ))}

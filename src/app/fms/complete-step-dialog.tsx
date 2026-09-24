@@ -36,6 +36,7 @@ import type { Translator } from "@/lib/i18n";
  * from what's already here, rather than pulling in a new dependency for one field type.
  */
 function LookupCombobox({
+  id,
   rows,
   loading,
   displayField,
@@ -43,6 +44,7 @@ function LookupCombobox({
   onSelect,
   t,
 }: {
+  id?: string;
   rows: Record<string, string>[];
   loading: boolean;
   displayField: string;
@@ -72,6 +74,7 @@ function LookupCombobox({
   return (
     <div ref={containerRef} className="relative">
       <Input
+        id={id}
         value={open ? search : value}
         onChange={(e) => {
           setSearch(e.target.value);
@@ -326,6 +329,7 @@ export default function CompleteStepDialog({
                     </Select>
                   ) : field.type === "lookup" && field.lookup ? (
                     <LookupCombobox
+                      id={`field-${field.key}`}
                       rows={lookupRows[field.lookup.sourceModule] ?? []}
                       loading={Boolean(lookupLoading[field.lookup.sourceModule])}
                       displayField={field.lookup.displayField}

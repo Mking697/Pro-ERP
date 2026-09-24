@@ -137,7 +137,7 @@ export default function QualityRecords({ view }: { view: "failures" | "ims" }) {
               <TableCell>
                 <Badge variant="secondary">{row.Inward_Type}</Badge>
               </TableCell>
-              <TableCell className="text-right font-medium tabular-nums text-emerald-600 dark:text-emerald-400">
+              <TableCell className="text-right font-medium tabular-nums text-emerald-700 dark:text-emerald-400">
                 {row.Pass_Qty}
               </TableCell>
               <TableCell className="whitespace-nowrap text-muted-foreground">

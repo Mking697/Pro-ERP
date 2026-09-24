@@ -11,6 +11,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
   Dialog,
@@ -24,7 +25,7 @@ import { parseStamp, byNewest } from "@/lib/timestamp";
 import { parseStepDataSourceConfig, parseFormData, type FormField } from "@/lib/fms/dataSource";
 import { TableSkeleton } from "@/components/loading-states";
 import EmptyState from "@/components/empty-state";
-import { Workflow } from "lucide-react";
+import { Eye, Workflow } from "lucide-react";
 import { useT } from "@/components/preferences-provider";
 import type { FmsRunRecord } from "../types";
 
@@ -167,12 +168,13 @@ export default function FlowBoard({ templateId }: { templateId: string }) {
               <TableHead>{t("Kiske Paas")}</TableHead>
               <TableHead>Status</TableHead>
               <TableHead>{t("Shuru Hua")}</TableHead>
+              <TableHead className="w-10" />
             </TableRow>
           </TableHeader>
           <TableBody>
             {filtered.length === 0 && (
               <TableRow>
-                <TableCell colSpan={5} className="py-10 text-center text-muted-foreground">
+                <TableCell colSpan={6} className="py-10 text-center text-muted-foreground">
                   {t("Is search se koi instance nahi mila.")}
                 </TableCell>
               </TableRow>
@@ -201,6 +203,19 @@ export default function FlowBoard({ templateId }: { templateId: string }) {
                   </TableCell>
                   <TableCell className="whitespace-nowrap text-muted-foreground">
                     {formatDueDisplay(row.startedAt)}
+                  </TableCell>
+                  <TableCell>
+                    {/* Keyboard-reachable equivalent of the row's own onClick — a <tr>
+                        itself cannot take keyboard focus. */}
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon-sm"
+                      aria-label={`${row.reference} ke details dekhein`}
+                      onClick={() => setOpenInstanceId(row.instanceId)}
+                    >
+                      <Eye />
+                    </Button>
                   </TableCell>
                 </TableRow>
               );

@@ -15,9 +15,11 @@ import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { Eye } from "lucide-react";
 import { formatDueDisplay } from "@/lib/formatDate";
 import { TableSkeleton } from "@/components/loading-states";
 import { useT } from "@/components/preferences-provider";
@@ -73,6 +75,7 @@ export default function ErrorLogsTable() {
             <TableHead>{t("Organization")}</TableHead>
             <TableHead>{t("Route")}</TableHead>
             <TableHead>{t("Message")}</TableHead>
+            <TableHead className="w-10" />
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -103,6 +106,19 @@ export default function ErrorLogsTable() {
                 )}
               </TableCell>
               <TableCell className="max-w-96 truncate text-sm">{log.message}</TableCell>
+              <TableCell>
+                {/* Keyboard-reachable equivalent of the row's own onClick — a <tr> itself
+                    cannot take keyboard focus. */}
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-sm"
+                  aria-label={`${log.orgName || log.routePath || formatDueDisplay(log.createdAt)} error ke details dekhein`}
+                  onClick={() => setExpanded(log)}
+                >
+                  <Eye />
+                </Button>
+              </TableCell>
             </TableRow>
           ))}
         </TableBody>
@@ -112,14 +128,16 @@ export default function ErrorLogsTable() {
         <DialogContent className="max-w-2xl">
           <DialogHeader>
             <DialogTitle className="break-all">{expanded?.message}</DialogTitle>
-          </DialogHeader>
-          {expanded && (
-            <div className="space-y-2 text-sm">
-              <p className="text-muted-foreground">
+            {expanded && (
+              <DialogDescription>
                 {formatDueDisplay(expanded.createdAt)}
                 {expanded.orgName ? ` · ${expanded.orgName}` : ""}
                 {expanded.routePath ? ` · ${expanded.routePath}` : ""}
-              </p>
+              </DialogDescription>
+            )}
+          </DialogHeader>
+          {expanded && (
+            <div className="space-y-2 text-sm">
               {expanded.stack && (
                 <pre className="max-h-96 overflow-auto whitespace-pre-wrap rounded-md bg-muted p-3 text-xs">
                   {expanded.stack}

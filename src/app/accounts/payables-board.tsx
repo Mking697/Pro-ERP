@@ -15,7 +15,7 @@ import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { TableSkeleton } from "@/components/loading-states";
 import EmptyState from "@/components/empty-state";
-import { FileText, PackageSearch } from "lucide-react";
+import { Eye, FileText, PackageSearch } from "lucide-react";
 import { useT } from "@/components/preferences-provider";
 import CreateBillDialog from "./create-bill-dialog";
 import BillDetailDialog from "./bill-detail-dialog";
@@ -132,6 +132,7 @@ export default function PayablesBoard() {
                       <TableHead>{t("Vendor")}</TableHead>
                       <TableHead className="text-right">{t("Amount")}</TableHead>
                       <TableHead>Status</TableHead>
+                      <TableHead className="w-10" />
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -148,6 +149,19 @@ export default function PayablesBoard() {
                         <TableCell className="text-right tabular-nums">₹{b.amount}</TableCell>
                         <TableCell>
                           <Badge variant={b.status === "Issued" ? "default" : "secondary"}>{b.status}</Badge>
+                        </TableCell>
+                        <TableCell>
+                          {/* Keyboard-reachable equivalent of the row's own onClick — a <tr>
+                              itself cannot take keyboard focus. */}
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon-sm"
+                            aria-label={`${b.id} ke details dekhein`}
+                            onClick={() => setOpenBillId(b.id)}
+                          >
+                            <Eye />
+                          </Button>
                         </TableCell>
                       </TableRow>
                     ))}

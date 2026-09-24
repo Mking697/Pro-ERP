@@ -111,8 +111,12 @@ export function computeCombinedMisSummary(
 /** 0 is best, -100 worst — so the thresholds run the other way from a credit score. */
 export function getScoreColorClass(score: number | null): string {
   if (score === null) return "text-muted-foreground";
-  if (score >= -20) return "text-emerald-600 dark:text-emerald-400";
-  if (score >= -50) return "text-amber-600 dark:text-amber-400";
+  // -700 (not the more common -600) because this text sits at 14px/font-semibold in some
+  // callers (e.g. the Performance table) — -600 measures ~3.2-3.8:1 on white, under WCAG
+  // 1.4.3's 4.5:1 floor for normal-size text; -700 clears it (~5:1+) without needing a
+  // per-caller "is this large text" carve-out.
+  if (score >= -20) return "text-emerald-700 dark:text-emerald-400";
+  if (score >= -50) return "text-amber-700 dark:text-amber-400";
   return "text-destructive";
 }
 

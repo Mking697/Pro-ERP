@@ -12,9 +12,10 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { TableSkeleton } from "@/components/loading-states";
 import EmptyState from "@/components/empty-state";
-import { FileText } from "lucide-react";
+import { Eye, FileText } from "lucide-react";
 import { useT } from "@/components/preferences-provider";
 import WalkInQuotationDialog from "./walk-in-quotation-dialog";
 import type { QuotationRow, QuotationStatus } from "./types";
@@ -67,6 +68,7 @@ export default function QuotationsBoard() {
                 <TableHead>Status</TableHead>
                 <TableHead className="text-right">{t("Payable")}</TableHead>
                 <TableHead>{t("Bani")}</TableHead>
+                <TableHead className="w-10" />
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -90,6 +92,19 @@ export default function QuotationsBoard() {
                   <TableCell className="text-right tabular-nums">{q.payableAmount.toFixed(2)}</TableCell>
                   <TableCell className="text-muted-foreground">
                     {new Date(q.createdAt).toLocaleDateString("en-IN")}
+                  </TableCell>
+                  <TableCell>
+                    {/* Keyboard-reachable equivalent of the row's own onClick — a <tr>
+                        itself cannot take keyboard focus. */}
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon-sm"
+                      aria-label={`${q.quotationNo} ke details dekhein`}
+                      onClick={() => router.push(`/leads/quotations/${q.id}`)}
+                    >
+                      <Eye />
+                    </Button>
                   </TableCell>
                 </TableRow>
               ))}

@@ -11,10 +11,11 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { TableSkeleton } from "@/components/loading-states";
 import EmptyState from "@/components/empty-state";
-import { Users } from "lucide-react";
+import { Eye, Users } from "lucide-react";
 import { useT } from "@/components/preferences-provider";
 import PartyImportDialog from "@/app/parties/party-import-dialog";
 import CreateLeadDialog from "./create-lead-dialog";
@@ -108,6 +109,7 @@ export default function LeadsBoard() {
                       <TableHead>{t("City")}</TableHead>
                       <TableHead>Status</TableHead>
                       <TableHead>{t("Agla Follow-up / Meeting")}</TableHead>
+                      <TableHead className="w-10" />
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -129,6 +131,19 @@ export default function LeadsBoard() {
                           {(lead.nextFollowUpAt || lead.meetingAt)
                             ? new Date(lead.nextFollowUpAt || lead.meetingAt).toLocaleString("en-IN")
                             : "—"}
+                        </TableCell>
+                        <TableCell>
+                          {/* Keyboard-reachable equivalent of the row's own onClick — a
+                              <tr> itself cannot take keyboard focus. */}
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon-sm"
+                            aria-label={`${lead.personName} ke details dekhein`}
+                            onClick={() => setOpenLeadId(lead.id)}
+                          >
+                            <Eye />
+                          </Button>
                         </TableCell>
                       </TableRow>
                     ))}

@@ -11,10 +11,11 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { TableSkeleton } from "@/components/loading-states";
 import EmptyState from "@/components/empty-state";
-import { PackageSearch, Truck } from "lucide-react";
+import { Eye, PackageSearch, Truck } from "lucide-react";
 import { useT } from "@/components/preferences-provider";
 import ConfirmDispatchDialog from "./confirm-dispatch-dialog";
 import DispatchDetailDialog from "./dispatch-detail-dialog";
@@ -87,6 +88,7 @@ export default function DispatchBoard() {
                     <TableHead>{t("Party")}</TableHead>
                     <TableHead>{t("Vehicle")}</TableHead>
                     <TableHead>{t("Invoice")}</TableHead>
+                    <TableHead className="w-10" />
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -106,6 +108,19 @@ export default function DispatchBoard() {
                         ) : (
                           <Badge variant="destructive">{t("Invoice Ka Wait Hai")}</Badge>
                         )}
+                      </TableCell>
+                      <TableCell>
+                        {/* Keyboard-reachable equivalent of the row's own onClick — a <tr>
+                            itself cannot take keyboard focus. */}
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon-sm"
+                          aria-label={`${c.shipment.id} ke details dekhein`}
+                          onClick={() => setConfirmCandidate(c)}
+                        >
+                          <Eye />
+                        </Button>
                       </TableCell>
                     </TableRow>
                   ))}
@@ -136,6 +151,7 @@ export default function DispatchBoard() {
                       <TableHead>{t("Assignee")}</TableHead>
                       <TableHead>{t("Status")}</TableHead>
                       <TableHead>{t("Order Status")}</TableHead>
+                      <TableHead className="w-10" />
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -164,6 +180,19 @@ export default function DispatchBoard() {
                           ) : (
                             <Badge variant="outline">{t("Aur Shipments Baaki")}</Badge>
                           )}
+                        </TableCell>
+                        <TableCell>
+                          {/* Keyboard-reachable equivalent of the row's own onClick — a
+                              <tr> itself cannot take keyboard focus. */}
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon-sm"
+                            aria-label={`${r.id} ke details dekhein`}
+                            onClick={() => setOpenDispatchId(r.id)}
+                          >
+                            <Eye />
+                          </Button>
                         </TableCell>
                       </TableRow>
                     ))}

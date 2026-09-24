@@ -153,7 +153,7 @@ export default function PartyImportDialog({
                 )}
                 {result.warnings.length > 0 && (
                   <>
-                    , <strong className="text-amber-600 dark:text-amber-400">{result.warnings.length}</strong>{" "}
+                    , <strong className="text-amber-700 dark:text-amber-400">{result.warnings.length}</strong>{" "}
                     {t("duplicate naam ke saath ban gaye")}
                   </>
                 )}
@@ -169,7 +169,7 @@ export default function PartyImportDialog({
                 </ul>
               )}
               {result.warnings.length > 0 && (
-                <ul className="max-h-40 space-y-1 overflow-y-auto text-xs text-amber-600 dark:text-amber-400">
+                <ul className="max-h-40 space-y-1 overflow-y-auto text-xs text-amber-700 dark:text-amber-400">
                   {result.warnings.map((w, i) => (
                     <li key={i}>
                       Row {w.row}: {w.message}

@@ -11,10 +11,11 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { TableSkeleton } from "@/components/loading-states";
 import EmptyState from "@/components/empty-state";
-import { PackageSearch, Truck } from "lucide-react";
+import { Eye, PackageSearch, Truck } from "lucide-react";
 import { useT } from "@/components/preferences-provider";
 import OrderTmsDialog from "./order-tms-dialog";
 import TransportVendorsTab from "./transport-vendors-tab";
@@ -100,6 +101,7 @@ export default function TmsBoard() {
                     <TableHead className="text-right">{t("Value")}</TableHead>
                     <TableHead>{t("Transport")}</TableHead>
                     <TableHead>{t("Shipment Progress")}</TableHead>
+                    <TableHead className="w-10" />
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -121,6 +123,19 @@ export default function TmsBoard() {
                         <Badge variant={c.progress.partiallyShipped ? "outline" : "secondary"}>
                           {c.progress.partiallyShipped ? t("Partially Shipped") : t("Not Shipped Yet")}
                         </Badge>
+                      </TableCell>
+                      <TableCell>
+                        {/* Keyboard-reachable equivalent of the row's own onClick — a <tr>
+                            itself cannot take keyboard focus. */}
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon-sm"
+                          aria-label={`${c.order.id} ke details dekhein`}
+                          onClick={() => setOpenOrderId(c.order.id)}
+                        >
+                          <Eye />
+                        </Button>
                       </TableCell>
                     </TableRow>
                   ))}
@@ -150,6 +165,7 @@ export default function TmsBoard() {
                       <TableHead>{t("Party")}</TableHead>
                       <TableHead>{t("Vendor")}</TableHead>
                       <TableHead>{t("Vehicle")}</TableHead>
+                      <TableHead className="w-10" />
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -160,6 +176,19 @@ export default function TmsBoard() {
                         <TableCell>{s.partyName}</TableCell>
                         <TableCell>{s.vendorName || t("Party (Customer)")}</TableCell>
                         <TableCell>{s.vehicleNo || s.vehicleSize || "—"}</TableCell>
+                        <TableCell>
+                          {/* Keyboard-reachable equivalent of the row's own onClick — a
+                              <tr> itself cannot take keyboard focus. */}
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon-sm"
+                            aria-label={`${s.id} ke details dekhein`}
+                            onClick={() => setOpenOrderId(s.orderId)}
+                          >
+                            <Eye />
+                          </Button>
+                        </TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
@@ -186,6 +215,7 @@ export default function TmsBoard() {
                     <TableHead>Order ID</TableHead>
                     <TableHead>{t("Party")}</TableHead>
                     <TableHead className="text-right">{t("Value")}</TableHead>
+                    <TableHead className="w-10" />
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -194,6 +224,19 @@ export default function TmsBoard() {
                       <TableCell className="font-medium">{c.order.id}</TableCell>
                       <TableCell>{c.order.partyName}</TableCell>
                       <TableCell className="text-right tabular-nums">₹{c.order.orderValue}</TableCell>
+                      <TableCell>
+                        {/* Keyboard-reachable equivalent of the row's own onClick — a <tr>
+                            itself cannot take keyboard focus. */}
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon-sm"
+                          aria-label={`${c.order.id} ke details dekhein`}
+                          onClick={() => setOpenOrderId(c.order.id)}
+                        >
+                          <Eye />
+                        </Button>
+                      </TableCell>
                     </TableRow>
                   ))}
                 </TableBody>

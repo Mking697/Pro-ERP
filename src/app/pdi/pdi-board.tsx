@@ -15,7 +15,7 @@ import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { TableSkeleton } from "@/components/loading-states";
 import EmptyState from "@/components/empty-state";
-import { ClipboardCheck, PackageSearch } from "lucide-react";
+import { ClipboardCheck, Eye, PackageSearch } from "lucide-react";
 import { useT } from "@/components/preferences-provider";
 import PdiDetailDialog from "./pdi-detail-dialog";
 import { PDI_STATUS_LABEL, type PdiInspectionRow, type PdiOrderRow, type PdiStatus } from "./types";
@@ -163,6 +163,7 @@ export default function PdiBoard() {
                       <TableHead>{t("Party")}</TableHead>
                       <TableHead>Status</TableHead>
                       <TableHead>{t("Due")}</TableHead>
+                      <TableHead className="w-10" />
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -191,6 +192,19 @@ export default function PdiBoard() {
                           </TableCell>
                           <TableCell className="text-muted-foreground">
                             {p.dueAt ? new Date(p.dueAt).toLocaleDateString("en-IN") : "—"}
+                          </TableCell>
+                          <TableCell>
+                            {/* Keyboard-reachable equivalent of the row's own onClick — a
+                                <tr> itself cannot take keyboard focus. */}
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon-sm"
+                              aria-label={`${p.id} ke details dekhein`}
+                              onClick={() => setOpenPdiId(p.id)}
+                            >
+                              <Eye />
+                            </Button>
                           </TableCell>
                         </TableRow>
                       );
