@@ -18,6 +18,8 @@ import { TableSkeleton } from "@/components/loading-states";
 import EmptyState from "@/components/empty-state";
 import { BookOpen } from "lucide-react";
 import { useT } from "@/components/preferences-provider";
+import AddAccountDialog from "./add-account-dialog";
+import NewJournalEntryDialog from "./new-journal-entry-dialog";
 import type {
   BalanceSheetRow,
   ChartOfAccountRow,
@@ -52,6 +54,7 @@ export default function LedgerBoard() {
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
   const [asOf, setAsOf] = useState("");
+  const [version, setVersion] = useState(0);
 
   const query = useMemo(() => {
     const params = new URLSearchParams();
@@ -92,7 +95,7 @@ export default function LedgerBoard() {
       .then((data: BalanceSheetRow) => setBalanceSheet(data))
       .catch(() => toast.error(t("Balance Sheet load nahi ho payi.")))
       .finally(() => setLoading(false));
-  }, [subTab, query, asOf, t]);
+  }, [subTab, query, asOf, version, t]);
 
   return (
     <div className="space-y-4">
@@ -105,7 +108,14 @@ export default function LedgerBoard() {
           ))}
         </TabsList>
 
-        <TabsContent value="accounts" className="mt-4">
+        <TabsContent value="accounts" className="mt-4 space-y-4">
+          <div className="flex flex-wrap justify-end gap-2">
+            <NewJournalEntryDialog
+              accounts={accounts}
+              onCreated={() => setVersion((v) => v + 1)}
+            />
+            <AddAccountDialog onCreated={() => setVersion((v) => v + 1)} />
+          </div>
           {loading ? (
             <TableSkeleton columns={4} label={t("Load ho raha hai")} />
           ) : accounts.length === 0 ? (

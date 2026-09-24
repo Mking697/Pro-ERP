@@ -1107,7 +1107,9 @@ export const GUIDE_EN: GuideChapter[] = [
         audience: "ACCOUNTS_FMS",
         summary: "Every Invoice issued, every payment, every Bill issued, and every bill payment automatically posts a real double-entry behind the scenes — these four reports are built from that, never filled in by hand.",
         how: [
-          "Chart of Accounts starts with fourteen system accounts already seeded — Cash/Bank, Petty Cash, Accounts Receivable, Vendor Claim Receivable, Accounts Payable, GST Payable, Customer Credit Balance, Sales Revenue, Purchases/COGS, Rent/Salary/Utilities/Misc Expense, and Transit Loss Expense. An Admin/Accounts holder can add more on top.",
+          "Chart of Accounts starts with fourteen system accounts already seeded — Cash/Bank, Petty Cash, Accounts Receivable, Vendor Claim Receivable, Accounts Payable, GST Payable, Customer Credit Balance, Sales Revenue, Purchases/COGS, Rent/Salary/Utilities/Misc Expense, and Transit Loss Expense.",
+          "'+ Add Account' on the same Chart of Accounts tab adds a further account on top — Code, Name, and Type (Asset/Liability/Equity/Income/Expense). It's exactly as real as a system account, just not one that was seeded automatically.",
+          "'+ New Journal Entry' posts a manual/adjusting entry straight to the Ledger — a Description, a Date, and at least 2 lines (each with an Account and a Debit or Credit). The dialog shows live whether Debit and Credit currently match, but the real check happens on the server when it's saved.",
           "Trial Balance shows each account's total Debit and Credit — the two totals should always match; this is the first check that the whole Ledger is sound.",
           "P&L (Profit & Loss) shows Income minus Expense for a date range. Balance Sheet shows Assets vs Liabilities+Equity as of a date.",
         ],
@@ -1115,6 +1117,7 @@ export const GUIDE_EN: GuideChapter[] = [
           "GST Payable is a Liability account, not income — GST collected from a customer isn't the company's own earning, it's tax-department money the company is simply holding on its behalf. It's recorded here the moment an Invoice is Issued, and shows on the Balance Sheet as something the business owes, kept entirely separate from profit.",
           "The Balance Sheet automatically adds one 'Retained Earnings (Current)' line — this isn't a real account, it's just there to show net profit to date, since this system has no period-close (closing the books for the year) mechanism yet.",
           "This posting is always best-effort — issuing an Invoice or recording a payment will never itself get stuck even if the Ledger posting runs into a problem. When that happens it's recorded in the error log (Platform → Server Errors).",
+          "A Manual Journal Entry can't be edited or deleted once posted — fixing a mistake means posting a new, reversing entry, exactly like every auto-posted entry.",
         ],
       },
     ],

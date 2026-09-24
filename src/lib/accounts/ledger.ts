@@ -45,8 +45,11 @@ export type AccountType = "Asset" | "Liability" | "Equity" | "Income" | "Expense
  * from Cash/Bank and spent from directly, so it needs its own running balance rather than
  * mixing into the main account. RENT/SALARY/UTILITIES/MISC_EXPENSE (added alongside
  * Additional Payments, src/lib/accounts/expenses.ts) are the category accounts a one-off
- * non-order expense posts against — seeded up front since there's no Chart-of-Accounts
- * "add account" UI yet (a real, documented gap — see CLAUDE.md's accounting review notes).
+ * non-order expense posts against — seeded up front rather than left for an Admin to add by
+ * hand, since a non-order expense needed somewhere to post against from day one. (An Admin
+ * CAN now add further accounts on top via createAccount() below, added 2026-09-24 — this
+ * was a real, documented gap until then; see CLAUDE.md's accounting review notes for the
+ * history, but don't take that note as still describing the current state.)
  *
  * TRANSIT_LOSS_EXPENSE (added alongside Credit Notes, src/lib/accounts/creditNotes.ts) is
  * for goods lost/damaged in transit that neither insurance nor the transporter reimburses —
@@ -185,6 +188,57 @@ async function findAccountByCode(orgId: string, code: string): Promise<ChartOfAc
   return rows[0] ?? null;
 }
 
+const ACCOUNT_TYPES: readonly AccountType[] = ["Asset", "Liability", "Equity", "Income", "Expense"];
+
+export interface CreateAccountInput {
+  code: string;
+  name: string;
+  type: AccountType;
+}
+
+/**
+ * The "+ Add Account" action (2026-09-24) — closes the real, documented gap this file's own
+ * SYSTEM_ACCOUNT_CODES comment flagged: until now nothing let an Admin add a Chart of
+ * Accounts row beyond the 14 seeded defaults.
+ *
+ * Deliberately takes no `createdBy` — unlike every other create*() function in this
+ * codebase, `chart_of_accounts` carries no `created_by` column to put one into (a schema
+ * change out of scope for this pass; `createManualJournalEntry()` below, by contrast, DOES
+ * record one, via `journal_entries.createdBy`, since that table already has the column). A
+ * parameter with nothing to do would just be dead weight the caller has to pass anyway.
+ */
+export async function createAccount(input: CreateAccountInput): Promise<ChartOfAccountRecord> {
+  const orgId = await getTenantOrgId();
+  const code = input.code.trim();
+  const name = input.name.trim();
+  if (!code) throw new LedgerError("Account code zaroori hai.");
+  if (!name) throw new LedgerError("Account name zaroori hai.");
+  if (!ACCOUNT_TYPES.includes(input.type)) throw new LedgerError("Account type galat hai.");
+
+  await seedDefaultChartOfAccounts(orgId);
+
+  try {
+    const row = await insertRecord(chartOfAccounts, {
+      id: generateId("ACC"),
+      orgId,
+      code,
+      name,
+      type: input.type,
+      isSystem: false,
+    });
+    return rowToAccount(row);
+  } catch (error) {
+    // The seeded 14 accounts already occupy their own codes; a manually-typed code
+    // colliding with either those or an earlier manual account hits this real
+    // `chart_of_accounts_org_id_code_unique` constraint (the same one
+    // seedDefaultChartOfAccounts() itself tolerates a race against above).
+    if (isUniqueViolation(error, "chart_of_accounts_org_id_code_unique")) {
+      throw new LedgerError("Ye code pehle se kisi account ne le rakha hai.");
+    }
+    throw error;
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Journal posting
 // ---------------------------------------------------------------------------
@@ -280,6 +334,69 @@ export async function postJournalEntry(input: PostJournalEntryInput): Promise<st
 
   await db.batch([entryInsert, lineInsert]);
   return entryId;
+}
+
+export interface ManualJournalLineInput {
+  accountId: string;
+  debit?: number;
+  credit?: number;
+}
+
+export interface CreateManualJournalEntryInput {
+  description: string;
+  /** Defaults to now, matching postJournalEntry()'s own default. */
+  entryDate?: Date;
+  lines: ManualJournalLineInput[];
+}
+
+/**
+ * A thin wrapper around `postJournalEntry()` for a manual/adjusting entry — the "+ New
+ * Journal Entry" action (2026-09-24), the correction mechanism this file's own header
+ * comment has described since the GL was first built ("a correction is its own new,
+ * reversing entry") but that, until now, had no UI/API path to actually create.
+ *
+ * Only checks `lines.length >= 2` itself — a single-line entry can never balance, so there
+ * is nothing for `postJournalEntry()` to even attempt. Every other rule (negative amounts,
+ * both/neither of debit+credit set on a line, the balance-or-throw check itself) is left to
+ * `postJournalEntry()`, not duplicated here.
+ *
+ * Takes `accountId` per line (what the UI's own Chart-of-Accounts picker naturally has),
+ * not `accountCode` (what `postJournalEntry()` itself takes, since every OTHER caller in
+ * this codebase already knows the fixed `SYSTEM_ACCOUNT_CODES` string it wants) — resolved
+ * here via one batched lookup before delegating. `sourceId` is left `""`: unlike every
+ * other posting hook in this codebase, a manual entry has no separate domain row of its own
+ * to point back to — the journal entry itself IS the whole record.
+ */
+export async function createManualJournalEntry(
+  input: CreateManualJournalEntryInput,
+  createdBy: string
+): Promise<string> {
+  if (input.lines.length < 2) {
+    throw new LedgerError("Journal entry me kam se kam 2 lines honi chahiye.");
+  }
+
+  const orgId = await getTenantOrgId();
+  await seedDefaultChartOfAccounts(orgId);
+  const accounts = await listByOrg(chartOfAccounts, orgId);
+  const codeById = new Map(accounts.map((a) => [a.id, a.code]));
+
+  const lines: PostJournalLineInput[] = input.lines.map((line) => {
+    const accountCode = codeById.get(line.accountId);
+    if (!accountCode) {
+      throw new LedgerError(`Account "${line.accountId}" Chart of Accounts me nahi mila.`);
+    }
+    return { accountCode, debit: line.debit, credit: line.credit };
+  });
+
+  return postJournalEntry({
+    orgId,
+    description: input.description.trim(),
+    sourceType: "Manual",
+    sourceId: "",
+    createdBy,
+    entryDate: input.entryDate,
+    lines,
+  });
 }
 
 // ---------------------------------------------------------------------------

@@ -1460,6 +1460,30 @@ export const EN: Record<string, string> = {
   "Total Liabilities": "Total Liabilities",
   "Total Equity": "Total Equity",
 
+  // --- accounts: Ledger — Add Account / Manual Journal Entry ---------------------------
+  "+ Add Account": "+ Add Account",
+  "Naya Account": "New Account",
+  "Chart of Accounts me ek naya account jodein.": "Add a new account to the Chart of Accounts.",
+  "Code aur Name dono zaroori hain.": "Code and Name are both required.",
+  "Account Banayein": "Create Account",
+  "Account ban gaya.": "Account created.",
+  "+ New Journal Entry": "+ New Journal Entry",
+  "Manual Journal Entry": "Manual Journal Entry",
+  "Ek adjusting/correcting entry seedhe Ledger me post karein.": "Post an adjusting/correcting entry straight to the Ledger.",
+  "Description zaroori hai.": "Description is required.",
+  "Lines": "Lines",
+  "Account": "Account",
+  "Account chunein": "Choose an account",
+  "Line hatayein": "Remove line",
+  "Total Debit": "Total Debit",
+  "Total Credit": "Total Credit",
+  "Balance hai": "Balanced",
+  "Balance nahi hai": "Not balanced",
+  "Har line me Account aur ek non-zero Debit ya Credit hona chahiye.":
+    "Every line needs an Account and one non-zero Debit or Credit.",
+  "Journal Entry Post Karein": "Post Journal Entry",
+  "Journal entry post ho gayi.": "Journal entry posted.",
+
   // --- dispatch ---------------------------------------------------------------------------
   "Dispatch": "Dispatch",
   "Truck Loading Dock par confirm hote hi yahan aata hai — Gate Pass issue karke stock dispatch karein, phir Mark Dispatched karke shipment band karein.":

@@ -1149,7 +1149,9 @@ export const GUIDE: GuideChapter[] = [
         audience: "ACCOUNTS_FMS",
         summary: "Har Invoice Issue, har payment, har Bill Issue, aur har Bill payment ke peeche apne aap ek real double-entry likha jaata hai — isi se ye chaaro report banti hain, kahin bhi manually nahi bhari jaati.",
         how: [
-          "Chart of Accounts me chaudah shuru ke (system) accounts pehle se hain — Cash/Bank, Petty Cash, Accounts Receivable, Vendor Claim Receivable, Accounts Payable, GST Payable, Customer Credit Balance, Sales Revenue, Purchases/COGS, Rent/Salary/Utilities/Misc Expense, aur Transit Loss Expense. Admin/Accounts access wala inpar aur accounts jod sakta hai.",
+          "Chart of Accounts me chaudah shuru ke (system) accounts pehle se hain — Cash/Bank, Petty Cash, Accounts Receivable, Vendor Claim Receivable, Accounts Payable, GST Payable, Customer Credit Balance, Sales Revenue, Purchases/COGS, Rent/Salary/Utilities/Misc Expense, aur Transit Loss Expense.",
+          "'+ Add Account' se Chart of Accounts tab par hi inpar aur naya account jod sakte hain — Code, Naam, aur Type (Asset/Liability/Equity/Income/Expense) dekar. Ye system accounts jitne hi asli hote hain, bas ye khud-ba-khud seeded nahi the.",
+          "'+ New Journal Entry' se ek manual/adjusting entry seedhe Ledger me post kar sakte hain — Description, Date, aur kam se kam 2 lines (har line me ek Account aur ek Debit ya Credit). Dialog khud dikhata hai ki abhi Debit-Credit barabar hai ya nahi, lekin asal check save karte waqt server par hota hai.",
           "Trial Balance har account ka total Debit aur Credit dikhata hai — dono ka total hamesha barabar hona chahiye, ye poore Ledger ke sahi hone ka sabse pehla check hai.",
           "P&L (Profit & Loss) ek date-range ke liye Income minus Expense dikhata hai. Balance Sheet ek tareekh tak Assets vs Liabilities+Equity dikhata hai.",
         ],
@@ -1157,6 +1159,7 @@ export const GUIDE: GuideChapter[] = [
           "GST Payable ek Liability (dena-baaki) account hai, income nahi — customer se jo GST collect kiya jaata hai wo company ki apni kamai nahi hoti, wo tax department ka paisa hai jo company sirf apne paas rakhe hue hai. Invoice Issue hote hi GST amount yahan record ho jaata hai, aur Balance Sheet par ye profit se bilkul alag, business ke 'kisi ko dena hai' wale hisse me dikhta hai.",
           "Balance Sheet me ek 'Retained Earnings (Current)' line khud-ba-khud jud jaati hai — ye asal account nahi hai, sirf abhi tak ke net profit ko dikhane ke liye hai, kyunki is system me abhi period-close (saal band karne) ka koi tareeka nahi hai.",
           "Ye posting hamesha 'best-effort' hai — Invoice Issue ya payment record khud kabhi nahi rukega chahe Ledger posting me koi dikkat aa jaaye. Aisa hone par error log me record ho jaata hai (Platform → Server Errors).",
+          "Manual Journal Entry post hone ke baad edit ya delete nahi hoti — galti sudharni ho to ek nayi, ulti (reversing) entry hi tareeka hai, bilkul auto-posted entries ki tarah.",
         ],
       },
     ],
