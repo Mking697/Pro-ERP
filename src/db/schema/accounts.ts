@@ -198,6 +198,74 @@ export const bills = pgTable(
   ]
 );
 
+/**
+ * Additional Payments (2026-09-24) — a one-off Cash/Bank expense not tied to any Sales or
+ * Purchase document (rent, salaries, utilities, misc.) — the gap between Receivables/
+ * Payables (both anchored to an order/PO) and a genuine day-to-day business expense.
+ * `categoryAccountId` is always an Expense-type `chart_of_accounts` row (seeded defaults:
+ * Rent/Salary/Utilities/Misc Expense, see ledger.ts's SYSTEM_ACCOUNT_CODES) — always paid
+ * from the main Cash/Bank account; a Petty-Cash-funded expense is recorded in
+ * `petty_cash_entries` below instead, not here. Posted to the GL atomically at creation
+ * (no Draft/Issued step — unlike an Invoice, there's no document to complete afterwards,
+ * the expense simply happened).
+ */
+export const expenseEntries = pgTable(
+  "expense_entries",
+  {
+    // Expense_ID, e.g. "EXP-xxxx".
+    id: text("id").primaryKey(),
+    orgId: text("org_id")
+      .notNull()
+      .references(() => organizations.id),
+    entryDate: timestamp("entry_date", { withTimezone: true }).notNull().defaultNow(),
+    categoryAccountId: text("category_account_id").notNull(),
+    description: text("description").notNull().default(""),
+    paidTo: text("paid_to").notNull().default(""),
+    amount: numeric("amount").notNull(),
+    attachmentUrl: text("attachment_url").notNull().default(""),
+    createdBy: text("created_by").notNull().default(""),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [index("expense_entries_org_id_idx").on(table.orgId, table.entryDate)]
+);
+
+// PettyCashEntryRecord.Kind — TopUp moves money INTO Petty Cash from Cash/Bank (or another
+// source); Expense moves money OUT of Petty Cash against an Expense category account. Same
+// shape either way (a counter account + amount + description) so the book reads as one
+// timeline, not two separate lists.
+export const pettyCashKindEnum = pgEnum("petty_cash_kind", ["TopUp", "Expense"]);
+
+/**
+ * The Petty Cash Book (2026-09-24) — a small imprest cash fund, separate from the main
+ * Cash/Bank account (its own `chart_of_accounts` Asset row, SYSTEM_ACCOUNT_CODES.PETTY_CASH),
+ * topped up occasionally and spent from directly for small day-to-day cash expenses. Its
+ * running balance is never stored here — same "derived, never stored" philosophy as every
+ * other running total in this codebase (stock on-hand, order-reserved, customer outstanding)
+ * — it's computed by summing this account's own `journal_lines` debit/credit, live, in
+ * `src/lib/accounts/pettyCash.ts`.
+ */
+export const pettyCashEntries = pgTable(
+  "petty_cash_entries",
+  {
+    // Petty_Cash_Entry_ID, e.g. "PCE-xxxx".
+    id: text("id").primaryKey(),
+    orgId: text("org_id")
+      .notNull()
+      .references(() => organizations.id),
+    entryDate: timestamp("entry_date", { withTimezone: true }).notNull().defaultNow(),
+    kind: pettyCashKindEnum("kind").notNull(),
+    // TopUp: where the cash came from (normally Cash/Bank). Expense: which Expense category
+    // it was spent against (Rent/Salary/Utilities/Misc, or any other Expense account).
+    counterAccountId: text("counter_account_id").notNull(),
+    description: text("description").notNull().default(""),
+    amount: numeric("amount").notNull(),
+    attachmentUrl: text("attachment_url").notNull().default(""),
+    createdBy: text("created_by").notNull().default(""),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [index("petty_cash_entries_org_id_idx").on(table.orgId, table.entryDate)]
+);
+
 export const billPayments = pgTable(
   "bill_payments",
   {

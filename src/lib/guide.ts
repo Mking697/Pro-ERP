@@ -1070,12 +1070,40 @@ export const GUIDE: GuideChapter[] = [
         ],
       },
       {
+        id: "accounts-expenses",
+        title: "Other Payments — ek-baar ka Cash/Bank kharch",
+        audience: "ACCOUNTS_FMS",
+        summary: "Rent, salary, utilities ya koi bhi one-off kharch jo kisi Order ya Purchase Order se juda nahi hai — 'Other Payments' tab me '+ Naya Expense' se record karein.",
+        how: [
+          "Category chunein (Rent, Salary, Utilities, Misc ya koi aur Expense-type account), Amount daalein, aur chahe to Paid To, Description aur ek attachment bhi jod dein.",
+          "Invoice/Bill ke ulat, yahan koi Draft step nahi hai — save karte hi ye final ho jaata hai aur usi waqt Ledger me post ho jaata hai (Category account Debit, Cash/Bank Credit).",
+        ],
+        notes: [
+          "Ek baar record hone ke baad entry edit ya delete nahi hoti — ek real business kharch ki tarah, permanent record hai. Galti ho jaaye to sudharne ka tareeka ek naya correcting entry hi hai.",
+        ],
+      },
+      {
+        id: "accounts-petty-cash",
+        title: "Petty Cash Book — chhota cash fund",
+        audience: "ACCOUNTS_FMS",
+        summary: "Cash/Bank se alag ek chhota 'imprest' cash fund — thoda-thoda top up karke chhote roz-marra ke kharch seedha isi se kiye jaate hain.",
+        how: [
+          "'Petty Cash' tab ke upar current balance dikhta hai — ye kabhi store nahi hota, har baar Ledger se turant nikala jaata hai.",
+          "'+ Top Up' se Cash/Bank se Petty Cash me paisa daalein.",
+          "'+ Record Expense' se ek Expense category chunkar Petty Cash se seedha kharch karein — agar amount available balance se zyada ho to system record hone nahi dega.",
+          "Har entry ke saamne uske turant baad ka balance bhi dikhta hai, isliye poori history ek running total ki tarah padhi ja sakti hai.",
+        ],
+        notes: [
+          "Petty Cash apna alag Asset account hai — Cash/Bank se kabhi mix nahi hota, isiliye dono ka apna-apna balance saaf-saaf dikhta hai.",
+        ],
+      },
+      {
         id: "accounts-ledger",
         title: "Ledger — Chart of Accounts, Trial Balance, P&L, Balance Sheet",
         audience: "ACCOUNTS_FMS",
         summary: "Har Invoice Issue, har payment, har Bill Issue, aur har Bill payment ke peeche apne aap ek real double-entry likha jaata hai — isi se ye chaaro report banti hain, kahin bhi manually nahi bhari jaati.",
         how: [
-          "Chart of Accounts me chhah shuru ke (system) accounts pehle se hain — Cash/Bank, Accounts Receivable, Accounts Payable, Sales Revenue, Purchases/COGS, aur GST Payable. Admin/Accounts access wala inpar aur accounts jod sakta hai.",
+          "Chart of Accounts me gyarah shuru ke (system) accounts pehle se hain — Cash/Bank, Petty Cash, Accounts Receivable, Accounts Payable, GST Payable, Sales Revenue, Purchases/COGS, aur Rent/Salary/Utilities/Misc Expense. Admin/Accounts access wala inpar aur accounts jod sakta hai.",
           "Trial Balance har account ka total Debit aur Credit dikhata hai — dono ka total hamesha barabar hona chahiye, ye poore Ledger ke sahi hone ka sabse pehla check hai.",
           "P&L (Profit & Loss) ek date-range ke liye Income minus Expense dikhata hai. Balance Sheet ek tareekh tak Assets vs Liabilities+Equity dikhata hai.",
         ],

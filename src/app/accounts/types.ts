@@ -132,3 +132,36 @@ export interface BalanceSheetRow {
   totalLiabilities: number;
   totalEquity: number;
 }
+
+// --- Additional Payments (a one-off Cash/Bank expense, not tied to any order/PO) -------
+
+export interface ExpenseEntryRow {
+  id: string;
+  entryDate: string;
+  categoryAccountId: string;
+  categoryName: string;
+  description: string;
+  paidTo: string;
+  amount: number;
+  attachmentUrl: string;
+  createdBy: string;
+  createdAt: string;
+}
+
+// --- Petty Cash Book ---------------------------------------------------------------------
+
+export type PettyCashKind = "TopUp" | "Expense";
+
+export interface PettyCashEntryRow {
+  id: string;
+  entryDate: string;
+  kind: PettyCashKind;
+  counterAccountId: string;
+  counterAccountName: string;
+  description: string;
+  amount: number;
+  attachmentUrl: string;
+  createdBy: string;
+  createdAt: string;
+  balanceAfter: number;
+}

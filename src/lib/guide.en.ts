@@ -1028,12 +1028,40 @@ export const GUIDE_EN: GuideChapter[] = [
         ],
       },
       {
+        id: "accounts-expenses",
+        title: "Other Payments — a one-off Cash/Bank expense",
+        audience: "ACCOUNTS_FMS",
+        summary: "Rent, salary, utilities, or any one-off expense that isn't tied to any Order or Purchase Order — record it from the 'Other Payments' tab's '+ New Expense'.",
+        how: [
+          "Pick a Category (Rent, Salary, Utilities, Misc, or any other Expense-type account), enter the Amount, and optionally add Paid To, a Description and an attachment.",
+          "Unlike an Invoice/Bill, there's no Draft step here — saving IS the final action, and it posts to the Ledger the same moment (the Category account is Debited, Cash/Bank is Credited).",
+        ],
+        notes: [
+          "Once recorded, an entry can't be edited or deleted — like any real business expense, it's a permanent record. If a mistake was made, the only fix is a new correcting entry.",
+        ],
+      },
+      {
+        id: "accounts-petty-cash",
+        title: "Petty Cash Book — a small cash fund",
+        audience: "ACCOUNTS_FMS",
+        summary: "A small 'imprest' cash fund, kept separate from Cash/Bank — topped up a little at a time, and spent from directly for small day-to-day expenses.",
+        how: [
+          "The 'Petty Cash' tab shows the current balance at the top — it's never stored, it's worked out fresh from the Ledger every time.",
+          "Use '+ Top Up' to put money into Petty Cash from Cash/Bank.",
+          "Use '+ Record Expense' to pick an Expense category and pay straight out of Petty Cash — if the amount is more than what's available, the system won't let it be recorded.",
+          "Every entry shows the balance right after it too, so the whole history reads like a running total.",
+        ],
+        notes: [
+          "Petty Cash is its own separate Asset account — it never mixes with Cash/Bank, so each one's own balance stays clearly visible.",
+        ],
+      },
+      {
         id: "accounts-ledger",
         title: "Ledger — Chart of Accounts, Trial Balance, P&L, Balance Sheet",
         audience: "ACCOUNTS_FMS",
         summary: "Every Invoice issued, every payment, every Bill issued, and every bill payment automatically posts a real double-entry behind the scenes — these four reports are built from that, never filled in by hand.",
         how: [
-          "Chart of Accounts starts with six system accounts already seeded — Cash/Bank, Accounts Receivable, Accounts Payable, Sales Revenue, Purchases/COGS, and GST Payable. An Admin/Accounts holder can add more on top.",
+          "Chart of Accounts starts with eleven system accounts already seeded — Cash/Bank, Petty Cash, Accounts Receivable, Accounts Payable, GST Payable, Sales Revenue, Purchases/COGS, and Rent/Salary/Utilities/Misc Expense. An Admin/Accounts holder can add more on top.",
           "Trial Balance shows each account's total Debit and Credit — the two totals should always match; this is the first check that the whole Ledger is sound.",
           "P&L (Profit & Loss) shows Income minus Expense for a date range. Balance Sheet shows Assets vs Liabilities+Equity as of a date.",
         ],

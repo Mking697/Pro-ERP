@@ -8,6 +8,8 @@ import { getT } from "@/lib/i18n/server";
 import AccountsBoard from "./accounts-board";
 import PayablesBoard from "./payables-board";
 import LedgerBoard from "./ledger-board";
+import ExpensesBoard from "./expenses-board";
+import PettyCashBoard from "./petty-cash-board";
 
 export default async function AccountsPage() {
   const t = await getT();
@@ -28,9 +30,11 @@ export default async function AccountsPage() {
           )}
         />
         <Tabs defaultValue="receivables">
-          <TabsList>
+          <TabsList className="flex-wrap">
             <TabsTrigger value="receivables">{t("Receivables")}</TabsTrigger>
             <TabsTrigger value="payables">{t("Payables")}</TabsTrigger>
+            <TabsTrigger value="other-payments">{t("Other Payments")}</TabsTrigger>
+            <TabsTrigger value="petty-cash">{t("Petty Cash")}</TabsTrigger>
             <TabsTrigger value="ledger">{t("Ledger")}</TabsTrigger>
           </TabsList>
           <TabsContent value="receivables" className="mt-4">
@@ -38,6 +42,12 @@ export default async function AccountsPage() {
           </TabsContent>
           <TabsContent value="payables" className="mt-4">
             <PayablesBoard />
+          </TabsContent>
+          <TabsContent value="other-payments" className="mt-4">
+            <ExpensesBoard />
+          </TabsContent>
+          <TabsContent value="petty-cash" className="mt-4">
+            <PettyCashBoard />
           </TabsContent>
           <TabsContent value="ledger" className="mt-4">
             <LedgerBoard />

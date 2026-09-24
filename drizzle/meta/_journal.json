@@ -92,6 +92,13 @@
       "when": 1790234241713,
       "tag": "0012_open_thor",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1790240751905,
+      "tag": "0013_fearless_rage",
+      "breakpoints": true
     }
   ]
 }
