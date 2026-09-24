@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuGroup,
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
@@ -106,7 +107,12 @@ export default function ChangelogMenu() {
         }
       />
       <DropdownMenuContent align="end" className="w-80">
-        <DropdownMenuLabel>{t("Naye updates")}</DropdownMenuLabel>
+        {/* GroupLabel requires a Group ancestor (Base UI error #31 otherwise) — every
+            other DropdownMenuLabel usage in this codebase (settings-menu.tsx) already
+            wraps it; this one didn't, which crashed the whole page on open. */}
+        <DropdownMenuGroup>
+          <DropdownMenuLabel>{t("Naye updates")}</DropdownMenuLabel>
+        </DropdownMenuGroup>
         <DropdownMenuSeparator />
         <div className="flex max-h-80 flex-col gap-0.5 overflow-y-auto px-1.5 py-1">
           {CHANGELOG.map((entry) => (
