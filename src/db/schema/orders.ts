@@ -1,4 +1,4 @@
-import { numeric, pgEnum, pgTable, primaryKey, text, timestamp } from "drizzle-orm/pg-core";
+import { index, numeric, pgEnum, pgTable, primaryKey, text, timestamp } from "drizzle-orm/pg-core";
 import { organizations } from "./platform";
 
 /**
@@ -40,7 +40,9 @@ export const orderStatusEnum = pgEnum("order_status", [
 // own intake must treat that as "not yet decided" rather than silently guessing one.
 export const transportArrangedByEnum = pgEnum("transport_arranged_by", ["Self", "Party"]);
 
-export const orders = pgTable("orders", {
+export const orders = pgTable(
+  "orders",
+  {
   // Order_ID, e.g. "ORD-xxxx".
   id: text("id").primaryKey(),
   orgId: text("org_id")
@@ -78,11 +80,18 @@ export const orders = pgTable("orders", {
   // "PO attachment" upload via the existing Blob path.
   poAttachmentUrl: text("po_attachment_url").notNull().default(""),
   status: orderStatusEnum("status").notNull().default("Items_Pending"),
-  // Total order value — from the source quotation's payableAmount, or typed directly for a
-  // Direct order. What Payment_Review's credit-limit math is checked against; never
-  // recomputed from order_items after the fact, same "a document fact as it stood" reasoning
-  // as the party snapshot above.
+  // Total order value — from the source quotation's payableAmount, or computed directly for
+  // a Direct order (sub-total + GST). What Payment_Review's credit-limit math is checked
+  // against; never recomputed from order_items after the fact, same "a document fact as it
+  // stood" reasoning as the party snapshot above.
   orderValue: numeric("order_value").notNull().default("0"),
+  // GST embedded within orderValue above — snapshotted from the source quotation (Lead) or
+  // computed from the org's own default GST% at creation time (Direct), same reasoning as
+  // quotations.gstPercent/gstAmount. Added so Accounts' invoice posting can book GST
+  // collected to its own liability account (GST Payable) instead of folding it into Sales
+  // Revenue, which overstates income/profit by the tax portion.
+  gstPercent: numeric("gst_percent").notNull().default("18"),
+  gstAmount: numeric("gst_amount").notNull().default("0"),
   // Who/when cleared a Credit_Hold — a flat convenience column alongside the full
   // order_activities trail, same coexistence as fms_runs.completedBy/completedAt next to
   // its own chaining history.
@@ -94,7 +103,9 @@ export const orders = pgTable("orders", {
   pdiId: text("pdi_id").notNull().default(""),
   createdBy: text("created_by").notNull().default(""),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-});
+  },
+  (table) => [index("orders_org_id_status_idx").on(table.orgId, table.status)]
+);
 
 /**
  * One row per line, grouped by Order_ID — same flat-rows-by-group shape as
@@ -136,7 +147,11 @@ export const orderItems = pgTable(
     // an Order FMS order's own `status` past `Ready_For_PDI`.
     consumedQty: numeric("consumed_qty").notNull().default("0"),
   },
-  (table) => [primaryKey({ columns: [table.orderId, table.lineNo] })]
+  (table) => [
+    primaryKey({ columns: [table.orderId, table.lineNo] }),
+    // orderReservedBySku()/recheckShortfallForSku() filter exactly this shape.
+    index("order_items_org_id_sku_idx").on(table.orgId, table.sku),
+  ]
 );
 
 export const orderPaymentModeEnum = pgEnum("order_payment_mode", [
@@ -157,20 +172,24 @@ export const orderPaymentModeEnum = pgEnum("order_payment_mode", [
  * real data instead of a single "advance amount" guess. A future Accounts module can build
  * on these same rows rather than duplicating them.
  */
-export const orderPayments = pgTable("order_payments", {
-  // Payment_ID, e.g. "OPY-xxxx".
-  id: text("id").primaryKey(),
-  orgId: text("org_id")
-    .notNull()
-    .references(() => organizations.id),
-  orderId: text("order_id").notNull(),
-  amount: numeric("amount").notNull(),
-  mode: orderPaymentModeEnum("mode").notNull().default("Bank_Transfer"),
-  reference: text("reference").notNull().default(""),
-  receivedAt: timestamp("received_at", { withTimezone: true }).notNull().defaultNow(),
-  recordedBy: text("recorded_by").notNull().default(""),
-  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-});
+export const orderPayments = pgTable(
+  "order_payments",
+  {
+    // Payment_ID, e.g. "OPY-xxxx".
+    id: text("id").primaryKey(),
+    orgId: text("org_id")
+      .notNull()
+      .references(() => organizations.id),
+    orderId: text("order_id").notNull(),
+    amount: numeric("amount").notNull(),
+    mode: orderPaymentModeEnum("mode").notNull().default("Bank_Transfer"),
+    reference: text("reference").notNull().default(""),
+    receivedAt: timestamp("received_at", { withTimezone: true }).notNull().defaultNow(),
+    recordedBy: text("recorded_by").notNull().default(""),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [index("order_payments_org_id_order_id_idx").on(table.orgId, table.orderId)]
+);
 
 // OrderActivityRecord.Kind — one row per pipeline event, append-only. Mirrors
 // lead_activities' own "a record is read as a timeline, not a single status cell"
@@ -188,15 +207,19 @@ export const orderActivityKindEnum = pgEnum("order_activity_kind", [
   "Cancelled",
 ]);
 
-export const orderActivities = pgTable("order_activities", {
-  // Activity_ID, e.g. "OAC-xxxx".
-  id: text("id").primaryKey(),
-  orgId: text("org_id")
-    .notNull()
-    .references(() => organizations.id),
-  orderId: text("order_id").notNull(),
-  kind: orderActivityKindEnum("kind").notNull(),
-  message: text("message").notNull(),
-  actorId: text("actor_id").notNull().default(""),
-  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-});
+export const orderActivities = pgTable(
+  "order_activities",
+  {
+    // Activity_ID, e.g. "OAC-xxxx".
+    id: text("id").primaryKey(),
+    orgId: text("org_id")
+      .notNull()
+      .references(() => organizations.id),
+    orderId: text("order_id").notNull(),
+    kind: orderActivityKindEnum("kind").notNull(),
+    message: text("message").notNull(),
+    actorId: text("actor_id").notNull().default(""),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [index("order_activities_org_id_order_id_idx").on(table.orgId, table.orderId)]
+);

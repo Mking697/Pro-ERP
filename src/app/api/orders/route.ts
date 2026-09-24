@@ -48,6 +48,7 @@ const bodySchema = z
     items: z.array(itemSchema).min(1, "Kam se kam ek item chunein."),
     poAttachmentUrl: z.string().trim().optional(),
     transportArrangedBy: z.enum(["Self", "Party"]),
+    gstPercent: z.coerce.number().min(0).max(100).optional(),
   })
   .refine((v) => v.customerId || v.newCustomer, {
     message: "Ek Customer chunein ya naya Customer ka naam bharein.",
@@ -74,6 +75,7 @@ export async function POST(request: Request) {
         items: parsed.data.items,
         poAttachmentUrl: parsed.data.poAttachmentUrl,
         transportArrangedBy: parsed.data.transportArrangedBy,
+        gstPercent: parsed.data.gstPercent,
       },
       guard.session.userId
     );

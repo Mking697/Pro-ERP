@@ -61,6 +61,18 @@ function rowToBill(row: BillRow, vendorName: string): BillRecord {
   };
 }
 
+/** True for a Postgres unique-violation (23505) against the given constraint name — same
+ * helper this codebase's other retry-on-collision call sites duplicate locally (ledger.ts,
+ * accounts.ts, dispatch.ts's confirmDispatch, quotations.ts's insertQuotationRow) rather
+ * than share. */
+function isUniqueViolation(error: unknown, constraintName: string): boolean {
+  if (typeof error !== "object" || error === null) return false;
+  const e = error as { code?: unknown; constraint?: unknown; message?: unknown };
+  if (e.code !== "23505") return false;
+  if (typeof e.constraint === "string") return e.constraint === constraintName;
+  return typeof e.message === "string" && e.message.includes(constraintName);
+}
+
 async function findBillByPoId(orgId: string, poId: string): Promise<BillRow | null> {
   const rows = await db
     .select()
@@ -203,19 +215,31 @@ export async function createBill(input: CreateBillInput, createdBy: string): Pro
   if (!(input.amount >= 0)) throw new PayablesError("Amount 0 ya usse zyada hona chahiye.");
 
   const billId = generateId("BILL");
-  const row = await insertRecord(bills, {
-    id: billId,
-    orgId,
-    poId: input.poId,
-    vendorId: po.vendorId,
-    billNo: input.billNo?.trim() ?? "",
-    billAttachmentUrl: input.billAttachmentUrl?.trim() ?? "",
-    amount: String(round2(input.amount)),
-    status: "Draft",
-    createdBy,
-  });
-
-  return rowToBill(row, await vendorNameFor(orgId, po.vendorId));
+  try {
+    const row = await insertRecord(bills, {
+      id: billId,
+      orgId,
+      poId: input.poId,
+      vendorId: po.vendorId,
+      billNo: input.billNo?.trim() ?? "",
+      billAttachmentUrl: input.billAttachmentUrl?.trim() ?? "",
+      amount: String(round2(input.amount)),
+      status: "Draft",
+      createdBy,
+    });
+    return rowToBill(row, await vendorNameFor(orgId, po.vendorId));
+  } catch (error) {
+    // The pre-check above (`existing`) closes the common case with a clean error before
+    // any insert is attempted; this is the real backstop against a genuine race — two
+    // concurrent requests both passing that pre-check before either insert lands. The DB's
+    // own bills_org_id_po_id_unique constraint is what actually stops the duplicate row
+    // from being created; this just turns the resulting 23505 into the same friendly
+    // domain error instead of an unhandled Postgres error.
+    if (isUniqueViolation(error, "bills_org_id_po_id_unique")) {
+      throw new PayablesError("Is PO ke liye pehle hi ek Bill ban chuki hai.");
+    }
+    throw error;
+  }
 }
 
 export interface UpdateBillInput {

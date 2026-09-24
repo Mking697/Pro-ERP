@@ -25,6 +25,7 @@ import {
 import ItemPicker, { type PickerItem } from "@/components/item-picker";
 import FileUploadField from "@/components/file-upload-field";
 import { useT } from "@/components/preferences-provider";
+import { computeTotals } from "@/lib/leads/quotationMath";
 import CustomerPicker, { EMPTY_NEW_CUSTOMER, type NewCustomerDraft } from "./customer-picker";
 import type { OrderRow } from "./types";
 
@@ -50,6 +51,9 @@ export default function NewOrderDialog({ onCreated }: { onCreated: (order: Order
   const [nextKey, setNextKey] = useState(1);
   const [poAttachmentUrl, setPoAttachmentUrl] = useState("");
   const [transportArrangedBy, setTransportArrangedBy] = useState<"Self" | "Party">("Self");
+  // Matches orders.gstPercent's own schema default and Quotation Setup's own GST% default —
+  // a Direct order used to charge no GST at all (see CLAUDE.md's Accounts section).
+  const [gstPercent, setGstPercent] = useState("18");
   const [saving, setSaving] = useState(false);
 
   function reset() {
@@ -60,9 +64,16 @@ export default function NewOrderDialog({ onCreated }: { onCreated: (order: Order
     setNextKey(1);
     setPoAttachmentUrl("");
     setTransportArrangedBy("Self");
+    setGstPercent("18");
   }
 
-  const total = lines.reduce((sum, l) => sum + (Number(l.qty) || 0) * (Number(l.rate) || 0), 0);
+  // No freight concept on a Direct order (unlike a quotation's own computeTotals() call in
+  // quotation-builder.tsx, which this mirrors) — passed as 0.
+  const totals = computeTotals(
+    lines.map((l) => ({ amount: (Number(l.qty) || 0) * (Number(l.rate) || 0) })),
+    0,
+    Number(gstPercent) || 0
+  );
 
   async function handleSubmit() {
     if (mode === "existing" && !selectedId) {
@@ -94,6 +105,7 @@ export default function NewOrderDialog({ onCreated }: { onCreated: (order: Order
           items,
           poAttachmentUrl,
           transportArrangedBy,
+          gstPercent: Number(gstPercent) || 0,
           ...(mode === "existing" ? { customerId: selectedId } : { newCustomer }),
         }),
       });
@@ -205,9 +217,39 @@ export default function NewOrderDialog({ onCreated }: { onCreated: (order: Order
                 )}
               </div>
             ))}
-            <p className="text-right text-sm text-muted-foreground">
-              {t("Total")}: ₹{total.toFixed(2)}
-            </p>
+          </div>
+
+          <Separator />
+
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div className="space-y-2">
+              <Label>{t("GST %")}</Label>
+              <Input
+                type="number"
+                step="any"
+                min="0"
+                max="100"
+                value={gstPercent}
+                onChange={(e) => setGstPercent(e.target.value)}
+              />
+            </div>
+          </div>
+          <div className="space-y-1 text-sm">
+            <div className="flex justify-between">
+              <span>{t("Sub Total")}</span>
+              <span className="tabular-nums">₹{totals.subTotal.toFixed(2)}</span>
+            </div>
+            <div className="flex justify-between text-muted-foreground">
+              <span>
+                {t("GST")} {totals.gstPercent}%
+              </span>
+              <span className="tabular-nums">₹{totals.gst.toFixed(2)}</span>
+            </div>
+            <Separator className="my-1" />
+            <div className="flex justify-between text-base font-semibold">
+              <span>{t("Total")}</span>
+              <span className="tabular-nums">₹{totals.payable.toFixed(2)}</span>
+            </div>
           </div>
 
           <div className="grid gap-3 sm:grid-cols-2">

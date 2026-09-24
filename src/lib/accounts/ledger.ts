@@ -6,6 +6,7 @@ import { insertRecord, listByOrg } from "@/db/repo";
 import { getTenantOrgId } from "@/lib/tenant";
 import { generateId } from "@/lib/id";
 import { round2 } from "@/lib/leads/quotationMath";
+import { endOfIstDay, startOfIstDay } from "@/lib/timestamp";
 
 /**
  * The General Ledger (2026-09-22) — real double-entry bookkeeping underneath the
@@ -29,14 +30,20 @@ export class LedgerError extends Error {}
 
 export type AccountType = "Asset" | "Liability" | "Equity" | "Income" | "Expense";
 
-/** Codes for the five seeded system accounts every auto-posting hook in this codebase
+/** Codes for the six seeded system accounts every auto-posting hook in this codebase
  * (Receivables' issueInvoice()/recordPayment(), Payables' issueBill()/recordBillPayment())
- * debits/credits by name — an Admin can add more accounts on top, but these five are
- * load-bearing and marked `isSystem: true` so they aren't casually deleted. */
+ * debits/credits by name — an Admin can add more accounts on top, but these six are
+ * load-bearing and marked `isSystem: true` so they aren't casually deleted.
+ *
+ * GST_PAYABLE (added alongside orders.gstAmount/invoices.gstAmount) is where issueInvoice()
+ * now books the GST portion of an invoice instead of folding it into Sales Revenue — GST
+ * collected from a customer is money owed to the tax authority, not the org's own income,
+ * so leaving it inside Revenue overstated income/profit by the full tax amount. */
 export const SYSTEM_ACCOUNT_CODES = {
   CASH_BANK: "1000",
   ACCOUNTS_RECEIVABLE: "1100",
   ACCOUNTS_PAYABLE: "2000",
+  GST_PAYABLE: "2100",
   SALES_REVENUE: "4000",
   PURCHASES_EXPENSE: "5000",
 } as const;
@@ -45,6 +52,7 @@ const DEFAULT_ACCOUNTS: { code: string; name: string; type: AccountType }[] = [
   { code: SYSTEM_ACCOUNT_CODES.CASH_BANK, name: "Cash / Bank", type: "Asset" },
   { code: SYSTEM_ACCOUNT_CODES.ACCOUNTS_RECEIVABLE, name: "Accounts Receivable", type: "Asset" },
   { code: SYSTEM_ACCOUNT_CODES.ACCOUNTS_PAYABLE, name: "Accounts Payable", type: "Liability" },
+  { code: SYSTEM_ACCOUNT_CODES.GST_PAYABLE, name: "GST Payable", type: "Liability" },
   { code: SYSTEM_ACCOUNT_CODES.SALES_REVENUE, name: "Sales Revenue", type: "Income" },
   { code: SYSTEM_ACCOUNT_CODES.PURCHASES_EXPENSE, name: "Purchases / COGS", type: "Expense" },
 ];
@@ -252,9 +260,18 @@ export async function getTrialBalance(range?: DateRange): Promise<TrialBalanceRo
   const accounts = await listByOrg(chartOfAccounts, orgId);
   const accountById = new Map(accounts.map((a) => [a.id, a]));
 
+  // `from`/`to` arrive as bare "YYYY-MM-DD" from the report boards' own <input type="date">
+  // fields (src/app/accounts/ledger-board.tsx). Feeding that straight into `new Date(...)`
+  // parses it as UTC midnight — 5:30am IST — which for an India-based org silently
+  // excludes almost an entire business day from a "Balance Sheet as of today"/date-range
+  // report, the same class of bug already found and fixed once in the recurring-task
+  // generator (see src/lib/timestamp.ts's own header comment). Use the same IST-day-
+  // boundary helpers that fix already established: `from` is the start of that IST day,
+  // `to`/`asOf` is the END of that IST day (23:59:59.999 IST) so the range is inclusive of
+  // the whole day, not just its first instant.
   const conditions = [eq(journalLines.orgId, orgId)];
-  if (range?.from) conditions.push(gte(journalEntries.entryDate, new Date(range.from)));
-  if (range?.to) conditions.push(lte(journalEntries.entryDate, new Date(range.to)));
+  if (range?.from) conditions.push(gte(journalEntries.entryDate, startOfIstDay(range.from)));
+  if (range?.to) conditions.push(lte(journalEntries.entryDate, endOfIstDay(range.to)));
 
   const rows = await db
     .select({

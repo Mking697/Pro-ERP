@@ -32,6 +32,10 @@ export interface InvoiceRecord {
   ewayBillAttachmentUrl: string;
   extraDocumentUrl: string;
   finalValue: number;
+  /** GST portion of finalValue, snapshotted from the order's own gstAmount at creation
+   * time (capped to finalValue — see createInvoice()'s own comment). Booked to the GST
+   * Payable liability account at Issue time instead of Sales Revenue. */
+  gstAmount: number;
   status: InvoiceStatus;
   issuedBy: string;
   issuedAt: string;
@@ -51,12 +55,24 @@ function rowToInvoice(row: InvoiceRow): InvoiceRecord {
     ewayBillAttachmentUrl: row.ewayBillAttachmentUrl,
     extraDocumentUrl: row.extraDocumentUrl,
     finalValue: Number(row.finalValue) || 0,
+    gstAmount: Number(row.gstAmount) || 0,
     status: row.status,
     issuedBy: row.issuedBy,
     issuedAt: row.issuedAt ? row.issuedAt.toISOString() : "",
     createdBy: row.createdBy,
     createdAt: row.createdAt.toISOString(),
   };
+}
+
+/** True for a Postgres unique-violation (23505) against the given constraint name — same
+ * helper this codebase's other retry-on-collision call sites duplicate locally (ledger.ts,
+ * dispatch.ts's confirmDispatch, quotations.ts's insertQuotationRow) rather than share. */
+function isUniqueViolation(error: unknown, constraintName: string): boolean {
+  if (typeof error !== "object" || error === null) return false;
+  const e = error as { code?: unknown; constraint?: unknown; message?: unknown };
+  if (e.code !== "23505") return false;
+  if (typeof e.constraint === "string") return e.constraint === constraintName;
+  return typeof e.message === "string" && e.message.includes(constraintName);
 }
 
 async function findInvoiceByOrderId(orgId: string, orderId: string): Promise<InvoiceRow | null> {
@@ -66,6 +82,24 @@ async function findInvoiceByOrderId(orgId: string, orderId: string): Promise<Inv
     .where(and(eq(invoices.orgId, orgId), eq(invoices.orderId, orderId)))
     .limit(1);
   return rows[0] ?? null;
+}
+
+/** Same "has this order's PDI Passed" check `listInvoiceCandidates()` uses to build its own
+ * candidate list — duplicated here (rather than only relied on client-side) so a direct
+ * API call can't create an Invoice for an order that hasn't actually cleared PDI yet. */
+async function hasPassedPdi(orgId: string, orderId: string): Promise<boolean> {
+  const rows = await db
+    .select()
+    .from(pdiInspections)
+    .where(
+      and(
+        eq(pdiInspections.orgId, orgId),
+        eq(pdiInspections.orderId, orderId),
+        eq(pdiInspections.status, "Passed")
+      )
+    )
+    .limit(1);
+  return rows.length > 0;
 }
 
 // ---------------------------------------------------------------------------
@@ -190,6 +224,13 @@ export async function createInvoice(input: CreateInvoiceInput, createdBy: string
   const order = await getOrder(input.orderId);
   if (!order) throw new AccountsError("Order nahi mila.");
 
+  // listInvoiceCandidates() only ever surfaces Passed-PDI orders, but that's a UI-level
+  // filter — re-check it here so a direct API call can't create an Invoice for an order
+  // whose PDI hasn't Passed yet (goods not actually inspected/cleared for dispatch).
+  if (!(await hasPassedPdi(orgId, input.orderId))) {
+    throw new AccountsError("Is order ka PDI Pass nahi hua hai — Invoice sirf Passed-PDI order ke liye ban sakta hai.");
+  }
+
   const existing = await findInvoiceByOrderId(orgId, input.orderId);
   if (existing) throw new AccountsError("Is order ke liye pehle hi ek Invoice ban chuki hai.");
 
@@ -198,21 +239,40 @@ export async function createInvoice(input: CreateInvoiceInput, createdBy: string
   }
 
   const invoiceId = generateId("INV");
-  const row = await insertRecord(invoices, {
-    id: invoiceId,
-    orgId,
-    orderId: input.orderId,
-    invoiceNo: input.invoiceNo?.trim() ?? "",
-    invoiceAttachmentUrl: input.invoiceAttachmentUrl?.trim() ?? "",
-    ewayBillNo: input.ewayBillNo?.trim() ?? "",
-    ewayBillAttachmentUrl: input.ewayBillAttachmentUrl?.trim() ?? "",
-    extraDocumentUrl: input.extraDocumentUrl?.trim() ?? "",
-    finalValue: String(round2(input.finalValue)),
-    status: "Draft",
-    createdBy,
-  });
+  const finalValue = round2(input.finalValue);
+  // Snapshotted from the order's own gstAmount, capped to finalValue — a Doer can edit
+  // finalValue down from the suggested order total (e.g. a partial/adjusted bill), and the
+  // GST booked at Issue time must never exceed the amount actually being invoiced.
+  const gstAmount = round2(Math.min(order.gstAmount, finalValue));
 
-  return rowToInvoice(row);
+  try {
+    const row = await insertRecord(invoices, {
+      id: invoiceId,
+      orgId,
+      orderId: input.orderId,
+      invoiceNo: input.invoiceNo?.trim() ?? "",
+      invoiceAttachmentUrl: input.invoiceAttachmentUrl?.trim() ?? "",
+      ewayBillNo: input.ewayBillNo?.trim() ?? "",
+      ewayBillAttachmentUrl: input.ewayBillAttachmentUrl?.trim() ?? "",
+      extraDocumentUrl: input.extraDocumentUrl?.trim() ?? "",
+      finalValue: String(finalValue),
+      gstAmount: String(gstAmount),
+      status: "Draft",
+      createdBy,
+    });
+    return rowToInvoice(row);
+  } catch (error) {
+    // The pre-check above (`existing`) closes the common case with a clean error before
+    // any insert is attempted; this is the real backstop against a genuine race — two
+    // concurrent requests both passing that pre-check before either insert lands. The DB's
+    // own invoices_org_id_order_id_unique constraint is what actually stops the duplicate
+    // row from being created; this just turns the resulting 23505 into the same friendly
+    // domain error instead of an unhandled Postgres error.
+    if (isUniqueViolation(error, "invoices_org_id_order_id_unique")) {
+      throw new AccountsError("Is order ke liye pehle hi ek Invoice ban chuki hai.");
+    }
+    throw error;
+  }
 }
 
 export interface UpdateInvoiceInput {
@@ -280,18 +340,39 @@ export async function issueInvoice(invoiceId: string, actorId: string): Promise<
   // write undo something already saved" convention (see emitFmsEvent/notifyStepComplete):
   // the invoice is already Issued by this point regardless of whether this succeeds.
   const finalValue = Number(updated.finalValue) || 0;
+  // Re-clamped here rather than trusted from the row as-is: finalValue can be edited down
+  // via updateInvoice() any time while still Draft, after gstAmount was already snapshotted
+  // (capped to finalValue as it stood at createInvoice() time) — so gstAmount could now
+  // exceed the invoice's own current finalValue if that edit happened. GST booked can never
+  // exceed the amount actually being invoiced.
+  const gstAmount = round2(Math.min(Number(updated.gstAmount) || 0, finalValue));
   if (finalValue > 0) {
     try {
+      // Pre-GST invoices (gstAmount 0 — every invoice created before this GST-tracking
+      // change defaults here) keep exactly the original 2-line posting. Otherwise split the
+      // GST portion into its own liability line instead of folding it into Sales Revenue,
+      // which used to overstate income/profit by the full tax amount collected.
+      const lines =
+        gstAmount > 0
+          ? [
+              { accountCode: SYSTEM_ACCOUNT_CODES.ACCOUNTS_RECEIVABLE, debit: finalValue },
+              {
+                accountCode: SYSTEM_ACCOUNT_CODES.SALES_REVENUE,
+                credit: round2(finalValue - gstAmount),
+              },
+              { accountCode: SYSTEM_ACCOUNT_CODES.GST_PAYABLE, credit: gstAmount },
+            ]
+          : [
+              { accountCode: SYSTEM_ACCOUNT_CODES.ACCOUNTS_RECEIVABLE, debit: finalValue },
+              { accountCode: SYSTEM_ACCOUNT_CODES.SALES_REVENUE, credit: finalValue },
+            ];
       await postJournalEntry({
         orgId,
         description: `Invoice ${invoiceId} issued — Order ${updated.orderId}`,
         sourceType: "Invoice",
         sourceId: invoiceId,
         createdBy: actorId,
-        lines: [
-          { accountCode: SYSTEM_ACCOUNT_CODES.ACCOUNTS_RECEIVABLE, debit: finalValue },
-          { accountCode: SYSTEM_ACCOUNT_CODES.SALES_REVENUE, credit: finalValue },
-        ],
+        lines,
       });
     } catch (error) {
       console.error(`[accounts] postJournalEntry failed for invoice ${invoiceId}:`, error);

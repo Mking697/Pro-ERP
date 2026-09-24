@@ -120,6 +120,12 @@ export interface OrderRecord {
   poAttachmentUrl: string;
   status: OrderStatus;
   orderValue: number;
+  /** GST embedded within orderValue — snapshotted from the source quotation (Lead) or
+   * computed at creation time (Direct). See src/db/schema/orders.ts's own comment on
+   * these two columns for why they exist (Accounts' invoice posting needs this to book
+   * GST collected to its own liability account instead of folding it into Sales Revenue). */
+  gstPercent: number;
+  gstAmount: number;
   creditApprovedBy: string;
   creditApprovedAt: string;
   dispatchCommitDate: string;
@@ -194,6 +200,8 @@ function rowToOrder(row: OrderRow, items: OrderItemRecord[]): OrderRecord {
     poAttachmentUrl: row.poAttachmentUrl,
     status: row.status,
     orderValue: Number(row.orderValue) || 0,
+    gstPercent: Number(row.gstPercent) || 0,
+    gstAmount: Number(row.gstAmount) || 0,
     creditApprovedBy: row.creditApprovedBy,
     creditApprovedAt: row.creditApprovedAt ? row.creditApprovedAt.toISOString() : "",
     dispatchCommitDate: row.dispatchCommitDate ? row.dispatchCommitDate.toISOString() : "",
@@ -628,6 +636,11 @@ export async function createOrderFromQuotation(
     poAttachmentUrl: input.poAttachmentUrl?.trim() ?? "",
     status: "Payment_Review",
     orderValue: quotationRow.payableAmount,
+    // Snapshotted straight from the quotation that produced this order — orderValue stays
+    // the quotation's own payableAmount, unchanged; these two just make the GST portion of
+    // that figure visible to Accounts' invoice posting instead of leaving it embedded.
+    gstPercent: quotationRow.gstPercent,
+    gstAmount: quotationRow.gstAmount,
     createdBy,
   });
 
@@ -677,6 +690,11 @@ export interface CreateDirectOrderInput {
   poAttachmentUrl?: string;
   /** Who arranges dispatch transport — see CreateOrderFromQuotationInput's own comment. */
   transportArrangedBy: "Self" | "Party";
+  /** Defaults to 18 (matching orders.gstPercent's own schema default and Quotation Setup's
+   * own GST% default) when not given. A Direct order used to charge no GST at all — see
+   * src/db/schema/orders.ts's own comment on gstPercent/gstAmount for why that was a real
+   * gap (GST collected was invisible to Accounts' invoice posting). */
+  gstPercent?: number;
 }
 
 /** No Lead/Quotation behind it — a salesperson's own Order Form. Starts straight at
@@ -727,7 +745,12 @@ export async function createDirectOrder(
     });
   }
 
-  const orderValue = round2(lines.reduce((sum, l) => sum + l.amount, 0));
+  // GST on goods only (no freight concept on a Direct order, unlike a quotation's own
+  // computeTotals()) — same clamp-to-[0,100] convention as quotationMath.ts's computeTotals.
+  const subTotal = round2(lines.reduce((sum, l) => sum + l.amount, 0));
+  const gstPercent = Math.max(0, Math.min(100, input.gstPercent ?? 18));
+  const gstAmount = round2((subTotal * gstPercent) / 100);
+  const orderValue = round2(subTotal + gstAmount);
   const orderId = generateId("ORD");
 
   await insertRecord(orders, {
@@ -756,6 +779,8 @@ export async function createDirectOrder(
     poAttachmentUrl: input.poAttachmentUrl?.trim() ?? "",
     status: "Payment_Review",
     orderValue: String(orderValue),
+    gstPercent: String(gstPercent),
+    gstAmount: String(gstAmount),
     createdBy,
   });
 
