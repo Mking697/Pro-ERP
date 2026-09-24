@@ -1,5 +1,6 @@
 import {
   date,
+  index,
   integer,
   jsonb,
   numeric,
@@ -107,7 +108,10 @@ export const fmsTemplates = pgTable(
     // supervisor). Zero, one, or many. Mirrors users.moduleAccess's text[] convention.
     notifyOnComplete: text("notify_on_complete").array().notNull().default([]),
   },
-  (table) => [primaryKey({ columns: [table.templateId, table.stepNo] })]
+  (table) => [
+    primaryKey({ columns: [table.templateId, table.stepNo] }),
+    index("fms_templates_org_id_idx").on(table.orgId),
+  ]
 );
 
 // FmsRunRecord.Status — src/lib/fms/engine.ts: "Pending" while open, then "On Time" or
@@ -115,52 +119,78 @@ export const fmsTemplates = pgTable(
 // never has a task's "Done on Time" wording — it's "On Time").
 export const fmsRunStatusEnum = pgEnum("fms_run_status", ["Pending", "On Time", "Delay Done"]);
 
-export const fmsRuns = pgTable("fms_runs", {
-  // Run_ID, e.g. "RUN-xxxx" — a real per-row generated id, unlike fms_templates above.
-  id: text("id").primaryKey(),
-  orgId: text("org_id")
-    .notNull()
-    .references(() => organizations.id),
-  instanceId: text("instance_id").notNull(),
-  templateId: text("template_id").notNull(),
-  templateName: text("template_name").notNull().default(""),
-  // Polymorphic pointer to whatever triggered this instance, e.g. "INWARD_IQC_FMS:INW-xxxx"
-  // or "PRODUCTION_PLANS:PLN-xxxx" — deliberately not an FK, it spans multiple tables.
-  contextRef: text("context_ref").notNull().default(""),
-  startedBy: text("started_by").notNull().default(""),
-  startedAt: timestamp("started_at", { withTimezone: true }),
-  stepNo: integer("step_no").notNull(),
-  stepName: text("step_name").notNull(),
-  assignedTo: text("assigned_to").notNull().default(""),
-  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-  tatStart: timestamp("tat_start", { withTimezone: true }),
-  tatDeadline: timestamp("tat_deadline", { withTimezone: true }),
-  completedAt: timestamp("completed_at", { withTimezone: true }),
-  completedBy: text("completed_by").notNull().default(""),
-  outcome: text("outcome").notNull().default(""),
-  status: fmsRunStatusEnum("status").notNull().default("Pending"),
-  remark: text("remark").notNull().default(""),
-  // Whatever the completer typed into the step's own Data Source form — genuine JSON
-  // today (JSON.stringify in engine.ts), unlike next_step_map/outcome_options above.
-  formData: jsonb("form_data").$type<Record<string, string>>(),
-  // How many physical units this run is handling — blank/null for a flow that never
-  // tracks quantity.
-  quantity: numeric("quantity"),
-});
+export const fmsRuns = pgTable(
+  "fms_runs",
+  {
+    // Run_ID, e.g. "RUN-xxxx" — a real per-row generated id, unlike fms_templates above.
+    id: text("id").primaryKey(),
+    orgId: text("org_id")
+      .notNull()
+      .references(() => organizations.id),
+    instanceId: text("instance_id").notNull(),
+    templateId: text("template_id").notNull(),
+    templateName: text("template_name").notNull().default(""),
+    // Polymorphic pointer to whatever triggered this instance, e.g. "INWARD_IQC_FMS:INW-xxxx"
+    // or "PRODUCTION_PLANS:PLN-xxxx" — deliberately not an FK, it spans multiple tables.
+    contextRef: text("context_ref").notNull().default(""),
+    startedBy: text("started_by").notNull().default(""),
+    startedAt: timestamp("started_at", { withTimezone: true }),
+    stepNo: integer("step_no").notNull(),
+    stepName: text("step_name").notNull(),
+    assignedTo: text("assigned_to").notNull().default(""),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    tatStart: timestamp("tat_start", { withTimezone: true }),
+    tatDeadline: timestamp("tat_deadline", { withTimezone: true }),
+    completedAt: timestamp("completed_at", { withTimezone: true }),
+    completedBy: text("completed_by").notNull().default(""),
+    outcome: text("outcome").notNull().default(""),
+    status: fmsRunStatusEnum("status").notNull().default("Pending"),
+    remark: text("remark").notNull().default(""),
+    // Whatever the completer typed into the step's own Data Source form — genuine JSON
+    // today (JSON.stringify in engine.ts), unlike next_step_map/outcome_options above.
+    formData: jsonb("form_data").$type<Record<string, string>>(),
+    // How many physical units this run is handling — blank/null for a flow that never
+    // tracks quantity.
+    quantity: numeric("quantity"),
+  },
+  (table) => [
+    // Covers listFmsInstanceHistory (org_id, instance_id).
+    index("fms_runs_org_id_instance_id_idx").on(table.orgId, table.instanceId),
+    // Covers hasFmsLine's "is this plan already tracked by a Line" check, called on every
+    // completePlan()/Start Production.
+    index("fms_runs_org_id_context_ref_idx").on(table.orgId, table.contextRef),
+    // Covers the Templates board's pending-check and the per-template Flow Board.
+    index("fms_runs_org_id_template_id_status_idx").on(
+      table.orgId,
+      table.templateId,
+      table.status
+    ),
+    // Covers listFmsRunsForUser / listMyPendingFmsSteps (per-user dashboards).
+    index("fms_runs_org_id_assigned_to_status_idx").on(
+      table.orgId,
+      table.assignedTo,
+      table.status
+    ),
+  ]
+);
 
 export const fmsWeekoffScopeEnum = pgEnum("fms_weekoff_scope", ["ALL", "DEPARTMENT", "USER"]);
 
-export const fmsWeekoffOverrides = pgTable("fms_weekoff_overrides", {
-  // Override_ID, e.g. "OVR-xxxx".
-  id: text("id").primaryKey(),
-  orgId: text("org_id")
-    .notNull()
-    .references(() => organizations.id),
-  // Plain calendar date, no time component — same convention (and same judgment call)
-  // as Holiday_List.
-  date: date("date").notNull(),
-  scope: fmsWeekoffScopeEnum("scope").notNull(),
-  scopeValue: text("scope_value").notNull().default(""),
-  createdBy: text("created_by").notNull().default(""),
-  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-});
+export const fmsWeekoffOverrides = pgTable(
+  "fms_weekoff_overrides",
+  {
+    // Override_ID, e.g. "OVR-xxxx".
+    id: text("id").primaryKey(),
+    orgId: text("org_id")
+      .notNull()
+      .references(() => organizations.id),
+    // Plain calendar date, no time component — same convention (and same judgment call)
+    // as Holiday_List.
+    date: date("date").notNull(),
+    scope: fmsWeekoffScopeEnum("scope").notNull(),
+    scopeValue: text("scope_value").notNull().default(""),
+    createdBy: text("created_by").notNull().default(""),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [index("fms_weekoff_overrides_org_id_idx").on(table.orgId)]
+);

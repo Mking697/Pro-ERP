@@ -1,4 +1,4 @@
-import { pgEnum, pgTable, text, timestamp } from "drizzle-orm/pg-core";
+import { index, pgEnum, pgTable, text, timestamp } from "drizzle-orm/pg-core";
 import { organizations } from "./platform";
 
 /**
@@ -16,7 +16,9 @@ import { organizations } from "./platform";
  */
 export const pdiStatusEnum = pgEnum("pdi_status", ["Pending", "Passed"]);
 
-export const pdiInspections = pgTable("pdi_inspections", {
+export const pdiInspections = pgTable(
+  "pdi_inspections",
+  {
   // PDI_ID, e.g. "PDI-xxxx".
   id: text("id").primaryKey(),
   orgId: text("org_id")
@@ -35,7 +37,9 @@ export const pdiInspections = pgTable("pdi_inspections", {
   passedBy: text("passed_by").notNull().default(""),
   passedAt: timestamp("passed_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-});
+  },
+  (table) => [index("pdi_inspections_org_id_order_id_idx").on(table.orgId, table.orderId)]
+);
 
 // PdiActivityRecord.Kind — mirrors order_activities/lead_activities' own append-only
 // timeline convention. "Waiting_Stock"/"Stock_Available" bracket the automatic recheck
@@ -50,17 +54,21 @@ export const pdiActivityKindEnum = pgEnum("pdi_activity_kind", [
   "Inspected_Fail",
 ]);
 
-export const pdiActivities = pgTable("pdi_activities", {
-  // Activity_ID, e.g. "PDA-xxxx".
-  id: text("id").primaryKey(),
-  orgId: text("org_id")
-    .notNull()
-    .references(() => organizations.id),
-  pdiId: text("pdi_id").notNull(),
-  kind: pdiActivityKindEnum("kind").notNull(),
-  message: text("message").notNull(),
-  // Optional — this specific inspection attempt's own report, if one was attached.
-  attachmentUrl: text("attachment_url").notNull().default(""),
-  actorId: text("actor_id").notNull().default(""),
-  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-});
+export const pdiActivities = pgTable(
+  "pdi_activities",
+  {
+    // Activity_ID, e.g. "PDA-xxxx".
+    id: text("id").primaryKey(),
+    orgId: text("org_id")
+      .notNull()
+      .references(() => organizations.id),
+    pdiId: text("pdi_id").notNull(),
+    kind: pdiActivityKindEnum("kind").notNull(),
+    message: text("message").notNull(),
+    // Optional — this specific inspection attempt's own report, if one was attached.
+    attachmentUrl: text("attachment_url").notNull().default(""),
+    actorId: text("actor_id").notNull().default(""),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [index("pdi_activities_org_id_pdi_id_idx").on(table.orgId, table.pdiId)]
+);

@@ -1,4 +1,13 @@
-import { integer, numeric, pgEnum, pgTable, primaryKey, text, timestamp } from "drizzle-orm/pg-core";
+import {
+  index,
+  integer,
+  numeric,
+  pgEnum,
+  pgTable,
+  primaryKey,
+  text,
+  timestamp,
+} from "drizzle-orm/pg-core";
 import { organizations } from "./platform";
 
 /**
@@ -10,7 +19,9 @@ import { organizations } from "./platform";
 // src/app/api/inventory/items/[sku]/route.ts's zod enum.
 export const itemStatusEnum = pgEnum("item_status", ["Active", "Inactive"]);
 
-export const items = pgTable("items", {
+export const items = pgTable(
+  "items",
+  {
   // SKU is the real primary key here — items has no separate generated id.
   sku: text("sku").primaryKey(),
   orgId: text("org_id")
@@ -32,30 +43,41 @@ export const items = pgTable("items", {
   status: itemStatusEnum("status").notNull().default("Active"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   createdBy: text("created_by").notNull().default(""),
-});
+  },
+  (table) => [index("items_org_id_idx").on(table.orgId)]
+);
 
-export const stockLedger = pgTable("stock_ledger", {
-  // Txn_ID, e.g. "TXN-xxxx".
-  id: text("id").primaryKey(),
-  orgId: text("org_id")
-    .notNull()
-    .references(() => organizations.id),
-  timestamp: timestamp("timestamp", { withTimezone: true }).notNull().defaultNow(),
-  sku: text("sku").notNull(),
-  // DIRECTIONS ("In" | "Out", src/lib/inventory/constants.ts) — small closed vocabulary,
-  // kept text like the other non-Status closed vocabularies in this schema.
-  direction: text("direction").notNull(),
-  quantity: numeric("quantity").notNull(),
-  uom: text("uom").notNull().default(""),
-  // LEDGER_SOURCES (Opening/Manual/Form/IQC/Production/Production_Output/Indent_Receipt/
-  // Adjustment/FMS) — closed but not a Status column, kept text.
-  source: text("source").notNull(),
-  referenceId: text("reference_id").notNull().default(""),
-  location: text("location").notNull().default(""),
-  issuedTo: text("issued_to").notNull().default(""),
-  remark: text("remark").notNull().default(""),
-  userId: text("user_id").notNull().default(""),
-});
+export const stockLedger = pgTable(
+  "stock_ledger",
+  {
+    // Txn_ID, e.g. "TXN-xxxx".
+    id: text("id").primaryKey(),
+    orgId: text("org_id")
+      .notNull()
+      .references(() => organizations.id),
+    timestamp: timestamp("timestamp", { withTimezone: true }).notNull().defaultNow(),
+    sku: text("sku").notNull(),
+    // DIRECTIONS ("In" | "Out", src/lib/inventory/constants.ts) — small closed vocabulary,
+    // kept text like the other non-Status closed vocabularies in this schema.
+    direction: text("direction").notNull(),
+    quantity: numeric("quantity").notNull(),
+    uom: text("uom").notNull().default(""),
+    // LEDGER_SOURCES (Opening/Manual/Form/IQC/Production/Production_Output/Indent_Receipt/
+    // Adjustment/FMS) — closed but not a Status column, kept text.
+    source: text("source").notNull(),
+    referenceId: text("reference_id").notNull().default(""),
+    location: text("location").notNull().default(""),
+    issuedTo: text("issued_to").notNull().default(""),
+    remark: text("remark").notNull().default(""),
+    userId: text("user_id").notNull().default(""),
+  },
+  (table) => [
+    // Highest-priority index in this schema per the DB audit — every stock computation
+    // (on-hand, ADC, position) filters by org and, whenever it's not pulling the whole
+    // ledger, by sku too.
+    index("stock_ledger_org_id_sku_idx").on(table.orgId, table.sku),
+  ]
+);
 
 // IndentRecord.Status — src/lib/inventory/indents.ts INDENT_STATUSES.
 export const indentStatusEnum = pgEnum("indent_status", [
@@ -67,7 +89,9 @@ export const indentStatusEnum = pgEnum("indent_status", [
   "Cancelled",
 ]);
 
-export const indents = pgTable("indents", {
+export const indents = pgTable(
+  "indents",
+  {
   // Indent_ID, e.g. "IND-xxxx".
   id: text("id").primaryKey(),
   orgId: text("org_id")
@@ -96,7 +120,9 @@ export const indents = pgTable("indents", {
   // Purchase flow Step 1's own deadline ("Indent Approve" must happen by this time),
   // computed once at creation from the org's Purchase Setup — see src/lib/purchase/settings.ts.
   step1DueAt: timestamp("step1_due_at", { withTimezone: true }),
-});
+  },
+  (table) => [index("indents_org_id_idx").on(table.orgId)]
+);
 
 // BomRow.Status — "Active" | "Archived", the same versioning convention CLAUDE.md
 // documents for BOM re-saves (mirrors FMS_TEMPLATES' own Active/Archived pattern).
@@ -130,5 +156,8 @@ export const bom = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     createdBy: text("created_by").notNull().default(""),
   },
-  (table) => [primaryKey({ columns: [table.bomId, table.lineNo] })]
+  (table) => [
+    primaryKey({ columns: [table.bomId, table.lineNo] }),
+    index("bom_org_id_idx").on(table.orgId),
+  ]
 );

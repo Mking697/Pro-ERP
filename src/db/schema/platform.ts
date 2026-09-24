@@ -1,4 +1,4 @@
-import { integer, pgEnum, pgTable, text, timestamp } from "drizzle-orm/pg-core";
+import { index, integer, pgEnum, pgTable, text, timestamp } from "drizzle-orm/pg-core";
 
 /**
  * The platform registry — mirrors src/lib/platform/registry.ts's two Google Sheets tabs
@@ -57,22 +57,26 @@ export const usersIndex = pgTable("users_index", {
  * Active), so "row exists" already means "Active" — a redundant status column would just
  * be one more place for that fact to drift out of sync with the row's real presence.
  */
-export const reportShares = pgTable("report_shares", {
-  token: text("token").primaryKey(),
-  orgId: text("org_id")
-    .notNull()
-    .references(() => organizations.id),
-  report: text("report").notNull(),
-  label: text("label").notNull(),
-  rangeKey: text("range_key").notNull(),
-  fromDate: text("from_date").notNull().default(""),
-  toDate: text("to_date").notNull().default(""),
-  // The creator's grants, copied at creation time rather than read live — see
-  // shares.ts's createReportShare(). Mirrors users.moduleAccess's text[] convention.
-  access: text("access").array().notNull().default([]),
-  createdBy: text("created_by").notNull().default(""),
-  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-});
+export const reportShares = pgTable(
+  "report_shares",
+  {
+    token: text("token").primaryKey(),
+    orgId: text("org_id")
+      .notNull()
+      .references(() => organizations.id),
+    report: text("report").notNull(),
+    label: text("label").notNull(),
+    rangeKey: text("range_key").notNull(),
+    fromDate: text("from_date").notNull().default(""),
+    toDate: text("to_date").notNull().default(""),
+    // The creator's grants, copied at creation time rather than read live — see
+    // shares.ts's createReportShare(). Mirrors users.moduleAccess's text[] convention.
+    access: text("access").array().notNull().default([]),
+    createdBy: text("created_by").notNull().default(""),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [index("report_shares_org_id_idx").on(table.orgId)]
+);
 
 /**
  * Fixed-window request counters for a handful of public-ish, unauthenticated endpoints

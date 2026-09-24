@@ -1,4 +1,4 @@
-import { numeric, pgEnum, pgTable, text, timestamp, unique } from "drizzle-orm/pg-core";
+import { index, numeric, pgEnum, pgTable, text, timestamp, unique } from "drizzle-orm/pg-core";
 import { organizations } from "./platform";
 
 /**
@@ -67,7 +67,10 @@ export const dispatches = pgTable(
     createdBy: text("created_by").notNull().default(""),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (table) => [unique("dispatches_org_id_gate_pass_no_unique").on(table.orgId, table.gatePassNo)]
+  (table) => [
+    unique("dispatches_org_id_gate_pass_no_unique").on(table.orgId, table.gatePassNo),
+    index("dispatches_org_id_order_id_idx").on(table.orgId, table.orderId),
+  ]
 );
 
 // DispatchActivityRecord.Kind — mirrors every other leg's own append-only timeline.
@@ -79,15 +82,19 @@ export const dispatchActivityKindEnum = pgEnum("dispatch_activity_kind", [
   "Delivered",
 ]);
 
-export const dispatchActivities = pgTable("dispatch_activities", {
-  // Activity_ID, e.g. "DAC-xxxx".
-  id: text("id").primaryKey(),
-  orgId: text("org_id")
-    .notNull()
-    .references(() => organizations.id),
-  orderId: text("order_id").notNull(),
-  kind: dispatchActivityKindEnum("kind").notNull(),
-  message: text("message").notNull(),
-  actorId: text("actor_id").notNull().default(""),
-  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-});
+export const dispatchActivities = pgTable(
+  "dispatch_activities",
+  {
+    // Activity_ID, e.g. "DAC-xxxx".
+    id: text("id").primaryKey(),
+    orgId: text("org_id")
+      .notNull()
+      .references(() => organizations.id),
+    orderId: text("order_id").notNull(),
+    kind: dispatchActivityKindEnum("kind").notNull(),
+    message: text("message").notNull(),
+    actorId: text("actor_id").notNull().default(""),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [index("dispatch_activities_org_id_order_id_idx").on(table.orgId, table.orderId)]
+);

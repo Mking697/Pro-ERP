@@ -1,4 +1,4 @@
-import { date, integer, pgEnum, pgTable, primaryKey, text, timestamp } from "drizzle-orm/pg-core";
+import { date, index, integer, pgEnum, pgTable, primaryKey, text, timestamp } from "drizzle-orm/pg-core";
 import { organizations } from "./platform";
 
 /**
@@ -12,60 +12,71 @@ import { organizations } from "./platform";
 // still-Pending row, same as isIqcOverdue()/isOverdue().
 export const taskStatusEnum = pgEnum("task_status", ["Pending", "Done on Time", "Delay Done"]);
 
-export const tasks = pgTable("tasks", {
-  // Task_ID, e.g. "TSK-xxxx".
-  id: text("id").primaryKey(),
-  orgId: text("org_id")
-    .notNull()
-    .references(() => organizations.id),
-  title: text("title").notNull(),
-  description: text("description").notNull().default(""),
-  assignedTo: text("assigned_to").notNull(),
-  assignedBy: text("assigned_by").notNull(),
-  // "One-Time" | "Recurring" — open-ended enough (and low-value as an enum) to stay text.
-  taskType: text("task_type").notNull(),
-  // Frequency code (D/W/15D/M/Q/Y) when Task_Type is "Recurring", else "".
-  recurrenceFrequency: text("recurrence_frequency").notNull().default(""),
-  // Completion date AND time (see CLAUDE.md Module 3) — a real instant, not a calendar date.
-  dueDate: timestamp("due_date", { withTimezone: true }),
-  attachmentUrl: text("attachment_url").notNull().default(""),
-  status: taskStatusEnum("status").notNull().default("Pending"),
-  completedAt: timestamp("completed_at", { withTimezone: true }),
-  completionProofUrl: text("completion_proof_url").notNull().default(""),
-  remark: text("remark").notNull().default(""),
-  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-  onTimeCount: integer("on_time_count").notNull().default(0),
-  delayCount: integer("delay_count").notNull().default(0),
-  // PRIORITIES (src/lib/priority.ts: Low/Medium/High/Urgent) — closed but not a Status
-  // column, kept text per the plan's guidance.
-  priority: text("priority").notNull().default("Medium"),
-  // Blank for a one-off task; set for a generated recurring occurrence — groups back to
-  // its Recurring_Tasks definition row.
-  recurringId: text("recurring_id").notNull().default(""),
-});
+export const tasks = pgTable(
+  "tasks",
+  {
+    // Task_ID, e.g. "TSK-xxxx".
+    id: text("id").primaryKey(),
+    orgId: text("org_id")
+      .notNull()
+      .references(() => organizations.id),
+    title: text("title").notNull(),
+    description: text("description").notNull().default(""),
+    assignedTo: text("assigned_to").notNull(),
+    assignedBy: text("assigned_by").notNull(),
+    // "One-Time" | "Recurring" — open-ended enough (and low-value as an enum) to stay text.
+    taskType: text("task_type").notNull(),
+    // Frequency code (D/W/15D/M/Q/Y) when Task_Type is "Recurring", else "".
+    recurrenceFrequency: text("recurrence_frequency").notNull().default(""),
+    // Completion date AND time (see CLAUDE.md Module 3) — a real instant, not a calendar date.
+    dueDate: timestamp("due_date", { withTimezone: true }),
+    attachmentUrl: text("attachment_url").notNull().default(""),
+    status: taskStatusEnum("status").notNull().default("Pending"),
+    completedAt: timestamp("completed_at", { withTimezone: true }),
+    completionProofUrl: text("completion_proof_url").notNull().default(""),
+    remark: text("remark").notNull().default(""),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    onTimeCount: integer("on_time_count").notNull().default(0),
+    delayCount: integer("delay_count").notNull().default(0),
+    // PRIORITIES (src/lib/priority.ts: Low/Medium/High/Urgent) — closed but not a Status
+    // column, kept text per the plan's guidance.
+    priority: text("priority").notNull().default("Medium"),
+    // Blank for a one-off task; set for a generated recurring occurrence — groups back to
+    // its Recurring_Tasks definition row.
+    recurringId: text("recurring_id").notNull().default(""),
+  },
+  (table) => [
+    index("tasks_org_id_idx").on(table.orgId),
+    index("tasks_org_id_assigned_to_idx").on(table.orgId, table.assignedTo),
+  ]
+);
 
 // RecurringTaskRecord.Status — src/lib/recurringTasks.ts RECURRING_STATUSES.
 export const recurringStatusEnum = pgEnum("recurring_status", ["Active", "Paused"]);
 
-export const recurringTasks = pgTable("recurring_tasks", {
-  // Recurring_ID, e.g. "RCR-xxxx".
-  id: text("id").primaryKey(),
-  orgId: text("org_id")
-    .notNull()
-    .references(() => organizations.id),
-  task: text("task").notNull(),
-  doerId: text("doer_id").notNull(),
-  assignedBy: text("assigned_by").notNull(),
-  // Frequency code (D/W/15D/M/Q/Y) — src/lib/frequency.ts FREQUENCY_CODES.
-  frequency: text("frequency").notNull(),
-  // The anchor date the generator's isScheduledToday() counts every occurrence from —
-  // stored as a real timestamp (not `date`) for consistency with every other
-  // date/datetime column in this schema; the application layer reads only its calendar
-  // date portion today.
-  assignDate: timestamp("assign_date", { withTimezone: true }).notNull(),
-  status: recurringStatusEnum("status").notNull().default("Active"),
-  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-});
+export const recurringTasks = pgTable(
+  "recurring_tasks",
+  {
+    // Recurring_ID, e.g. "RCR-xxxx".
+    id: text("id").primaryKey(),
+    orgId: text("org_id")
+      .notNull()
+      .references(() => organizations.id),
+    task: text("task").notNull(),
+    doerId: text("doer_id").notNull(),
+    assignedBy: text("assigned_by").notNull(),
+    // Frequency code (D/W/15D/M/Q/Y) — src/lib/frequency.ts FREQUENCY_CODES.
+    frequency: text("frequency").notNull(),
+    // The anchor date the generator's isScheduledToday() counts every occurrence from —
+    // stored as a real timestamp (not `date`) for consistency with every other
+    // date/datetime column in this schema; the application layer reads only its calendar
+    // date portion today.
+    assignDate: timestamp("assign_date", { withTimezone: true }).notNull(),
+    status: recurringStatusEnum("status").notNull().default("Active"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [index("recurring_tasks_org_id_idx").on(table.orgId)]
+);
 
 /**
  * Mirrors HOLIDAY_LIST — originally just a bare "Date" column (no id at all), read as a

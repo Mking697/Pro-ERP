@@ -1,4 +1,14 @@
-import { date, integer, numeric, pgEnum, pgTable, text, timestamp, unique } from "drizzle-orm/pg-core";
+import {
+  date,
+  index,
+  integer,
+  numeric,
+  pgEnum,
+  pgTable,
+  text,
+  timestamp,
+  unique,
+} from "drizzle-orm/pg-core";
 import { organizations } from "./platform";
 
 /**
@@ -12,21 +22,25 @@ import { organizations } from "./platform";
  * absence deduction is a natural v2 extension once this codebase has any way to know a day
  * was genuinely unpaid, which it does not yet.
  */
-export const salaryStructures = pgTable("salary_structures", {
-  // Salary_ID, e.g. "SAL-xxxx".
-  id: text("id").primaryKey(),
-  orgId: text("org_id")
-    .notNull()
-    .references(() => organizations.id),
-  userId: text("user_id").notNull(),
-  monthlySalary: numeric("monthly_salary").notNull().default("0"),
-  // A raise mints a new row rather than overwriting this one — same "never mutate a
-  // historical fact" reasoning as fms_templates/bom versioning — so a payroll run for a
-  // past month always resolves against the salary that was actually in effect then.
-  effectiveFrom: date("effective_from").notNull(),
-  createdBy: text("created_by").notNull().default(""),
-  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-});
+export const salaryStructures = pgTable(
+  "salary_structures",
+  {
+    // Salary_ID, e.g. "SAL-xxxx".
+    id: text("id").primaryKey(),
+    orgId: text("org_id")
+      .notNull()
+      .references(() => organizations.id),
+    userId: text("user_id").notNull(),
+    monthlySalary: numeric("monthly_salary").notNull().default("0"),
+    // A raise mints a new row rather than overwriting this one — same "never mutate a
+    // historical fact" reasoning as fms_templates/bom versioning — so a payroll run for a
+    // past month always resolves against the salary that was actually in effect then.
+    effectiveFrom: date("effective_from").notNull(),
+    createdBy: text("created_by").notNull().default(""),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [index("salary_structures_org_id_user_id_idx").on(table.orgId, table.userId)]
+);
 
 export const payrollRunStatusEnum = pgEnum("payroll_run_status", ["Draft", "Finalized"]);
 
@@ -79,5 +93,8 @@ export const payslips = pgTable(
     pdfUrl: text("pdf_url").notNull().default(""),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (table) => [unique("payslips_payroll_run_id_user_id_unique").on(table.payrollRunId, table.userId)]
+  (table) => [
+    unique("payslips_payroll_run_id_user_id_unique").on(table.payrollRunId, table.userId),
+    index("payslips_org_id_user_id_idx").on(table.orgId, table.userId),
+  ]
 );

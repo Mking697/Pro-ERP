@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireSession } from "@/lib/auth/guard";
 import { getFmsTemplateSteps, userCanAccessTemplate } from "@/lib/fms/templates";
-import { listAllFmsRuns } from "@/lib/fms/engine";
+import { listFmsRunsForTemplate } from "@/lib/fms/engine";
 import { resolveInstanceReferences } from "@/lib/fms/reference";
 
 /**
@@ -40,8 +40,7 @@ export async function GET(
     dataSourceConfig: s.Data_Source_Config,
   }));
 
-  const runs = await listAllFmsRuns();
-  const templateRuns = runs.filter((r) => r.Template_ID === templateId);
+  const templateRuns = await listFmsRunsForTemplate(templateId);
 
   const firstRefByInstance = new Map<string, string>();
   for (const run of templateRuns) {

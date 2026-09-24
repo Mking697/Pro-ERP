@@ -666,6 +666,24 @@ export async function listAllFmsRuns(): Promise<FmsRunRecord[]> {
 }
 
 /**
+ * Every FMS_RUNS row against one template (any instance, any status) — what a single
+ * template's own Flow Board actually needs. Filters at the SQL level instead of
+ * `listAllFmsRuns()` + a JS `.filter()`, so a Flow Board request doesn't have to pull the
+ * org's entire FMS_RUNS history (every template, every instance, ever) just to show one
+ * template's rows. Same rows `listAllFmsRuns().filter(r => r.Template_ID === templateId)`
+ * would have returned — org-scoped the identical way, just with template_id pushed into
+ * the WHERE clause rather than filtered in application code afterward.
+ */
+export async function listFmsRunsForTemplate(templateId: string): Promise<FmsRunRecord[]> {
+  const orgId = await getTenantOrgId();
+  const rows = await db
+    .select()
+    .from(fmsRuns)
+    .where(and(eq(fmsRuns.orgId, orgId), eq(fmsRuns.templateId, templateId)));
+  return rows.map(runToRecord);
+}
+
+/**
  * Whether any instance is still mid-flow against this exact template version — the guard
  * a template Delete needs. Archiving alone never disturbs an already-running instance (it
  * keeps resolving steps from the archived version, on purpose); actually removing that

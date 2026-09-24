@@ -1,4 +1,4 @@
-import { numeric, pgEnum, pgTable, text, timestamp, unique } from "drizzle-orm/pg-core";
+import { index, numeric, pgEnum, pgTable, text, timestamp, unique } from "drizzle-orm/pg-core";
 import { organizations } from "./platform";
 
 /**
@@ -15,7 +15,9 @@ export const purchaseOrderStatusEnum = pgEnum("purchase_order_status", [
   "Cancelled",
 ]);
 
-export const purchaseOrders = pgTable("purchase_orders", {
+export const purchaseOrders = pgTable(
+  "purchase_orders",
+  {
   // PO_ID, e.g. "PO-xxxx".
   id: text("id").primaryKey(),
   orgId: text("org_id")
@@ -36,7 +38,9 @@ export const purchaseOrders = pgTable("purchase_orders", {
   followUpDoneAt: timestamp("follow_up_done_at", { withTimezone: true }),
   followUpRemark: text("follow_up_remark").notNull().default(""),
   materialReceivedDueAt: timestamp("material_received_due_at", { withTimezone: true }),
-});
+  },
+  (table) => [index("purchase_orders_org_id_idx").on(table.orgId)]
+);
 
 /**
  * One row per indent bundled into a PO — the price is snapshotted here, not read live off
@@ -59,5 +63,8 @@ export const purchaseOrderLines = pgTable(
     // What the purchaser actually agreed — defaults to oldPrice if left blank.
     newPrice: numeric("new_price"),
   },
-  (table) => [unique("purchase_order_lines_po_indent_unique").on(table.poId, table.indentId)]
+  (table) => [
+    unique("purchase_order_lines_po_indent_unique").on(table.poId, table.indentId),
+    index("purchase_order_lines_org_id_idx").on(table.orgId),
+  ]
 );

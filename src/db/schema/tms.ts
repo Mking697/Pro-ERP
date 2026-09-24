@@ -1,4 +1,4 @@
-import { numeric, pgEnum, pgTable, primaryKey, text, timestamp } from "drizzle-orm/pg-core";
+import { index, numeric, pgEnum, pgTable, primaryKey, text, timestamp } from "drizzle-orm/pg-core";
 import { organizations } from "./platform";
 
 /**
@@ -24,7 +24,9 @@ export const transportVendorStatusEnum = pgEnum("transport_vendor_status", ["Act
 /** Mirrors vendors/customers (src/db/schema/parties.ts) exactly, kept in this file instead
  * since it's specific to TMS's own domain rather than the general Purchase/Sales party
  * book. */
-export const transportVendors = pgTable("transport_vendors", {
+export const transportVendors = pgTable(
+  "transport_vendors",
+  {
   // Transport_Vendor_ID, e.g. "TRV-xxxx".
   id: text("id").primaryKey(),
   orgId: text("org_id")
@@ -41,14 +43,18 @@ export const transportVendors = pgTable("transport_vendors", {
   status: transportVendorStatusEnum("status").notNull().default("Active"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   createdBy: text("created_by").notNull().default(""),
-});
+  },
+  (table) => [index("transport_vendors_org_id_idx").on(table.orgId)]
+);
 
 // "Pending" covers both a Self-arranged shipment still being planned/awaited and a
 // Party-arranged one still being followed up on — the distinction is which fields are
 // filled in, not a separate status (mirrors PDI's own deliberately small status enum).
 export const tmsShipmentStatusEnum = pgEnum("tms_shipment_status", ["Pending", "At_Loading_Dock"]);
 
-export const tmsShipments = pgTable("tms_shipments", {
+export const tmsShipments = pgTable(
+  "tms_shipments",
+  {
   // Shipment_ID, e.g. "TMS-xxxx".
   id: text("id").primaryKey(),
   orgId: text("org_id")
@@ -73,7 +79,12 @@ export const tmsShipments = pgTable("tms_shipments", {
   dispatchId: text("dispatch_id").notNull().default(""),
   createdBy: text("created_by").notNull().default(""),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-});
+  },
+  (table) => [
+    index("tms_shipments_org_id_order_id_idx").on(table.orgId, table.orderId),
+    index("tms_shipments_org_id_status_idx").on(table.orgId, table.status),
+  ]
+);
 
 /**
  * One row per (shipment, order line) — how much of that line's quantity rides on this
@@ -95,7 +106,10 @@ export const tmsShipmentItems = pgTable(
     uom: text("uom").notNull().default(""),
     qty: numeric("qty").notNull().default("0"),
   },
-  (table) => [primaryKey({ columns: [table.shipmentId, table.lineNo] })]
+  (table) => [
+    primaryKey({ columns: [table.shipmentId, table.lineNo] }),
+    index("tms_shipment_items_org_id_idx").on(table.orgId),
+  ]
 );
 
 // TmsActivityRecord.Kind — one row per event, append-only, same convention as
@@ -108,15 +122,19 @@ export const tmsActivityKindEnum = pgEnum("tms_activity_kind", [
   "Loading_Dock_Confirmed",
 ]);
 
-export const tmsActivities = pgTable("tms_activities", {
-  // Activity_ID, e.g. "TMA-xxxx".
-  id: text("id").primaryKey(),
-  orgId: text("org_id")
-    .notNull()
-    .references(() => organizations.id),
-  orderId: text("order_id").notNull(),
-  kind: tmsActivityKindEnum("kind").notNull(),
-  message: text("message").notNull(),
-  actorId: text("actor_id").notNull().default(""),
-  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-});
+export const tmsActivities = pgTable(
+  "tms_activities",
+  {
+    // Activity_ID, e.g. "TMA-xxxx".
+    id: text("id").primaryKey(),
+    orgId: text("org_id")
+      .notNull()
+      .references(() => organizations.id),
+    orderId: text("order_id").notNull(),
+    kind: tmsActivityKindEnum("kind").notNull(),
+    message: text("message").notNull(),
+    actorId: text("actor_id").notNull().default(""),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [index("tms_activities_org_id_order_id_idx").on(table.orgId, table.orderId)]
+);

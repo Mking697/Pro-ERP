@@ -1,4 +1,4 @@
-import { numeric, pgEnum, pgTable, text, timestamp } from "drizzle-orm/pg-core";
+import { index, numeric, pgEnum, pgTable, text, timestamp } from "drizzle-orm/pg-core";
 import { organizations } from "./platform";
 
 /**
@@ -10,7 +10,9 @@ import { organizations } from "./platform";
 // status values).
 export const iqcStatusEnum = pgEnum("iqc_status", ["Pending", "Verified"]);
 
-export const inwardIqcFms = pgTable("inward_iqc_fms", {
+export const inwardIqcFms = pgTable(
+  "inward_iqc_fms",
+  {
   // Entry_ID, e.g. "INW-xxxx".
   id: text("id").primaryKey(),
   orgId: text("org_id")
@@ -43,36 +45,46 @@ export const inwardIqcFms = pgTable("inward_iqc_fms", {
   iqcTatValue: numeric("iqc_tat_value"),
   iqcTatUnit: text("iqc_tat_unit").notNull().default(""),
   iqcDeadline: timestamp("iqc_deadline", { withTimezone: true }),
-});
+  },
+  (table) => [index("inward_iqc_fms_org_id_idx").on(table.orgId)]
+);
 
-export const failureLog = pgTable("failure_log", {
-  // Log_ID, e.g. "FAIL-xxxx".
-  id: text("id").primaryKey(),
-  orgId: text("org_id")
-    .notNull()
-    .references(() => organizations.id),
-  linkedEntryId: text("linked_entry_id").notNull(),
-  timestamp: timestamp("timestamp", { withTimezone: true }).notNull().defaultNow(),
-  partyName: text("party_name").notNull(),
-  invoiceNo: text("invoice_no").notNull().default(""),
-  inwardType: text("inward_type").notNull().default(""),
-  failQty: numeric("fail_qty").notNull(),
-  failReason: text("fail_reason").notNull().default(""),
-  attachmentUrl: text("attachment_url").notNull().default(""),
-  verifiedBy: text("verified_by").notNull().default(""),
-});
+export const failureLog = pgTable(
+  "failure_log",
+  {
+    // Log_ID, e.g. "FAIL-xxxx".
+    id: text("id").primaryKey(),
+    orgId: text("org_id")
+      .notNull()
+      .references(() => organizations.id),
+    linkedEntryId: text("linked_entry_id").notNull(),
+    timestamp: timestamp("timestamp", { withTimezone: true }).notNull().defaultNow(),
+    partyName: text("party_name").notNull(),
+    invoiceNo: text("invoice_no").notNull().default(""),
+    inwardType: text("inward_type").notNull().default(""),
+    failQty: numeric("fail_qty").notNull(),
+    failReason: text("fail_reason").notNull().default(""),
+    attachmentUrl: text("attachment_url").notNull().default(""),
+    verifiedBy: text("verified_by").notNull().default(""),
+  },
+  (table) => [index("failure_log_org_id_idx").on(table.orgId)]
+);
 
-export const imsInward = pgTable("ims_inward", {
-  // Record_ID, e.g. "IMS-xxxx".
-  id: text("id").primaryKey(),
-  orgId: text("org_id")
-    .notNull()
-    .references(() => organizations.id),
-  linkedEntryId: text("linked_entry_id").notNull(),
-  timestamp: timestamp("timestamp", { withTimezone: true }).notNull().defaultNow(),
-  partyName: text("party_name").notNull(),
-  invoiceNo: text("invoice_no").notNull().default(""),
-  inwardType: text("inward_type").notNull().default(""),
-  passQty: numeric("pass_qty").notNull(),
-  verifiedBy: text("verified_by").notNull().default(""),
-});
+export const imsInward = pgTable(
+  "ims_inward",
+  {
+    // Record_ID, e.g. "IMS-xxxx".
+    id: text("id").primaryKey(),
+    orgId: text("org_id")
+      .notNull()
+      .references(() => organizations.id),
+    linkedEntryId: text("linked_entry_id").notNull(),
+    timestamp: timestamp("timestamp", { withTimezone: true }).notNull().defaultNow(),
+    partyName: text("party_name").notNull(),
+    invoiceNo: text("invoice_no").notNull().default(""),
+    inwardType: text("inward_type").notNull().default(""),
+    passQty: numeric("pass_qty").notNull(),
+    verifiedBy: text("verified_by").notNull().default(""),
+  },
+  (table) => [index("ims_inward_org_id_idx").on(table.orgId)]
+);

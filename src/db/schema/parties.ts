@@ -1,4 +1,13 @@
-import { integer, numeric, pgEnum, pgTable, text, timestamp, unique } from "drizzle-orm/pg-core";
+import {
+  index,
+  integer,
+  numeric,
+  pgEnum,
+  pgTable,
+  text,
+  timestamp,
+  unique,
+} from "drizzle-orm/pg-core";
 import { organizations } from "./platform";
 
 /**
@@ -12,7 +21,9 @@ import { organizations } from "./platform";
 export const vendorStatusEnum = pgEnum("vendor_status", ["Active", "Inactive"]);
 export const customerStatusEnum = pgEnum("customer_status", ["Active", "Inactive"]);
 
-export const vendors = pgTable("vendors", {
+export const vendors = pgTable(
+  "vendors",
+  {
   // Vendor_ID, e.g. "VEN-xxxx".
   id: text("id").primaryKey(),
   orgId: text("org_id")
@@ -33,7 +44,9 @@ export const vendors = pgTable("vendors", {
   status: vendorStatusEnum("status").notNull().default("Active"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   createdBy: text("created_by").notNull().default(""),
-});
+  },
+  (table) => [index("vendors_org_id_idx").on(table.orgId)]
+);
 
 /**
  * Which Purchase Vendors supply a given SKU, at what lead time and unit price — the
@@ -62,10 +75,15 @@ export const vendorItems = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     createdBy: text("created_by").notNull().default(""),
   },
-  (table) => [unique("vendor_items_vendor_sku_unique").on(table.vendorId, table.sku)]
+  (table) => [
+    unique("vendor_items_vendor_sku_unique").on(table.vendorId, table.sku),
+    index("vendor_items_org_id_idx").on(table.orgId),
+  ]
 );
 
-export const customers = pgTable("customers", {
+export const customers = pgTable(
+  "customers",
+  {
   // Customer_ID, e.g. "CUS-xxxx".
   id: text("id").primaryKey(),
   orgId: text("org_id")
@@ -91,4 +109,6 @@ export const customers = pgTable("customers", {
   status: customerStatusEnum("status").notNull().default("Active"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   createdBy: text("created_by").notNull().default(""),
-});
+  },
+  (table) => [index("customers_org_id_idx").on(table.orgId)]
+);

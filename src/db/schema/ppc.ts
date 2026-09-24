@@ -1,4 +1,4 @@
-import { numeric, pgEnum, pgTable, primaryKey, text, timestamp } from "drizzle-orm/pg-core";
+import { index, numeric, pgEnum, pgTable, primaryKey, text, timestamp } from "drizzle-orm/pg-core";
 import { organizations } from "./platform";
 
 /**
@@ -14,7 +14,9 @@ export const planStatusEnum = pgEnum("plan_status", [
   "Cancelled",
 ]);
 
-export const productionPlans = pgTable("production_plans", {
+export const productionPlans = pgTable(
+  "production_plans",
+  {
   // Plan_ID, e.g. "PLN-xxxx".
   id: text("id").primaryKey(),
   orgId: text("org_id")
@@ -43,7 +45,9 @@ export const productionPlans = pgTable("production_plans", {
   // dropped: two products each needing a different Line would both fire for any plan that
   // hadn't picked one, which is exactly the ambiguity picking a Line exists to remove).
   fmsTemplateId: text("fms_template_id").notNull().default(""),
-});
+  },
+  (table) => [index("production_plans_org_id_idx").on(table.orgId)]
+);
 
 // PlanMaterialRecord.Status — src/lib/inventory/plans.ts: "Allocated" | "Shortage" (set
 // by the allocator), then "Consumed" once Start Production writes the Out rows.
@@ -84,5 +88,8 @@ export const planMaterials = pgTable(
     status: planMaterialStatusEnum("status").notNull().default("Shortage"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (table) => [primaryKey({ columns: [table.planId, table.sku] })]
+  (table) => [
+    primaryKey({ columns: [table.planId, table.sku] }),
+    index("plan_materials_org_id_idx").on(table.orgId),
+  ]
 );

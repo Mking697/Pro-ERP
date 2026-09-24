@@ -1,4 +1,13 @@
-import { numeric, pgEnum, pgTable, primaryKey, text, timestamp, unique } from "drizzle-orm/pg-core";
+import {
+  index,
+  numeric,
+  pgEnum,
+  pgTable,
+  primaryKey,
+  text,
+  timestamp,
+  unique,
+} from "drizzle-orm/pg-core";
 import { organizations } from "./platform";
 
 /**
@@ -27,7 +36,9 @@ export const leadStatusEnum = pgEnum("lead_status", [
   "Lost",
 ]);
 
-export const leads = pgTable("leads", {
+export const leads = pgTable(
+  "leads",
+  {
   // Lead_ID, e.g. "LED-xxxx".
   id: text("id").primaryKey(),
   orgId: text("org_id")
@@ -56,7 +67,9 @@ export const leads = pgTable("leads", {
   lostReason: text("lost_reason").notNull().default(""),
   createdBy: text("created_by").notNull().default(""),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-});
+  },
+  (table) => [index("leads_org_id_status_idx").on(table.orgId, table.status)]
+);
 
 // LeadActivityRecord.Kind — one row per pipeline event, append-only, so a lead's full
 // history survives even as its own Status/Next_Follow_Up_At columns get overwritten in
@@ -72,18 +85,22 @@ export const leadActivityKindEnum = pgEnum("lead_activity_kind", [
   "Lost",
 ]);
 
-export const leadActivities = pgTable("lead_activities", {
-  // Activity_ID, e.g. "LAC-xxxx".
-  id: text("id").primaryKey(),
-  orgId: text("org_id")
-    .notNull()
-    .references(() => organizations.id),
-  leadId: text("lead_id").notNull(),
-  kind: leadActivityKindEnum("kind").notNull(),
-  message: text("message").notNull(),
-  actorId: text("actor_id").notNull().default(""),
-  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-});
+export const leadActivities = pgTable(
+  "lead_activities",
+  {
+    // Activity_ID, e.g. "LAC-xxxx".
+    id: text("id").primaryKey(),
+    orgId: text("org_id")
+      .notNull()
+      .references(() => organizations.id),
+    leadId: text("lead_id").notNull(),
+    kind: leadActivityKindEnum("kind").notNull(),
+    message: text("message").notNull(),
+    actorId: text("actor_id").notNull().default(""),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [index("lead_activities_org_id_lead_id_idx").on(table.orgId, table.leadId)]
+);
 
 // QuotationRecord.Status — Draft while being built, Sent once issued, Accepted is
 // terminal (the point Lead FMS hands off to the future Order FMS), Rejected/Expired are
@@ -156,7 +173,10 @@ export const quotations = pgTable(
   createdBy: text("created_by").notNull().default(""),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (table) => [unique("quotations_org_id_quotation_no_unique").on(table.orgId, table.quotationNo)]
+  (table) => [
+    unique("quotations_org_id_quotation_no_unique").on(table.orgId, table.quotationNo),
+    index("quotations_org_id_status_idx").on(table.orgId, table.status),
+  ]
 );
 
 /**
@@ -186,5 +206,8 @@ export const quotationItems = pgTable(
     // qty * rate, rounded once here — nothing downstream re-derives it.
     amount: numeric("amount").notNull().default("0"),
   },
-  (table) => [primaryKey({ columns: [table.quotationId, table.lineNo] })]
+  (table) => [
+    primaryKey({ columns: [table.quotationId, table.lineNo] }),
+    index("quotation_items_org_id_idx").on(table.orgId),
+  ]
 );

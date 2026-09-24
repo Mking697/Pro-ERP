@@ -1,4 +1,15 @@
-import { boolean, date, integer, numeric, pgEnum, pgTable, text, timestamp, unique } from "drizzle-orm/pg-core";
+import {
+  boolean,
+  date,
+  index,
+  integer,
+  numeric,
+  pgEnum,
+  pgTable,
+  text,
+  timestamp,
+  unique,
+} from "drizzle-orm/pg-core";
 import { organizations } from "./platform";
 
 /**
@@ -23,16 +34,20 @@ export const leaveApproverTypeEnum = pgEnum("leave_approver_type", [
  * Users.reportingManagerId points to); a SPECIFIC_USER step is a fixed person (e.g. HR,
  * MD) the Admin names directly, the same way Purchase Setup names a fixed Doer per step.
  */
-export const leaveApprovalSteps = pgTable("leave_approval_steps", {
-  // LAS_ID, e.g. "LAS-xxxx".
-  id: text("id").primaryKey(),
-  orgId: text("org_id")
-    .notNull()
-    .references(() => organizations.id),
-  stepNo: integer("step_no").notNull(),
-  approverType: leaveApproverTypeEnum("approver_type").notNull(),
-  specificUserId: text("specific_user_id").notNull().default(""),
-});
+export const leaveApprovalSteps = pgTable(
+  "leave_approval_steps",
+  {
+    // LAS_ID, e.g. "LAS-xxxx".
+    id: text("id").primaryKey(),
+    orgId: text("org_id")
+      .notNull()
+      .references(() => organizations.id),
+    stepNo: integer("step_no").notNull(),
+    approverType: leaveApproverTypeEnum("approver_type").notNull(),
+    specificUserId: text("specific_user_id").notNull().default(""),
+  },
+  (table) => [index("leave_approval_steps_org_id_idx").on(table.orgId)]
+);
 
 export const leaveStatusEnum = pgEnum("leave_status", [
   "Pending",
@@ -41,7 +56,9 @@ export const leaveStatusEnum = pgEnum("leave_status", [
   "Cancelled",
 ]);
 
-export const leaves = pgTable("leaves", {
+export const leaves = pgTable(
+  "leaves",
+  {
   // Leave_ID, e.g. "LV-xxxx".
   id: text("id").primaryKey(),
   orgId: text("org_id")
@@ -68,7 +85,12 @@ export const leaves = pgTable("leaves", {
   // Set once the reassigned work has been handed back after the leave ended — null until then.
   revertedAt: timestamp("reverted_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-});
+  },
+  (table) => [
+    index("leaves_org_id_status_idx").on(table.orgId, table.status),
+    index("leaves_org_id_doer_id_idx").on(table.orgId, table.doerId),
+  ]
+);
 
 export const leaveApprovalDecisionEnum = pgEnum("leave_approval_decision", [
   "Pending",
@@ -78,40 +100,48 @@ export const leaveApprovalDecisionEnum = pgEnum("leave_approval_decision", [
 
 /** One row per leave per approval step — the audit trail of who decided what, mirroring
  * fms_runs' one-row-per-step-instance shape. */
-export const leaveApprovals = pgTable("leave_approvals", {
-  // LAP_ID, e.g. "LAP-xxxx".
-  id: text("id").primaryKey(),
-  orgId: text("org_id")
-    .notNull()
-    .references(() => organizations.id),
-  leaveId: text("leave_id").notNull(),
-  stepNo: integer("step_no").notNull(),
-  // The real person this step resolved to for this specific leave (a Reporting Manager
-  // step resolves differently per requester) — snapshotted here so a later Reporting
-  // Manager change never rewrites who was actually asked to decide.
-  approverId: text("approver_id").notNull(),
-  decision: leaveApprovalDecisionEnum("decision").notNull().default("Pending"),
-  remark: text("remark").notNull().default(""),
-  decidedAt: timestamp("decided_at", { withTimezone: true }),
-});
+export const leaveApprovals = pgTable(
+  "leave_approvals",
+  {
+    // LAP_ID, e.g. "LAP-xxxx".
+    id: text("id").primaryKey(),
+    orgId: text("org_id")
+      .notNull()
+      .references(() => organizations.id),
+    leaveId: text("leave_id").notNull(),
+    stepNo: integer("step_no").notNull(),
+    // The real person this step resolved to for this specific leave (a Reporting Manager
+    // step resolves differently per requester) — snapshotted here so a later Reporting
+    // Manager change never rewrites who was actually asked to decide.
+    approverId: text("approver_id").notNull(),
+    decision: leaveApprovalDecisionEnum("decision").notNull().default("Pending"),
+    remark: text("remark").notNull().default(""),
+    decidedAt: timestamp("decided_at", { withTimezone: true }),
+  },
+  (table) => [index("leave_approvals_org_id_leave_id_idx").on(table.orgId, table.leaveId)]
+);
 
 /** Every Task/FMS-run this leave's buddy redirect actually touched — how the revert at
  * leave-end knows exactly what to hand back, and to whom, without guessing. */
-export const leaveReassignments = pgTable("leave_reassignments", {
-  // LRA_ID, e.g. "LRA-xxxx".
-  id: text("id").primaryKey(),
-  orgId: text("org_id")
-    .notNull()
-    .references(() => organizations.id),
-  leaveId: text("leave_id").notNull(),
-  // "TASK" | "FMS_RUN".
-  entityType: text("entity_type").notNull(),
-  entityId: text("entity_id").notNull(),
-  originalAssignee: text("original_assignee").notNull(),
-  buddyId: text("buddy_id").notNull(),
-  reassignedAt: timestamp("reassigned_at", { withTimezone: true }).notNull().defaultNow(),
-  revertedAt: timestamp("reverted_at", { withTimezone: true }),
-});
+export const leaveReassignments = pgTable(
+  "leave_reassignments",
+  {
+    // LRA_ID, e.g. "LRA-xxxx".
+    id: text("id").primaryKey(),
+    orgId: text("org_id")
+      .notNull()
+      .references(() => organizations.id),
+    leaveId: text("leave_id").notNull(),
+    // "TASK" | "FMS_RUN".
+    entityType: text("entity_type").notNull(),
+    entityId: text("entity_id").notNull(),
+    originalAssignee: text("original_assignee").notNull(),
+    buddyId: text("buddy_id").notNull(),
+    reassignedAt: timestamp("reassigned_at", { withTimezone: true }).notNull().defaultNow(),
+    revertedAt: timestamp("reverted_at", { withTimezone: true }),
+  },
+  (table) => [index("leave_reassignments_org_id_leave_id_idx").on(table.orgId, table.leaveId)]
+);
 
 /**
  * Leave balance/quota (2026-09-22) — simple v1 by explicit choice: a fixed annual day
