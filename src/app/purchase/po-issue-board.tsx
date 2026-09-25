@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Select,
   SelectContent,
@@ -59,6 +60,10 @@ export default function PoIssueBoard() {
   const [selected, setSelected] = useState<Record<string, boolean>>({});
   const [priceDraft, setPriceDraft] = useState<Record<string, string>>({});
   const [attachmentUrl, setAttachmentUrl] = useState("");
+  const [gstPercent, setGstPercent] = useState(18);
+  const [note, setNote] = useState("");
+  const [termsAndConditions, setTermsAndConditions] = useState("");
+  const [defaults, setDefaults] = useState({ gstPercent: 18, note: "", termsAndConditions: "" });
   const [saving, setSaving] = useState(false);
   const [generatingPdf, setGeneratingPdf] = useState(false);
   const [version, setVersion] = useState(0);
@@ -70,6 +75,25 @@ export default function PoIssueBoard() {
       .catch(() => toast.error(t("Candidates load nahi ho paye.")))
       .finally(() => setLoading(false));
   }, [version, t]);
+
+  useEffect(() => {
+    fetch("/api/purchase/setup-defaults")
+      .then((res) => res.json())
+      .then((data: { gstPercent?: number; defaultTerms?: string; defaultNote?: string }) => {
+        const resolved = {
+          gstPercent: data.gstPercent ?? 18,
+          termsAndConditions: data.defaultTerms ?? "",
+          note: data.defaultNote ?? "",
+        };
+        setDefaults(resolved);
+        setGstPercent(resolved.gstPercent);
+        setTermsAndConditions(resolved.termsAndConditions);
+        setNote(resolved.note);
+      })
+      .catch(() => {
+        // Non-fatal — the fields just stay at their component defaults, still editable.
+      });
+  }, []);
 
   const vendorOptions = useMemo(() => {
     const map = new Map<string, string>();
@@ -122,6 +146,9 @@ export default function PoIssueBoard() {
             indentId: r.candidate.indentId,
             newPrice: priceDraft[r.candidate.indentId] || undefined,
           })),
+          gstPercent,
+          termsAndConditions,
+          note,
         }),
       });
       const data = await res.json().catch(() => null);
@@ -160,6 +187,9 @@ export default function PoIssueBoard() {
             indentId: r.candidate.indentId,
             newPrice: priceDraft[r.candidate.indentId] || undefined,
           })),
+          gstPercent,
+          termsAndConditions,
+          note,
         }),
       });
       const data = await res.json().catch(() => null);
@@ -174,6 +204,9 @@ export default function PoIssueBoard() {
       setSelected({});
       setPriceDraft({});
       setAttachmentUrl("");
+      setGstPercent(defaults.gstPercent);
+      setTermsAndConditions(defaults.termsAndConditions);
+      setNote(defaults.note);
       setVersion((v) => v + 1);
     } finally {
       setSaving(false);
@@ -279,6 +312,33 @@ export default function PoIssueBoard() {
                 ))}
               </TableBody>
             </Table>
+          </div>
+
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div className="space-y-2">
+              <Label>{t("GST %")}</Label>
+              <Input
+                type="number"
+                step="any"
+                min="0"
+                max="100"
+                className="w-32"
+                value={gstPercent}
+                onChange={(e) => setGstPercent(Number(e.target.value))}
+              />
+            </div>
+          </div>
+          <div className="space-y-2">
+            <Label>{t("Note")}</Label>
+            <Textarea rows={2} value={note} onChange={(e) => setNote(e.target.value)} />
+          </div>
+          <div className="space-y-2">
+            <Label>{t("Terms & Conditions")}</Label>
+            <Textarea
+              rows={5}
+              value={termsAndConditions}
+              onChange={(e) => setTermsAndConditions(e.target.value)}
+            />
           </div>
 
           <div className="max-w-sm space-y-2">

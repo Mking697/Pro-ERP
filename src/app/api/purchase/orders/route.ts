@@ -38,6 +38,9 @@ const bodySchema = z.object({
   // the single place that enforces "a PO needs an attachment."
   attachmentUrl: z.string().trim().optional(),
   generateAttachment: z.boolean().optional(),
+  gstPercent: z.coerce.number().min(0).max(100).optional(),
+  termsAndConditions: z.string().optional(),
+  note: z.string().optional(),
 });
 
 export async function POST(request: Request) {
@@ -60,6 +63,9 @@ export async function POST(request: Request) {
       attachmentUrl: parsed.data.attachmentUrl ?? "",
       generateAttachment: parsed.data.generateAttachment,
       issuedBy: guard.session.userId,
+      gstPercent: parsed.data.gstPercent,
+      termsAndConditions: parsed.data.termsAndConditions,
+      note: parsed.data.note,
     });
     return NextResponse.json({ order });
   } catch (err) {

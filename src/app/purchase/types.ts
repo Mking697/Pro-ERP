@@ -25,5 +25,8 @@ export interface PoOrder {
   followUpDoneAt: string;
   followUpRemark: string;
   materialReceivedDueAt: string;
+  gstPercent: number;
+  termsAndConditions: string;
+  note: string;
   lines: PoLine[];
 }

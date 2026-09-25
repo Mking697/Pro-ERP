@@ -11,6 +11,9 @@ const lineSchema = z.object({
 const bodySchema = z.object({
   vendorId: z.string().trim().min(1, "Vendor chunein."),
   lines: z.array(lineSchema).min(1, "Kam se kam ek item chunein."),
+  gstPercent: z.coerce.number().min(0).max(100).optional(),
+  termsAndConditions: z.string().optional(),
+  note: z.string().optional(),
 });
 
 /**
@@ -33,7 +36,13 @@ export async function POST(request: Request) {
   }
 
   try {
-    const { url } = await previewPoPdf({ vendorId: parsed.data.vendorId, lines: parsed.data.lines });
+    const { url } = await previewPoPdf({
+      vendorId: parsed.data.vendorId,
+      lines: parsed.data.lines,
+      gstPercent: parsed.data.gstPercent,
+      termsAndConditions: parsed.data.termsAndConditions,
+      note: parsed.data.note,
+    });
     return NextResponse.json({ url });
   } catch (err) {
     const message =

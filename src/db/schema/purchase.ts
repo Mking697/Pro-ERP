@@ -38,6 +38,14 @@ export const purchaseOrders = pgTable(
   followUpDoneAt: timestamp("follow_up_done_at", { withTimezone: true }),
   followUpRemark: text("follow_up_remark").notNull().default(""),
   materialReceivedDueAt: timestamp("material_received_due_at", { withTimezone: true }),
+  // Snapshotted at Issue time from Purchase Setup's own defaults (or a per-PO override
+  // chosen on the PO Issue screen) — a real, once-issued PO must keep printing the GST%/
+  // Terms/Note that actually applied, not re-derive them live if an Admin edits the
+  // default afterward. Same "snapshot, not live-read" convention as oldPrice/newPrice
+  // below and invoices.gstAmount in accounts.ts.
+  gstPercent: numeric("gst_percent").notNull().default("0"),
+  termsAndConditions: text("terms_and_conditions").notNull().default(""),
+  note: text("note").notNull().default(""),
   },
   (table) => [index("purchase_orders_org_id_idx").on(table.orgId)]
 );

@@ -91,6 +91,7 @@ const styles = StyleSheet.create({
 
   totalsWrap: { flexDirection: "row", justifyContent: "flex-end", marginTop: 8 },
   totals: { width: 220 },
+  totalRow: { flexDirection: "row", justifyContent: "space-between", paddingVertical: 2.5, paddingHorizontal: 6 },
   totalRowStrong: {
     flexDirection: "row",
     justifyContent: "space-between",
@@ -99,9 +100,12 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.totalBg,
     borderWidth: 0.75,
     borderColor: COLORS.line,
+    marginTop: 2,
   },
 
-  note: { marginTop: 10, fontSize: 8, color: COLORS.muted },
+  section: { marginTop: 10 },
+  sectionTitle: { fontSize: 9, fontFamily: "Helvetica-Bold", marginBottom: 3 },
+  body: { fontSize: 8, color: COLORS.muted, lineHeight: 1.45 },
 
   signature: { marginTop: 32, alignItems: "flex-end" },
 
@@ -155,6 +159,15 @@ export interface PurchaseOrderPdfData {
   poId: string;
   vendor: PurchaseOrderPdfVendor;
   lines: PurchaseOrderPdfLine[];
+  /** Sub Total/GST/Grand Total are computed by the caller (generatePoPdf()/previewPoPdf()
+   * in orders.ts), not re-derived here, since they need the same numbers whether the PO is
+   * already saved or still a draft. */
+  subTotal: number;
+  gstPercent: number;
+  gstAmount: number;
+  grandTotal: number;
+  termsAndConditions: string;
+  note: string;
 }
 
 function PurchaseOrderDocument({
@@ -168,11 +181,6 @@ function PurchaseOrderDocument({
   logoUrl: string;
   dateText: string;
 }) {
-  const total = order.lines.reduce(
-    (sum, line) => sum + line.qty * (Number(line.newPrice) || 0),
-    0
-  );
-
   return (
     <Document
       title={`Purchase Order ${order.poId} - ${order.vendor.name}`}
@@ -259,16 +267,34 @@ function PurchaseOrderDocument({
 
         <View style={styles.totalsWrap} wrap={false}>
           <View style={styles.totals}>
+            <View style={styles.totalRow}>
+              <Text>Sub total</Text>
+              <Text>{formatMoney(order.subTotal)}</Text>
+            </View>
+            <View style={styles.totalRow}>
+              <Text>GST {order.gstPercent}%</Text>
+              <Text>{formatMoney(order.gstAmount)}</Text>
+            </View>
             <View style={styles.totalRowStrong}>
-              <Text style={{ fontFamily: "Helvetica-Bold" }}>Total</Text>
-              <Text style={{ fontFamily: "Helvetica-Bold" }}>{formatMoney(total)}</Text>
+              <Text style={{ fontFamily: "Helvetica-Bold" }}>Payable amount</Text>
+              <Text style={{ fontFamily: "Helvetica-Bold" }}>{formatMoney(order.grandTotal)}</Text>
             </View>
           </View>
         </View>
 
-        <Text style={styles.note}>
-          Please acknowledge receipt of this Purchase Order and confirm the delivery schedule.
-        </Text>
+        {order.note ? (
+          <View style={styles.section} wrap={false}>
+            <Text style={styles.sectionTitle}>Note</Text>
+            <Text style={styles.body}>{order.note}</Text>
+          </View>
+        ) : null}
+
+        {order.termsAndConditions ? (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Terms &amp; Conditions</Text>
+            <Text style={styles.body}>{order.termsAndConditions}</Text>
+          </View>
+        ) : null}
 
         <View style={styles.signature} wrap={false}>
           <Text style={{ fontSize: 9 }}>(Authorised Signatory)</Text>

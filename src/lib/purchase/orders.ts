@@ -12,6 +12,7 @@ import { receiveIndent } from "@/lib/inventory/indents";
 import { getSetting } from "@/lib/settings";
 import { uploadAttachment } from "@/lib/storage";
 import { getQuotationSetup } from "@/lib/leads/quotationSetup";
+import { round2 } from "@/lib/leads/quotationMath";
 
 export class PurchaseOrderError extends Error {}
 
@@ -82,6 +83,9 @@ export interface PurchaseOrder {
   followUpDoneAt: string;
   followUpRemark: string;
   materialReceivedDueAt: string;
+  gstPercent: number;
+  termsAndConditions: string;
+  note: string;
   lines: PurchaseOrderLine[];
 }
 
@@ -102,6 +106,9 @@ function rowToPo(row: PurchaseOrderRow, vendorName: string, lines: PurchaseOrder
     followUpDoneAt: row.followUpDoneAt ? row.followUpDoneAt.toISOString() : "",
     followUpRemark: row.followUpRemark,
     materialReceivedDueAt: row.materialReceivedDueAt ? row.materialReceivedDueAt.toISOString() : "",
+    gstPercent: Number(row.gstPercent) || 0,
+    termsAndConditions: row.termsAndConditions,
+    note: row.note,
     lines,
   };
 }
@@ -196,6 +203,13 @@ export interface CreatePurchaseOrderInput {
    *  attachment" rule itself is unchanged — this only adds a second way to satisfy it. */
   generateAttachment?: boolean;
   issuedBy: string;
+  /** Each defaults from getPurchaseSetup()'s own PO Document Defaults when not given —
+   *  the PO Issue screen pre-fills all three from those same defaults but lets the
+   *  purchaser override any of them before Issue. Snapshotted onto the PO row at insert
+   *  time (see purchase_orders.gstPercent's own schema comment). */
+  gstPercent?: number;
+  termsAndConditions?: string;
+  note?: string;
 }
 
 interface ResolvedPoLine {
@@ -304,6 +318,9 @@ export async function createPurchaseOrder(input: CreatePurchaseOrderInput): Prom
     issuedAt: new Date(issuedAt),
     followUpDueAt: new Date(followUpDueAtMs),
     materialReceivedDueAt: new Date(materialReceivedDueAtMs),
+    gstPercent: String(input.gstPercent ?? purchaseSetup.gstPercentDefault),
+    termsAndConditions: input.termsAndConditions ?? purchaseSetup.defaultTerms,
+    note: input.note ?? purchaseSetup.defaultNote,
   });
 
   // Sequential, not db.batch(): each line's own insert plus its indent's status flip is
@@ -377,6 +394,11 @@ export async function generatePoPdf(poId: string): Promise<{ url: string }> {
   const logoUrl = (await getSetting("ORG_LOGO_URL")) ?? "";
   const dateText = po.issuedAt.toLocaleDateString("en-IN");
 
+  const subTotal = round2(lines.reduce((sum, l) => sum + l.qty * (Number(l.newPrice) || 0), 0));
+  const gstPercent = Number(po.gstPercent) || 0;
+  const gstAmount = round2((subTotal * gstPercent) / 100);
+  const grandTotal = round2(subTotal + gstAmount);
+
   const { renderPurchaseOrderPdfBuffer } = await import("@/lib/purchase/poPdf");
   const buffer = await renderPurchaseOrderPdfBuffer(
     {
@@ -398,6 +420,12 @@ export async function generatePoPdf(poId: string): Promise<{ url: string }> {
         oldPrice: l.oldPrice,
         newPrice: l.newPrice,
       })),
+      subTotal,
+      gstPercent,
+      gstAmount,
+      grandTotal,
+      termsAndConditions: po.termsAndConditions,
+      note: po.note,
     },
     setup,
     logoUrl,
@@ -417,6 +445,12 @@ export async function generatePoPdf(poId: string): Promise<{ url: string }> {
 export interface PreviewPoPdfInput {
   vendorId: string;
   lines: CreatePurchaseOrderLineInput[];
+  /** Each defaults from getPurchaseSetup()'s own PO Document Defaults when not given,
+   *  same as CreatePurchaseOrderInput — lets the PO Issue screen's live preview reflect
+   *  whatever the purchaser has currently typed into GST%/Terms/Note before Issue. */
+  gstPercent?: number;
+  termsAndConditions?: string;
+  note?: string;
 }
 
 /**
@@ -436,9 +470,15 @@ export async function previewPoPdf(input: PreviewPoPdfInput): Promise<{ url: str
     throw new PurchaseOrderError("Kam se kam ek item chunein.");
   }
 
+  const purchaseSetup = await getPurchaseSetup();
   const setup = await getQuotationSetup();
   const logoUrl = (await getSetting("ORG_LOGO_URL")) ?? "";
   const dateText = new Date().toLocaleDateString("en-IN");
+
+  const subTotal = round2(resolved.reduce((sum, r) => sum + r.qty * (Number(r.newPrice) || 0), 0));
+  const gstPercent = input.gstPercent ?? purchaseSetup.gstPercentDefault;
+  const gstAmount = round2((subTotal * gstPercent) / 100);
+  const grandTotal = round2(subTotal + gstAmount);
 
   const { renderPurchaseOrderPdfBuffer } = await import("@/lib/purchase/poPdf");
   const buffer = await renderPurchaseOrderPdfBuffer(
@@ -461,6 +501,12 @@ export async function previewPoPdf(input: PreviewPoPdfInput): Promise<{ url: str
         oldPrice: r.oldPrice,
         newPrice: r.newPrice,
       })),
+      subTotal,
+      gstPercent,
+      gstAmount,
+      grandTotal,
+      termsAndConditions: input.termsAndConditions ?? purchaseSetup.defaultTerms,
+      note: input.note ?? purchaseSetup.defaultNote,
     },
     setup,
     logoUrl,

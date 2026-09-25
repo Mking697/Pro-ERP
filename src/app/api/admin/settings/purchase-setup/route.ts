@@ -22,6 +22,9 @@ const bodySchema = z.object({
   step2Doer: z.string().trim().optional().default(""),
   step3Doer: z.string().trim().optional().default(""),
   step4Doer: z.string().trim().optional().default(""),
+  gstPercentDefault: z.coerce.number().min(0).max(100),
+  defaultTerms: z.string().trim().optional().default(""),
+  defaultNote: z.string().trim().optional().default(""),
 });
 
 export async function POST(request: Request) {

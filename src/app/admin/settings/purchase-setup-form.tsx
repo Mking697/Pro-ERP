@@ -11,6 +11,7 @@ import {
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import {
   Select,
@@ -38,6 +39,9 @@ interface PurchaseSetup {
   step2Doer: string;
   step3Doer: string;
   step4Doer: string;
+  gstPercentDefault: number;
+  defaultTerms: string;
+  defaultNote: string;
 }
 
 const DEFAULT_SETUP: PurchaseSetup = {
@@ -49,6 +53,9 @@ const DEFAULT_SETUP: PurchaseSetup = {
   step2Doer: "",
   step3Doer: "",
   step4Doer: "",
+  gstPercentDefault: 18,
+  defaultTerms: "",
+  defaultNote: "",
 };
 
 function DoerPicker({
@@ -245,6 +252,41 @@ export default function PurchaseSetupForm() {
           <p className="text-xs text-muted-foreground">
             {t("Time = PO Issue ka actual time + Vendor ka poora Lead Time.")}
           </p>
+        </div>
+
+        <div className="space-y-3 rounded-lg border p-3">
+          <p className="text-sm font-medium">{t("PO Document Defaults")}</p>
+          <p className="text-xs text-muted-foreground">
+            {t("Ye values naye PO ke GST%/Note/Terms me pehle se bhar jaayengi — PO Issue karte waqt inhe badla bhi ja sakta hai.")}
+          </p>
+          <div className="space-y-2">
+            <Label>{t("Default GST %")}</Label>
+            <Input
+              type="number"
+              step="any"
+              min="0"
+              max="100"
+              className="max-w-40"
+              value={setup.gstPercentDefault}
+              onChange={(e) => setSetup((s) => ({ ...s, gstPercentDefault: Number(e.target.value) }))}
+            />
+          </div>
+          <div className="space-y-2">
+            <Label>{t("Default Note")}</Label>
+            <Textarea
+              rows={2}
+              value={setup.defaultNote}
+              onChange={(e) => setSetup((s) => ({ ...s, defaultNote: e.target.value }))}
+            />
+          </div>
+          <div className="space-y-2">
+            <Label>{t("Default Terms & Conditions")}</Label>
+            <Textarea
+              rows={5}
+              value={setup.defaultTerms}
+              onChange={(e) => setSetup((s) => ({ ...s, defaultTerms: e.target.value }))}
+            />
+          </div>
         </div>
 
         <Button onClick={handleSave} disabled={saving}>
