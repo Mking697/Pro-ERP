@@ -28,12 +28,18 @@ const buttonVariants = cva(
         xs: "h-6 gap-1 rounded-[min(var(--radius-md),10px)] px-2 text-xs in-data-[slot=button-group]:rounded-lg has-data-[icon=inline-end]:pr-1.5 has-data-[icon=inline-start]:pl-1.5 [&_svg:not([class*='size-'])]:size-3",
         sm: "h-7 gap-1 rounded-[min(var(--radius-md),12px)] px-2.5 text-[0.8rem] in-data-[slot=button-group]:rounded-lg has-data-[icon=inline-end]:pr-1.5 has-data-[icon=inline-start]:pl-1.5 [&_svg:not([class*='size-'])]:size-3.5",
         lg: "h-9 gap-1.5 px-2.5 has-data-[icon=inline-end]:pr-2 has-data-[icon=inline-start]:pl-2",
-        icon: "size-8",
+        // Visual size stays small (dense tables rely on this), but on a touch device
+        // (pointer: coarse — a mouse never matches this) each icon button also grows an
+        // invisible ::before hit-area out to ~44px, the mobile tap-target guideline. The
+        // inset is sized per variant so every one lands on the same ~44px total, and is
+        // capped small enough that it only ever eats into a button's own surrounding
+        // padding/gap, never crossing into a neighboring control's own box.
+        icon: "relative size-8 pointer-coarse:before:absolute pointer-coarse:before:inset-[-6px] pointer-coarse:before:content-['']",
         "icon-xs":
-          "size-6 rounded-[min(var(--radius-md),10px)] in-data-[slot=button-group]:rounded-lg [&_svg:not([class*='size-'])]:size-3",
+          "relative size-6 rounded-[min(var(--radius-md),10px)] in-data-[slot=button-group]:rounded-lg [&_svg:not([class*='size-'])]:size-3 pointer-coarse:before:absolute pointer-coarse:before:inset-[-10px] pointer-coarse:before:content-['']",
         "icon-sm":
-          "size-7 rounded-[min(var(--radius-md),12px)] in-data-[slot=button-group]:rounded-lg",
-        "icon-lg": "size-9",
+          "relative size-7 rounded-[min(var(--radius-md),12px)] in-data-[slot=button-group]:rounded-lg pointer-coarse:before:absolute pointer-coarse:before:inset-[-8px] pointer-coarse:before:content-['']",
+        "icon-lg": "relative size-9 pointer-coarse:before:absolute pointer-coarse:before:inset-[-4px] pointer-coarse:before:content-['']",
       },
     },
     defaultVariants: {

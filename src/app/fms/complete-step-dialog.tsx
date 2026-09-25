@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { toast } from "sonner";
 import {
   Dialog,
@@ -28,6 +28,7 @@ import type { FmsRunRecord } from "./types";
 import type { FormDataSourceConfig, FormField } from "@/lib/fms/dataSource";
 import { parseOutcomeType, deriveOutcomeFromQty, qtySplitTotal } from "@/lib/fms/outcomeType";
 import type { Translator } from "@/lib/i18n";
+import { useComboboxNav, comboboxListId, comboboxOptionId } from "@/components/ui/combobox";
 
 /**
  * A searchable picker for a "lookup" field — the doer types to filter, then picks a row
@@ -52,6 +53,8 @@ function LookupCombobox({
   onSelect: (row: Record<string, string>) => void;
   t: Translator;
 }) {
+  const autoId = useId();
+  const inputId = id ?? autoId;
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
   const containerRef = useRef<HTMLDivElement>(null);
@@ -71,10 +74,23 @@ function LookupCombobox({
     (r[displayField] ?? "").toLowerCase().includes(search.trim().toLowerCase())
   );
 
+  const { activeIndex, optionRefs, onKeyDown } = useComboboxNav({
+    itemCount: filtered.length,
+    open,
+    onOpenChange: setOpen,
+    onSelect: (index) => {
+      const row = filtered[index];
+      if (!row) return;
+      onSelect(row);
+      setOpen(false);
+      setSearch("");
+    },
+  });
+
   return (
     <div ref={containerRef} className="relative">
       <Input
-        id={id}
+        id={inputId}
         value={open ? search : value}
         onChange={(e) => {
           setSearch(e.target.value);
@@ -84,11 +100,21 @@ function LookupCombobox({
           setSearch("");
           setOpen(true);
         }}
+        onKeyDown={onKeyDown}
         placeholder={loading ? t("Load ho raha hai...") : t("Search karein...")}
         autoComplete="off"
+        role="combobox"
+        aria-expanded={open}
+        aria-controls={comboboxListId(inputId)}
+        aria-activedescendant={activeIndex >= 0 ? comboboxOptionId(inputId, activeIndex) : undefined}
+        aria-autocomplete="list"
       />
       {open && (
-        <div className="absolute z-50 mt-1 max-h-48 w-full overflow-y-auto rounded-md border bg-popover text-popover-foreground shadow-md">
+        <div
+          id={comboboxListId(inputId)}
+          role="listbox"
+          className="absolute z-50 mt-1 max-h-48 w-full overflow-y-auto rounded-md border bg-popover text-popover-foreground shadow-md"
+        >
           {loading ? (
             <p className="p-2 text-sm text-muted-foreground">{t("Load ho raha hai...")}</p>
           ) : filtered.length === 0 ? (
@@ -97,8 +123,17 @@ function LookupCombobox({
             filtered.map((row, i) => (
               <button
                 key={i}
+                ref={(el) => {
+                  optionRefs.current[i] = el;
+                }}
+                id={comboboxOptionId(inputId, i)}
+                role="option"
+                aria-selected={i === activeIndex}
                 type="button"
-                className="block w-full px-2 py-1.5 text-left text-sm hover:bg-accent hover:text-accent-foreground"
+                onMouseDown={(e) => e.preventDefault()}
+                className={`block w-full px-2 py-1.5 text-left text-sm hover:bg-accent hover:text-accent-foreground ${
+                  i === activeIndex ? "bg-accent text-accent-foreground" : ""
+                }`}
                 onClick={() => {
                   onSelect(row);
                   setOpen(false);

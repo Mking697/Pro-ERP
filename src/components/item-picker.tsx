@@ -5,6 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { useT } from "@/components/preferences-provider";
+import { useComboboxNav, comboboxListId, comboboxOptionId } from "@/components/ui/combobox";
 
 export interface PickerItem {
   sku: string;
@@ -74,6 +75,18 @@ export default function ItemPicker({
     return scored.slice(0, 8).map((m) => m.item);
   }, [items, query]);
 
+  const { activeIndex, optionRefs, onKeyDown } = useComboboxNav({
+    itemCount: matches.length,
+    open,
+    onOpenChange: setOpen,
+    onSelect: (index) => {
+      const item = matches[index];
+      if (!item) return;
+      onChange(item);
+      setOpen(false);
+    },
+  });
+
   if (value) {
     return (
       <div className="space-y-2">
@@ -114,23 +127,42 @@ export default function ItemPicker({
             setOpen(true);
           }}
           onFocus={() => setOpen(true)}
+          onKeyDown={onKeyDown}
           placeholder={configured ? "Naam ya SKU type karein..." : t("Items load nahi ho paaye")}
           disabled={!configured}
           required={required}
           autoComplete="off"
+          role="combobox"
+          aria-expanded={open && matches.length > 0}
+          aria-controls={comboboxListId(inputId)}
+          aria-activedescendant={activeIndex >= 0 ? comboboxOptionId(inputId, activeIndex) : undefined}
+          aria-autocomplete="list"
         />
 
         {open && matches.length > 0 && (
-          <ul className="absolute z-50 mt-1 max-h-64 w-full overflow-y-auto rounded-lg border bg-popover p-1 shadow-md">
-            {matches.map((item) => (
+          <ul
+            id={comboboxListId(inputId)}
+            role="listbox"
+            className="absolute z-50 mt-1 max-h-64 w-full overflow-y-auto rounded-lg border bg-popover p-1 shadow-md"
+          >
+            {matches.map((item, index) => (
               <li key={item.sku}>
                 <button
+                  ref={(el) => {
+                    optionRefs.current[index] = el;
+                  }}
+                  id={comboboxOptionId(inputId, index)}
+                  role="option"
+                  aria-selected={index === activeIndex}
                   type="button"
+                  onMouseDown={(e) => e.preventDefault()}
                   onClick={() => {
                     onChange(item);
                     setOpen(false);
                   }}
-                  className="w-full rounded-md px-2 py-1.5 text-left text-sm transition-colors duration-150 hover:bg-muted focus-visible:bg-muted focus-visible:outline-none"
+                  className={`w-full rounded-md px-2 py-1.5 text-left text-sm transition-colors duration-150 hover:bg-muted focus-visible:bg-muted focus-visible:outline-none ${
+                    index === activeIndex ? "bg-muted" : ""
+                  }`}
                 >
                   <span className="block font-medium">{item.name}</span>
                   <span className="block text-xs text-muted-foreground">
