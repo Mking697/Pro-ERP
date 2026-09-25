@@ -15,29 +15,30 @@ import { uploadAttachment } from "@/lib/storage";
  * Approved Leave never reduces pay).
  *
  * "Attendance" proration, precisely: there is no clock-in/clock-out or biometric presence
- * anywhere in this codebase, and `users` carries no deactivation timestamp — only a
- * `status` flag (Active/Inactive) with no record of *when* it last changed. So
- * `daysEmployed` is computed pragmatically, documented here so a future session doesn't
- * have to reverse-engineer it from the arithmetic:
+ * anywhere in this codebase. `users.deactivatedAt` (added for this exact purpose) records
+ * the moment Status last genuinely flipped Active -> Inactive (set/cleared by
+ * `updateUser()` in src/lib/auth/users.ts, only on a real transition), so
+ * `daysEmployed` can now prorate an exit within the month instead of just zeroing it:
  *
  *   - A user who is Active at the moment a run is generated is paid for every day of the
  *     month from `max(1st of month, their own users.createdAt date)` through the last day
  *     of the month — i.e. join-date proration only. A user who joined before the month
- *     started is paid the full month.
- *   - A user who is Inactive at the moment a run is generated gets `daysEmployed = 0` for
- *     that run, full stop — even if they were Active for part or all of that same month
- *     before being deactivated. This is a deliberate, pragmatic simplification forced by
- *     the schema gap (no deactivation timestamp to prorate against), not an attempt to
- *     model an exit-date correctly. A Draft run regenerated the same day someone is
- *     deactivated will therefore zero their pay for the whole month, including days they
- *     were genuinely Active — an org that needs exit-date accuracy would need a real
- *     `deactivatedAt` column added to `users` first (a schema change, flagged rather than
- *     patched around here, per this codebase's own working notes).
+ *     started is paid the full month. Unchanged.
+ *   - A user who is Inactive at the moment a run is generated, with a `deactivatedAt` that
+ *     falls on or after this month's 1st, is paid from their own join date (or the 1st,
+ *     whichever is later) through the deactivation date **inclusive** — the same
+ *     inclusive convention `createdAt`'s own start-day already uses, so a join day and an
+ *     exit day are both treated as one full paid day by symmetry.
+ *   - A user who is Inactive with no `deactivatedAt` set, or one that falls before this
+ *     month started, gets `daysEmployed = 0` for the run — correct when they genuinely
+ *     weren't active at all this month, and the honest (still imperfect) fallback for a
+ *     pre-existing Inactive user whose real exit date predates this column's existence and
+ *     was never captured. This is the one remaining edge case this proration doesn't
+ *     solve — it is not, and doesn't claim to be, fully statutory-accurate (no PF/ESI/TDS,
+ *     that's explicitly separate, unscoped, future work).
  *   - Once a run is Finalized, its payslips are a frozen historical snapshot (Finalized
- *     runs refuse regeneration outright), so this pragmatic call only ever affects a
- *     Draft run made near real time — an Admin generating a run for last month, this
- *     month, should do so before any mid-month deactivations if exit-date accuracy for
- *     that leaver matters.
+ *     runs refuse regeneration outright), so any of the above only ever affects a Draft
+ *     run made near real time.
  */
 
 export class PayrollError extends Error {}
@@ -266,23 +267,31 @@ function daysInCalendarMonth(year: number, monthNum: number): number {
 function computeDaysEmployed(params: {
   status: string;
   createdAt: Date;
+  deactivatedAt: Date | null;
   monthStartUTC: number;
   monthEndUTC: number;
   daysInMonth: number;
 }): number {
-  const { status, createdAt, monthStartUTC, monthEndUTC, daysInMonth } = params;
-  if (status !== "Active") return 0;
-
-  const createdDateOnly = Date.UTC(
-    createdAt.getUTCFullYear(),
-    createdAt.getUTCMonth(),
-    createdAt.getUTCDate()
-  );
-  const employedStart = Math.max(createdDateOnly, monthStartUTC);
-  if (employedStart > monthEndUTC) return 0; // joined after this month entirely
+  const { status, createdAt, deactivatedAt, monthStartUTC, monthEndUTC, daysInMonth } = params;
 
   const msPerDay = 24 * 60 * 60 * 1000;
-  const days = Math.floor((monthEndUTC - employedStart) / msPerDay) + 1;
+  const dateOnlyUTC = (d: Date) => Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
+  const createdDateOnly = dateOnlyUTC(createdAt);
+
+  let employedEnd = monthEndUTC;
+  if (status !== "Active") {
+    if (!deactivatedAt) return 0; // legacy Inactive user, no exit date ever captured
+    const deactivatedDateOnly = dateOnlyUTC(deactivatedAt);
+    if (deactivatedDateOnly < monthStartUTC) return 0; // exited before this month started
+    // Deactivation day itself counts as a full paid day, mirroring createdAt's own
+    // inclusive start-day convention below.
+    employedEnd = Math.min(monthEndUTC, deactivatedDateOnly);
+  }
+
+  const employedStart = Math.max(createdDateOnly, monthStartUTC);
+  if (employedStart > employedEnd) return 0; // joined after the employed window entirely
+
+  const days = Math.floor((employedEnd - employedStart) / msPerDay) + 1;
   return Math.min(days, daysInMonth);
 }
 
@@ -365,6 +374,7 @@ export async function generatePayrollRun(
       const daysEmployed = computeDaysEmployed({
         status: user.Status,
         createdAt: new Date(user.Created_At),
+        deactivatedAt: user.Deactivated_At ? new Date(user.Deactivated_At) : null,
         monthStartUTC,
         monthEndUTC,
         daysInMonth,

@@ -38,6 +38,11 @@ export const users = pgTable(
     // chain when their org's own Leave Approval Setup has a "Reporting Manager" step. Plain
     // text, not FK-enforced, matching every other cross-entity reference in this schema.
     reportingManagerId: text("reporting_manager_id").notNull().default(""),
+    // When this user's status last flipped Active -> Inactive, or null if they were never
+    // deactivated (or were reactivated since — see updateUser()'s own handling). Exists
+    // purely so Payroll's computeDaysEmployed() can prorate a mid-month exit instead of
+    // zeroing the whole month; nothing else in this codebase reads it yet.
+    deactivatedAt: timestamp("deactivated_at", { withTimezone: true }),
   },
   (table) => [index("users_org_id_idx").on(table.orgId)]
 );

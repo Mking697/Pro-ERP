@@ -38,6 +38,10 @@ export interface SheetUser {
   /** Another user's id, or "" — this person's Leave approval chain "Reporting Manager"
    * step resolves to whoever this points to. See src/lib/leave/*.ts. */
   Reporting_Manager_ID: string;
+  /** ISO timestamp of when Status last flipped Active -> Inactive, or null — set/cleared by
+   * updateUser() on a real status transition. See src/lib/payroll/payroll.ts's
+   * computeDaysEmployed() for the one place this is actually read. */
+  Deactivated_At: string | null;
 }
 
 export type SafeSheetUser = Omit<SheetUser, "Password_Hash">;
@@ -56,6 +60,7 @@ export function toSafeUser(user: SheetUser): SafeSheetUser {
     Module_Access: user.Module_Access ?? "",
     Shift: user.Shift ?? "",
     Reporting_Manager_ID: user.Reporting_Manager_ID ?? "",
+    Deactivated_At: user.Deactivated_At ?? null,
   };
 }
 
@@ -76,6 +81,7 @@ function rowToSheetUser(row: UserRow): SheetUser {
     Module_Access: row.moduleAccess.join(","),
     Shift: row.shift,
     Reporting_Manager_ID: row.reportingManagerId,
+    Deactivated_At: row.deactivatedAt ? row.deactivatedAt.toISOString() : null,
   };
 }
 
@@ -227,13 +233,26 @@ export async function updateUser(userId: string, patch: UpdateUserInput): Promis
     throw new Error("User nahi mila.");
   }
 
+  const newStatus = (patch.status ?? found.status) as "Active" | "Inactive";
+  // deactivatedAt tracks the real Active -> Inactive transition moment (used by Payroll's
+  // computeDaysEmployed() to prorate a mid-month exit instead of zeroing the whole month).
+  // Only touch it on a genuine flip; leave it exactly as-is when status isn't changing.
+  let deactivatedAt = found.deactivatedAt;
+  if (patch.status && patch.status !== found.status) {
+    if (found.status === "Active" && newStatus === "Inactive") {
+      deactivatedAt = new Date();
+    } else if (found.status === "Inactive" && newStatus === "Active") {
+      deactivatedAt = null; // reactivated — no current exit date
+    }
+  }
+
   const [row] = await db
     .update(users)
     .set({
       role: patch.role ?? found.role,
       department: patch.department ?? found.department,
       phoneNumber: patch.phoneNumber ?? found.phoneNumber,
-      status: (patch.status ?? found.status) as "Active" | "Inactive",
+      status: newStatus,
       moduleAccess:
         patch.moduleAccess !== undefined
           ? moduleAccessToArray(patch.moduleAccess)
@@ -243,6 +262,7 @@ export async function updateUser(userId: string, patch: UpdateUserInput): Promis
         patch.reportingManagerId !== undefined
           ? patch.reportingManagerId.trim()
           : found.reportingManagerId,
+      deactivatedAt,
     })
     .where(and(eq(users.orgId, orgId), eq(users.id, userId)))
     .returning();
