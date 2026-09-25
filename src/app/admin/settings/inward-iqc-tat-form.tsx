@@ -22,20 +22,65 @@ import {
 import { FormSkeleton } from "@/components/loading-states";
 import { useT } from "@/components/preferences-provider";
 
+interface DirectoryUser {
+  userId: string;
+  fullName: string;
+}
+
+function DeviationApproverPicker({
+  value,
+  onChange,
+  users,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  users: DirectoryUser[];
+}) {
+  const t = useT();
+  return (
+    <div className="space-y-2">
+      <Label>{t("Approver")}</Label>
+      <Select value={value || undefined} onValueChange={(v) => v && onChange(v)}>
+        <SelectTrigger className="w-full">
+          <SelectValue placeholder={t("User select karein")} />
+        </SelectTrigger>
+        <SelectContent>
+          {users.map((u) => (
+            <SelectItem key={u.userId} value={u.userId}>
+              {u.fullName}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    </div>
+  );
+}
+
 export default function InwardIqcTatForm() {
   const t = useT();
   const [tatValue, setTatValue] = useState("24");
   const [tatUnit, setTatUnit] = useState<"Hours" | "Days">("Hours");
+  const [deviationApprover, setDeviationApprover] = useState("");
+  const [users, setUsers] = useState<DirectoryUser[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    fetch("/api/admin/settings/inward-iqc-tat")
-      .then((res) => res.json())
-      .then((data: { tatValue: number; tatUnit: "Hours" | "Days" }) => {
-        setTatValue(String(data.tatValue));
-        setTatUnit(data.tatUnit);
-      })
+    Promise.all([
+      fetch("/api/admin/settings/inward-iqc-tat").then((res) => res.json()),
+      fetch("/api/users/directory").then((res) => res.json()),
+    ])
+      .then(
+        ([data, usersData]: [
+          { tatValue: number; tatUnit: "Hours" | "Days"; deviationApprover?: string },
+          { users?: DirectoryUser[] },
+        ]) => {
+          setTatValue(String(data.tatValue));
+          setTatUnit(data.tatUnit);
+          setDeviationApprover(data.deviationApprover ?? "");
+          setUsers(usersData.users ?? []);
+        }
+      )
       .catch(() => toast.error(t("IQC TAT settings load nahi ho payi.")))
       .finally(() => setLoading(false));
   }, [t]);
@@ -46,7 +91,7 @@ export default function InwardIqcTatForm() {
       const res = await fetch("/api/admin/settings/inward-iqc-tat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ tatValue: Number(tatValue), tatUnit }),
+        body: JSON.stringify({ tatValue: Number(tatValue), tatUnit, deviationApprover }),
       });
       const data = await res.json().catch(() => null);
 
@@ -107,6 +152,16 @@ export default function InwardIqcTatForm() {
         <p className="text-xs text-muted-foreground">
           {t("Ye sirf nayi entries par lagu hoga — jo entries pehle se ban chuki hain unki deadline nahi badlegi.")}
         </p>
+
+        <div className="space-y-3 rounded-lg border border-destructive/30 p-3">
+          <p className="text-sm font-medium">{t("Deviation Approver")}</p>
+          <p className="text-xs text-muted-foreground">
+            {t(
+              "Sirf ye user (ya Admin) hi ek IQC fail quantity ko \"Under Deviation\" accept karne ki request approve/reject kar sakta hai — approve hone par hi stock me add hota hai."
+            )}
+          </p>
+          <DeviationApproverPicker value={deviationApprover} onChange={setDeviationApprover} users={users} />
+        </div>
       </CardContent>
     </Card>
   );

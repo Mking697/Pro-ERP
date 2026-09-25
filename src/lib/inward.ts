@@ -15,6 +15,19 @@ import { parseStamp } from "@/lib/timestamp";
 const DEFAULT_IQC_TAT_VALUE = 24;
 const DEFAULT_IQC_TAT_UNIT = "Hours";
 
+/**
+ * The one user (or "" if unset) who may approve/reject an "Accept Under Deviation" request
+ * (src/lib/inward/deviation.ts) — an Admin can always approve/reject too, same as
+ * src/lib/orders/settings.ts's creditHoldApprover / approveCreditHold shape this mirrors.
+ * Persisted as one more key in the plain settings table, alongside INWARD_IQC_TAT_VALUE/
+ * _UNIT — surfaced on the same "Inward IQC" admin settings screen
+ * (src/app/admin/settings/inward-iqc-tat-form.tsx).
+ */
+export async function getIqcDeviationApprover(): Promise<string> {
+  const value = await getSetting("INWARD_IQC_DEVIATION_APPROVER");
+  return value ?? "";
+}
+
 // Context_Ref prefix an FMS template's Trigger_Event ("INWARD_ENTRY_CREATED") resolves
 // against — src/lib/fms/reference.ts and src/lib/fms/dataSourceResolver.ts both split on
 // this exact string, so it must stay "INWARD_IQC_FMS", the old Sheets-era module key, not
@@ -82,6 +95,12 @@ export interface FailureLogRecord {
    * original inward entry already named one from Vendor Master, instead of always asking
    * again. "" when that inward entry named a party that isn't a registered vendor. */
   Linked_Vendor_ID: string;
+  /** "" until an IQC_CHECK holder requests "Accept Under Deviation" (src/lib/inward/
+   * deviation.ts's requestUnderDeviation()) — the UI's "Pending Approval" state. Cleared
+   * back to "" by rejectUnderDeviation() so the entry can be re-requested; set for good by
+   * approveUnderDeviation() alongside Moved_To_Inventory_At. */
+  Deviation_Requested_At: string;
+  Deviation_Requested_By: string;
 }
 
 export interface ImsInwardRecord {
@@ -140,6 +159,8 @@ function failureLogFromRow(row: FailureLogRow, linkedVendorId: string): FailureL
     Moved_To_Inventory_At: row.movedToInventoryAt ? row.movedToInventoryAt.toISOString() : "",
     Debit_Note_ID: row.debitNoteId,
     Linked_Vendor_ID: linkedVendorId,
+    Deviation_Requested_At: row.deviationRequestedAt ? row.deviationRequestedAt.toISOString() : "",
+    Deviation_Requested_By: row.deviationRequestedBy,
   };
 }
 

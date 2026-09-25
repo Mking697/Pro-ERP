@@ -10,20 +10,24 @@ export async function GET() {
   const guard = await requireRole(["Admin"]);
   if (!guard.ok) return guard.response;
 
-  const [tatValue, tatUnit] = await Promise.all([
+  const [tatValue, tatUnit, deviationApprover] = await Promise.all([
     getSetting("INWARD_IQC_TAT_VALUE"),
     getSetting("INWARD_IQC_TAT_UNIT"),
+    getSetting("INWARD_IQC_DEVIATION_APPROVER"),
   ]);
 
   return NextResponse.json({
     tatValue: Number(tatValue) > 0 ? Number(tatValue) : DEFAULT_VALUE,
     tatUnit: tatUnit === "Days" ? "Days" : DEFAULT_UNIT,
+    deviationApprover: deviationApprover ?? "",
   });
 }
 
 const bodySchema = z.object({
   tatValue: z.coerce.number().positive("TAT 0 se zyada hona chahiye."),
   tatUnit: z.enum(["Hours", "Days"]),
+  // Optional: the setup screen may be saved before an approver is chosen.
+  deviationApprover: z.string().optional(),
 });
 
 export async function POST(request: Request) {
@@ -42,6 +46,7 @@ export async function POST(request: Request) {
   await Promise.all([
     upsertSetting("INWARD_IQC_TAT_VALUE", String(parsed.data.tatValue)),
     upsertSetting("INWARD_IQC_TAT_UNIT", parsed.data.tatUnit),
+    upsertSetting("INWARD_IQC_DEVIATION_APPROVER", parsed.data.deviationApprover ?? ""),
   ]);
 
   return NextResponse.json({ success: true });

@@ -31,6 +31,8 @@ interface FailureRow {
   Moved_To_Inventory_At: string;
   Debit_Note_ID: string;
   Linked_Vendor_ID: string;
+  Deviation_Requested_At: string;
+  Deviation_Requested_By: string;
 }
 
 interface ImsRow {
@@ -51,16 +53,27 @@ interface ImsRow {
  * Google Sheet.
  *
  * `canVerify` (IQC_CHECK) additionally gates the two Failure Log actions this build added:
- * "Accept Under Deviation" (src/lib/inward/deviation.ts, moves the failed qty into real
- * stock) and "Issue Debit Note" (src/lib/accounts/debitNotes.ts, a claim against the
- * vendor) — independent of each other, an entry can get either, both, or neither.
+ * "Accept Under Deviation" (src/lib/inward/deviation.ts — a two-step Request/Approve flow,
+ * not a single click; stock only moves once approved) and "Issue Debit Note"
+ * (src/lib/accounts/debitNotes.ts, a claim against the vendor) — independent of each other,
+ * an entry can get either, both, or neither. `canApproveDeviation` (resolved server-side in
+ * page.tsx — the org's configured Deviation Approver, or an Admin) additionally gates the
+ * Approve/Reject buttons on a Requested entry.
  */
-export default function QualityRecords({ view, canVerify = false }: { view: "failures" | "ims"; canVerify?: boolean }) {
+export default function QualityRecords({
+  view,
+  canVerify = false,
+  canApproveDeviation = false,
+}: {
+  view: "failures" | "ims";
+  canVerify?: boolean;
+  canApproveDeviation?: boolean;
+}) {
   const t = useT();
   const [failures, setFailures] = useState<FailureRow[]>([]);
   const [ims, setIms] = useState<ImsRow[]>([]);
   const [loading, setLoading] = useState(true);
-  const [acceptingId, setAcceptingId] = useState<string | null>(null);
+  const [actingId, setActingId] = useState<string | null>(null);
   const [debitNoteFor, setDebitNoteFor] = useState<FailureRow | null>(null);
   // debitNoteNo issued THIS session, keyed by Log_ID — a fresh page load only ever knows
   // Debit_Note_ID (the raw row id), never the human-facing number, since fetching that back
@@ -79,13 +92,31 @@ export default function QualityRecords({ view, canVerify = false }: { view: "fai
       .finally(() => setLoading(false));
   }, [t]);
 
-  async function acceptUnderDeviation(logId: string) {
-    setAcceptingId(logId);
+  async function requestDeviation(logId: string) {
+    setActingId(logId);
     try {
-      const res = await fetch(`/api/inward/failure-log/${logId}/accept-deviation`, { method: "POST" });
+      const res = await fetch(`/api/inward/failure-log/${logId}/request-deviation`, { method: "POST" });
       const data = await res.json().catch(() => null);
       if (!res.ok) {
-        toast.error(t(data?.error ?? "Accept nahi ho paya."));
+        toast.error(t(data?.error ?? "Request nahi ho payi."));
+        return;
+      }
+      toast.success(t("Under Deviation request bhej di gayi — approval ka wait karein."));
+      setFailures((rows) =>
+        rows.map((r) => (r.Log_ID === logId ? { ...r, Deviation_Requested_At: new Date().toISOString() } : r))
+      );
+    } finally {
+      setActingId(null);
+    }
+  }
+
+  async function approveDeviation(logId: string) {
+    setActingId(logId);
+    try {
+      const res = await fetch(`/api/inward/failure-log/${logId}/approve-deviation`, { method: "POST" });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) {
+        toast.error(t(data?.error ?? "Approve nahi ho paya."));
         return;
       }
       toast.success(t("Stock me add ho gaya."));
@@ -93,7 +124,25 @@ export default function QualityRecords({ view, canVerify = false }: { view: "fai
         rows.map((r) => (r.Log_ID === logId ? { ...r, Moved_To_Inventory_At: new Date().toISOString() } : r))
       );
     } finally {
-      setAcceptingId(null);
+      setActingId(null);
+    }
+  }
+
+  async function rejectDeviation(logId: string) {
+    setActingId(logId);
+    try {
+      const res = await fetch(`/api/inward/failure-log/${logId}/reject-deviation`, { method: "POST" });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) {
+        toast.error(t(data?.error ?? "Reject nahi ho paya."));
+        return;
+      }
+      toast.success(t("Request reject kar di gayi — dubara request ki ja sakti hai."));
+      setFailures((rows) =>
+        rows.map((r) => (r.Log_ID === logId ? { ...r, Deviation_Requested_At: "", Deviation_Requested_By: "" } : r))
+      );
+    } finally {
+      setActingId(null);
     }
   }
 
@@ -149,14 +198,38 @@ export default function QualityRecords({ view, canVerify = false }: { view: "fai
                           <span className="text-xs text-emerald-700 dark:text-emerald-400">
                             {t("Stock me add ho gaya")}
                           </span>
+                        ) : row.Deviation_Requested_At ? (
+                          <div className="flex flex-col items-start gap-1.5">
+                            <Badge variant="outline">{t("Pending Approval")}</Badge>
+                            {canApproveDeviation && (
+                              <div className="flex gap-1.5">
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  disabled={actingId === row.Log_ID}
+                                  onClick={() => approveDeviation(row.Log_ID)}
+                                >
+                                  {t("Approve")}
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  disabled={actingId === row.Log_ID}
+                                  onClick={() => rejectDeviation(row.Log_ID)}
+                                >
+                                  {t("Reject")}
+                                </Button>
+                              </div>
+                            )}
+                          </div>
                         ) : (
                           <Button
                             size="sm"
                             variant="outline"
-                            disabled={acceptingId === row.Log_ID}
-                            onClick={() => acceptUnderDeviation(row.Log_ID)}
+                            disabled={actingId === row.Log_ID}
+                            onClick={() => requestDeviation(row.Log_ID)}
                           >
-                            {t("Accept Under Deviation")}
+                            {t("Request Under Deviation")}
                           </Button>
                         )}
                         {row.Debit_Note_ID ? (

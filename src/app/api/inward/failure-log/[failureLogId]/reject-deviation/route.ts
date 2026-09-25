@@ -1,9 +1,9 @@
 import { NextResponse } from "next/server";
 import { requireModule } from "@/lib/auth/guard";
-import { acceptUnderDeviation, DeviationError } from "@/lib/inward/deviation";
+import { rejectUnderDeviation, DeviationError } from "@/lib/inward/deviation";
 
-/** Same grant submitQualityCheck()'s own route already uses — the people who do quality
- * checks are the ones who decide whether a failed quantity is accepted under deviation. */
+/** Step 2b — clears a Requested entry back to un-requested. Same authorization shape as
+ * approve-deviation (enforced inside rejectUnderDeviation() itself). */
 export async function POST(
   _request: Request,
   { params }: { params: Promise<{ failureLogId: string }> }
@@ -13,10 +13,10 @@ export async function POST(
 
   const { failureLogId } = await params;
   try {
-    await acceptUnderDeviation(failureLogId, guard.session.userId);
+    await rejectUnderDeviation(failureLogId, { userId: guard.session.userId, role: guard.session.role });
     return NextResponse.json({ ok: true });
   } catch (err) {
-    const message = err instanceof DeviationError || err instanceof Error ? err.message : "Accept nahi ho paya.";
+    const message = err instanceof DeviationError || err instanceof Error ? err.message : "Reject nahi ho paya.";
     return NextResponse.json({ error: message }, { status: 400 });
   }
 }

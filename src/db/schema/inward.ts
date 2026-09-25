@@ -75,6 +75,17 @@ export const failureLog = pgTable(
     // vendor for this failure — set once, never cleared, so the UI can show "Debit Note
     // already issued: <no>" and this action stays a one-time thing per failure.
     debitNoteId: text("debit_note_id").notNull().default(""),
+    // "Accept Under Deviation" (2026-09-24) — request/approval gate, mirroring
+    // src/lib/orders/orders.ts's Credit_Hold approval shape. deviationRequestedAt/By are set
+    // together by requestUnderDeviation() and cleared together by rejectUnderDeviation()
+    // (back to null/"", so the entry can be re-requested) — no separate audit trail table,
+    // same "failure_log has none today, don't add one for just this" judgment call the rest
+    // of this table already makes. deviationApprovedBy/At are set once, alongside
+    // movedToInventoryAt, by approveUnderDeviation() and never cleared.
+    deviationRequestedAt: timestamp("deviation_requested_at", { withTimezone: true }),
+    deviationRequestedBy: text("deviation_requested_by").notNull().default(""),
+    deviationApprovedBy: text("deviation_approved_by").notNull().default(""),
+    deviationApprovedAt: timestamp("deviation_approved_at", { withTimezone: true }),
   },
   (table) => [index("failure_log_org_id_idx").on(table.orgId)]
 );

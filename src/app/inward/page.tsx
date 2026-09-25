@@ -7,6 +7,7 @@ import InwardBoard from "./inward-board";
 import QualityRecords from "./quality-records";
 import PageHeader from "@/components/page-header";
 import { getT } from "@/lib/i18n/server";
+import { getIqcDeviationApprover } from "@/lib/inward";
 
 export default async function InwardPage() {
   const t = await getT();
@@ -30,6 +31,13 @@ export default async function InwardPage() {
   const canVerify = session.access.includes("IQC_CHECK");
   // The two sheets a quality check routes into are a separate grant from doing the check.
   const canViewRecords = session.access.includes("IMS_VIEW");
+  // Who may Approve/Reject an "Accept Under Deviation" request (src/lib/inward/deviation.ts)
+  // — the org's configured Deviation Approver, or an Admin. Resolved here (mirrors how
+  // canVerify is resolved here rather than fetched separately by the client component) and
+  // passed straight down to QualityRecords.
+  const isAdmin = session.role === "Admin";
+  const deviationApproverId = await getIqcDeviationApprover();
+  const canApproveDeviation = isAdmin || (Boolean(deviationApproverId) && session.userId === deviationApproverId);
 
   return (
     <AppShell session={session}>
@@ -51,7 +59,7 @@ export default async function InwardPage() {
               <InwardBoard canVerify={canVerify} />
             </TabsContent>
             <TabsContent value="failures" className="mt-4">
-              <QualityRecords view="failures" canVerify={canVerify} />
+              <QualityRecords view="failures" canVerify={canVerify} canApproveDeviation={canApproveDeviation} />
             </TabsContent>
             <TabsContent value="ims" className="mt-4">
               <QualityRecords view="ims" />
