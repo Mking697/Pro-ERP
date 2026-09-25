@@ -148,6 +148,13 @@
       "when": 1790269051447,
       "tag": "0020_rapid_vector",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1790311697012,
+      "tag": "0021_fancy_ultragirl",
+      "breakpoints": true
     }
   ]
 }

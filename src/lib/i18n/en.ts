@@ -1637,13 +1637,22 @@ export const EN: Record<string, string> = {
   "Outstanding": "Outstanding",
   "Total Outstanding": "Total Outstanding",
   "GST report load nahi ho paya.": "Could not load the GST report.",
-  "Ye report aapke CA/accountant ke liye hai — GST portal par filing khud manually honi hai, ye system seedha file nahi karta. Sirf Output GST (jo sales par collect hua) yahan dikhta hai — Input Tax Credit (jo vendors ko GST diya) is system me track nahi hota, isliye ye net-payable figure nahi hai.":
-    "This report is for your CA/accountant — filing on the GST portal is still manual, this system does not file it directly. Only Output GST (collected on sales) is shown here — Input Tax Credit (GST paid to vendors) isn't tracked in this system, so this is not a net-payable figure.",
+  "Ye report aapke CA/accountant ke liye hai — GST portal par filing khud manually honi hai, ye system seedha file nahi karta.":
+    "This report is for your CA/accountant — filing on the GST portal is still manual, this system does not file it directly.",
   "CSV Download Karein": "Download CSV",
-  "Is range me koi Issued invoice nahi hai": "No Issued invoices in this range",
-  "Total Taxable Value": "Total Taxable Value",
-  "Total Output GST": "Total Output GST",
-  "Total Invoice Value": "Total Invoice Value",
+  "Is range me koi Issued invoice ya bill nahi hai": "No Issued invoices or bills in this range",
   "Taxable Value": "Taxable Value",
   "Invoice Value": "Invoice Value",
+
+  // --- accounts: Input Tax Credit tracking (Payables GST) + GST Report net-payable --------
+  "Amount (GST-inclusive)": "Amount (GST-inclusive)",
+  "GST % (amount ke andar hi included)": "GST % (already included within the amount)",
+  "GST included": "GST included",
+  "Total Output GST (Sales)": "Total Output GST (Sales)",
+  "Total Input GST (Purchase)": "Total Input GST (Purchase)",
+  "Net GST Payable (Output − Input)": "Net GST Payable (Output − Input)",
+  "Output GST — Sales Invoices": "Output GST — Sales Invoices",
+  "Input GST — Purchase Bills": "Input GST — Purchase Bills",
+  "Bill No.": "Bill No.",
+  "Bill Value": "Bill Value",
 };

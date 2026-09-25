@@ -19,6 +19,7 @@ const bodySchema = z.object({
   billNo: z.string().trim().optional(),
   billAttachmentUrl: z.string().trim().optional(),
   amount: z.coerce.number().nonnegative().optional(),
+  gstPercent: z.coerce.number().nonnegative().optional(),
 });
 
 export async function PATCH(request: Request, { params }: { params: Promise<{ billId: string }> }) {

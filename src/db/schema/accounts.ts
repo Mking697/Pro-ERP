@@ -175,6 +175,17 @@ export const journalLines = pgTable(
  * used before the GL existed: one bill per PO, an append-only payment log
  * (`bill_payments`, mirroring `order_payments` exactly, down to reusing its own
  * `orderPaymentModeEnum` rather than declaring a second identical Postgres enum type).
+ *
+ * `gstPercent`/`gstAmount` (added 2026-09-25, Input Tax Credit tracking) mirror
+ * `invoices.gstAmount`'s own contract exactly but on the input side: `amount` is the
+ * GST-INCLUSIVE total actually payable to the vendor (same as `invoices.finalValue`), and
+ * `gstAmount` is the GST portion within it, extracted from `amount` at create/issue time
+ * using `purchase_orders.gstPercent` as the default rate (a Bill can override it, same as a
+ * PO's own gstPercent can override Purchase Setup's default). Booked to a new
+ * `GST_INPUT_CREDIT` Asset account instead of folding it into Purchases/COGS — see
+ * `ledger.ts`'s own `SYSTEM_ACCOUNT_CODES` comment for why this is the Payables-side mirror
+ * of `GST_PAYABLE`, and what it exists for: without it, GST Report's own "Output GST minus
+ * Input GST" net-payable figure would have no input side to net against.
  */
 export const billStatusEnum = pgEnum("bill_status", ["Draft", "Issued"]);
 
@@ -191,7 +202,13 @@ export const bills = pgTable(
   // The vendor's own invoice/bill number — free text, same reasoning as invoices.invoiceNo.
   billNo: text("bill_no").notNull().default(""),
   billAttachmentUrl: text("bill_attachment_url").notNull().default(""),
+  // GST-inclusive total actually payable — see this table's own header comment.
   amount: numeric("amount").notNull().default("0"),
+  // Snapshotted from purchase_orders.gstPercent at Draft time (overridable) — kept alongside
+  // gstAmount so a later re-derivation (e.g. if amount is edited while still Draft) has the
+  // rate on hand without re-reading the PO.
+  gstPercent: numeric("gst_percent").notNull().default("0"),
+  gstAmount: numeric("gst_amount").notNull().default("0"),
   status: billStatusEnum("status").notNull().default("Draft"),
   issuedBy: text("issued_by").notNull().default(""),
   issuedAt: timestamp("issued_at", { withTimezone: true }),

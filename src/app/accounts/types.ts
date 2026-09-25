@@ -32,11 +32,27 @@ export interface GstReturnLine {
   invoiceValue: number;
 }
 
+export interface GstReturnBillLine {
+  billId: string;
+  billNo: string;
+  billDate: string;
+  vendorName: string;
+  vendorGstin: string;
+  taxableValue: number;
+  gstAmount: number;
+  billValue: number;
+}
+
 export interface GstReturnSummary {
   lines: GstReturnLine[];
   totalTaxableValue: number;
   totalGst: number;
   totalInvoiceValue: number;
+  billLines: GstReturnBillLine[];
+  totalInputTaxableValue: number;
+  totalInputGst: number;
+  totalBillValue: number;
+  netGstPayable: number;
 }
 
 export interface InvoiceRow {
@@ -99,6 +115,7 @@ export interface BillCandidateRow {
   vendorId: string;
   vendorName: string;
   poValue: number;
+  gstPercent: number;
   issuedAt: string;
 }
 
@@ -110,6 +127,8 @@ export interface BillRow {
   billNo: string;
   billAttachmentUrl: string;
   amount: number;
+  gstPercent: number;
+  gstAmount: number;
   status: BillStatus;
   issuedBy: string;
   issuedAt: string;

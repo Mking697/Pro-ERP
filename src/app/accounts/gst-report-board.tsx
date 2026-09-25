@@ -22,9 +22,10 @@ import type { GstReturnSummary } from "./types";
 /**
  * A GSTR-1/GSTR-3B-SHAPED report/export for the org's own accountant to manually file on
  * the government GST portal — deliberately NOT e-filing (no GSP/ASP API, no digital
- * signature, nothing submitted anywhere from here). Only OUTPUT GST (from Issued Sales
- * Invoices) — Input Tax Credit isn't tracked anywhere in this codebase yet, so the summary
- * total is a liability figure, not a net-payable one. Said explicitly in the UI below.
+ * signature, nothing submitted anywhere from here). Reports both sides: Output GST (Sales
+ * Invoices) and, since 2026-09-25, Input GST (Purchase Bills — Payables' own Input Tax
+ * Credit tracking) — Net GST Payable is a real figure now, not just an output-side
+ * liability.
  */
 export default function GstReportBoard() {
   const t = useT();
@@ -49,12 +50,14 @@ export default function GstReportBoard() {
   }, [query, t]);
 
   const lines = summary?.lines ?? [];
+  const billLines = summary?.billLines ?? [];
+  const hasAnything = lines.length > 0 || billLines.length > 0;
 
   return (
     <div className="space-y-4">
       <p className="rounded-lg border bg-muted/40 p-3 text-sm text-muted-foreground">
         {t(
-          "Ye report aapke CA/accountant ke liye hai — GST portal par filing khud manually honi hai, ye system seedha file nahi karta. Sirf Output GST (jo sales par collect hua) yahan dikhta hai — Input Tax Credit (jo vendors ko GST diya) is system me track nahi hota, isliye ye net-payable figure nahi hai."
+          "Ye report aapke CA/accountant ke liye hai — GST portal par filing khud manually honi hai, ye system seedha file nahi karta."
         )}
       </p>
 
@@ -80,53 +83,92 @@ export default function GstReportBoard() {
 
       {loading ? (
         <TableSkeleton columns={7} label={t("Load ho raha hai")} />
-      ) : lines.length === 0 ? (
-        <EmptyState icon={<Receipt />} title={t("Is range me koi Issued invoice nahi hai")} />
+      ) : !hasAnything ? (
+        <EmptyState icon={<Receipt />} title={t("Is range me koi Issued invoice ya bill nahi hai")} />
       ) : (
         <>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
             <div className="rounded-lg border p-3">
-              <div className="text-xs text-muted-foreground">{t("Total Taxable Value")}</div>
-              <div className="text-lg font-semibold tabular-nums">₹{summary?.totalTaxableValue ?? 0}</div>
-            </div>
-            <div className="rounded-lg border p-3">
-              <div className="text-xs text-muted-foreground">{t("Total Output GST")}</div>
+              <div className="text-xs text-muted-foreground">{t("Total Output GST (Sales)")}</div>
               <div className="text-lg font-semibold tabular-nums">₹{summary?.totalGst ?? 0}</div>
             </div>
             <div className="rounded-lg border p-3">
-              <div className="text-xs text-muted-foreground">{t("Total Invoice Value")}</div>
-              <div className="text-lg font-semibold tabular-nums">₹{summary?.totalInvoiceValue ?? 0}</div>
+              <div className="text-xs text-muted-foreground">{t("Total Input GST (Purchase)")}</div>
+              <div className="text-lg font-semibold tabular-nums">₹{summary?.totalInputGst ?? 0}</div>
+            </div>
+            <div className="rounded-lg border-2 border-primary/40 p-3">
+              <div className="text-xs text-muted-foreground">{t("Net GST Payable (Output − Input)")}</div>
+              <div className="text-lg font-semibold tabular-nums">₹{summary?.netGstPayable ?? 0}</div>
             </div>
           </div>
 
-          <div className="overflow-x-auto rounded-lg border">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>{t("Invoice No.")}</TableHead>
-                  <TableHead>{t("Date")}</TableHead>
-                  <TableHead>{t("Customer")}</TableHead>
-                  <TableHead>GSTIN</TableHead>
-                  <TableHead className="text-right">{t("Taxable Value")}</TableHead>
-                  <TableHead className="text-right">GST</TableHead>
-                  <TableHead className="text-right">{t("Invoice Value")}</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {lines.map((line) => (
-                  <TableRow key={line.invoiceId}>
-                    <TableCell className="font-medium">{line.invoiceNo || line.invoiceId}</TableCell>
-                    <TableCell className="text-muted-foreground">{line.invoiceDate.slice(0, 10)}</TableCell>
-                    <TableCell>{line.customerName}</TableCell>
-                    <TableCell className="text-muted-foreground">{line.customerGstin || "—"}</TableCell>
-                    <TableCell className="text-right tabular-nums">₹{line.taxableValue}</TableCell>
-                    <TableCell className="text-right tabular-nums">₹{line.gstAmount}</TableCell>
-                    <TableCell className="text-right tabular-nums font-medium">₹{line.invoiceValue}</TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
+          {lines.length > 0 && (
+            <div className="space-y-2">
+              <p className="text-sm font-medium">{t("Output GST — Sales Invoices")}</p>
+              <div className="overflow-x-auto rounded-lg border">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>{t("Invoice No.")}</TableHead>
+                      <TableHead>{t("Date")}</TableHead>
+                      <TableHead>{t("Customer")}</TableHead>
+                      <TableHead>GSTIN</TableHead>
+                      <TableHead className="text-right">{t("Taxable Value")}</TableHead>
+                      <TableHead className="text-right">GST</TableHead>
+                      <TableHead className="text-right">{t("Invoice Value")}</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {lines.map((line) => (
+                      <TableRow key={line.invoiceId}>
+                        <TableCell className="font-medium">{line.invoiceNo || line.invoiceId}</TableCell>
+                        <TableCell className="text-muted-foreground">{line.invoiceDate.slice(0, 10)}</TableCell>
+                        <TableCell>{line.customerName}</TableCell>
+                        <TableCell className="text-muted-foreground">{line.customerGstin || "—"}</TableCell>
+                        <TableCell className="text-right tabular-nums">₹{line.taxableValue}</TableCell>
+                        <TableCell className="text-right tabular-nums">₹{line.gstAmount}</TableCell>
+                        <TableCell className="text-right tabular-nums font-medium">₹{line.invoiceValue}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            </div>
+          )}
+
+          {billLines.length > 0 && (
+            <div className="space-y-2">
+              <p className="text-sm font-medium">{t("Input GST — Purchase Bills")}</p>
+              <div className="overflow-x-auto rounded-lg border">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>{t("Bill No.")}</TableHead>
+                      <TableHead>{t("Date")}</TableHead>
+                      <TableHead>{t("Vendor")}</TableHead>
+                      <TableHead>GSTIN</TableHead>
+                      <TableHead className="text-right">{t("Taxable Value")}</TableHead>
+                      <TableHead className="text-right">GST</TableHead>
+                      <TableHead className="text-right">{t("Bill Value")}</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {billLines.map((line) => (
+                      <TableRow key={line.billId}>
+                        <TableCell className="font-medium">{line.billNo || line.billId}</TableCell>
+                        <TableCell className="text-muted-foreground">{line.billDate.slice(0, 10)}</TableCell>
+                        <TableCell>{line.vendorName}</TableCell>
+                        <TableCell className="text-muted-foreground">{line.vendorGstin || "—"}</TableCell>
+                        <TableCell className="text-right tabular-nums">₹{line.taxableValue}</TableCell>
+                        <TableCell className="text-right tabular-nums">₹{line.gstAmount}</TableCell>
+                        <TableCell className="text-right tabular-nums font-medium">₹{line.billValue}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            </div>
+          )}
         </>
       )}
     </div>

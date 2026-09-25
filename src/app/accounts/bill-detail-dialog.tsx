@@ -47,6 +47,7 @@ export default function BillDetailDialog({
   const [billNo, setBillNo] = useState("");
   const [billAttachmentUrl, setBillAttachmentUrl] = useState("");
   const [amount, setAmount] = useState("");
+  const [gstPercent, setGstPercent] = useState("");
 
   const [paymentAmount, setPaymentAmount] = useState("");
   const [paymentMode, setPaymentMode] = useState<BillPaymentMode>("Bank_Transfer");
@@ -60,6 +61,7 @@ export default function BillDetailDialog({
         setBillNo(data.bill.billNo);
         setBillAttachmentUrl(data.bill.billAttachmentUrl);
         setAmount(String(data.bill.amount));
+        setGstPercent(String(data.bill.gstPercent));
       })
       .catch(() => toast.error(t("Bill load nahi ho payi.")))
       .finally(() => setLoading(false));
@@ -78,7 +80,7 @@ export default function BillDetailDialog({
       const res = await fetch(`/api/accounts/bills/${billId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ billNo, billAttachmentUrl, amount: Number(amount) }),
+        body: JSON.stringify({ billNo, billAttachmentUrl, amount: Number(amount), gstPercent: Number(gstPercent) || 0 }),
       });
       const data = await res.json().catch(() => null);
       if (!res.ok) {
@@ -160,7 +162,8 @@ export default function BillDetailDialog({
           <div className="max-h-[70vh] space-y-4 overflow-y-auto pr-1">
             <div className="rounded-lg border p-3 text-sm">
               <p>
-                {t("Bill Amount")}: ₹{detail.bill.amount} · {t("Paid")}: ₹{detail.totalPaid}
+                {t("Bill Amount")}: ₹{detail.bill.amount} ({t("GST included")}: ₹{detail.bill.gstAmount}) ·{" "}
+                {t("Paid")}: ₹{detail.totalPaid}
               </p>
             </div>
 
@@ -170,7 +173,7 @@ export default function BillDetailDialog({
                 <Input value={billNo} onChange={(e) => setBillNo(e.target.value)} disabled={!isDraft} />
               </div>
               <div className="space-y-2">
-                <Label>{t("Amount")}</Label>
+                <Label>{t("Amount (GST-inclusive)")}</Label>
                 <Input
                   type="number"
                   step="any"
@@ -180,6 +183,17 @@ export default function BillDetailDialog({
                   disabled={!isDraft}
                 />
               </div>
+            </div>
+            <div className="space-y-2">
+              <Label>{t("GST % (amount ke andar hi included)")}</Label>
+              <Input
+                type="number"
+                step="any"
+                min="0"
+                value={gstPercent}
+                onChange={(e) => setGstPercent(e.target.value)}
+                disabled={!isDraft}
+              />
             </div>
 
             {isDraft ? (

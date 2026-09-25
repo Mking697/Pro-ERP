@@ -37,6 +37,7 @@ export default function CreateBillDialog({
   const [billNo, setBillNo] = useState("");
   const [billAttachmentUrl, setBillAttachmentUrl] = useState("");
   const [amount, setAmount] = useState(String(candidate.poValue ?? ""));
+  const [gstPercent, setGstPercent] = useState(String(candidate.gstPercent ?? 0));
   const [saving, setSaving] = useState(false);
 
   async function handleSubmit() {
@@ -54,6 +55,7 @@ export default function CreateBillDialog({
           billNo,
           billAttachmentUrl,
           amount: Number(amount),
+          gstPercent: Number(gstPercent) || 0,
         }),
       });
       const data = await res.json().catch(() => null);
@@ -88,9 +90,13 @@ export default function CreateBillDialog({
               <Input value={billNo} onChange={(e) => setBillNo(e.target.value)} />
             </div>
             <div className="space-y-2">
-              <Label>{t("Amount")}</Label>
+              <Label>{t("Amount (GST-inclusive)")}</Label>
               <Input type="number" step="any" min="0" value={amount} onChange={(e) => setAmount(e.target.value)} />
             </div>
+          </div>
+          <div className="space-y-2">
+            <Label>{t("GST % (amount ke andar hi included)")}</Label>
+            <Input type="number" step="any" min="0" value={gstPercent} onChange={(e) => setGstPercent(e.target.value)} />
           </div>
 
           <FileUploadField

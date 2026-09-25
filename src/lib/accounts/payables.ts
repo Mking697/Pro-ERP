@@ -47,7 +47,12 @@ export interface BillRecord {
   vendorName: string;
   billNo: string;
   billAttachmentUrl: string;
+  /** GST-inclusive total actually payable to the vendor — same contract as
+   * invoices.finalValue. See src/db/schema/accounts.ts's own comment on `bills`. */
   amount: number;
+  gstPercent: number;
+  /** GST portion within `amount`, extracted using `gstPercent` — see computeBillGst(). */
+  gstAmount: number;
   status: BillStatus;
   issuedBy: string;
   issuedAt: string;
@@ -66,12 +71,24 @@ function rowToBill(row: BillRow, vendorName: string): BillRecord {
     billNo: row.billNo,
     billAttachmentUrl: row.billAttachmentUrl,
     amount: Number(row.amount) || 0,
+    gstPercent: Number(row.gstPercent) || 0,
+    gstAmount: Number(row.gstAmount) || 0,
     status: row.status,
     issuedBy: row.issuedBy,
     issuedAt: row.issuedAt ? row.issuedAt.toISOString() : "",
     createdBy: row.createdBy,
     createdAt: row.createdAt.toISOString(),
   };
+}
+
+/** Extracts the GST portion from a GST-INCLUSIVE `amount`, given a percentage rate — the
+ * standard "back out tax from a total" formula (as opposed to Orders/Invoices, where GST is
+ * added on top of a known-exclusive base). A Bill's `amount` is the vendor's own real
+ * invoice total, which already includes their GST — there is no separate exclusive base to
+ * start from, so extraction is the only direction that makes sense here. */
+function computeBillGst(amount: number, gstPercent: number): number {
+  if (!(gstPercent > 0) || !(amount > 0)) return 0;
+  return round2(amount - amount / (1 + gstPercent / 100));
 }
 
 /** True for a Postgres unique-violation (23505) against the given constraint name — same
@@ -117,12 +134,15 @@ export interface BillCandidate {
   poId: string;
   vendorId: string;
   vendorName: string;
-  /** Sum of every line's qty * (newPrice ?? oldPrice) — the PO's own real value, read via
-   * src/lib/purchase/orders.ts's getPurchaseOrder() (which already joins each line's
-   * indent-derived qty) rather than re-deriving it here. Purely a suggestion — createBill()
-   * still takes `amount` as a normal, editable field, same as Receivables' own
-   * getInvoiceSuggestion()/finalValue. */
+  /** Sum of every line's qty * (newPrice ?? oldPrice), PLUS the PO's own GST% on top — the
+   * PO's own real GST-inclusive value, read via src/lib/purchase/orders.ts's
+   * getPurchaseOrder() (which already joins each line's indent-derived qty) rather than
+   * re-deriving it here. Purely a suggestion — createBill() still takes `amount` as a
+   * normal, editable field, same as Receivables' own getInvoiceSuggestion()/finalValue. GST-
+   * inclusive (not just the line total) so the suggested figure matches what a Bill's own
+   * `amount` actually represents — the vendor's real, GST-inclusive invoice total. */
   poValue: number;
+  gstPercent: number;
   issuedAt: string;
 }
 
@@ -139,10 +159,18 @@ export async function listBillCandidates(): Promise<BillCandidate[]> {
     if (existing) continue;
     const full = await getPurchaseOrder(po.id);
     if (!full) continue;
-    const poValue = round2(
+    const subTotal = round2(
       full.lines.reduce((sum, line) => sum + line.qty * (Number(line.newPrice || line.oldPrice) || 0), 0)
     );
-    result.push({ poId: po.id, vendorId: po.vendorId, vendorName: full.vendorName, poValue, issuedAt: po.issuedAt.toISOString() });
+    const poValue = round2(subTotal * (1 + full.gstPercent / 100));
+    result.push({
+      poId: po.id,
+      vendorId: po.vendorId,
+      vendorName: full.vendorName,
+      poValue,
+      gstPercent: full.gstPercent,
+      issuedAt: po.issuedAt.toISOString(),
+    });
   }
 
   return result.sort((a, b) => (a.issuedAt < b.issuedAt ? 1 : -1));
@@ -233,6 +261,9 @@ export interface CreateBillInput {
   billNo?: string;
   billAttachmentUrl?: string;
   amount: number;
+  /** Defaults from the PO's own gstPercent when omitted — overridable, same as a PO's own
+   * gstPercent can override Purchase Setup's default. */
+  gstPercent?: number;
 }
 
 /** JUDGMENT CALL, mirroring Receivables' own createInvoice(): at Draft time only `poId` and
@@ -249,6 +280,10 @@ export async function createBill(input: CreateBillInput, createdBy: string): Pro
   if (existing) throw new PayablesError("Is PO ke liye pehle hi ek Bill ban chuki hai.");
   if (!(input.amount >= 0)) throw new PayablesError("Amount 0 ya usse zyada hona chahiye.");
 
+  const amount = round2(input.amount);
+  const gstPercent = input.gstPercent ?? Number(po.gstPercent) ?? 0;
+  const gstAmount = computeBillGst(amount, gstPercent);
+
   const billId = generateId("BILL");
   try {
     const row = await insertRecord(bills, {
@@ -258,7 +293,9 @@ export async function createBill(input: CreateBillInput, createdBy: string): Pro
       vendorId: po.vendorId,
       billNo: input.billNo?.trim() ?? "",
       billAttachmentUrl: input.billAttachmentUrl?.trim() ?? "",
-      amount: String(round2(input.amount)),
+      amount: String(amount),
+      gstPercent: String(gstPercent),
+      gstAmount: String(gstAmount),
       status: "Draft",
       createdBy,
     });
@@ -281,6 +318,7 @@ export interface UpdateBillInput {
   billNo?: string;
   billAttachmentUrl?: string;
   amount?: number;
+  gstPercent?: number;
 }
 
 export async function updateBill(billId: string, input: UpdateBillInput): Promise<BillRecord> {
@@ -295,7 +333,13 @@ export async function updateBill(billId: string, input: UpdateBillInput): Promis
   const patch: Record<string, unknown> = {};
   if (input.billNo !== undefined) patch.billNo = input.billNo.trim();
   if (input.billAttachmentUrl !== undefined) patch.billAttachmentUrl = input.billAttachmentUrl.trim();
-  if (input.amount !== undefined) patch.amount = String(round2(input.amount));
+  if (input.amount !== undefined || input.gstPercent !== undefined) {
+    const amount = input.amount !== undefined ? round2(input.amount) : Number(row.amount) || 0;
+    const gstPercent = input.gstPercent !== undefined ? input.gstPercent : Number(row.gstPercent) || 0;
+    patch.amount = String(amount);
+    patch.gstPercent = String(gstPercent);
+    patch.gstAmount = String(computeBillGst(amount, gstPercent));
+  }
 
   const updated = await updateById(bills, orgId, billId, patch);
   if (!updated) throw new PayablesError("Bill update nahi ho payi.");
@@ -303,7 +347,7 @@ export async function updateBill(billId: string, input: UpdateBillInput): Promis
 }
 
 // ---------------------------------------------------------------------------
-// Issue — Draft -> Issued, posts Dr Purchases/Expense / Cr Accounts Payable
+// Issue — Draft -> Issued, posts Dr Purchases/Expense (+ Dr GST Input Credit) / Cr Payable
 // ---------------------------------------------------------------------------
 
 export async function issueBill(billId: string, actorId: string): Promise<BillRecord> {
@@ -326,18 +370,38 @@ export async function issueBill(billId: string, actorId: string): Promise<BillRe
   // GL posting — best-effort, matching Receivables' issueInvoice()'s own convention: the
   // bill is already Issued regardless of whether this succeeds.
   const amount = Number(updated.amount) || 0;
+  // Re-derived here rather than trusted from the row's own stored gstAmount, mirroring
+  // issueInvoice()'s own re-derivation reasoning: amount/gstPercent can both still be edited
+  // while Draft (updateBill()), after gstAmount was already snapshotted at createBill() time.
+  const gstAmount = computeBillGst(amount, Number(updated.gstPercent) || 0);
   if (amount > 0) {
     try {
+      // Pre-GST bills (gstAmount 0 — every bill created before this GST-tracking change, or
+      // a PO with no gstPercent set) keep exactly the original 2-line posting. Otherwise
+      // split the GST portion into its own Input Credit asset instead of folding it into
+      // Purchases/COGS, which used to overstate the expense by the tax portion the org can
+      // claim back.
+      const lines =
+        gstAmount > 0
+          ? [
+              {
+                accountCode: SYSTEM_ACCOUNT_CODES.PURCHASES_EXPENSE,
+                debit: round2(amount - gstAmount),
+              },
+              { accountCode: SYSTEM_ACCOUNT_CODES.GST_INPUT_CREDIT, debit: gstAmount },
+              { accountCode: SYSTEM_ACCOUNT_CODES.ACCOUNTS_PAYABLE, credit: amount },
+            ]
+          : [
+              { accountCode: SYSTEM_ACCOUNT_CODES.PURCHASES_EXPENSE, debit: amount },
+              { accountCode: SYSTEM_ACCOUNT_CODES.ACCOUNTS_PAYABLE, credit: amount },
+            ];
       await postJournalEntry({
         orgId,
         description: `Bill ${billId} issued — PO ${row.poId}`,
         sourceType: "Bill",
         sourceId: billId,
         createdBy: actorId,
-        lines: [
-          { accountCode: SYSTEM_ACCOUNT_CODES.PURCHASES_EXPENSE, debit: amount },
-          { accountCode: SYSTEM_ACCOUNT_CODES.ACCOUNTS_PAYABLE, credit: amount },
-        ],
+        lines,
       });
     } catch (error) {
       console.error(`[payables] postJournalEntry failed for bill ${billId}:`, error);

@@ -69,12 +69,20 @@ export type AccountType = "Asset" | "Liability" | "Equity" | "Income" | "Expense
  * CUSTOMER_CREDIT_BALANCE, for the same reason in the opposite direction: a Debit Note
  * issued against a vendor (src/lib/accounts/debitNotes.ts, built for IQC failures) is a
  * claim the org holds on the vendor, regardless of whether the related Bill is already
- * paid — so it's booked as its own Asset rather than touching Accounts Payable directly. */
+ * paid — so it's booked as its own Asset rather than touching Accounts Payable directly.
+ *
+ * GST_INPUT_CREDIT (Asset, added 2026-09-25) is the Payables-side mirror of GST_PAYABLE —
+ * GST the org itself paid to its own vendors (Input Tax Credit), tracked separately from
+ * PURCHASES_EXPENSE for the same reason GST_PAYABLE was split out of SALES_REVENUE: without
+ * it, a Bill's full GST-inclusive value would overstate the expense by the tax portion the
+ * org can claim back, and there would be no input-side figure for GST Report's own "Output
+ * GST minus Input GST" net-payable line to net against. See payables.ts's issueBill(). */
 export const SYSTEM_ACCOUNT_CODES = {
   CASH_BANK: "1000",
   PETTY_CASH: "1050",
   ACCOUNTS_RECEIVABLE: "1100",
   VENDOR_CLAIM_RECEIVABLE: "1150",
+  GST_INPUT_CREDIT: "1160",
   ACCOUNTS_PAYABLE: "2000",
   GST_PAYABLE: "2100",
   CUSTOMER_CREDIT_BALANCE: "2200",
@@ -96,6 +104,7 @@ const DEFAULT_ACCOUNTS: { code: string; name: string; type: AccountType }[] = [
     name: "Vendor Claim Receivable",
     type: "Asset",
   },
+  { code: SYSTEM_ACCOUNT_CODES.GST_INPUT_CREDIT, name: "GST Input Credit", type: "Asset" },
   { code: SYSTEM_ACCOUNT_CODES.ACCOUNTS_PAYABLE, name: "Accounts Payable", type: "Liability" },
   { code: SYSTEM_ACCOUNT_CODES.GST_PAYABLE, name: "GST Payable", type: "Liability" },
   {

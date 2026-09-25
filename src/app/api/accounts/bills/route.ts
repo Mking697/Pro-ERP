@@ -22,6 +22,7 @@ const bodySchema = z.object({
   billNo: z.string().trim().optional(),
   billAttachmentUrl: z.string().trim().optional(),
   amount: z.coerce.number().nonnegative(),
+  gstPercent: z.coerce.number().nonnegative().optional(),
 });
 
 export async function POST(request: Request) {

@@ -1,6 +1,6 @@
 import type { InferSelectModel } from "drizzle-orm";
 import { and, eq, gte, lte } from "drizzle-orm";
-import { invoices, pdiInspections, tmsShipments } from "@/db/schema";
+import { bills, invoices, pdiInspections, tmsShipments, vendors } from "@/db/schema";
 import { db } from "@/db/client";
 import { findById, insertRecord, listByOrg, updateById } from "@/db/repo";
 import { getTenantOrgId } from "@/lib/tenant";
@@ -570,10 +570,13 @@ export async function getReceivablesAging(): Promise<AgingSummary> {
  * This is deliberately a report for the org's own accountant to manually file on the
  * government GST portal — it does NOT integrate with any GST Suvidha Provider (GSP) API,
  * does NOT submit anything anywhere, needs no digital signature or GSP credentials. The UI
- * says this explicitly. It also only ever reports OUTPUT GST (from Issued Sales Invoices) —
- * Input Tax Credit (GST the org itself paid to its own vendors) is not tracked anywhere in
- * this codebase (`bills` carries a flat `amount`, no GST split), so this is not a net-payable
- * figure. Don't "complete" that here; it's a real, separate, unscoped gap.
+ * says this explicitly.
+ *
+ * Reports both sides: OUTPUT GST (from Issued Sales Invoices, GSTR-1-shaped line items) and,
+ * since 2026-09-25, INPUT GST (from Issued Bills — Payables' own gstAmount, added the same
+ * day, see src/db/schema/accounts.ts's own comment on `bills.gstAmount`). `netGstPayable` =
+ * totalGst (output) - totalInputGst — a real net-payable figure now, not just an output-side
+ * liability. `billLines` mirrors `lines`' own shape on the input side.
  */
 export interface GstReturnLine {
   invoiceId: string;
@@ -586,34 +589,54 @@ export interface GstReturnLine {
   invoiceValue: number;
 }
 
+export interface GstReturnBillLine {
+  billId: string;
+  billNo: string;
+  billDate: string;
+  vendorName: string;
+  vendorGstin: string;
+  taxableValue: number;
+  gstAmount: number;
+  billValue: number;
+}
+
 export interface GstReturnSummary {
   lines: GstReturnLine[];
   totalTaxableValue: number;
   totalGst: number;
   totalInvoiceValue: number;
+  billLines: GstReturnBillLine[];
+  totalInputTaxableValue: number;
+  totalInputGst: number;
+  totalBillValue: number;
+  /** totalGst - totalInputGst — a real net-payable figure. Can be negative (more Input
+   * Credit than Output GST collected this period), which is a legitimate real-world state
+   * (carried forward against a future period on the actual GST portal), not a bug. */
+  netGstPayable: number;
 }
 
 export async function getGstReturnSummary(range?: DateRange): Promise<GstReturnSummary> {
   const orgId = await getTenantOrgId();
-  const conditions = [eq(invoices.orgId, orgId), eq(invoices.status, "Issued")];
+
   // Same IST-day-boundary helpers ledger.ts's own getTrialBalance() uses — a bare
   // `new Date("YYYY-MM-DD")` truncates to UTC midnight (5:30am IST), silently excluding
   // almost a full business day for an India-based org (the same bug class already fixed
   // once in the recurring-task generator and once in ledger.ts itself).
-  if (range?.from) conditions.push(gte(invoices.issuedAt, startOfIstDay(range.from)));
-  if (range?.to) conditions.push(lte(invoices.issuedAt, endOfIstDay(range.to)));
+  const invoiceConditions = [eq(invoices.orgId, orgId), eq(invoices.status, "Issued")];
+  if (range?.from) invoiceConditions.push(gte(invoices.issuedAt, startOfIstDay(range.from)));
+  if (range?.to) invoiceConditions.push(lte(invoices.issuedAt, endOfIstDay(range.to)));
 
-  const rows = await db
+  const invoiceRows = await db
     .select()
     .from(invoices)
-    .where(and(...conditions));
+    .where(and(...invoiceConditions));
 
   const lines: GstReturnLine[] = [];
   let totalTaxableValue = 0;
   let totalGst = 0;
   let totalInvoiceValue = 0;
 
-  for (const row of rows) {
+  for (const row of invoiceRows) {
     const order = await getOrder(row.orderId);
     const finalValue = Number(row.finalValue) || 0;
     const gstAmount = Number(row.gstAmount) || 0;
@@ -633,7 +656,53 @@ export async function getGstReturnSummary(range?: DateRange): Promise<GstReturnS
     totalGst = round2(totalGst + gstAmount);
     totalInvoiceValue = round2(totalInvoiceValue + finalValue);
   }
-
   lines.sort((a, b) => (a.invoiceDate < b.invoiceDate ? -1 : 1));
-  return { lines, totalTaxableValue, totalGst, totalInvoiceValue };
+
+  const billConditions = [eq(bills.orgId, orgId), eq(bills.status, "Issued")];
+  if (range?.from) billConditions.push(gte(bills.issuedAt, startOfIstDay(range.from)));
+  if (range?.to) billConditions.push(lte(bills.issuedAt, endOfIstDay(range.to)));
+
+  const billRows = await db
+    .select()
+    .from(bills)
+    .where(and(...billConditions));
+
+  const billLines: GstReturnBillLine[] = [];
+  let totalInputTaxableValue = 0;
+  let totalInputGst = 0;
+  let totalBillValue = 0;
+
+  for (const row of billRows) {
+    const vendor = await findById(vendors, orgId, row.vendorId);
+    const billValue = Number(row.amount) || 0;
+    const gstAmount = Number(row.gstAmount) || 0;
+    const taxableValue = round2(billValue - gstAmount);
+
+    billLines.push({
+      billId: row.id,
+      billNo: row.billNo,
+      billDate: row.issuedAt ? row.issuedAt.toISOString() : "",
+      vendorName: vendor?.vendorName ?? "",
+      vendorGstin: vendor?.gstin ?? "",
+      taxableValue,
+      gstAmount,
+      billValue,
+    });
+    totalInputTaxableValue = round2(totalInputTaxableValue + taxableValue);
+    totalInputGst = round2(totalInputGst + gstAmount);
+    totalBillValue = round2(totalBillValue + billValue);
+  }
+  billLines.sort((a, b) => (a.billDate < b.billDate ? -1 : 1));
+
+  return {
+    lines,
+    totalTaxableValue,
+    totalGst,
+    totalInvoiceValue,
+    billLines,
+    totalInputTaxableValue,
+    totalInputGst,
+    totalBillValue,
+    netGstPayable: round2(totalGst - totalInputGst),
+  };
 }
