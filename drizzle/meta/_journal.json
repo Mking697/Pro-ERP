@@ -113,6 +113,41 @@
       "when": 1790249382025,
       "tag": "0015_exotic_spiral",
       "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1790261006893,
+      "tag": "0016_bright_gambit",
+      "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1790262236759,
+      "tag": "0017_flat_rictor",
+      "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1790268688751,
+      "tag": "0018_marvelous_scarlet_witch",
+      "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1790268749048,
+      "tag": "0019_purple_centennial",
+      "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1790269051447,
+      "tag": "0020_rapid_vector",
+      "breakpoints": true
     }
   ]
 }

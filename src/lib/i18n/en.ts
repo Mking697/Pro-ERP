@@ -227,6 +227,12 @@ export const EN: Record<string, string> = {
   // --- inward: Failure Log actions — Accept Under Deviation / Issue Debit Note ----------
   "Actions": "Actions",
   "Accept Under Deviation": "Accept Under Deviation",
+  "Request Under Deviation": "Request Under Deviation",
+  "Pending Approval": "Pending Approval",
+  "Under Deviation request bhej di gayi — approval ka wait karein.":
+    "Deviation request sent — waiting for approval.",
+  "Request reject kar di gayi — dubara request ki ja sakti hai.":
+    "Request rejected — it can be requested again.",
   "Stock me add ho gaya": "Added to stock",
   "Stock me add ho gaya.": "Added to stock.",
   "Issue Debit Note": "Issue Debit Note",
@@ -882,6 +888,14 @@ export const EN: Record<string, string> = {
   "PDF Generate Karein": "Generate PDF",
   "PDF ban raha hai...": "Generating PDF...",
   "PO PDF ban gaya.": "The PO PDF has been generated.",
+  "Ye values naye PO ke GST%/Note/Terms me pehle se bhar jaayengi — PO Issue karte waqt inhe badla bhi ja sakta hai.":
+    "These values pre-fill a new PO's GST%/Note/Terms — they can still be changed while issuing a PO.",
+  "PO Document Defaults": "PO Document Defaults",
+  "Default GST %": "Default GST %",
+  "Default Note": "Default Note",
+  "Default Terms & Conditions": "Default Terms & Conditions",
+  "Note": "Note",
+  "Terms & Conditions": "Terms & Conditions",
   "PO list load nahi ho payi.": "The PO list could not be loaded.",
   "PO list load ho rahi hai": "Loading the PO list",
   "Abhi koi Follow-up pending nahi hai": "No Follow-up is pending yet",
@@ -1180,6 +1194,9 @@ export const EN: Record<string, string> = {
   "Sirf ye user (ya Admin) hi kisi order ka Credit Hold clear kar sakta hai — ye step ka Doer nahi hai.":
     "Only this user (or an Admin) may clear an order's Credit Hold — this is not the same as that step's own Doer.",
   "Approver": "Approver",
+  "Deviation Approver": "Deviation Approver",
+  "Sirf ye user (ya Admin) hi ek IQC fail quantity ko \"Under Deviation\" accept karne ki request approve/reject kar sakta hai — approve hone par hi stock me add hota hai.":
+    "Only this user (or an Admin) may approve/reject a request to accept an IQC-failed quantity \"Under Deviation\" — stock only moves once approved.",
 
   // --- pdi -----------------------------------------------------------------------------
   "PDI": "PDI",
@@ -1305,9 +1322,13 @@ export const EN: Record<string, string> = {
   "Final Value 0 ya usse zyada honi chahiye.": "Final Value must be 0 or more.",
   "Invoice (Draft) ban gayi.": "Invoice (Draft) created.",
   "Nayi Invoice": "New Invoice",
-  "Suggested Value": "Suggested Value",
   "Order Value": "Order Value",
   "TMS Freight": "TMS Freight",
+  "Total Invoiceable Value": "Total Invoiceable Value",
+  "Is order par pehle se": "This order already has",
+  "invoice(s) mein": "invoice(s) totalling",
+  "bill ho chuka hai.": "billed.",
+  "Bachi hui value ke liye Suggested": "Suggested for the remaining value",
   "Invoice No. (optional)": "Invoice No. (optional)",
   "Invoice Document (optional yaha, Issue karne se pehle zaroori)": "Invoice Document (optional here, required before Issue)",
   "E-way Bill No. (optional)": "E-way Bill No. (optional)",
@@ -1602,4 +1623,27 @@ export const EN: Record<string, string> = {
     "The Effective From date must be in 'YYYY-MM-DD' format.",
   "Month 'YYYY-MM' format me hona chahiye.": "Month must be in 'YYYY-MM' format.",
   "User select karein.": "Please select a user.",
+
+  // --- accounts: Receivables Aging + GST Return report ------------------------------------
+  "Aging": "Aging",
+  "GST Report": "GST Report",
+  "Aging report load nahi ho paya.": "Could not load the aging report.",
+  "din": "days",
+  "Koi outstanding receivable nahi hai": "No outstanding receivables",
+  "Har Issued invoice ka poora payment aa chuka hai.": "Every Issued invoice has been paid in full.",
+  "Pehla Invoice": "First Invoice",
+  "Din": "Days",
+  "Bucket": "Bucket",
+  "Outstanding": "Outstanding",
+  "Total Outstanding": "Total Outstanding",
+  "GST report load nahi ho paya.": "Could not load the GST report.",
+  "Ye report aapke CA/accountant ke liye hai — GST portal par filing khud manually honi hai, ye system seedha file nahi karta. Sirf Output GST (jo sales par collect hua) yahan dikhta hai — Input Tax Credit (jo vendors ko GST diya) is system me track nahi hota, isliye ye net-payable figure nahi hai.":
+    "This report is for your CA/accountant — filing on the GST portal is still manual, this system does not file it directly. Only Output GST (collected on sales) is shown here — Input Tax Credit (GST paid to vendors) isn't tracked in this system, so this is not a net-payable figure.",
+  "CSV Download Karein": "Download CSV",
+  "Is range me koi Issued invoice nahi hai": "No Issued invoices in this range",
+  "Total Taxable Value": "Total Taxable Value",
+  "Total Output GST": "Total Output GST",
+  "Total Invoice Value": "Total Invoice Value",
+  "Taxable Value": "Taxable Value",
+  "Invoice Value": "Invoice Value",
 };
