@@ -1,5 +1,44 @@
 export type InvoiceStatus = "Draft" | "Issued";
 
+// --- Receivables Aging (age at the ORDER level, not per-invoice — see accounts.ts) -----
+
+export type AgingBucket = "0-30" | "31-60" | "61-90" | "90+";
+
+export interface AgingRow {
+  orderId: string;
+  partyName: string;
+  earliestInvoiceDate: string;
+  daysOutstanding: number;
+  bucket: AgingBucket;
+  outstanding: number;
+}
+
+export interface AgingSummary {
+  rows: AgingRow[];
+  bucketTotals: Record<AgingBucket, number>;
+  grandTotal: number;
+}
+
+// --- GST Return report (GSTR-1/3B-SHAPED, a report/export — not e-filing) --------------
+
+export interface GstReturnLine {
+  invoiceId: string;
+  invoiceNo: string;
+  invoiceDate: string;
+  customerName: string;
+  customerGstin: string;
+  taxableValue: number;
+  gstAmount: number;
+  invoiceValue: number;
+}
+
+export interface GstReturnSummary {
+  lines: GstReturnLine[];
+  totalTaxableValue: number;
+  totalGst: number;
+  totalInvoiceValue: number;
+}
+
 export interface InvoiceRow {
   id: string;
   orderId: string;
@@ -9,6 +48,7 @@ export interface InvoiceRow {
   ewayBillAttachmentUrl: string;
   extraDocumentUrl: string;
   finalValue: number;
+  gstAmount: number;
   status: InvoiceStatus;
   issuedBy: string;
   issuedAt: string;
@@ -35,6 +75,9 @@ export interface InvoiceDetailRow {
 export interface InvoiceSuggestionRow {
   orderValue: number;
   freightTotal: number;
+  totalInvoiceable: number;
+  alreadyInvoiced: number;
+  invoiceCount: number;
   suggestedFinalValue: number;
 }
 

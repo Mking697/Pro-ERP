@@ -1,5 +1,5 @@
 import type { InferSelectModel } from "drizzle-orm";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import { billPayments, debitNotes, debitNoteUsages, failureLog, journalEntries, journalLines, vendors } from "@/db/schema";
 import { db } from "@/db/client";
 import { findById, listByOrg } from "@/db/repo";
@@ -8,6 +8,10 @@ import { generateId } from "@/lib/id";
 import { round2 } from "@/lib/leads/quotationMath";
 import { getBill } from "@/lib/accounts/payables";
 import { SYSTEM_ACCOUNT_CODES, listChartOfAccounts } from "@/lib/accounts/ledger";
+import { listUsers } from "@/lib/auth/users";
+import { effectiveModuleAccess, type ModuleAccessKey } from "@/lib/moduleAccess";
+import { createTask } from "@/lib/tasks";
+import { sendWhatsAppMessage } from "@/lib/chatxflow";
 
 /**
  * Debit Notes (2026-09-24) — the Payables-side mirror of Credit Notes
@@ -15,7 +19,8 @@ import { SYSTEM_ACCOUNT_CODES, listChartOfAccounts } from "@/lib/accounts/ledger
  * a concession TO a customer. Same shape, same conventions, deliberately mirrored rather
  * than reinvented — see creditNotes.ts's own header comment for the full reasoning this
  * file reuses (atomic `db.batch()` posting, `postJournalEntry()` not reused, live-derived
- * remaining balance, no retry-on-collision numbering).
+ * remaining balance, retry-on-collision numbering backed by a real `unique(org_id, ...)`
+ * constraint).
  *
  * Most commonly issued against a Failure Log entry (a purchased quantity that failed IQC —
  * see src/lib/inward/deviation.ts for the independent "Accept Under Deviation" action on the
@@ -25,6 +30,11 @@ import { SYSTEM_ACCOUNT_CODES, listChartOfAccounts } from "@/lib/accounts/ledger
  * Deliberately does NOT credit Accounts Payable directly — see ledger.ts's own comment on
  * SYSTEM_ACCOUNT_CODES.VENDOR_CLAIM_RECEIVABLE for why a separate Asset account is correct
  * regardless of whether the original Bill (if any) is already paid.
+ *
+ * createDebitNote() also best-effort creates a 3-day follow-up Task + WhatsApp for every
+ * ACCOUNTS_FMS grant holder (mirrors src/lib/orders/orders.ts's notifyShortage() fan-out
+ * shape) — a nudge to keep chasing the note until it's Applied to a Bill or Received in
+ * cash, since nothing else in this file tracks that on its own.
  */
 
 export class DebitNoteError extends Error {}
@@ -101,8 +111,11 @@ async function enrichDebitNotes(orgId: string, rows: DebitNoteRow[]): Promise<De
     .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
 }
 
-/** One debit note's own remaining balance — used by applyDebitNoteToBill()/
- * receiveDebitNotePayment() to validate before posting a new usage against it. */
+/** One debit note's own remaining balance — used only to build a human-readable error
+ * message after `insertDebitNoteUsageIfBalanceAllows()` below refuses an over-application;
+ * NOT used to gate the write itself (see that function's own comment for the TOCTOU race it
+ * closes instead). A re-read here can be a beat stale under concurrent load, but that only
+ * affects the wording of the error, never the money. */
 async function remainingBalanceFor(orgId: string, noteId: string, amount: number): Promise<number> {
   const rows = await db
     .select({ amount: debitNoteUsages.amount })
@@ -112,17 +125,110 @@ async function remainingBalanceFor(orgId: string, noteId: string, amount: number
   return round2(amount - used);
 }
 
+/**
+ * The real balance guard (2026-09-24) — mirrors creditNotes.ts's own
+ * `insertCreditNoteUsageIfBalanceAllows()` exactly, for the Payables side: a single atomic
+ * `INSERT ... SELECT ... WHERE` statement, the usage row only ever inserted when
+ * `debit_notes.amount - SUM(existing usages) >= amount` holds, checked by Postgres itself as
+ * part of the one statement. Closes the same TOCTOU race described there — two concurrent
+ * applications against the same note could previously both read a remaining balance that
+ * still looked sufficient before either had committed. Deliberately a separate statement
+ * from the payment/journal-entry batch that follows, for the same neon-http
+ * no-real-transactions/no-mid-batch-branching reason documented on the credit-note sibling.
+ * Returns whether a row was actually inserted.
+ */
+async function insertDebitNoteUsageIfBalanceAllows(
+  orgId: string,
+  noteId: string,
+  usageId: string,
+  kind: "Applied" | "Received",
+  billId: string,
+  amount: number,
+  createdBy: string
+): Promise<boolean> {
+  const inserted = await db
+    .insert(debitNoteUsages)
+    .select(
+      sql`SELECT ${usageId}::text AS id, ${orgId}::text AS org_id, ${noteId}::text AS debit_note_id,
+                 ${kind}::debit_note_usage_kind AS kind, ${billId}::text AS bill_id,
+                 ${String(amount)}::numeric AS amount, ${createdBy}::text AS created_by, now() AS created_at
+          WHERE (SELECT ${debitNotes.amount} FROM ${debitNotes} WHERE ${debitNotes.id} = ${noteId} AND ${debitNotes.orgId} = ${orgId})
+              - COALESCE((SELECT SUM(${debitNoteUsages.amount}) FROM ${debitNoteUsages} WHERE ${debitNoteUsages.debitNoteId} = ${noteId} AND ${debitNoteUsages.orgId} = ${orgId}), 0)
+              >= ${String(amount)}::numeric`
+    )
+    .returning({ id: debitNoteUsages.id });
+  return inserted.length > 0;
+}
+
+// ---------------------------------------------------------------------------
+// Follow-up notify — best-effort, mirrors src/lib/orders/orders.ts's notifyShortage()
+// ---------------------------------------------------------------------------
+
+/** Every Active user holding `key`, Admins implicitly included — same shape as
+ * src/lib/orders/orders.ts's own (private, not shared) listUsersWithGrant(); no reusable
+ * helper existed to import instead, so this is its own copy for this grant key. */
+async function listUsersWithGrant(
+  key: ModuleAccessKey
+): Promise<{ userId: string; fullName: string; phone: string }[]> {
+  const all = await listUsers();
+  return all
+    .filter((u) => u.Status === "Active" && effectiveModuleAccess(u.Role, u.Module_Access).includes(key))
+    .map((u) => ({ userId: u.User_ID, fullName: u.Full_Name, phone: u.Phone_Number }));
+}
+
+/** A 3-day follow-up Task + best-effort WhatsApp to every ACCOUNTS_FMS holder once a Debit
+ * Note is issued — a nudge to keep chasing it until Applied/Received. Never throws:
+ * createDebitNote() must still succeed and return normally even if this fails entirely. */
+async function notifyDebitNoteIssued(
+  debitNoteNo: string,
+  vendorName: string,
+  reason: string
+): Promise<void> {
+  const holders = await listUsersWithGrant("ACCOUNTS_FMS");
+  if (holders.length === 0) return;
+
+  const dueDate = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString();
+  const message = `Debit Note ${debitNoteNo} — Vendor ${vendorName}${reason ? ` (${reason})` : ""} ke against issue hua hai. Follow up karte rahein jab tak ye kisi Bill par Apply ya cash me Receive na ho jaaye.`;
+
+  await Promise.all(
+    holders.map(async (u) => {
+      try {
+        await createTask({
+          title: `Debit Note ${debitNoteNo} — follow up`,
+          description: message,
+          assignedTo: u.userId,
+          assignedBy: "SYSTEM",
+          priority: "Medium",
+          dueDate,
+          attachmentUrl: "",
+          remark: "",
+        });
+      } catch (error) {
+        console.error(`[debitNotes] follow-up task creation failed for ${debitNoteNo}, user ${u.userId}:`, error);
+      }
+
+      try {
+        const result = await sendWhatsAppMessage(u.phone, `Namaste ${u.fullName}, ${message}`);
+        if (!result.ok) {
+          console.error(`[debitNotes] follow-up WhatsApp send failed for ${debitNoteNo}, user ${u.userId}: ${result.error}`);
+        }
+      } catch (error) {
+        console.error(`[debitNotes] follow-up WhatsApp send threw for ${debitNoteNo}, user ${u.userId}:`, error);
+      }
+    })
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Create — against a vendor, optionally linked to one Failure Log entry
 // ---------------------------------------------------------------------------
 
 /**
- * REF-numbering, same "read the highest, add one, no retry loop" judgment call
- * creditNotes.ts's own allocateCreditNoteNumber() already made and documented —
- * `debit_notes.debitNoteNo` has no unique constraint backing it either, so a retry loop
- * here would be equally dead code. Same low-volume, human-triggered reasoning applies;
- * same real fix (a `unique(org_id, debit_note_no)` constraint) if this ever needs to be
- * airtight — a future schema change, not something to patch around here.
+ * REF-numbering, same "read the highest, add one" shape as creditNotes.ts's own
+ * allocateCreditNoteNumber(). `debit_notes` now carries a real
+ * `unique(org_id, debit_note_no)` constraint (added 2026-09-24, alongside the identical one
+ * on `credit_notes` — see src/db/schema/accounts.ts), so createDebitNote() below retries
+ * this on a genuine collision the same way.
  */
 async function allocateDebitNoteNumber(orgId: string): Promise<string> {
   const existing = await db
@@ -138,6 +244,24 @@ async function allocateDebitNoteNumber(orgId: string): Promise<string> {
   }
   return `DN-${String(maxNumber + 1).padStart(4, "0")}`;
 }
+
+/** True for a Postgres unique-violation (23505) against the given constraint name — walks
+ * the error's own `cause` chain, since drizzle-orm wraps the real driver error (which
+ * carries `code`/`constraint`) inside a DrizzleQueryError whose own properties are only
+ * query/params/cause; checking `error.code` directly never matches. */
+function isUniqueViolation(error: unknown, constraintName: string): boolean {
+  for (let current: unknown = error; current; current = (current as { cause?: unknown } | null)?.cause) {
+    if (typeof current !== "object" || current === null) continue;
+    const e = current as { code?: unknown; constraint?: unknown; message?: unknown };
+    if (e.code === "23505") {
+      if (typeof e.constraint === "string") return e.constraint === constraintName;
+      return typeof e.message === "string" && e.message.includes(constraintName);
+    }
+  }
+  return false;
+}
+
+const DEBIT_NOTE_NO_CONSTRAINT = "debit_notes_org_id_debit_note_no_unique";
 
 export interface CreateDebitNoteInput {
   vendorId: string;
@@ -185,36 +309,8 @@ export async function createDebitNote(
 
   const reason = (input.reason ?? "").trim();
   const debitNoteId = generateId("DBN");
-  const debitNoteNo = await allocateDebitNoteNumber(orgId);
   const journalEntryId = generateId("JE");
   const entryDate = new Date();
-
-  const debitNoteInsert = db.insert(debitNotes).values({
-    id: debitNoteId,
-    orgId,
-    vendorId: input.vendorId,
-    debitNoteNo,
-    reason,
-    linkedFailureLogId: input.linkedFailureLogId?.trim() ?? "",
-    amount: String(amount),
-    attachmentUrl: input.attachmentUrl?.trim() ?? "",
-    createdBy,
-  });
-
-  const journalEntryInsert = db.insert(journalEntries).values({
-    id: journalEntryId,
-    orgId,
-    entryDate,
-    description: `Debit Note ${debitNoteNo} — Vendor ${vendor.vendorName}${reason ? ` (${reason})` : ""}`,
-    sourceType: "DebitNote",
-    sourceId: debitNoteId,
-    createdBy,
-  });
-
-  const journalLinesInsert = db.insert(journalLines).values([
-    { entryId: journalEntryId, orgId, lineNo: 1, accountId: vendorClaimReceivable.id, debit: String(amount), credit: "0" },
-    { entryId: journalEntryId, orgId, lineNo: 2, accountId: purchasesExpense.id, debit: "0", credit: String(amount) },
-  ]);
 
   // Same variable-length-batch shape confirmDispatch() (dispatch.ts) already uses via its
   // own `...orderItemUpdates` spread — a failureLog update only joins the batch when this
@@ -229,10 +325,65 @@ export async function createDebitNote(
       ]
     : [];
 
-  await db.batch([debitNoteInsert, journalEntryInsert, journalLinesInsert, ...failureLogUpdate]);
+  // Retry-on-collision, same shape as creditNotes.ts's own createCreditNote() — debitNoteId/
+  // journalEntryId are reused across attempts (safe: db.batch() is one atomic write, so a
+  // failed attempt commits nothing), only debitNoteNo (and the entry description text that
+  // embeds it) is re-allocated fresh each try.
+  let committed = false;
+  let debitNoteNo = "";
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    debitNoteNo = await allocateDebitNoteNumber(orgId);
+
+    const debitNoteInsert = db.insert(debitNotes).values({
+      id: debitNoteId,
+      orgId,
+      vendorId: input.vendorId,
+      debitNoteNo,
+      reason,
+      linkedFailureLogId: input.linkedFailureLogId?.trim() ?? "",
+      amount: String(amount),
+      attachmentUrl: input.attachmentUrl?.trim() ?? "",
+      createdBy,
+    });
+
+    const journalEntryInsert = db.insert(journalEntries).values({
+      id: journalEntryId,
+      orgId,
+      entryDate,
+      description: `Debit Note ${debitNoteNo} — Vendor ${vendor.vendorName}${reason ? ` (${reason})` : ""}`,
+      sourceType: "DebitNote",
+      sourceId: debitNoteId,
+      createdBy,
+    });
+
+    const journalLinesInsert = db.insert(journalLines).values([
+      { entryId: journalEntryId, orgId, lineNo: 1, accountId: vendorClaimReceivable.id, debit: String(amount), credit: "0" },
+      { entryId: journalEntryId, orgId, lineNo: 2, accountId: purchasesExpense.id, debit: "0", credit: String(amount) },
+    ]);
+
+    try {
+      await db.batch([debitNoteInsert, journalEntryInsert, journalLinesInsert, ...failureLogUpdate]);
+      committed = true;
+      break;
+    } catch (error) {
+      if (!isUniqueViolation(error, DEBIT_NOTE_NO_CONSTRAINT) || attempt >= 4) throw error;
+      // Two debit notes allocated the same number in the same instant — re-read the true
+      // max (now including the row that just won the race) and try again.
+    }
+  }
+  if (!committed) {
+    throw new DebitNoteError("Debit Note number allocate nahi ho paya. Dobara try karein.");
+  }
 
   const row = await findById(debitNotes, orgId, debitNoteId);
   if (!row) throw new DebitNoteError("Debit Note ban gaya lekin load nahi ho paya.");
+
+  try {
+    await notifyDebitNoteIssued(debitNoteNo, vendor.vendorName, reason);
+  } catch (error) {
+    console.error(`[debitNotes] notifyDebitNoteIssued failed for ${debitNoteNo}:`, error);
+  }
+
   return rowToDebitNote(row, vendor.vendorName, amount);
 }
 
@@ -311,11 +462,6 @@ export async function applyDebitNoteToBill(
   const noteRow = await findById(debitNotes, orgId, input.debitNoteId);
   if (!noteRow) throw new DebitNoteError("Debit Note nahi mila.");
 
-  const remaining = await remainingBalanceFor(orgId, noteRow.id, Number(noteRow.amount) || 0);
-  if (amount > remaining) {
-    throw new DebitNoteError(`Is Debit Note ka sirf ₹${remaining} balance bacha hai.`);
-  }
-
   const billDetail = await getBill(input.billId);
   if (!billDetail) throw new DebitNoteError("Bill nahi mili.");
   if (billDetail.bill.vendorId !== noteRow.vendorId) {
@@ -336,15 +482,19 @@ export async function applyDebitNoteToBill(
   const journalEntryId = generateId("JE");
   const entryDate = new Date();
 
-  const usageInsert = db.insert(debitNoteUsages).values({
-    id: usageId,
+  const inserted = await insertDebitNoteUsageIfBalanceAllows(
     orgId,
-    debitNoteId: noteRow.id,
-    kind: "Applied",
-    billId: input.billId,
-    amount: String(amount),
-    createdBy,
-  });
+    noteRow.id,
+    usageId,
+    "Applied",
+    input.billId,
+    amount,
+    createdBy
+  );
+  if (!inserted) {
+    const remaining = await remainingBalanceFor(orgId, noteRow.id, Number(noteRow.amount) || 0);
+    throw new DebitNoteError(`Is Debit Note ka sirf ₹${remaining} balance bacha hai.`);
+  }
 
   const paymentInsert = db.insert(billPayments).values({
     id: generateId("BPY"),
@@ -372,7 +522,7 @@ export async function applyDebitNoteToBill(
     { entryId: journalEntryId, orgId, lineNo: 2, accountId: vendorClaimReceivable.id, debit: "0", credit: String(amount) },
   ]);
 
-  await db.batch([usageInsert, paymentInsert, journalEntryInsert, journalLinesInsert]);
+  await db.batch([paymentInsert, journalEntryInsert, journalLinesInsert]);
 
   const updatedNote = await findById(debitNotes, orgId, noteRow.id);
   if (!updatedNote) throw new DebitNoteError("Apply ho gaya lekin Debit Note load nahi ho paya.");
@@ -403,11 +553,6 @@ export async function receiveDebitNotePayment(
   const noteRow = await findById(debitNotes, orgId, input.debitNoteId);
   if (!noteRow) throw new DebitNoteError("Debit Note nahi mila.");
 
-  const remaining = await remainingBalanceFor(orgId, noteRow.id, Number(noteRow.amount) || 0);
-  if (amount > remaining) {
-    throw new DebitNoteError(`Is Debit Note ka sirf ₹${remaining} balance bacha hai.`);
-  }
-
   const accounts = await listChartOfAccounts();
   const vendorClaimReceivable = accounts.find((a) => a.code === SYSTEM_ACCOUNT_CODES.VENDOR_CLAIM_RECEIVABLE);
   const cashAccount = accounts.find((a) => a.code === SYSTEM_ACCOUNT_CODES.CASH_BANK);
@@ -419,14 +564,11 @@ export async function receiveDebitNotePayment(
   const journalEntryId = generateId("JE");
   const entryDate = new Date();
 
-  const usageInsert = db.insert(debitNoteUsages).values({
-    id: usageId,
-    orgId,
-    debitNoteId: noteRow.id,
-    kind: "Received",
-    amount: String(amount),
-    createdBy,
-  });
+  const inserted = await insertDebitNoteUsageIfBalanceAllows(orgId, noteRow.id, usageId, "Received", "", amount, createdBy);
+  if (!inserted) {
+    const remaining = await remainingBalanceFor(orgId, noteRow.id, Number(noteRow.amount) || 0);
+    throw new DebitNoteError(`Is Debit Note ka sirf ₹${remaining} balance bacha hai.`);
+  }
 
   const journalEntryInsert = db.insert(journalEntries).values({
     id: journalEntryId,
@@ -443,7 +585,7 @@ export async function receiveDebitNotePayment(
     { entryId: journalEntryId, orgId, lineNo: 2, accountId: vendorClaimReceivable.id, debit: "0", credit: String(amount) },
   ]);
 
-  await db.batch([usageInsert, journalEntryInsert, journalLinesInsert]);
+  await db.batch([journalEntryInsert, journalLinesInsert]);
 
   const updatedNote = await findById(debitNotes, orgId, noteRow.id);
   if (!updatedNote) throw new DebitNoteError("Receive ho gaya lekin Debit Note load nahi ho paya.");

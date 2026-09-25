@@ -1,5 +1,5 @@
 import type { InferSelectModel } from "drizzle-orm";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import { creditNotes, creditNoteUsages, customers, invoices, journalEntries, journalLines, orderPayments } from "@/db/schema";
 import { db } from "@/db/client";
 import { findById, listByOrg } from "@/db/repo";
@@ -102,8 +102,11 @@ async function enrichCreditNotes(orgId: string, rows: CreditNoteRow[]): Promise<
     .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
 }
 
-/** One credit note's own remaining balance — used by applyCreditNoteToOrder()/
- * refundCreditNote() to validate before posting a new usage against it. */
+/** One credit note's own remaining balance — used only to build a human-readable error
+ * message after `insertCreditNoteUsageIfBalanceAllows()` below refuses an over-application;
+ * NOT used to gate the write itself anymore (that read-then-write shape had a real TOCTOU
+ * race — see that function's own comment). A re-read here can be a beat stale under
+ * concurrent load, but that only affects the wording of the error, never the money. */
 async function remainingBalanceFor(orgId: string, noteId: string, amount: number): Promise<number> {
   const rows = await db
     .select({ amount: creditNoteUsages.amount })
@@ -113,24 +116,62 @@ async function remainingBalanceFor(orgId: string, noteId: string, amount: number
   return round2(amount - used);
 }
 
+/**
+ * The real balance guard (2026-09-24) — a single atomic `INSERT ... SELECT ... WHERE`
+ * statement: the usage row is only ever inserted when `credit_notes.amount - SUM(existing
+ * usages) >= amount` holds, evaluated by Postgres itself as part of the one statement, not
+ * read-then-checked-then-written from application code. This closes a real TOCTOU race that
+ * `remainingBalanceFor()` alone could not: two concurrent applications against the same note
+ * could previously both read a remaining balance that still looked sufficient before either
+ * had committed its own usage row, jointly overdrawing the note past its face value.
+ *
+ * Deliberately NOT wrapped together with the payment/journal-entry writes in one
+ * `db.batch()` — the neon-http driver has no real transactions and a batch cannot branch on
+ * an earlier statement's own result (see src/db/client.ts's own comment), so there is no way
+ * to make an entire batch conditionally no-op when this guard fails. This usage insert is
+ * therefore its own, separate atomic statement, executed BEFORE the payment/journal batch;
+ * only once it has actually inserted a row does the caller proceed to record the payment and
+ * post the journal entry. The one gap this leaves (vs. the old single all-or-nothing batch):
+ * if the guard succeeds but the follow-up batch then fails for an unrelated reason, the
+ * usage row would exist without its matching payment/journal entry — an operational rarity
+ * (a genuine mid-request failure between two back-to-back writes, not something a normal
+ * concurrent "Apply" click can trigger), and still strictly safer than the money-losing race
+ * this replaces. Returns whether a row was actually inserted.
+ */
+async function insertCreditNoteUsageIfBalanceAllows(
+  orgId: string,
+  noteId: string,
+  usageId: string,
+  kind: "Applied" | "Refunded",
+  orderId: string,
+  amount: number,
+  createdBy: string
+): Promise<boolean> {
+  const inserted = await db
+    .insert(creditNoteUsages)
+    .select(
+      sql`SELECT ${usageId}::text AS id, ${orgId}::text AS org_id, ${noteId}::text AS credit_note_id,
+                 ${kind}::credit_note_usage_kind AS kind, ${orderId}::text AS order_id,
+                 ${String(amount)}::numeric AS amount, ${createdBy}::text AS created_by, now() AS created_at
+          WHERE (SELECT ${creditNotes.amount} FROM ${creditNotes} WHERE ${creditNotes.id} = ${noteId} AND ${creditNotes.orgId} = ${orgId})
+              - COALESCE((SELECT SUM(${creditNoteUsages.amount}) FROM ${creditNoteUsages} WHERE ${creditNoteUsages.creditNoteId} = ${noteId} AND ${creditNoteUsages.orgId} = ${orgId}), 0)
+              >= ${String(amount)}::numeric`
+    )
+    .returning({ id: creditNoteUsages.id });
+  return inserted.length > 0;
+}
+
 // ---------------------------------------------------------------------------
 // Create — against exactly one Issued invoice
 // ---------------------------------------------------------------------------
 
 /**
  * REF-numbering, same "read the highest, add one" shape as quotations.ts's own
- * allocateQuotationNumber()/dispatches.ts's own gate-pass allocator — BUT deliberately
- * WITHOUT their retry-on-collision loop: those two are backed by a real
- * `unique(org_id, ...)` constraint, so a 23505 from a genuine race is something their retry
- * loop can actually catch. `credit_notes.creditNoteNo` has no such constraint (the schema
- * migration that added this table only indexed `customerId`/`invoiceId`, not `creditNoteNo`
- * itself) — writing a retry loop here would be dead code that can never fire, since nothing
- * in Postgres would ever reject the second insert. Judgment call: credit notes are a
- * low-volume, human-triggered action (nothing like quotations/dispatches' own bulk-import or
- * high-frequency paths), so the practical risk of two landing in the exact same instant is
- * low — but if this ever needs to be airtight, the real fix is a
- * `unique(org_id, credit_note_no)` constraint added in its own schema change, not a retry
- * loop with nothing backing it.
+ * allocateQuotationNumber()/dispatches.ts's own gate-pass allocator. `credit_notes` now
+ * carries a real `unique(org_id, credit_note_no)` constraint (added 2026-09-24, alongside
+ * the identical one on `debit_notes` — see src/db/schema/accounts.ts), so createCreditNote()
+ * below retries this on a genuine collision rather than trusting a single fresh read to
+ * never race, the same safety net quotations'/dispatches' own allocators rely on.
  */
 async function allocateCreditNoteNumber(orgId: string): Promise<string> {
   const existing = await db
@@ -146,6 +187,26 @@ async function allocateCreditNoteNumber(orgId: string): Promise<string> {
   }
   return `CN-${String(maxNumber + 1).padStart(4, "0")}`;
 }
+
+/** True for a Postgres unique-violation (23505) against the given constraint name — same
+ * helper quotations.ts's own insertQuotationRow() uses for the identical retry reason. */
+/** True for a Postgres unique-violation (23505) against the given constraint name — walks
+ * the error's own `cause` chain, since drizzle-orm wraps the real driver error (which
+ * carries `code`/`constraint`) inside a DrizzleQueryError whose own properties are only
+ * query/params/cause; checking `error.code` directly never matches. */
+function isUniqueViolation(error: unknown, constraintName: string): boolean {
+  for (let current: unknown = error; current; current = (current as { cause?: unknown } | null)?.cause) {
+    if (typeof current !== "object" || current === null) continue;
+    const e = current as { code?: unknown; constraint?: unknown; message?: unknown };
+    if (e.code === "23505") {
+      if (typeof e.constraint === "string") return e.constraint === constraintName;
+      return typeof e.message === "string" && e.message.includes(constraintName);
+    }
+  }
+  return false;
+}
+
+const CREDIT_NOTE_NO_CONSTRAINT = "credit_notes_org_id_credit_note_no_unique";
 
 export interface CreateCreditNoteInput {
   invoiceId: string;
@@ -212,50 +273,71 @@ export async function createCreditNote(
 
   const reason = (input.reason ?? "").trim();
   const creditNoteId = generateId("CRN");
-  const creditNoteNo = await allocateCreditNoteNumber(orgId);
   const journalEntryId = generateId("JE");
   const entryDate = new Date();
-
-  const creditNoteInsert = db.insert(creditNotes).values({
-    id: creditNoteId,
-    orgId,
-    invoiceId: input.invoiceId,
-    orderId: invoiceRow.orderId,
-    customerId: order.customerId,
-    creditNoteNo,
-    reason,
-    amount: String(amount),
-    gstAmount: String(gstAmount),
-    attachmentUrl: input.attachmentUrl?.trim() ?? "",
-    createdBy,
-  });
-
-  const journalEntryInsert = db.insert(journalEntries).values({
-    id: journalEntryId,
-    orgId,
-    entryDate,
-    description: `Credit Note ${creditNoteNo} — Invoice ${invoiceRow.id}${reason ? ` (${reason})` : ""}`,
-    sourceType: "CreditNote",
-    sourceId: creditNoteId,
-    createdBy,
-  });
 
   // amount = revenueDebit + gstAmount by construction, and amount > 0, so at least one of
   // these two lines is always non-zero — postJournalEntry()'s own "every line non-zero"
   // rule (which this function doesn't call, but mirrors) is satisfied without extra checks.
   const revenueDebit = round2(amount - gstAmount);
-  const lines: { entryId: string; orgId: string; lineNo: number; accountId: string; debit: string; credit: string }[] = [];
-  if (revenueDebit > 0) {
-    lines.push({ entryId: journalEntryId, orgId, lineNo: lines.length + 1, accountId: salesRevenue.id, debit: String(revenueDebit), credit: "0" });
-  }
-  if (gstAmount > 0) {
-    lines.push({ entryId: journalEntryId, orgId, lineNo: lines.length + 1, accountId: gstPayable.id, debit: String(gstAmount), credit: "0" });
-  }
-  lines.push({ entryId: journalEntryId, orgId, lineNo: lines.length + 1, accountId: customerCreditBalance.id, debit: "0", credit: String(amount) });
 
-  const journalLinesInsert = db.insert(journalLines).values(lines);
+  // Retry-on-collision, same shape as quotations.ts's own insertQuotationRow() and
+  // dispatch.ts's own confirmDispatch() — creditNoteId/journalEntryId are reused across
+  // attempts (safe: db.batch() is one atomic write, so a failed attempt commits nothing),
+  // only creditNoteNo (and the entry description text that embeds it) is re-allocated fresh
+  // each try.
+  let committed = false;
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    const creditNoteNo = await allocateCreditNoteNumber(orgId);
 
-  await db.batch([creditNoteInsert, journalEntryInsert, journalLinesInsert]);
+    const creditNoteInsert = db.insert(creditNotes).values({
+      id: creditNoteId,
+      orgId,
+      invoiceId: input.invoiceId,
+      orderId: invoiceRow.orderId,
+      customerId: order.customerId,
+      creditNoteNo,
+      reason,
+      amount: String(amount),
+      gstAmount: String(gstAmount),
+      attachmentUrl: input.attachmentUrl?.trim() ?? "",
+      createdBy,
+    });
+
+    const journalEntryInsert = db.insert(journalEntries).values({
+      id: journalEntryId,
+      orgId,
+      entryDate,
+      description: `Credit Note ${creditNoteNo} — Invoice ${invoiceRow.id}${reason ? ` (${reason})` : ""}`,
+      sourceType: "CreditNote",
+      sourceId: creditNoteId,
+      createdBy,
+    });
+
+    const lines: { entryId: string; orgId: string; lineNo: number; accountId: string; debit: string; credit: string }[] = [];
+    if (revenueDebit > 0) {
+      lines.push({ entryId: journalEntryId, orgId, lineNo: lines.length + 1, accountId: salesRevenue.id, debit: String(revenueDebit), credit: "0" });
+    }
+    if (gstAmount > 0) {
+      lines.push({ entryId: journalEntryId, orgId, lineNo: lines.length + 1, accountId: gstPayable.id, debit: String(gstAmount), credit: "0" });
+    }
+    lines.push({ entryId: journalEntryId, orgId, lineNo: lines.length + 1, accountId: customerCreditBalance.id, debit: "0", credit: String(amount) });
+
+    const journalLinesInsert = db.insert(journalLines).values(lines);
+
+    try {
+      await db.batch([creditNoteInsert, journalEntryInsert, journalLinesInsert]);
+      committed = true;
+      break;
+    } catch (error) {
+      if (!isUniqueViolation(error, CREDIT_NOTE_NO_CONSTRAINT) || attempt >= 4) throw error;
+      // Two credit notes allocated the same number in the same instant — re-read the true
+      // max (now including the row that just won the race) and try again.
+    }
+  }
+  if (!committed) {
+    throw new CreditNoteError("Credit Note number allocate nahi ho paya. Dobara try karein.");
+  }
 
   const row = await findById(creditNotes, orgId, creditNoteId);
   if (!row) throw new CreditNoteError("Credit Note ban gaya lekin load nahi ho paya.");
@@ -337,11 +419,6 @@ export async function applyCreditNoteToOrder(
   const noteRow = await findById(creditNotes, orgId, input.creditNoteId);
   if (!noteRow) throw new CreditNoteError("Credit Note nahi mila.");
 
-  const remaining = await remainingBalanceFor(orgId, noteRow.id, Number(noteRow.amount) || 0);
-  if (amount > remaining) {
-    throw new CreditNoteError(`Is Credit Note ka sirf ₹${remaining} balance bacha hai.`);
-  }
-
   const order = await getOrder(input.orderId);
   if (!order) throw new CreditNoteError("Order nahi mila.");
   if (order.customerId !== noteRow.customerId) {
@@ -362,15 +439,19 @@ export async function applyCreditNoteToOrder(
   const journalEntryId = generateId("JE");
   const entryDate = new Date();
 
-  const usageInsert = db.insert(creditNoteUsages).values({
-    id: usageId,
+  const inserted = await insertCreditNoteUsageIfBalanceAllows(
     orgId,
-    creditNoteId: noteRow.id,
-    kind: "Applied",
-    orderId: input.orderId,
-    amount: String(amount),
-    createdBy,
-  });
+    noteRow.id,
+    usageId,
+    "Applied",
+    input.orderId,
+    amount,
+    createdBy
+  );
+  if (!inserted) {
+    const remaining = await remainingBalanceFor(orgId, noteRow.id, Number(noteRow.amount) || 0);
+    throw new CreditNoteError(`Is Credit Note ka sirf ₹${remaining} balance bacha hai.`);
+  }
 
   const paymentInsert = db.insert(orderPayments).values({
     id: generateId("OPY"),
@@ -398,7 +479,7 @@ export async function applyCreditNoteToOrder(
     { entryId: journalEntryId, orgId, lineNo: 2, accountId: accountsReceivable.id, debit: "0", credit: String(amount) },
   ]);
 
-  await db.batch([usageInsert, paymentInsert, journalEntryInsert, journalLinesInsert]);
+  await db.batch([paymentInsert, journalEntryInsert, journalLinesInsert]);
 
   const updatedNote = await findById(creditNotes, orgId, noteRow.id);
   if (!updatedNote) throw new CreditNoteError("Apply ho gaya lekin Credit Note load nahi ho paya.");
@@ -429,11 +510,6 @@ export async function refundCreditNote(
   const noteRow = await findById(creditNotes, orgId, input.creditNoteId);
   if (!noteRow) throw new CreditNoteError("Credit Note nahi mila.");
 
-  const remaining = await remainingBalanceFor(orgId, noteRow.id, Number(noteRow.amount) || 0);
-  if (amount > remaining) {
-    throw new CreditNoteError(`Is Credit Note ka sirf ₹${remaining} balance bacha hai.`);
-  }
-
   const accounts = await listChartOfAccounts();
   const customerCreditBalance = accounts.find((a) => a.code === SYSTEM_ACCOUNT_CODES.CUSTOMER_CREDIT_BALANCE);
   const cashAccount = accounts.find((a) => a.code === SYSTEM_ACCOUNT_CODES.CASH_BANK);
@@ -445,14 +521,11 @@ export async function refundCreditNote(
   const journalEntryId = generateId("JE");
   const entryDate = new Date();
 
-  const usageInsert = db.insert(creditNoteUsages).values({
-    id: usageId,
-    orgId,
-    creditNoteId: noteRow.id,
-    kind: "Refunded",
-    amount: String(amount),
-    createdBy,
-  });
+  const inserted = await insertCreditNoteUsageIfBalanceAllows(orgId, noteRow.id, usageId, "Refunded", "", amount, createdBy);
+  if (!inserted) {
+    const remaining = await remainingBalanceFor(orgId, noteRow.id, Number(noteRow.amount) || 0);
+    throw new CreditNoteError(`Is Credit Note ka sirf ₹${remaining} balance bacha hai.`);
+  }
 
   const journalEntryInsert = db.insert(journalEntries).values({
     id: journalEntryId,
@@ -469,7 +542,7 @@ export async function refundCreditNote(
     { entryId: journalEntryId, orgId, lineNo: 2, accountId: cashAccount.id, debit: "0", credit: String(amount) },
   ]);
 
-  await db.batch([usageInsert, journalEntryInsert, journalLinesInsert]);
+  await db.batch([journalEntryInsert, journalLinesInsert]);
 
   const updatedNote = await findById(creditNotes, orgId, noteRow.id);
   if (!updatedNote) throw new CreditNoteError("Refund ho gaya lekin Credit Note load nahi ho paya.");

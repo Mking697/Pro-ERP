@@ -78,12 +78,20 @@ function rowToBill(row: BillRow, vendorName: string): BillRecord {
  * helper this codebase's other retry-on-collision call sites duplicate locally (ledger.ts,
  * accounts.ts, dispatch.ts's confirmDispatch, quotations.ts's insertQuotationRow) rather
  * than share. */
+/** True for a Postgres unique-violation (23505) against the given constraint name — walks
+ * the error's own `cause` chain, since drizzle-orm wraps the real driver error (which
+ * carries `code`/`constraint`) inside a DrizzleQueryError whose own properties are only
+ * query/params/cause; checking `error.code` directly never matches. */
 function isUniqueViolation(error: unknown, constraintName: string): boolean {
-  if (typeof error !== "object" || error === null) return false;
-  const e = error as { code?: unknown; constraint?: unknown; message?: unknown };
-  if (e.code !== "23505") return false;
-  if (typeof e.constraint === "string") return e.constraint === constraintName;
-  return typeof e.message === "string" && e.message.includes(constraintName);
+  for (let current: unknown = error; current; current = (current as { cause?: unknown } | null)?.cause) {
+    if (typeof current !== "object" || current === null) continue;
+    const e = current as { code?: unknown; constraint?: unknown; message?: unknown };
+    if (e.code === "23505") {
+      if (typeof e.constraint === "string") return e.constraint === constraintName;
+      return typeof e.message === "string" && e.message.includes(constraintName);
+    }
+  }
+  return false;
 }
 
 async function findBillByPoId(orgId: string, poId: string): Promise<BillRow | null> {

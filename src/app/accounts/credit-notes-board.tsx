@@ -56,7 +56,7 @@ export default function CreditNotesBoard() {
   return (
     <div className="space-y-4">
       {loading ? (
-        <TableSkeleton columns={7} label={t("Load ho raha hai")} />
+        <TableSkeleton columns={8} label={t("Load ho raha hai")} />
       ) : creditNotes.length === 0 ? (
         <EmptyState
           icon={<Undo2 />}
@@ -70,6 +70,7 @@ export default function CreditNotesBoard() {
               <TableRow>
                 <TableHead>{t("Credit Note No.")}</TableHead>
                 <TableHead>{t("Customer")}</TableHead>
+                <TableHead>{t("Order")}</TableHead>
                 <TableHead>Invoice</TableHead>
                 <TableHead>{t("Reason")}</TableHead>
                 <TableHead className="text-right">{t("Amount")}</TableHead>
@@ -86,6 +87,7 @@ export default function CreditNotesBoard() {
                 >
                   <TableCell className="font-medium">{cn.creditNoteNo || cn.id}</TableCell>
                   <TableCell>{cn.customerName || "—"}</TableCell>
+                  <TableCell className="text-muted-foreground">{cn.orderId || "—"}</TableCell>
                   <TableCell>{cn.invoiceId}</TableCell>
                   <TableCell>
                     <Badge variant="secondary">{t(REASON_LABEL[cn.reason] ?? (cn.reason || "Other"))}</Badge>

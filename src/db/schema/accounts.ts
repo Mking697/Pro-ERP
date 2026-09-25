@@ -15,11 +15,21 @@ import { orderPaymentModeEnum } from "./orders";
 
 /**
  * Accounts — Receivables leg, seeded from a real trigger (dispatch documentation for a
- * Sales Order) rather than designed in the abstract. This is deliberately narrow: one
- * `invoices` row per order, capturing the E-way Bill/Invoice/supporting documents and the
- * final billed value (base order value, plus freight when TMS's own shipment was
- * Self-arranged — see `src/db/schema/tms.ts`'s own header comment). No GL, no aging, no
- * multi-invoice-per-order split yet.
+ * Sales Order) rather than designed in the abstract. Captures the E-way Bill/Invoice/
+ * supporting documents and the final billed value (base order value, plus freight when
+ * TMS's own shipment was Self-arranged — see `src/db/schema/tms.ts`'s own header comment).
+ *
+ * **An order can have several invoices (multi-invoice split, added 2026-09-24)** — e.g. a
+ * large order billed in parts as it ships. There is deliberately NO
+ * `unique(org_id, order_id)` constraint here anymore (it existed 2026-09-22 through
+ * 2026-09-24, enforcing exactly one invoice per order — removed once the business need for
+ * a split was confirmed). What stops double-billing now is `src/lib/accounts/accounts.ts`'s
+ * own "remaining invoiceable value" check (`invoicedSoFar()`/`createInvoice()`) — the sum of
+ * `finalValue` across every existing invoice for an order (Draft AND Issued) can never
+ * exceed `getInvoiceSuggestion()`'s own total (order value + Self-arranged TMS freight).
+ * GST is prorated across an order's invoices proportionally to each invoice's own share of
+ * the order total, capped so the running sum can never exceed `orders.gstAmount` — see
+ * `createInvoice()`'s/`issueInvoice()`'s own comments for the exact formula.
  *
  * Reuses `order_payments` (src/db/schema/orders.ts) for what's actually been collected —
  * that table was already built during Order FMS specifically so a future Accounts module
@@ -47,14 +57,17 @@ export const invoices = pgTable(
   ewayBillAttachmentUrl: text("eway_bill_attachment_url").notNull().default(""),
   // Optional — a packing list, quality certificate, whatever else the customer needs.
   extraDocumentUrl: text("extra_document_url").notNull().default(""),
-  // Base order value + freight if applicable — what is actually billed, confirmed by the
-  // Doer. Deliberately separate from orders.orderValue (a snapshot Order FMS's own credit
-  // gate depends on staying stable) rather than overwriting it.
+  // This invoice's own share of the order's total billable value — confirmed by the Doer.
+  // Deliberately separate from orders.orderValue (a snapshot Order FMS's own credit gate
+  // depends on staying stable) rather than overwriting it. Several invoices for the same
+  // order each carry their own finalValue; their sum can never exceed the order's own
+  // invoiceable total — see this table's own header comment.
   finalValue: numeric("final_value").notNull().default("0"),
-  // GST portion of finalValue, snapshotted from orders.gstAmount at creation time (capped
-  // to finalValue) — lets issueInvoice() book GST collected to its own liability account
-  // (GST Payable) instead of folding it into Sales Revenue. "0" for an invoice created
-  // before this column existed, which keeps posting it the old (pre-GST-split) way.
+  // GST portion of finalValue, prorated from orders.gstAmount by this invoice's own share of
+  // the order total, capped so the running sum across every invoice for the order can never
+  // exceed orders.gstAmount — lets issueInvoice() book GST collected to its own liability
+  // account (GST Payable) instead of folding it into Sales Revenue. "0" for an invoice
+  // created before GST tracking existed, which keeps posting it the old way.
   gstAmount: numeric("gst_amount").notNull().default("0"),
   status: invoiceStatusEnum("status").notNull().default("Draft"),
   issuedBy: text("issued_by").notNull().default(""),
@@ -62,13 +75,7 @@ export const invoices = pgTable(
   createdBy: text("created_by").notNull().default(""),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (table) => [
-    // A real uniqueness constraint, not just an index — closes a check-then-insert race
-    // that could otherwise create two Draft invoices for the same order (found during the
-    // 2026-09-24 accounting review; matches the retry-on-collision pattern this codebase
-    // already uses for quotations.quotationNo/dispatches.gatePassNo).
-    unique("invoices_org_id_order_id_unique").on(table.orgId, table.orderId),
-  ]
+  (table) => [index("invoices_org_id_order_id_idx").on(table.orgId, table.orderId)]
 );
 
 /**
@@ -329,6 +336,11 @@ export const creditNotes = pgTable(
   (table) => [
     index("credit_notes_org_id_customer_id_idx").on(table.orgId, table.customerId),
     index("credit_notes_org_id_invoice_id_idx").on(table.orgId, table.invoiceId),
+    // Real uniqueness, added 2026-09-24 to back createCreditNote()'s own retry-on-collision
+    // loop — closes the gap allocateCreditNoteNumber()'s own header comment used to document
+    // (no constraint meant a retry loop would have been dead code; see
+    // src/lib/accounts/creditNotes.ts for the retry that now relies on this).
+    unique("credit_notes_org_id_credit_note_no_unique").on(table.orgId, table.creditNoteNo),
   ]
 );
 
@@ -397,7 +409,12 @@ export const debitNotes = pgTable(
     createdBy: text("created_by").notNull().default(""),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (table) => [index("debit_notes_org_id_vendor_id_idx").on(table.orgId, table.vendorId)]
+  (table) => [
+    index("debit_notes_org_id_vendor_id_idx").on(table.orgId, table.vendorId),
+    // Real uniqueness, added 2026-09-24 — same reasoning as
+    // credit_notes_org_id_credit_note_no_unique above, mirrored for the Payables side.
+    unique("debit_notes_org_id_debit_note_no_unique").on(table.orgId, table.debitNoteNo),
+  ]
 );
 
 // DebitNoteUsageRecord.Kind — Applied draws the claim down against a real bill_payments row

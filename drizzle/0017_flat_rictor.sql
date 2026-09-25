@@ -1,0 +1,2 @@
+ALTER TABLE "credit_notes" ADD CONSTRAINT "credit_notes_org_id_credit_note_no_unique" UNIQUE("org_id","credit_note_no");--> statement-breakpoint
+ALTER TABLE "debit_notes" ADD CONSTRAINT "debit_notes_org_id_debit_note_no_unique" UNIQUE("org_id","debit_note_no");

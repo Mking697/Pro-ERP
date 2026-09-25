@@ -12,6 +12,8 @@ import ExpensesBoard from "./expenses-board";
 import PettyCashBoard from "./petty-cash-board";
 import CreditNotesBoard from "./credit-notes-board";
 import DebitNotesBoard from "./debit-notes-board";
+import AgingBoard from "./aging-board";
+import GstReportBoard from "./gst-report-board";
 
 export default async function AccountsPage() {
   const t = await getT();
@@ -39,6 +41,8 @@ export default async function AccountsPage() {
             <TabsTrigger value="petty-cash">{t("Petty Cash")}</TabsTrigger>
             <TabsTrigger value="credit-notes">{t("Credit Notes")}</TabsTrigger>
             <TabsTrigger value="debit-notes">{t("Debit Notes")}</TabsTrigger>
+            <TabsTrigger value="aging">{t("Aging")}</TabsTrigger>
+            <TabsTrigger value="gst-report">{t("GST Report")}</TabsTrigger>
             <TabsTrigger value="ledger">{t("Ledger")}</TabsTrigger>
           </TabsList>
           <TabsContent value="receivables" className="mt-4">
@@ -58,6 +62,12 @@ export default async function AccountsPage() {
           </TabsContent>
           <TabsContent value="debit-notes" className="mt-4">
             <DebitNotesBoard />
+          </TabsContent>
+          <TabsContent value="aging" className="mt-4">
+            <AgingBoard />
+          </TabsContent>
+          <TabsContent value="gst-report" className="mt-4">
+            <GstReportBoard />
           </TabsContent>
           <TabsContent value="ledger" className="mt-4">
             <LedgerBoard />

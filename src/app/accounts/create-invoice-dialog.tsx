@@ -107,8 +107,15 @@ export default function CreateInvoiceDialog({
         <div className="max-h-[70vh] space-y-4 overflow-y-auto pr-1">
           {suggestion && suggestion.freightTotal > 0 && (
             <p className="text-xs text-muted-foreground">
-              {t("Suggested Value")} = {t("Order Value")} ₹{suggestion.orderValue} + {t("TMS Freight")} ₹
-              {suggestion.freightTotal} = ₹{suggestion.suggestedFinalValue}
+              {t("Order Value")} ₹{suggestion.orderValue} + {t("TMS Freight")} ₹{suggestion.freightTotal} ={" "}
+              {t("Total Invoiceable Value")} ₹{suggestion.totalInvoiceable}
+            </p>
+          )}
+          {suggestion && suggestion.invoiceCount > 0 && (
+            <p className="text-xs text-muted-foreground">
+              {t("Is order par pehle se")} {suggestion.invoiceCount} {t("invoice(s) mein")} ₹
+              {suggestion.alreadyInvoiced} {t("bill ho chuka hai.")} {t("Bachi hui value ke liye Suggested")}: ₹
+              {suggestion.suggestedFinalValue}
             </p>
           )}
 
