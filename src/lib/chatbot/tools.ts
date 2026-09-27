@@ -1,8 +1,9 @@
 import type { SessionPayload } from "@/lib/auth/session";
 import type { ModuleAccessKey } from "@/lib/moduleAccess";
 import { listTasks } from "@/lib/tasks";
+import { listUsers } from "@/lib/auth/users";
 import { computeCombinedMisSummary, computeMisBreakdown, isOverdue } from "@/lib/mis";
-import { listFmsRunsForUser, listMyPendingFmsSteps } from "@/lib/fms/engine";
+import { listAllFmsRuns, listFmsRunsForUser, listMyPendingFmsSteps } from "@/lib/fms/engine";
 import { getInventorySnapshot, getItemDetail, itemsNeedingReorder } from "@/lib/inventory/service";
 import { listOrders, type OrderStatus } from "@/lib/orders/orders";
 import { guideFor } from "@/lib/guide";
@@ -254,7 +255,7 @@ export const CHAT_TOOLS: ChatTool[] = [
       // itself rejecting an unrecognised value (caught below), never a silently-wrong scope.
       const orders = await listOrders(rawStatus as OrderStatus | undefined).catch(() => []);
       if (orders.length === 0) {
-        return notFound(status ? `No orders found with status "${status}".` : "No orders found.");
+        return notFound(rawStatus ? `No orders found with status "${rawStatus}".` : "No orders found.");
       }
       return found(
         orders.slice(0, 20).map((o) => ({
@@ -263,6 +264,42 @@ export const CHAT_TOOLS: ChatTool[] = [
           status: o.status,
           orderValue: o.orderValue,
           dispatchCommitDate: o.dispatchCommitDate,
+        }))
+      );
+    },
+  },
+  {
+    name: "get_team_performance",
+    description:
+      "Lists every active user's MIS (performance) score and On Time/Delay/Not Done counts, worst score first — the same data the Team Performance page shows. Use this for questions about OTHER people's tasks/scores, not the asking user's own (use get_my_mis_score for that instead).",
+    moduleKey: "PERFORMANCE_VIEW",
+    parameters: NO_PARAMS,
+    handler: async () => {
+      const [users, allTasks, fmsRuns] = await Promise.all([
+        listUsers(),
+        listTasks(),
+        listAllFmsRuns(),
+      ]);
+      const rows = users
+        .filter((u) => u.Status === "Active")
+        .map((u) => {
+          const summary = computeCombinedMisSummary(
+            allTasks.filter((t) => t.Assigned_To === u.User_ID),
+            fmsRuns.filter((r) => r.Assigned_To === u.User_ID)
+          );
+          return { user: u, summary };
+        })
+        .sort((a, b) => (b.summary.score ?? -1) - (a.summary.score ?? -1));
+      if (rows.length === 0) return notFound("No active users found.");
+      return found(
+        rows.map(({ user, summary }) => ({
+          name: user.Full_Name,
+          role: user.Role,
+          scorePercent: summary.score,
+          onTime: summary.onTime,
+          delayDone: summary.delay,
+          notDone: summary.notDone,
+          totalEvaluated: summary.totalEvaluated,
         }))
       );
     },
@@ -296,6 +333,7 @@ const SUGGESTIONS: Record<string, string> = {
   get_item_stock: "What's the free stock for SKU <your item's SKU>?",
   list_low_stock_items: "Which items are currently low on stock?",
   list_orders_by_status: "List orders that are in Payment_Review.",
+  get_team_performance: "How is the whole team scoring right now?",
 };
 
 export function suggestedQuestions(session: SessionPayload): string[] {

@@ -93,6 +93,21 @@ async function main() {
         moduleAccess: ["AI_CHATBOT"],
       });
 
+      // A "manager" user: AI_CHATBOT plus PERFORMANCE_VIEW — proves get_team_performance
+      // (added 2026-09-28, closing a real reported gap: an Admin/PERFORMANCE_VIEW holder
+      // asking about OTHER doers' tasks/MIS scores used to get the generic decline, since no
+      // tool existed for it at all) is offered/withheld correctly and returns real data.
+      const managerUser = await createUser({
+        fullName: "Meera Manager",
+        email: `meera-${stamp}@example.com`,
+        password: "Password123!",
+        role: "Staff",
+        department: "Ops",
+        phoneNumber: "9990000003",
+        createdBy: "SYSTEM",
+        moduleAccess: ["AI_CHATBOT", "PERFORMANCE_VIEW"],
+      });
+
       const powerSession = {
         userId: powerUser.User_ID,
         orgId: org.id,
@@ -109,6 +124,14 @@ async function main() {
         role: narrowUser.Role,
         access: ["AI_CHATBOT"],
       };
+      const managerSession = {
+        userId: managerUser.User_ID,
+        orgId: org.id,
+        email: managerUser.Email,
+        fullName: managerUser.Full_Name,
+        role: managerUser.Role,
+        access: ["AI_CHATBOT", "PERFORMANCE_VIEW"],
+      };
 
       // --- Layer 1: module scoping is enforced by omission, not just refusal -----------
       const powerTools = getAvailableTools(powerSession).map((t) => t.name);
@@ -120,6 +143,11 @@ async function main() {
       assert(narrowTools.includes("get_my_pending_tasks"), "narrow user should still get always-available tools");
       assert(findTool(narrowSession, "get_item_stock") === null, "findTool must refuse a module-gated tool for a narrow session even by direct name");
       ok("Module-scoped tools are present/absent exactly per grant (INVENTORY_VIEW/ORDER_FMS)");
+
+      const managerTools = getAvailableTools(managerSession).map((t) => t.name);
+      assert(managerTools.includes("get_team_performance"), "PERFORMANCE_VIEW holder should be offered get_team_performance");
+      assert(!narrowTools.includes("get_team_performance"), "a user without PERFORMANCE_VIEW must NOT be offered get_team_performance");
+      ok("get_team_performance is present/absent exactly per PERFORMANCE_VIEW grant");
 
       // --- Scenario 1: no Gemini key configured -> "not connected", nothing persisted --
       const sessionForNarrow1 = await createChatSession(narrowUser.User_ID);
@@ -147,6 +175,11 @@ async function main() {
       const realFetch = globalThis.fetch;
       let queue: FetchQueueEntry[] = [];
       let fetchCallCount = 0;
+      // 2026-09-28: when > 0, the next N calls return the real HTTP 503 "high demand" shape
+      // production actually hit (see CLAUDE.md's dated bullet) instead of popping the queue
+      // — proves callGemini()'s own retry-with-backoff actually recovers, not just that the
+      // error is logged.
+      let overloadedResponsesRemaining = 0;
       let sessionGrounded: { id: string };
       globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
         const url = typeof input === "string" ? input : input.toString();
@@ -154,6 +187,15 @@ async function main() {
           return realFetch(input, init);
         }
         fetchCallCount++;
+        if (overloadedResponsesRemaining > 0) {
+          overloadedResponsesRemaining--;
+          return new Response(
+            JSON.stringify({
+              error: { message: "This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try again later." },
+            }),
+            { status: 503, headers: { "Content-Type": "application/json" } }
+          );
+        }
         const entry = queue.shift();
         if (!entry) throw new Error("Gemini stub queue exhausted — test scenario supplied too few canned turns.");
         return new Response(JSON.stringify(geminiResponseBody(entry)), {
@@ -220,6 +262,33 @@ async function main() {
         assert(!forbidden.groundedInTool, "a call to an ungranted tool must never be treated as grounded");
         assert(!forbidden.reply.includes("Here is the stock"), "Gemini's own text after a refused tool call must never reach the user");
         ok("A tool call outside this session's grants is refused server-side, not just left undeclared");
+
+        // --- Scenario 7: get_team_performance returns real per-user data ---------------
+        queue = [
+          { text: "", functionCalls: [{ name: "get_team_performance", args: {} }] },
+          { text: "Nikhil Narrow currently has the lowest score on the team.", functionCalls: [] },
+        ];
+        const sessionTeam = await createChatSession(managerUser.User_ID);
+        const team = await answerChatMessage(managerSession, sessionTeam.id, "how is the whole team scoring?");
+        assert(team.kind === "answered", "expected an answered outcome");
+        assert(team.groundedInTool, "a real get_team_performance call must be grounded");
+        assert(team.toolsCalled.includes("get_team_performance"), "toolsCalled should list get_team_performance");
+        assert(team.reply.includes("Nikhil Narrow"), "the real per-user name from the tool's own data should appear in the answer");
+        ok("get_team_performance returns real per-doer MIS data to a PERFORMANCE_VIEW holder");
+
+        // --- Scenario 8: Gemini overloaded (real HTTP 503 shape) then recovers ----------
+        overloadedResponsesRemaining = 1; // first attempt 503s, retry succeeds
+        queue = [
+          { text: "", functionCalls: [{ name: "get_my_pending_tasks", args: {} }] },
+          { text: "You have one pending task: Cascade-test task.", functionCalls: [] },
+        ];
+        const callsBefore = fetchCallCount;
+        const sessionRetry = await createChatSession(narrowUser.User_ID);
+        const retried = await answerChatMessage(narrowSession, sessionRetry.id, "what tasks do I have pending?");
+        assert(retried.kind === "answered", "expected an answered outcome despite the first attempt 503ing");
+        assert(retried.groundedInTool, "the retried call should still ground a real answer");
+        assert(fetchCallCount === callsBefore + 3, `expected exactly 3 fetch calls (1 failed + 2 succeeded), got ${fetchCallCount - callsBefore}`);
+        ok("callGemini() retries a real HTTP 503 'high demand' response and recovers automatically");
       } finally {
         globalThis.fetch = realFetch;
       }

@@ -72,15 +72,21 @@ function toFunctionDeclarations(tools: ChatTool[]) {
 
 export class GeminiCallError extends Error {}
 
-/**
- * One round-trip to Gemini: given the conversation so far and the tools this session is
- * currently entitled to, returns whatever Gemini said (text and/or function calls).
- *
- * Never throws for an ordinary API-level failure (bad key, quota, network) — those are
- * surfaced as a `GeminiCallError` so the orchestrator can log it and answer the user
- * gracefully instead of the whole request 500ing.
- */
-export async function callGemini(
+/** Gemini returns HTTP 503 with a message like "This model is currently experiencing high
+ * demand..." when the model itself is momentarily overloaded — a real, observed-in-production
+ * condition (see CLAUDE.md's 2026-09-28 dated bullet), not a bug in this app, and genuinely
+ * transient: a short retry clears it far more often than not. */
+function isRetryableOverload(status: number, message: string): boolean {
+  return status === 503 || /overloaded|high demand/i.test(message);
+}
+
+const RETRY_DELAYS_MS = [500, 1500];
+
+async function sleep(ms: number): Promise<void> {
+  await new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function doOneCall(
   apiKey: string,
   systemInstruction: string,
   contents: GeminiContent[],
@@ -112,8 +118,10 @@ export async function callGemini(
 
   const json = await res.json().catch(() => null);
   if (!res.ok) {
-    const apiMessage = (json as { error?: { message?: string } } | null)?.error?.message;
-    throw new GeminiCallError(apiMessage || `Gemini HTTP ${res.status}`);
+    const apiMessage = (json as { error?: { message?: string } } | null)?.error?.message ?? "";
+    const error = new GeminiCallError(apiMessage || `Gemini HTTP ${res.status}`);
+    (error as GeminiCallError & { status: number }).status = res.status;
+    throw error;
   }
 
   const candidate = (json as { candidates?: Array<{ content?: { parts?: unknown[] } }> } | null)
@@ -131,6 +139,43 @@ export async function callGemini(
   }
 
   return { text, functionCalls };
+}
+
+/**
+ * One round-trip to Gemini: given the conversation so far and the tools this session is
+ * currently entitled to, returns whatever Gemini said (text and/or function calls).
+ *
+ * Retries up to twice, with a short backoff, specifically when the model reports itself
+ * momentarily overloaded (see `isRetryableOverload` above) — every other failure (bad key,
+ * a real quota exhaustion, a malformed request) fails immediately, since retrying those
+ * would just waste the same daily message cap for the same guaranteed failure.
+ *
+ * Never throws for an ordinary API-level failure (bad key, quota, network) — those are
+ * surfaced as a `GeminiCallError` so the orchestrator can log it and answer the user
+ * gracefully instead of the whole request 500ing.
+ */
+export async function callGemini(
+  apiKey: string,
+  systemInstruction: string,
+  contents: GeminiContent[],
+  tools: ChatTool[]
+): Promise<GeminiTurn> {
+  let lastError: unknown;
+  for (let attempt = 0; attempt <= RETRY_DELAYS_MS.length; attempt++) {
+    try {
+      return await doOneCall(apiKey, systemInstruction, contents, tools);
+    } catch (err) {
+      lastError = err;
+      const status = err instanceof GeminiCallError ? (err as GeminiCallError & { status?: number }).status ?? 0 : 0;
+      const message = err instanceof Error ? err.message : "";
+      const canRetry = attempt < RETRY_DELAYS_MS.length && isRetryableOverload(status, message);
+      if (!canRetry) throw err;
+      await sleep(RETRY_DELAYS_MS[attempt]);
+    }
+  }
+  // Unreachable — the loop above always either returns or throws — but keeps tsc happy
+  // about every code path returning a value.
+  throw lastError instanceof Error ? lastError : new GeminiCallError("Gemini request failed.");
 }
 
 /** A minimal, cheap call used only to validate a pasted key actually works — Settings'
