@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
-import type { NextRequest } from "next/server";
+import type { NextFetchEvent, NextRequest } from "next/server";
 import { verifySession, SESSION_COOKIE } from "@/lib/auth/session";
+import { recordTenantRequest } from "@/lib/platform/usageMetrics";
 
 // Reachable without a session.
 //
@@ -18,7 +19,7 @@ const PUBLIC_PATHS = ["/login", "/signup", "/share"];
  */
 const AUTH_PATHS = ["/login", "/signup"];
 
-export async function proxy(request: NextRequest) {
+export async function proxy(request: NextRequest, event: NextFetchEvent) {
   const { pathname } = request.nextUrl;
 
   // Routes that authenticate themselves and must not be bounced to /login.
@@ -54,6 +55,13 @@ export async function proxy(request: NextRequest) {
 
   if (session && matches(AUTH_PATHS)) {
     return NextResponse.redirect(new URL("/dashboard", request.url));
+  }
+
+  // Per-tenant request-volume share (src/lib/platform/usageMetrics.ts) — best-effort and
+  // non-blocking (waitUntil extends the Proxy's lifetime just long enough for the write to
+  // land, without holding up the actual response).
+  if (session) {
+    event.waitUntil(recordTenantRequest(session.orgId));
   }
 
   return NextResponse.next();

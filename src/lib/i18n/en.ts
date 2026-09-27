@@ -298,6 +298,15 @@ export const EN: Record<string, string> = {
   "Kisi bhi organization me hui uncaught server error yahan dikhti hai — koi bhi cron job ki nakami ya WhatsApp send fail bhi. Sirf padhne ke liye.":
     "Any uncaught server error across every organization shows up here — including a cron job's own failure or a failed WhatsApp send. Read only.",
   "Error logs load nahi ho paye.": "Could not load error logs.",
+  "Per-Org Usage": "Per-Org Usage",
+  "Har organization ka aaj ka request count aur approximate storage share — Neon khud kisi tenant ko nahi jaanta, ye ek approximation hai, asli bill nahi.":
+    "Each organization's request count and approximate storage share for today — Neon itself has no concept of a tenant, so this is an approximation, not a real bill.",
+  "Usage metrics load nahi ho paye.": "Could not load usage metrics.",
+  "Aaj ke liye abhi tak koi usage data nahi hai — daily cron chalne ke baad yahan dikhega.":
+    "No usage data for today yet — this fills in once the daily cron runs.",
+  "Requests (aaj)": "Requests (today)",
+  "Rows": "Rows",
+  "Storage (approx.)": "Storage (approx.)",
   "Abhi tak koi server error record nahi hua hai.": "No server errors have been recorded yet.",
   "Waqt": "Time",
   "Organization": "Organization",

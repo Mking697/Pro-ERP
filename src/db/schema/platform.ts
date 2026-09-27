@@ -1,4 +1,4 @@
-import { index, integer, pgEnum, pgTable, text, timestamp } from "drizzle-orm/pg-core";
+import { date, index, integer, numeric, pgEnum, pgTable, text, timestamp } from "drizzle-orm/pg-core";
 
 /**
  * The platform registry — mirrors src/lib/platform/registry.ts's two Google Sheets tabs
@@ -132,3 +132,40 @@ export const errorLogs = pgTable("error_logs", {
   stack: text("stack").notNull().default(""),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
+
+/**
+ * One row per (org, IST calendar day) — the per-tenant usage-share measurement the shared
+ * schema has no native way to bill: Neon bills this whole database's total compute-hours
+ * and storage-GB, with no concept of "tenant." `requestCount` is incremented best-effort
+ * from `src/proxy.ts` on every authenticated request; `storageRowCount`/
+ * `storageBytesEstimate` are recomputed once daily by the cron job in
+ * `src/lib/platform/usageMetrics.ts` (a single cross-org aggregation, not one query per org).
+ * Read-only on `/platform` for the Platform Admin.
+ *
+ * Unlike `errorLogs`/`rateLimitHits`, this one DOES carry a real FK to `organizations` and
+ * IS included in `deleteOrganization()`'s cascade: those two are audit/incident history
+ * that deliberately outlives the org it happened to, but a usage-share row only answers
+ * "how much is this *currently active* org costing right now" — a question with no meaning
+ * once the org and all its data are gone, and an orphaned row here would let a platform-wide
+ * cost sum quietly double-count or misattribute a deleted tenant. Don't "fix" this into
+ * matching `errorLogs`' exclusion — that would be the actual regression.
+ */
+export const tenantUsageMetrics = pgTable(
+  "tenant_usage_metrics",
+  {
+    // `${orgId}:${metricDate}` — same upsert-by-single-column-id shape as rateLimitHits.
+    id: text("id").primaryKey(),
+    orgId: text("org_id")
+      .notNull()
+      .references(() => organizations.id),
+    metricDate: date("metric_date").notNull(),
+    requestCount: integer("request_count").notNull().default(0),
+    storageRowCount: integer("storage_row_count").notNull().default(0),
+    storageBytesEstimate: numeric("storage_bytes_estimate").notNull().default("0"),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("tenant_usage_metrics_org_id_idx").on(table.orgId),
+    index("tenant_usage_metrics_metric_date_idx").on(table.metricDate),
+  ]
+);

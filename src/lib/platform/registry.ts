@@ -54,6 +54,7 @@ import {
   settings,
   stockLedger,
   tasks,
+  tenantUsageMetrics,
   tmsActivities,
   tmsShipmentItems,
   tmsShipments,
@@ -243,6 +244,7 @@ export async function deleteOrganization(orgId: string): Promise<void> {
     db.delete(payrollRuns).where(eq(payrollRuns.orgId, orgId)),
     db.delete(salaryStructures).where(eq(salaryStructures.orgId, orgId)),
     db.delete(users).where(eq(users.orgId, orgId)),
+    db.delete(tenantUsageMetrics).where(eq(tenantUsageMetrics.orgId, orgId)),
     db.delete(organizations).where(eq(organizations.id, orgId)),
   ]);
 }

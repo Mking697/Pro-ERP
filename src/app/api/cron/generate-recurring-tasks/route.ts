@@ -3,6 +3,7 @@ import { requireRole } from "@/lib/auth/guard";
 import { generateDueRecurringOccurrences } from "@/lib/recurringGenerator";
 import { processLeaveTransitions } from "@/lib/leave/reassignment";
 import { forEachActiveOrganization } from "@/lib/platform/runner";
+import { computeTenantUsageMetrics } from "@/lib/platform/usageMetrics";
 import { logError } from "@/lib/errorLog";
 
 // Walking every tenant sequentially takes longer than a single-org run ever did.
@@ -40,7 +41,29 @@ export async function POST(request: Request) {
         });
       }
     }
-    return NextResponse.json({ scope: "all-organizations", organizations });
+
+    // Its own cross-org aggregation (computed once, not once per org — see the doc comment
+    // on computeTenantUsageMetrics()), so this runs separately from runDailyJobs() above
+    // rather than nested inside forEachActiveOrganization's own per-org loop.
+    const usage = await computeTenantUsageMetrics().catch(async (error) => {
+      await logError({
+        orgId: "",
+        routePath: "cron:tenant-usage-metrics",
+        message: error instanceof Error ? error.message : String(error),
+      });
+      return [];
+    });
+    for (const org of usage) {
+      if (!org.ok) {
+        await logError({
+          orgId: org.orgId,
+          routePath: "cron:tenant-usage-metrics",
+          message: org.error ?? "Unknown error",
+        });
+      }
+    }
+
+    return NextResponse.json({ scope: "all-organizations", organizations, usage });
   }
 
   // A manual trigger runs only for the admin's own organization — their session is what
