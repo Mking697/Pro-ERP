@@ -1664,4 +1664,82 @@ export const EN: Record<string, string> = {
   "Input GST — Purchase Bills": "Input GST — Purchase Bills",
   "Bill No.": "Bill No.",
   "Bill Value": "Bill Value",
+
+  // --- AI Chatbot -------------------------------------------------------------------
+  "AI Chatbot settings load nahi ho payi.": "Could not load AI Chatbot settings.",
+  "AI Chatbot settings save ho gayi.": "AI Chatbot settings saved.",
+  "Gemini key kaam kar rahi hai.": "The Gemini key is working.",
+  "AI Chatbot settings load ho rahi hain": "Loading AI Chatbot settings",
+  "Connected": "Connected",
+  "Not connected": "Not connected",
+  "Google AI Studio se apna Gemini API key banayein aur yahan paste karein — is se aapke users apne Pro ERP data ke baare me AI Assistant se sawal pooch sakte hain. Sirf wo users jinhe 'AI Chatbot' module access diya gaya hai, chatbot use kar sakte hain. Chatbot sirf padhne (read-only) tak seemit hai — kisi bhi record ko badal nahi sakta.":
+    "Create your own Gemini API key at Google AI Studio and paste it here — this lets your users ask the AI Assistant questions about their own Pro ERP data. Only users granted the 'AI Chatbot' module access can use it. The chatbot is strictly read-only — it can never change any record.",
+  "Guide me 'AI Chatbot' chapter me Google AI Studio se key banane ka poora tareeka hai.":
+    "The Guide's 'AI Chatbot' chapter has the full walkthrough for creating a key at Google AI Studio.",
+  "Poore organization ke saare users milakar ek din me itne se zyada chatbot messages nahi bhej sakte — ek user ka bhi Gemini quota poora khatam na kar de, isliye.":
+    "Every user in the organization put together cannot send more chatbot messages than this in one day — so a single user can't use up the whole Gemini quota alone.",
+  "Testing...": "Testing...",
+  "Test Key": "Test Key",
+  "AI Assistant load nahi ho paya.": "Could not load the AI Assistant.",
+  "Chat load nahi ho paya.": "Could not load the chat.",
+  "Aaj ke liye AI Assistant ki message limit poori ho gayi — kal phir try karein.":
+    "Today's AI Assistant message limit has been reached — please try again tomorrow.",
+  "Kuch galat ho gaya — dobara try karein.": "Something went wrong — please try again.",
+  "AI Assistant abhi connect nahi hai": "AI Assistant isn't connected yet",
+  "Apne Admin se kahein ke Settings → AI Chatbot me apna Gemini API key daal dein — us ke baad hi ye assistant kaam karega.":
+    "Ask your Admin to add a Gemini API key under Settings → AI Chatbot — this assistant will only work once that's done.",
+  "New Chat": "New Chat",
+  "Abhi tak koi chat nahi hai.": "No chats yet.",
+  "Nayi chat": "New chat",
+  "Apne tasks, MIS score, ya FMS steps ke baare me kuch bhi poochein.":
+    "Ask anything about your tasks, MIS score, or FMS steps.",
+  "Apna sawal likhein...": "Type your question...",
+  "Bhejein": "Send",
+  "AI Assistant": "AI Assistant",
+  "Apne Pro ERP data ke baare me sawal poochein — sirf padhne ke liye, koi bhi record ye khud badal nahi sakta.":
+    "Ask questions about your own Pro ERP data — strictly read-only, it never changes any record.",
+  "Chatbot audit log load nahi ho paya.": "Could not load the chatbot audit log.",
+  "Abhi tak koi chatbot query nahi hui hai.": "No chatbot queries yet.",
+  "Sawal": "Question",
+  "Tools": "Tools",
+  "Error": "Error",
+  "Answered": "Answered",
+  "Declined / Not found": "Declined / Not found",
+  "Chatbot Audit": "Chatbot Audit",
+  "Kisi bhi organization me AI Chatbot se pooche gaye har sawal ka record — kaunse tools call hue aur jawab tool-grounded tha ya nahi. Sirf padhne ke liye.":
+    "A record of every question asked of the AI Chatbot across every organization — which tools were called and whether the answer was tool-grounded. Read-only.",
+
+  // --- accounts: Credit Risk (per-customer credit-limit-vs-aging cross-check) -------------
+  "Credit Risk": "Credit Risk",
+  "Credit risk report load nahi ho paya.": "Could not load the credit risk report.",
+  "Sirf un customers ki list jinko credit diya gaya hai — Aging ke data se, koi naya calculation nahi. Ye sirf report hai, khud koi hold ya notify nahi karta.":
+    "Only customers who have been extended credit — built from Aging's own data, no new calculation. This is a report only, it does not hold or notify anyone on its own.",
+  "Credit Customers": "Credit Customers",
+  "At Risk": "At Risk",
+  "Koi bhi customer ko credit nahi diya gaya hai": "No customer has been extended credit",
+  "Credit Limit set karein Parties me — tabhi ye cross-check kaam karega.":
+    "Set a Credit Limit in Parties — only then will this cross-check have anything to show.",
+  "Credit Limit": "Credit Limit",
+  "90+ Din": "90+ Days",
+  "Over Limit": "Over Limit",
+  "90+ Din Purana": "90+ Days Old",
+  "Theek Hai": "OK",
+
+  // --- plan tiers + trial (root error boundary, admin Settings plan card) ---------------
+  "Trial khatm ho gaya": "Trial ended",
+  "Aapke organization ka 14-din trial khatm ho chuka hai. Jaari rakhne ke liye apne Admin se plan upgrade karwayein.":
+    "Your organization's 14-day trial has ended. Ask your Admin to upgrade the plan to keep using Pro ERP.",
+  "Organization suspended hai": "Organization suspended",
+  "Aapka organization abhi suspended hai. Madad ke liye apne Admin ya Pro ERP se sampark karein.":
+    "Your organization is currently suspended. Contact your Admin or Pro ERP for help.",
+  "Kuch galat ho gaya": "Something went wrong",
+  "Ek anjaan error aa gaya. Dobara koshish karein ya thodi der baad wapas aayein.":
+    "An unexpected error occurred. Try again or come back in a little while.",
+  "Dobara koshish karein": "Try again",
+  "Plan details load nahi ho paye.": "Could not load plan details.",
+  "Aapke organization ka current plan.": "Your organization's current plan.",
+  "Plan load ho raha hai": "Loading plan",
+  "din baaki": "days left",
+  "Plan badalne ke liye Pro ERP ke Platform Admin se sampark karein.":
+    "Contact Pro ERP's Platform Admin to change the plan.",
 };

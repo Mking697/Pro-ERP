@@ -5,6 +5,9 @@ import {
   bills,
   bom,
   chartOfAccounts,
+  chatAuditLog,
+  chatMessages,
+  chatSessions,
   creditNotes,
   creditNoteUsages,
   customers,
@@ -243,6 +246,9 @@ export async function deleteOrganization(orgId: string): Promise<void> {
     db.delete(payslips).where(eq(payslips.orgId, orgId)),
     db.delete(payrollRuns).where(eq(payrollRuns.orgId, orgId)),
     db.delete(salaryStructures).where(eq(salaryStructures.orgId, orgId)),
+    db.delete(chatAuditLog).where(eq(chatAuditLog.orgId, orgId)),
+    db.delete(chatMessages).where(eq(chatMessages.orgId, orgId)),
+    db.delete(chatSessions).where(eq(chatSessions.orgId, orgId)),
     db.delete(users).where(eq(users.orgId, orgId)),
     db.delete(tenantUsageMetrics).where(eq(tenantUsageMetrics.orgId, orgId)),
     db.delete(organizations).where(eq(organizations.id, orgId)),
@@ -268,6 +274,10 @@ export async function createOrganization(
     slug = `${base}-${n++}`;
   }
 
+  // Every new org starts on a 14-day Trial (full feature set — see planLimits.ts) rather
+  // than a permanent free tier, so every real signup is meant to convert to a paid plan.
+  const trialEndsAt = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000);
+
   const [org] = await db
     .insert(organizations)
     .values({
@@ -275,7 +285,8 @@ export async function createOrganization(
       orgName: input.orgName.trim(),
       slug,
       ownerEmail: input.ownerEmail.trim().toLowerCase(),
-      plan: "Free",
+      plan: "Trial",
+      trialEndsAt,
       status: "Active",
     })
     .returning();

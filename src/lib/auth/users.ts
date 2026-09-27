@@ -165,9 +165,10 @@ export async function createUser(input: CreateUserInput): Promise<SheetUser> {
   // Usage-limit gate (src/lib/platform/planLimits.ts) — the only billing enforcement this
   // codebase has (no payment gateway; a Platform Admin changes `plan` by hand from
   // /platform). Counts every Active row, mirroring the same "Active users" figure
-  // /api/platform/organizations already shows.
+  // /api/platform/organizations already shows. A Trial org (or an org with no plan on
+  // record) gets `null` here — unlimited, matching Trial's own "full feature set" promise.
   const org = await getOrganization(orgId);
-  const limit = getPlanLimit(org?.plan ?? "Free").maxActiveUsers;
+  const limit = getPlanLimit(org?.plan ?? "Trial").maxActiveUsers;
   if (limit !== null) {
     const activeCount = await db
       .select()
@@ -175,7 +176,7 @@ export async function createUser(input: CreateUserInput): Promise<SheetUser> {
       .where(and(eq(users.orgId, orgId), eq(users.status, "Active")));
     if (activeCount.length >= limit) {
       throw new Error(
-        `"${org?.plan ?? "Free"}" plan par sirf ${limit} active users ho sakte hain. Kisi user ko deactivate karein ya plan upgrade karayein.`
+        `"${org?.plan ?? "Trial"}" plan par sirf ${limit} active users ho sakte hain. Kisi user ko deactivate karein ya plan upgrade karayein.`
       );
     }
   }

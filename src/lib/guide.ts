@@ -1861,6 +1861,65 @@ export const GUIDE: GuideChapter[] = [
       },
     ],
   },
+  {
+    id: "ai-chatbot",
+    title: "AI Chatbot",
+    description: "Apne Pro ERP data ke baare me AI Assistant se sawal poochna.",
+    sections: [
+      {
+        id: "chatbot-what-is",
+        title: "AI Chatbot kya hai",
+        audience: "AI_CHATBOT",
+        summary:
+          "Ek AI Assistant jo sirf aapke apne Pro ERP data ke baare me sawal ka jawab deta hai — general knowledge (jaise 'aaj mausam kaisa hai') ka jawab nahi deta, aur kabhi bhi kisi record ko badalta nahi, sirf padhta hai.",
+        how: [
+          "Jab bhi aap sawal poochte hain, Assistant asli data nikalne ke liye wahi functions use karta hai jo app khud (Tasks, MIS, FMS, Inventory, Orders) har jagah use karta hai — kabhi bhi seedhe database se kuch nahi nikalta.",
+          "Aapko sirf wahi jawab milte hain jinke liye aapke paas access hai — jaise Inventory ka access na ho to Assistant Inventory ke baare me kuch bata hi nahi sakta, kyunki wo function use hi nahi karega.",
+          "Har jawab ke neeche chhote badge me dikhta hai ke jawab kaunse tool (function) se aaya — taaki pata chale jawab kahan se nikla.",
+          "Agar koi jaankari mil hi na paye, to Assistant seedha keh dega 'mujhe ye nahi mila' — kabhi bhi galat ya banaya hua number nahi dega.",
+        ],
+        notes: [
+          "Ye sirf padhne (read-only) ke liye hai — koi task complete, koi record change ye khud nahi kar sakta.",
+          "Ek din me poore organization ke liye ek limit hai (Admin decide karta hai) — koi ek user akela poora quota khatam na kar de isliye.",
+        ],
+      },
+      {
+        id: "chatbot-ask",
+        title: "Sawal kaise poochein",
+        audience: "AI_CHATBOT",
+        summary: "Chat page kholein aur seedha type karein.",
+        steps: [
+          "Nav me 'AI Assistant' (Others group ke neeche) kholein.",
+          "'New Chat' se nayi baat-cheet shuru karein, ya purani list me se koi chat wapas kholein.",
+          "Neeche box me apna sawal likhein aur Enter dabayein (naya line ke liye Shift+Enter).",
+          "Pehli baar khulne par kuch suggested sawal bhi dikhte hain — unpar click karke seedha poochh sakte hain.",
+        ],
+        notes: [
+          "Har user ki apni alag chats hoti hain — koi doosra user aapki chat nahi dekh sakta.",
+          "Bina koi module access ke bhi ye kaam karta hai apne khud ke Pending Tasks, MIS Score, aur FMS steps ke liye — inke liye alag se access ki zaroorat nahi.",
+        ],
+      },
+      {
+        id: "chatbot-admin-setup",
+        title: "AI Chatbot connect karna (Gemini API Key)",
+        audience: "admin",
+        summary:
+          "Admin → Settings → AI Chatbot (Gemini) me apna Google Gemini API key daalna hota hai — tabhi ye feature kaam karta hai.",
+        steps: [
+          "Google AI Studio (aistudio.google.com) par apne Google account se jaayein.",
+          "'Get API Key' → 'Create API Key' dabayein aur banaya hua key copy karein.",
+          "Admin → Settings me AI Chatbot (Gemini) card kholein, key paste karein aur Save dabayein.",
+          "'Test Key' dabakar confirm karein ke key sahi se kaam kar rahi hai.",
+          "Jise bhi chatbot use karna hai, uske User me 'AI Chatbot' module access tick karein — naya access milne ke baad us user ko ek baar logout-login karna hoga.",
+        ],
+        notes: [
+          "Free-tier ya billing-enabled dono tarah ki Gemini key chalti hai — quota/rate-limit Google aur aapke beech ka mamla hai, app usme farak nahi karta.",
+          "Jab tak key nahi daali jaati, chatbot page 'AI Assistant abhi connect nahi hai' dikhayega — ye kharabi nahi hai, sirf setup baaki hai.",
+          "Daily Message Cap poore organization ke saare users milakar hai, per-user nahi.",
+        ],
+      },
+    ],
+  },
 ];
 
 /**

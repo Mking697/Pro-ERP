@@ -42,11 +42,19 @@ interface OrgRow {
   slug: string;
   ownerEmail: string;
   plan: string;
+  trialEndsAt: string | null;
   maxActiveUsers: number | null;
   status: string;
   createdAt: string;
   userCount: number | null;
   error: string | null;
+}
+
+/** Days left on a Trial org's own countdown — null once it's on a real plan or has no
+ * trialEndsAt recorded (pre-existing rows from before this column existed). */
+function trialDaysLeft(org: OrgRow): number | null {
+  if (org.plan !== "Trial" || !org.trialEndsAt) return null;
+  return Math.ceil((new Date(org.trialEndsAt).getTime() - Date.now()) / (24 * 60 * 60 * 1000));
 }
 
 export default function OrganizationsTable() {
@@ -204,31 +212,42 @@ export default function OrganizationsTable() {
                 </TableCell>
                 <TableCell className="text-sm">{org.ownerEmail}</TableCell>
                 <TableCell>
-                  <Select
-                    value={org.plan}
-                    onValueChange={(value) => value && changePlan(org, value)}
-                    disabled={savingId === org.orgId}
-                  >
-                    <SelectTrigger className="h-8 w-28" aria-label={`${org.name} ka plan`}>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent
-                      // This trigger sits inside the Table's own horizontally-scrollable
-                      // wrapper (src/components/ui/table.tsx) — the default
-                      // `collisionBoundary="clipping-ancestors"` walks up into that
-                      // `overflow-x-auto` ancestor and can render the popup partly
-                      // off-screen at phone width, same root cause fixed for the nav bar
-                      // dropdown (src/components/nav-links.tsx). Pinning to <body> makes
-                      // it use the real viewport instead.
-                      collisionBoundary={typeof document !== "undefined" ? document.body : undefined}
+                  <div className="flex items-center gap-2">
+                    <Select
+                      value={org.plan}
+                      onValueChange={(value) => value && changePlan(org, value)}
+                      disabled={savingId === org.orgId}
                     >
-                      {(planNames.length > 0 ? planNames : [org.plan]).map((p) => (
-                        <SelectItem key={p} value={p}>
-                          {p}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                      <SelectTrigger className="h-8 w-28" aria-label={`${org.name} ka plan`}>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent
+                        // This trigger sits inside the Table's own horizontally-scrollable
+                        // wrapper (src/components/ui/table.tsx) — the default
+                        // `collisionBoundary="clipping-ancestors"` walks up into that
+                        // `overflow-x-auto` ancestor and can render the popup partly
+                        // off-screen at phone width, same root cause fixed for the nav bar
+                        // dropdown (src/components/nav-links.tsx). Pinning to <body> makes
+                        // it use the real viewport instead.
+                        collisionBoundary={typeof document !== "undefined" ? document.body : undefined}
+                      >
+                        {(planNames.length > 0 ? planNames : [org.plan]).map((p) => (
+                          <SelectItem key={p} value={p}>
+                            {p}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    {(() => {
+                      const daysLeft = trialDaysLeft(org);
+                      if (daysLeft === null) return null;
+                      return (
+                        <Badge variant={daysLeft <= 0 ? "destructive" : "secondary"} className="whitespace-nowrap">
+                          {daysLeft > 0 ? `${daysLeft}d left` : "expired"}
+                        </Badge>
+                      );
+                    })()}
+                  </div>
                 </TableCell>
                 <TableCell className="text-right tabular-nums">
                   {/* A read failure is worth surfacing: it usually means the org revoked

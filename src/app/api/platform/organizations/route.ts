@@ -33,6 +33,7 @@ export async function GET() {
       slug: org.slug,
       ownerEmail: org.ownerEmail,
       plan: org.plan,
+      trialEndsAt: org.trialEndsAt,
       maxActiveUsers: getPlanLimit(org.plan).maxActiveUsers,
       status: org.status,
       createdAt: org.createdAt,

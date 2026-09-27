@@ -3,6 +3,8 @@ import { cookies } from "next/headers";
 import { verifySession, SESSION_COOKIE, type SessionPayload } from "@/lib/auth/session";
 import { getModuleAccessDefinition, type ModuleAccessKey } from "@/lib/moduleAccess";
 import { isPlatformAdmin } from "@/lib/platform/admin";
+import { tenantFromOrgId, TenantResolutionError } from "@/lib/tenant";
+import { moduleAllowedForPlan } from "@/lib/platform/planLimits";
 
 type GuardResult =
   | { ok: true; session: SessionPayload }
@@ -40,14 +42,51 @@ export async function requireRole(allowedRoles: string[]): Promise<GuardResult> 
 }
 
 /**
- * For use inside API route handlers — checks the caller holds a specific module grant.
+ * Resolves the caller's tenant (org must exist, be Active, and not be a trial-expired
+ * Trial org — see tenantFromOrgId()) into a ready 403, or null if resolution succeeded.
  *
- * Grants live on the session, so this costs no sheet read. Admins hold every grant
- * implicitly (see effectiveModuleAccess), which is baked into the token at login.
+ * This is the one new DB read `requireModule`/`requireAnyModule` didn't used to make —
+ * previously a module check was a pure JWT check, costing no read at all. Reading the org
+ * row here is what lets a module-gated route give a clean 403 with a real message
+ * ("trial ended" / "organization suspended") instead of letting a `TenantResolutionError`
+ * escape uncaught from whatever `getTenant()` call happens further down the same route —
+ * mirrors the login route's own existing catch of the same error. One extra Postgres read
+ * per guarded call is the accepted cost, per this codebase's own stated "Postgres reads
+ * are fast, no caching needed" philosophy.
+ */
+async function resolveTenantOr403(
+  session: SessionPayload
+): Promise<{ org: Awaited<ReturnType<typeof tenantFromOrgId>>["org"] } | { response: NextResponse }> {
+  try {
+    const tenant = await tenantFromOrgId(session.orgId);
+    return { org: tenant.org };
+  } catch (error) {
+    if (error instanceof TenantResolutionError) {
+      return { response: NextResponse.json({ error: error.message }, { status: 403 }) };
+    }
+    throw error;
+  }
+}
+
+/**
+ * For use inside API route handlers — checks the caller holds a specific module grant AND
+ * that the organization's own plan currently allows that module (src/lib/platform/
+ * planLimits.ts's `moduleAllowedForPlan` — today this only ever actually blocks a
+ * trial-expired org via the tenant-resolution check below, since every real paid tier is
+ * approved to include every existing module; the check stays generic so a future
+ * tier-exclusive module needs no new plumbing here).
+ *
+ * The per-user grant still lives on the session (baked into the JWT at login, see
+ * effectiveModuleAccess) — only the plan/tenant half of this check is a real read.
  */
 export async function requireModule(key: ModuleAccessKey): Promise<GuardResult> {
   const guard = await requireSession();
   if (!guard.ok) return guard;
+
+  const tenantResult = await resolveTenantOr403(guard.session);
+  if ("response" in tenantResult) {
+    return { ok: false, response: tenantResult.response };
+  }
 
   if (!guard.session.access.includes(key)) {
     const def = getModuleAccessDefinition(key);
@@ -56,6 +95,19 @@ export async function requireModule(key: ModuleAccessKey): Promise<GuardResult> 
       response: NextResponse.json(
         {
           error: `Aapke paas "${def?.label ?? key}" ka access nahi hai. Apne Admin se kahein.`,
+        },
+        { status: 403 }
+      ),
+    };
+  }
+
+  if (!moduleAllowedForPlan(tenantResult.org.plan, key)) {
+    const def = getModuleAccessDefinition(key);
+    return {
+      ok: false,
+      response: NextResponse.json(
+        {
+          error: `"${def?.label ?? key}" abhi aapke plan me shamil nahi hai. Plan upgrade karwayein.`,
         },
         { status: 403 }
       ),
@@ -81,7 +133,18 @@ export async function requireAnyModule(
   const guard = await requireSession();
   if (!guard.ok) return guard;
 
-  if (!keys.some((key) => guard.session.access.includes(key))) {
+  const tenantResult = await resolveTenantOr403(guard.session);
+  if ("response" in tenantResult) {
+    return { ok: false, response: tenantResult.response };
+  }
+
+  // A held grant only counts if the org's own plan currently allows that specific module —
+  // see requireModule()'s own comment for why this is almost always a no-op today.
+  const hasAny = keys.some(
+    (key) => guard.session.access.includes(key) && moduleAllowedForPlan(tenantResult.org.plan, key)
+  );
+
+  if (!hasAny) {
     const labels = keys
       .map((key) => getModuleAccessDefinition(key)?.label ?? key)
       .join(" / ");

@@ -144,6 +144,12 @@ export const MODULE_ACCESS = [
     description: "Gate Pass issue kar sakta hai, stock dispatch kar sakta hai, In-Transit shipment track kar sakta hai",
     href: "/dispatch",
   },
+  {
+    key: "AI_CHATBOT",
+    label: "AI Chatbot",
+    description: "Apne Pro ERP data ke baare me AI Assistant se sawal pooch sakta hai",
+    href: "/chat",
+  },
 ] as const;
 
 export type ModuleAccessKey = (typeof MODULE_ACCESS)[number]["key"];

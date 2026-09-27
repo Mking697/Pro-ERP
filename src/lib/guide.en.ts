@@ -1819,4 +1819,63 @@ export const GUIDE_EN: GuideChapter[] = [
       },
     ],
   },
+  {
+    id: "ai-chatbot",
+    title: "AI Chatbot",
+    description: "Asking the AI Assistant questions about your own Pro ERP data.",
+    sections: [
+      {
+        id: "chatbot-what-is",
+        title: "What the AI Chatbot is",
+        audience: "AI_CHATBOT",
+        summary:
+          "An AI Assistant that only answers questions about your own Pro ERP data — it declines general-knowledge questions (like today's weather), and it never changes any record, only reads.",
+        how: [
+          "Whenever you ask something, the Assistant pulls real data using the exact same functions the app itself already uses everywhere (Tasks, MIS, FMS, Inventory, Orders) — it never touches the database directly.",
+          "You only ever get answers you already have access to — if you don't hold Inventory access, the Assistant simply cannot tell you about inventory, because it never even has that function available to call.",
+          "Every answer shows small badges underneath naming which tool (function) it actually used — so you can see exactly where an answer came from.",
+          "If something genuinely can't be found, the Assistant says so plainly — it never invents a plausible-sounding number instead.",
+        ],
+        notes: [
+          "This is strictly read-only — it cannot complete a task, change a record, or take any action on your behalf.",
+          "There's a whole-organization daily message limit (set by your Admin) — so one person can't use up the entire day's quota alone.",
+        ],
+      },
+      {
+        id: "chatbot-ask",
+        title: "How to ask a question",
+        audience: "AI_CHATBOT",
+        summary: "Open the chat page and just type.",
+        steps: [
+          "Open \"AI Assistant\" from the nav (under the Others group).",
+          "Start a fresh conversation with \"New Chat\", or reopen a previous one from the list.",
+          "Type your question in the box and press Enter (Shift+Enter for a new line).",
+          "The first time it opens, a few suggested questions are shown too — click one to ask it directly.",
+        ],
+        notes: [
+          "Each user has their own separate chats — no other user can see your conversation.",
+          "It works with no module access at all for your own Pending Tasks, MIS Score, and FMS steps — those don't need any separate grant.",
+        ],
+      },
+      {
+        id: "chatbot-admin-setup",
+        title: "Connecting the AI Chatbot (Gemini API Key)",
+        audience: "admin",
+        summary:
+          "Admin → Settings → AI Chatbot (Gemini) is where your own Google Gemini API key goes — the feature does nothing until this is set.",
+        steps: [
+          "Go to Google AI Studio (aistudio.google.com) with your Google account.",
+          "Press \"Get API Key\" → \"Create API Key\" and copy the key it gives you.",
+          "Open the AI Chatbot (Gemini) card in Admin → Settings, paste the key, and press Save.",
+          "Press \"Test Key\" to confirm it actually works.",
+          "Tick \"AI Chatbot\" module access on whichever user should be able to use it — after a new grant, that user needs to sign out and back in once.",
+        ],
+        notes: [
+          "Either a free-tier or a billing-enabled Gemini key works the same way — quota/rate-limits are between you and Google, the app doesn't distinguish.",
+          "Until a key is set, the chat page shows \"AI Assistant isn't connected yet\" — that's expected state, not a bug.",
+          "The Daily Message Cap is shared across the whole organization, not per user.",
+        ],
+      },
+    ],
+  },
 ];

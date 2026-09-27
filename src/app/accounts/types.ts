@@ -6,6 +6,7 @@ export type AgingBucket = "0-30" | "31-60" | "61-90" | "90+";
 
 export interface AgingRow {
   orderId: string;
+  customerId: string | null;
   partyName: string;
   earliestInvoiceDate: string;
   daysOutstanding: number;
@@ -17,6 +18,26 @@ export interface AgingSummary {
   rows: AgingRow[];
   bucketTotals: Record<AgingBucket, number>;
   grandTotal: number;
+}
+
+// --- Credit Risk (per-customer credit-limit-vs-aging cross-check — see accounts.ts) ----
+
+export interface CreditRiskRow {
+  customerId: string;
+  customerName: string;
+  creditLimit: number;
+  creditDays: number | null;
+  outstanding: number;
+  over90: number;
+  overLimit: boolean;
+  hasOverdue90: boolean;
+  atRisk: boolean;
+}
+
+export interface CreditRiskSummary {
+  rows: CreditRiskRow[];
+  atRiskCount: number;
+  totalOutstanding: number;
 }
 
 // --- GST Return report (GSTR-1/3B-SHAPED, a report/export — not e-filing) --------------

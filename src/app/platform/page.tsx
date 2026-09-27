@@ -7,6 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import OrganizationsTable from "./organizations-table";
 import ErrorLogsTable from "./error-logs-table";
 import UsageMetricsTable from "./usage-metrics-table";
+import ChatbotAuditTable from "./chatbot-audit-table";
 import PageHeader from "@/components/page-header";
 import { getT } from "@/lib/i18n/server";
 
@@ -65,6 +66,18 @@ export default async function PlatformPage() {
           </CardHeader>
           <CardContent>
             <ErrorLogsTable />
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>{t("Chatbot Audit")}</CardTitle>
+            <CardDescription>
+              {t("Kisi bhi organization me AI Chatbot se pooche gaye har sawal ka record — kaunse tools call hue aur jawab tool-grounded tha ya nahi. Sirf padhne ke liye.")}
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <ChatbotAuditTable />
           </CardContent>
         </Card>
       </div>

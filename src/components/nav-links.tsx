@@ -6,6 +6,7 @@ import { useState } from "react";
 import {
   BarChart3,
   BookOpen,
+  Bot,
   Building2,
   CalendarOff,
   ChevronDown,
@@ -52,6 +53,7 @@ const ICONS = {
   others: MoreHorizontal,
   leave: CalendarOff,
   payroll: Wallet,
+  chatbot: Bot,
 } as const;
 
 export type NavIcon = keyof typeof ICONS;

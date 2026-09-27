@@ -18,7 +18,17 @@ export const organizations = pgTable("organizations", {
   // Unique platform-wide: used to route by URL and to de-duplicate on signup.
   slug: text("slug").notNull().unique(),
   ownerEmail: text("owner_email").notNull(),
-  plan: text("plan").notNull().default("Free"),
+  // "Trial" | "Growth" | "Scale" | "Enterprise" (src/lib/platform/planLimits.ts) — kept as
+  // free text, not a pg enum, matching this column's own existing "an unknown value falls
+  // back to a safe default" convention rather than a DB-level constraint. Every org used to
+  // default to "Free" (2026-09-22's Free/Pro split); signup now starts every new org on a
+  // 14-day "Trial" instead (2026-09-25's paid-tiers plan) — see `trialEndsAt` below.
+  plan: text("plan").notNull().default("Trial"),
+  // Only meaningful while `plan === "Trial"` — null on every real paid plan. Set once at
+  // signup (`createOrganization()`, now + 14 days) and never touched again; a Platform
+  // Admin moving an org onto a real plan doesn't need to clear this, since
+  // `isTrialExpired()` only ever consults it for a "Trial" plan in the first place.
+  trialEndsAt: timestamp("trial_ends_at", { withTimezone: true }),
   status: orgStatusEnum("status").notNull().default("Active"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });

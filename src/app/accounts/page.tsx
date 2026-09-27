@@ -13,6 +13,7 @@ import PettyCashBoard from "./petty-cash-board";
 import CreditNotesBoard from "./credit-notes-board";
 import DebitNotesBoard from "./debit-notes-board";
 import AgingBoard from "./aging-board";
+import CreditRiskBoard from "./credit-risk-board";
 import GstReportBoard from "./gst-report-board";
 
 export default async function AccountsPage() {
@@ -42,6 +43,7 @@ export default async function AccountsPage() {
             <TabsTrigger value="credit-notes">{t("Credit Notes")}</TabsTrigger>
             <TabsTrigger value="debit-notes">{t("Debit Notes")}</TabsTrigger>
             <TabsTrigger value="aging">{t("Aging")}</TabsTrigger>
+            <TabsTrigger value="credit-risk">{t("Credit Risk")}</TabsTrigger>
             <TabsTrigger value="gst-report">{t("GST Report")}</TabsTrigger>
             <TabsTrigger value="ledger">{t("Ledger")}</TabsTrigger>
           </TabsList>
@@ -65,6 +67,9 @@ export default async function AccountsPage() {
           </TabsContent>
           <TabsContent value="aging" className="mt-4">
             <AgingBoard />
+          </TabsContent>
+          <TabsContent value="credit-risk" className="mt-4">
+            <CreditRiskBoard />
           </TabsContent>
           <TabsContent value="gst-report" className="mt-4">
             <GstReportBoard />

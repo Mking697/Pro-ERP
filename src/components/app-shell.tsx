@@ -149,6 +149,9 @@ export default async function AppShell({
   if (session.access.includes("PARTY_MASTER")) {
     otherItems.push({ icon: "parties", href: "/parties", label: "Vendors/Customers" });
   }
+  if (session.access.includes("AI_CHATBOT")) {
+    otherItems.push({ icon: "chatbot", href: "/chat", label: "AI Assistant" });
+  }
   if (session.role === "Admin") {
     otherItems.push({ icon: "users", href: "/admin/users", label: "Users" });
     otherItems.push({ icon: "settings", href: "/admin/settings", label: "Settings" });

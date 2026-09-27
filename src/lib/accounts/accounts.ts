@@ -1,6 +1,6 @@
 import type { InferSelectModel } from "drizzle-orm";
 import { and, eq, gte, lte } from "drizzle-orm";
-import { bills, invoices, pdiInspections, tmsShipments, vendors } from "@/db/schema";
+import { bills, customers, invoices, pdiInspections, tmsShipments, vendors } from "@/db/schema";
 import { db } from "@/db/client";
 import { findById, insertRecord, listByOrg, updateById } from "@/db/repo";
 import { getTenantOrgId } from "@/lib/tenant";
@@ -478,6 +478,10 @@ export type AgingBucket = "0-30" | "31-60" | "61-90" | "90+";
 
 export interface AgingRow {
   orderId: string;
+  /** The order's own customer link — null for a pre-existing order created before Order FMS
+   * carried one. Added 2026-09-27 so getCreditRiskReport() below can group these rows by
+   * customer without re-deriving the outstanding math a second way. */
+  customerId: string | null;
   partyName: string;
   /** The order's own earliest Issued invoice date — an order becomes a receivable the day
    * it's first billed, not the day its (possibly later) other invoices were issued. */
@@ -548,6 +552,7 @@ export async function getReceivablesAging(): Promise<AgingSummary> {
 
     rows.push({
       orderId,
+      customerId: order.customerId || null,
       partyName: order.partyName,
       earliestInvoiceDate: earliest.toISOString(),
       daysOutstanding,
@@ -560,6 +565,113 @@ export async function getReceivablesAging(): Promise<AgingSummary> {
 
   rows.sort((a, b) => b.daysOutstanding - a.daysOutstanding);
   return { rows, bucketTotals, grandTotal };
+}
+
+// ---------------------------------------------------------------------------
+// Credit Risk — per-customer credit-limit-vs-aging cross-check (2026-09-27)
+// ---------------------------------------------------------------------------
+
+export interface CreditRiskRow {
+  customerId: string;
+  customerName: string;
+  creditLimit: number;
+  creditDays: number | null;
+  /** This customer's own share of getReceivablesAging()'s outstanding total — summed here,
+   * never recomputed a second way (see the function's own comment below). */
+  outstanding: number;
+  /** This customer's own share of the "90+" bucket specifically — a real collections risk
+   * even for a customer who is still, in total, under their own limit. */
+  over90: number;
+  overLimit: boolean;
+  hasOverdue90: boolean;
+  /** overLimit || hasOverdue90 — the one flag the board actually sorts/highlights on. */
+  atRisk: boolean;
+}
+
+export interface CreditRiskSummary {
+  rows: CreditRiskRow[];
+  atRiskCount: number;
+  /** Sum of `outstanding` across every row here (every customer with a creditLimit set) —
+   * NOT the same figure as getReceivablesAging()'s own grandTotal, which also includes
+   * outstanding against customers with no credit limit at all (a cash/advance-only
+   * customer has nothing to cross-check here). */
+  totalOutstanding: number;
+}
+
+/**
+ * The natural next step of Receivables Aging this doc's own "What's still actually open"
+ * list named: today's Aging report (above) shows outstanding by AGE; Order FMS's own
+ * Payment_Review gate (computeCreditPosition() in src/lib/orders/orders.ts) checks a
+ * customer's credit limit, but only at the moment a NEW order is trying to move past that
+ * gate. Neither one, on its own, answers "which of my existing customers are over their
+ * limit or sitting on old debt RIGHT NOW" — this does, by cross-referencing the two.
+ *
+ * Deliberately reuses getReceivablesAging()'s own rows rather than re-summing
+ * order/payment data a third way — this file already has two independent "outstanding"
+ * computations (this one and computeCreditPosition()'s own, in orders.ts) that must never
+ * drift apart in what counts as outstanding; adding a third would only add a third place
+ * for that drift to happen. The one real difference from computeCreditPosition() is scope,
+ * not method: that function sums EVERY non-Cancelled order (including ones never invoiced
+ * yet); this reads Aging's own already-invoiced-and-still-owed rows, since a plain "confirmed
+ * but not yet invoiced" order isn't a receivable yet.
+ *
+ * Read-only reporting, on purpose — it does not auto-hold or auto-notify anything. Order
+ * FMS's own gate already blocks a NEW order for a customer that's over limit; this view
+ * exists so a human (Accounts/Admin) can see and act on EXISTING risk on the books, the
+ * same judgment call Order Setup's own Credit-Hold Approver already makes for new orders.
+ */
+export async function getCreditRiskReport(): Promise<CreditRiskSummary> {
+  const orgId = await getTenantOrgId();
+  const [aging, customerRows] = await Promise.all([getReceivablesAging(), listByOrg(customers, orgId)]);
+
+  const outstandingByCustomer = new Map<string, number>();
+  const over90ByCustomer = new Map<string, number>();
+  for (const row of aging.rows) {
+    if (!row.customerId) continue; // a pre-existing order with no customer link — nothing to cross-check
+    outstandingByCustomer.set(
+      row.customerId,
+      round2((outstandingByCustomer.get(row.customerId) ?? 0) + row.outstanding)
+    );
+    if (row.bucket === "90+") {
+      over90ByCustomer.set(row.customerId, round2((over90ByCustomer.get(row.customerId) ?? 0) + row.outstanding));
+    }
+  }
+
+  const rows: CreditRiskRow[] = [];
+  let totalOutstanding = 0;
+  let atRiskCount = 0;
+
+  for (const c of customerRows) {
+    if (c.creditLimit === null) continue; // no credit extended — Payment_Review already forces an advance instead
+    const creditLimit = Number(c.creditLimit) || 0;
+    const outstanding = outstandingByCustomer.get(c.id) ?? 0;
+    const over90 = over90ByCustomer.get(c.id) ?? 0;
+    const overLimit = outstanding > creditLimit + EPSILON;
+    const hasOverdue90 = over90 > EPSILON;
+    const atRisk = overLimit || hasOverdue90;
+
+    if (atRisk) atRiskCount += 1;
+    totalOutstanding = round2(totalOutstanding + outstanding);
+
+    rows.push({
+      customerId: c.id,
+      customerName: c.customerName,
+      creditLimit,
+      creditDays: c.creditDays,
+      outstanding,
+      over90,
+      overLimit,
+      hasOverdue90,
+      atRisk,
+    });
+  }
+
+  rows.sort((a, b) => {
+    if (a.atRisk !== b.atRisk) return a.atRisk ? -1 : 1;
+    return b.outstanding - a.outstanding;
+  });
+
+  return { rows, atRiskCount, totalOutstanding };
 }
 
 // ---------------------------------------------------------------------------
