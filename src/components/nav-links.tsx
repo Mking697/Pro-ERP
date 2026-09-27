@@ -2,11 +2,13 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useState } from "react";
 import {
   BarChart3,
   BookOpen,
   Building2,
   CalendarOff,
+  ChevronDown,
   ClipboardList,
   Factory,
   Handshake,
@@ -22,12 +24,6 @@ import {
   Workflow,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 
 /**
  * Icons live here, keyed by name, because the nav is assembled in a server component and
@@ -90,88 +86,114 @@ function isActive(pathname: string, href: string): boolean {
   return pathname === href || pathname.startsWith(`${href}/`);
 }
 
-const TRIGGER_CLASSES = cn(
-  "relative flex shrink-0 items-center gap-2 rounded-md px-3 py-2 text-sm font-medium",
-  "transition-all duration-150 not-disabled:active:scale-[0.97]",
+const ROW_CLASSES = cn(
+  "group relative flex w-full items-center gap-2.5 rounded-xl px-2.5 py-2 text-sm font-medium",
+  "transition-all duration-150 not-disabled:active:scale-[0.98]",
   "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-  "text-muted-foreground hover:bg-muted hover:text-foreground",
-  "data-popup-open:bg-muted data-popup-open:text-foreground"
+  "text-muted-foreground hover:bg-muted hover:text-foreground"
 );
 
-function ActiveUnderline() {
-  return (
-    // Position, not colour alone, marks the current section. This mounts/unmounts with
-    // the active state (see call sites below) rather than toggling a class on a
-    // permanent element, so `animate-in` actually replays on every route change instead
-    // of only on first paint.
-    <span
-      aria-hidden="true"
-      className="absolute inset-x-2 -bottom-px h-0.5 origin-center animate-in rounded-full bg-foreground fade-in-0 zoom-in-50 duration-200 ease-out"
-    />
-  );
-}
-
-export default function NavLinks({ items }: { items: NavEntry[] }) {
+/**
+ * The sidebar's nav body — rendered once inside the persistent desktop `<aside>` and once
+ * inside the mobile drawer (two mounts, not one JS-toggled tree), since the two contexts
+ * disagree on whether `collapsed` can ever be true. Both read the same `items`.
+ *
+ * Groups render as always-visible collapsible sections rather than popovers. That is a
+ * deliberate simplification, not an oversight: a popover-based group menu is what used to
+ * need a `collisionBoundary` fix (see git history on the old dropdown-bar nav) to avoid
+ * rendering off-screen inside a scrolled ancestor — a section that is always part of the
+ * page's own flow has no collision geometry to get wrong in the first place.
+ */
+export default function NavLinks({
+  items,
+  collapsed = false,
+  onNavigate,
+}: {
+  items: NavEntry[];
+  /** Icon-rail mode (desktop only) — never true inside the mobile drawer. */
+  collapsed?: boolean;
+  /** Called after a link is clicked — the mobile drawer uses this to close itself. */
+  onNavigate?: () => void;
+}) {
   const pathname = usePathname();
+  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({});
+
+  function isGroupOpen(entry: NavGroup): boolean {
+    const explicit = openGroups[entry.label];
+    if (explicit !== undefined) return explicit;
+    // Default open state: whichever group holds the current route.
+    return entry.items.some((child) => isActive(pathname, child.href));
+  }
+
+  function toggleGroup(label: string, currentlyOpen: boolean) {
+    setOpenGroups((prev) => ({ ...prev, [label]: !currentlyOpen }));
+  }
 
   return (
-    // Horizontal scroll rather than wrapping keeps the bar one row tall on narrow screens.
-    <nav
-      aria-label="Main"
-      className="-mb-px flex items-center gap-1 overflow-x-auto"
-    >
+    <nav aria-label="Main" className="flex flex-col gap-0.5">
       {items.map((entry) => {
         if (isGroup(entry)) {
           const GroupIcon = entry.icon ? ICONS[entry.icon] : null;
           const groupActive = entry.items.some((child) => isActive(pathname, child.href));
+          const open = isGroupOpen(entry);
+          const panelId = `nav-group-${entry.label.replace(/\s+/g, "-").toLowerCase()}`;
 
+          // Collapsed rail: a group can't show its children with no room for labels, so
+          // its own icon is just a link-like affordance that snaps the sidebar back open
+          // (handled by the parent via onNavigate-style callback would be overreach here —
+          // simplest correct behaviour is: clicking it also opens the group, and the
+          // parent shell separately decides collapsed width from its own persisted state,
+          // so this button only ever needs to flip `open`).
           return (
-            <DropdownMenu key={entry.label}>
-              <DropdownMenuTrigger
-                render={
-                  <button
-                    type="button"
-                    className={cn(TRIGGER_CLASSES, groupActive && "text-foreground")}
-                  >
-                    {GroupIcon && <GroupIcon aria-hidden="true" className="size-4" />}
-                    {entry.label}
-                    {groupActive && <ActiveUnderline />}
-                  </button>
-                }
-              />
-              <DropdownMenuContent
-                align="start"
-                className="min-w-48"
-                // The default `collisionBoundary` ("clipping-ancestors") walks up the
-                // anchor's own scrollable ancestors — which includes this bar's own
-                // `overflow-x-auto` — and that was letting a trigger near the right
-                // edge (e.g. "Others") open a popup that rendered partly off-screen at
-                // phone width instead of flipping/shifting to stay on it. Pinning the
-                // boundary to the real <body> makes every group use the actual visible
-                // viewport for that decision, regardless of the nav's own scroll state.
-                collisionBoundary={typeof document !== "undefined" ? document.body : undefined}
+            <div key={entry.label}>
+              <button
+                type="button"
+                onClick={() => toggleGroup(entry.label, open)}
+                aria-expanded={open}
+                aria-controls={panelId}
+                title={collapsed ? entry.label : undefined}
+                className={cn(ROW_CLASSES, groupActive && "text-foreground", collapsed && "justify-center px-0")}
               >
-                {entry.items.map((child) => {
-                  const ChildIcon = child.icon ? ICONS[child.icon] : null;
-                  const active = isActive(pathname, child.href);
-                  return (
-                    <DropdownMenuItem
-                      key={child.href}
-                      render={
-                        <Link
-                          href={child.href}
-                          aria-current={active ? "page" : undefined}
-                          className={active ? "bg-accent text-accent-foreground" : undefined}
-                        >
-                          {ChildIcon && <ChildIcon aria-hidden="true" className="size-4" />}
-                          {child.label}
-                        </Link>
-                      }
-                    />
-                  );
-                })}
-              </DropdownMenuContent>
-            </DropdownMenu>
+                {GroupIcon && <GroupIcon aria-hidden="true" className="size-4 shrink-0" />}
+                {!collapsed && <span className="min-w-0 flex-1 truncate text-left">{entry.label}</span>}
+                {!collapsed && (
+                  <ChevronDown
+                    aria-hidden="true"
+                    className={cn("size-4 shrink-0 text-muted-foreground/70 transition-transform duration-150", open && "rotate-180")}
+                  />
+                )}
+                {groupActive && (
+                  <span
+                    aria-hidden="true"
+                    className="absolute inset-y-1.5 left-0 w-0.5 rounded-full bg-foreground"
+                  />
+                )}
+              </button>
+              {!collapsed && open && (
+                <div id={panelId} className="mt-0.5 ml-4 flex flex-col gap-0.5 border-l pl-3 py-0.5">
+                  {entry.items.map((child) => {
+                    const ChildIcon = child.icon ? ICONS[child.icon] : null;
+                    const active = isActive(pathname, child.href);
+                    return (
+                      <Link
+                        key={child.href}
+                        href={child.href}
+                        aria-current={active ? "page" : undefined}
+                        onClick={onNavigate}
+                        className={cn(
+                          ROW_CLASSES,
+                          "py-1.5",
+                          active && "bg-accent text-accent-foreground hover:bg-accent hover:text-accent-foreground"
+                        )}
+                      >
+                        {ChildIcon && <ChildIcon aria-hidden="true" className="size-4 shrink-0" />}
+                        <span className="min-w-0 truncate">{child.label}</span>
+                      </Link>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
           );
         }
 
@@ -182,11 +204,16 @@ export default function NavLinks({ items }: { items: NavEntry[] }) {
             key={entry.href}
             href={entry.href}
             aria-current={active ? "page" : undefined}
-            className={cn(TRIGGER_CLASSES, active && "text-foreground")}
+            onClick={onNavigate}
+            title={collapsed ? entry.label : undefined}
+            className={cn(
+              ROW_CLASSES,
+              active && "bg-accent text-accent-foreground hover:bg-accent hover:text-accent-foreground",
+              collapsed && "justify-center px-0"
+            )}
           >
-            {Icon && <Icon aria-hidden="true" className="size-4" />}
-            {entry.label}
-            {active && <ActiveUnderline />}
+            {Icon && <Icon aria-hidden="true" className="size-4 shrink-0" />}
+            {!collapsed && <span className="min-w-0 truncate">{entry.label}</span>}
           </Link>
         );
       })}

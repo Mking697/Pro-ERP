@@ -1,14 +1,9 @@
-import Link from "next/link";
 import { getOrganization } from "@/lib/platform/registry";
 import type { SessionPayload } from "@/lib/auth/session";
-import { Badge } from "@/components/ui/badge";
-import NavLinks, { type NavEntry, type NavItem } from "@/components/nav-links";
-import LogoutButton from "@/app/dashboard/logout-button";
+import type { NavEntry, NavItem } from "@/components/nav-links";
+import SidebarShell from "@/components/sidebar-shell";
 import { isPlatformAdmin } from "@/lib/platform/admin";
 import { getSetting } from "@/lib/settings";
-import { OrgLogo } from "@/components/logo-picker";
-import SettingsMenu from "@/components/settings-menu";
-import ChangelogMenu from "@/components/changelog-menu";
 import { listNavFmsTemplates } from "@/lib/fms/templates";
 import { listUsedFmsTemplateIds } from "@/lib/inventory/plans";
 import { tenantCached } from "@/lib/cache";
@@ -17,8 +12,10 @@ import { tenantCached } from "@/lib/cache";
  * The frame every signed-in page sits inside.
  *
  * Before this, only /admin had navigation — from /tasks or /inward the only way out was
- * the browser back button. The bar is built from the user's own grants, so it never
- * offers a link to a page that would just bounce them.
+ * the browser back button. The nav is built from the user's own grants, so it never
+ * offers a link to a page that would just bounce them. This function only decides WHICH
+ * items exist (server-side, from `session.access`) — `SidebarShell` decides how they
+ * render (persistent sidebar, icon-rail collapse, mobile drawer).
  */
 export default async function AppShell({
   session,
@@ -168,52 +165,15 @@ export default async function AppShell({
   items.push({ icon: "guide", href: "/guide", label: "Guide" });
 
   return (
-    <div className="flex min-h-dvh flex-col bg-muted/30">
-      <header className="sticky top-0 z-40 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80">
-        <div className="mx-auto flex w-full max-w-6xl items-center justify-between gap-4 px-4 py-3 sm:px-6">
-          <Link
-            href="/dashboard"
-            className="flex min-w-0 items-center gap-2.5 rounded-md transition-opacity duration-150 hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          >
-            <OrgLogo url={logoUrl} name={org?.orgName ?? "Pro ERP"} />
-            <span className="min-w-0">
-              <span className="block text-sm font-semibold leading-tight">Pro ERP</span>
-              {org && (
-                <span className="block truncate text-xs leading-tight text-muted-foreground">
-                  {org.orgName}
-                </span>
-              )}
-            </span>
-          </Link>
-
-          <div className="flex items-center gap-3">
-            <div className="hidden text-right sm:block">
-              <span className="block text-sm font-medium leading-tight">
-                {session.fullName}
-              </span>
-              <span className="block text-xs leading-tight text-muted-foreground">
-                {session.email}
-              </span>
-            </div>
-            <Badge variant="secondary" className="hidden shrink-0 sm:inline-flex">
-              {session.role}
-            </Badge>
-            {/* What's new is reachable by everyone too, same reasoning as Settings below —
-                a doer with no Admin access still deserves to know what shipped. */}
-            <ChangelogMenu />
-            {/* Theme and language belong to the person, so they sit with their name —
-                reachable by everyone, not only by an Admin who can open Settings. */}
-            <SettingsMenu />
-            <LogoutButton />
-          </div>
-        </div>
-
-        <div className="mx-auto w-full max-w-6xl border-t px-4 sm:px-6">
-          <NavLinks items={items} />
-        </div>
-      </header>
-
-      <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-6 sm:px-6">{children}</main>
-    </div>
+    <SidebarShell
+      orgName={org?.orgName ?? "Pro ERP"}
+      logoUrl={logoUrl}
+      fullName={session.fullName}
+      email={session.email}
+      role={session.role}
+      items={items}
+    >
+      {children}
+    </SidebarShell>
   );
 }

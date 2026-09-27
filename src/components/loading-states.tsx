@@ -29,7 +29,7 @@ export function TableSkeleton({
 }) {
   return (
     <Waiting label={label}>
-      <div className="overflow-hidden rounded-lg border">
+      <div className="overflow-hidden rounded-xl border">
         <div className="flex gap-4 border-b bg-muted/40 px-4 py-3">
           {Array.from({ length: columns }).map((_, i) => (
             <Skeleton key={i} className="h-4 flex-1" />

@@ -1,7 +1,8 @@
-import type { CSSProperties } from "react";
+import type { CSSProperties, ReactNode } from "react";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import Link from "next/link";
+import { CheckCircle2, Gauge, ListTodo } from "lucide-react";
 import { verifySession, SESSION_COOKIE } from "@/lib/auth/session";
 import { listTasks, type TaskRecord } from "@/lib/tasks";
 import { MODULE_ACCESS } from "@/lib/moduleAccess";
@@ -31,20 +32,30 @@ function StatCard({
   value,
   valueClassName,
   hint,
+  icon,
   style,
 }: {
   label: string;
   value: string;
   valueClassName?: string;
   hint?: string;
+  icon?: ReactNode;
   style?: CSSProperties;
 }) {
   return (
     <Card className="animate-in fade-in-0 slide-in-from-bottom-2 fill-mode-both duration-500" style={style}>
-      <CardHeader className="pb-2">
+      <CardHeader className="flex items-start justify-between pb-2">
         <CardTitle className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
           {label}
         </CardTitle>
+        {icon && (
+          <div
+            aria-hidden="true"
+            className="flex size-9 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary [&_svg]:size-4.5"
+          >
+            {icon}
+          </div>
+        )}
       </CardHeader>
       <CardContent>
         {/* Tabular figures keep the cards' numbers optically aligned. */}
@@ -96,7 +107,7 @@ export default async function DashboardPage({
     <AppShell session={session}>
       <div className="space-y-6">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">
+          <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">
             Namaste, {session.fullName}
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">
@@ -107,13 +118,24 @@ export default async function DashboardPage({
         </div>
 
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-          <StatCard label="Pending Tasks" value={String(pending.length)} style={{ animationDelay: "0ms" }} />
-          <StatCard label="Completed Tasks" value={String(completed.length)} style={{ animationDelay: "80ms" }} />
+          <StatCard
+            label="Pending Tasks"
+            value={String(pending.length)}
+            icon={<ListTodo />}
+            style={{ animationDelay: "0ms" }}
+          />
+          <StatCard
+            label="Completed Tasks"
+            value={String(completed.length)}
+            icon={<CheckCircle2 />}
+            style={{ animationDelay: "80ms" }}
+          />
           <StatCard
             label="MIS Score"
             value={formatScore(mis.score)}
             valueClassName={getScoreColorClass(mis.score)}
             hint={`On Time ${mis.onTime} · Delay ${mis.delay} · Not Done ${mis.notDone} — 0% best`}
+            icon={<Gauge />}
             style={{ animationDelay: "160ms" }}
           />
         </div>
