@@ -1,6 +1,6 @@
 import type { InferSelectModel } from "drizzle-orm";
 import { customers } from "@/db/schema";
-import { listByOrg, insertRecord } from "@/db/repo";
+import { listByOrg, insertRecord, updateById } from "@/db/repo";
 import { getTenantOrgId } from "@/lib/tenant";
 import { generateId } from "@/lib/id";
 
@@ -22,6 +22,11 @@ export interface CustomerRecord {
   City: string;
   State: string;
   Credit_Terms: string;
+  // Structured credit control Order FMS's own Payment_Review gate reads (see
+  // src/db/schema/parties.ts's own comment on these two columns) — null on either means no
+  // credit extended at all. Kept separate from the free-text Credit_Terms above.
+  Credit_Limit: number | null;
+  Credit_Days: number | null;
   Status: string;
   Created_At: string;
   Created_By: string;
@@ -42,6 +47,8 @@ function rowToRecord(row: CustomerRow): CustomerRecord {
     City: row.city,
     State: row.state,
     Credit_Terms: row.creditTerms,
+    Credit_Limit: row.creditLimit !== null ? Number(row.creditLimit) : null,
+    Credit_Days: row.creditDays,
     Status: row.status,
     Created_At: row.createdAt.toISOString(),
     Created_By: row.createdBy,
@@ -174,4 +181,55 @@ export async function createCustomersBulk(
   }
 
   return { created, errors, warnings };
+}
+
+export interface UpdateCustomerInput extends Partial<CustomerFields> {
+  customerName?: string;
+  /** Undefined leaves the column untouched; null clears it back to "no credit extended" —
+   * the same meaning `resolveCustomer()`'s own JUDGMENT CALL comment (orders.ts) already
+   * documents for a brand-new customer's starting state. */
+  creditLimit?: number | null;
+  creditDays?: number | null;
+  status?: "Active" | "Inactive";
+}
+
+/**
+ * Closes the gap `resolveCustomer()`'s own comment in orders.ts named ("An Admin can add
+ * credit terms afterwards from Parties") but that this codebase never actually built — until
+ * now, the only way to set an existing customer's `creditLimit`/`creditDays` (the columns
+ * Order FMS's own Payment_Review gate and the Accounts Credit Risk report both read) was a
+ * direct database write. Plain `id`-PK, org-scoped table, so this is a thin wrapper over
+ * `src/db/repo.ts`'s generic `updateById()`, same shape as every other single-row update in
+ * this codebase — no bespoke query needed.
+ */
+export async function updateCustomer(
+  customerId: string,
+  patch: UpdateCustomerInput
+): Promise<CustomerRecord> {
+  const orgId = await getTenantOrgId();
+
+  const row = await updateById(customers, orgId, customerId, {
+    ...(patch.customerName !== undefined && { customerName: patch.customerName.trim() }),
+    ...(patch.contactPerson !== undefined && { contactPerson: patch.contactPerson.trim() }),
+    ...(patch.phone !== undefined && { phone: patch.phone.trim() }),
+    ...(patch.email !== undefined && { email: patch.email.trim() }),
+    ...(patch.gstin !== undefined && { gstin: patch.gstin.trim() }),
+    ...(patch.billingAddress !== undefined && { billingAddress: patch.billingAddress.trim() }),
+    ...(patch.shippingAddress !== undefined && { shippingAddress: patch.shippingAddress.trim() }),
+    ...(patch.city !== undefined && { city: patch.city.trim() }),
+    ...(patch.state !== undefined && { state: patch.state.trim() }),
+    ...(patch.creditTerms !== undefined && { creditTerms: patch.creditTerms.trim() }),
+    ...(patch.creditLimit !== undefined && {
+      creditLimit: patch.creditLimit === null ? null : String(patch.creditLimit),
+    }),
+    ...(patch.creditDays !== undefined && {
+      creditDays: patch.creditDays === null ? null : Math.round(patch.creditDays),
+    }),
+    ...(patch.status !== undefined && { status: patch.status }),
+  });
+
+  if (!row) {
+    throw new Error("Customer nahi mila.");
+  }
+  return rowToRecord(row);
 }

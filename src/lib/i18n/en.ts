@@ -1742,4 +1742,13 @@ export const EN: Record<string, string> = {
   "din baaki": "days left",
   "Plan badalne ke liye Pro ERP ke Platform Admin se sampark karein.":
     "Contact Pro ERP's Platform Admin to change the plan.",
+
+  // --- Parties: Customer edit (Credit Limit/Days) -----------------------------------------
+  "Customer Edit Karein": "Edit Customer",
+  "Credit Limit aur Credit Days yahan set karein — Order FMS ka Payment_Review gate aur Accounts ka Credit Risk report inhi do fields se kaam karte hain.":
+    "Set Credit Limit and Credit Days here — Order FMS's own Payment_Review gate and the Accounts Credit Risk report both work off these two fields.",
+  "Khaali chhodein toh is customer ko koi credit nahi mila hoga — naya order advance maangega.":
+    "Leave blank and this customer has no credit extended — a new order will require an advance.",
+  "Credit Days": "Credit Days",
+  "Customer update ho gaya.": "Customer updated.",
 };

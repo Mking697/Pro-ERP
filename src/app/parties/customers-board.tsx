@@ -11,9 +11,12 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Pencil } from "lucide-react";
 import { TableSkeleton } from "@/components/loading-states";
 import { useT } from "@/components/preferences-provider";
 import CreateCustomerDialog from "./create-customer-dialog";
+import EditCustomerDialog from "./edit-customer-dialog";
 import PartyImportDialog from "./party-import-dialog";
 import type { CustomerRow } from "./types";
 
@@ -22,6 +25,7 @@ export default function CustomersBoard() {
   const [customers, setCustomers] = useState<CustomerRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [version, setVersion] = useState(0);
+  const [editing, setEditing] = useState<CustomerRow | null>(null);
 
   useEffect(() => {
     fetch("/api/parties/customers")
@@ -35,6 +39,10 @@ export default function CustomersBoard() {
 
   function handleCreated(customer: CustomerRow) {
     setCustomers((prev) => [...prev, customer]);
+  }
+
+  function handleUpdated(customer: CustomerRow) {
+    setCustomers((prev) => prev.map((c) => (c.Customer_ID === customer.Customer_ID ? customer : c)));
   }
 
   if (loading) {
@@ -65,12 +73,13 @@ export default function CustomersBoard() {
               <TableHead>{t("State")}</TableHead>
               <TableHead>{t("Credit Terms")}</TableHead>
               <TableHead>Status</TableHead>
+              <TableHead className="w-10" />
             </TableRow>
           </TableHeader>
           <TableBody>
             {customers.length === 0 && (
               <TableRow>
-                <TableCell colSpan={8} className="text-center text-muted-foreground">
+                <TableCell colSpan={9} className="text-center text-muted-foreground">
                   {t("Abhi koi customer nahi hai.")}
                 </TableCell>
               </TableRow>
@@ -89,11 +98,30 @@ export default function CustomersBoard() {
                     {c.Status || "Active"}
                   </Badge>
                 </TableCell>
+                <TableCell>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon-sm"
+                    aria-label={`${c.Customer_Name} edit karein`}
+                    onClick={() => setEditing(c)}
+                  >
+                    <Pencil />
+                  </Button>
+                </TableCell>
               </TableRow>
             ))}
           </TableBody>
         </Table>
       </div>
+
+      <EditCustomerDialog
+        key={editing?.Customer_ID ?? "closed"}
+        customer={editing}
+        open={editing !== null}
+        onOpenChange={(open) => !open && setEditing(null)}
+        onUpdated={handleUpdated}
+      />
     </div>
   );
 }
