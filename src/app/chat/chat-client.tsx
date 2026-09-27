@@ -37,8 +37,14 @@ interface ConfigResponse {
  * right. Every actual access-control decision already happened server-side by the time
  * anything renders here — this component only ever calls its own org's already-guarded
  * /api/chatbot/* routes, never touches Gemini or the database directly.
+ *
+ * `compact`: used by the floating widget (src/components/chat-widget.tsx), which has far
+ * less screen real estate than the dedicated /chat page — hides the session-list sidebar
+ * (still fetched, so "New Chat" and reopening today's conversation still work once the
+ * widget itself grows a switcher; there just isn't room to show the list today) and drops
+ * the outer Card chrome, since the widget's own floating panel already provides that.
  */
-export default function ChatClient() {
+export default function ChatClient({ compact = false }: { compact?: boolean }) {
   const t = useT();
   const [config, setConfig] = useState<ConfigResponse | null>(null);
   const [sessions, setSessions] = useState<SessionSummary[]>([]);
@@ -155,7 +161,7 @@ export default function ChatClient() {
 
   if (loadingConfig) {
     return (
-      <Card className="flex-1">
+      <Card className={cn("flex-1", compact && "border-0 shadow-none")}>
         <CardContent className="space-y-3 p-6">
           <Skeleton className="h-6 w-1/3" />
           <Skeleton className="h-40 w-full" />
@@ -166,7 +172,7 @@ export default function ChatClient() {
 
   if (config && !config.connected) {
     return (
-      <Card className="flex-1">
+      <Card className={cn("flex-1", compact && "border-0 shadow-none")}>
         <CardContent className="flex h-full flex-col items-center justify-center gap-3 p-10 text-center">
           <Sparkles className="size-10 text-muted-foreground" aria-hidden="true" />
           <p className="text-lg font-medium">{t("AI Assistant abhi connect nahi hai")}</p>
@@ -182,35 +188,45 @@ export default function ChatClient() {
 
   return (
     <div className="flex min-h-0 flex-1 gap-4">
-      <Card className="hidden w-64 shrink-0 sm:flex sm:flex-col">
-        <CardContent className="flex h-full flex-col gap-2 p-3">
-          <Button variant="outline" size="sm" className="justify-start gap-2" onClick={startNewChat}>
-            <MessageSquarePlus className="size-4" aria-hidden="true" />
-            {t("New Chat")}
-          </Button>
-          <div className="min-h-0 flex-1 space-y-1 overflow-y-auto">
-            {sessions.length === 0 && (
-              <p className="px-2 py-4 text-xs text-muted-foreground">{t("Abhi tak koi chat nahi hai.")}</p>
-            )}
-            {sessions.map((s) => (
-              <button
-                key={s.id}
-                type="button"
-                onClick={() => openSession(s.id)}
-                className={cn(
-                  "w-full truncate rounded-md px-2 py-1.5 text-left text-sm hover:bg-muted",
-                  activeSessionId === s.id && "bg-accent text-accent-foreground"
-                )}
-              >
-                {s.title || t("Nayi chat")}
-              </button>
-            ))}
-          </div>
-        </CardContent>
-      </Card>
+      {!compact && (
+        <Card className="hidden w-64 shrink-0 sm:flex sm:flex-col">
+          <CardContent className="flex h-full flex-col gap-2 p-3">
+            <Button variant="outline" size="sm" className="justify-start gap-2" onClick={startNewChat}>
+              <MessageSquarePlus className="size-4" aria-hidden="true" />
+              {t("New Chat")}
+            </Button>
+            <div className="min-h-0 flex-1 space-y-1 overflow-y-auto">
+              {sessions.length === 0 && (
+                <p className="px-2 py-4 text-xs text-muted-foreground">{t("Abhi tak koi chat nahi hai.")}</p>
+              )}
+              {sessions.map((s) => (
+                <button
+                  key={s.id}
+                  type="button"
+                  onClick={() => openSession(s.id)}
+                  className={cn(
+                    "w-full truncate rounded-md px-2 py-1.5 text-left text-sm hover:bg-muted",
+                    activeSessionId === s.id && "bg-accent text-accent-foreground"
+                  )}
+                >
+                  {s.title || t("Nayi chat")}
+                </button>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
-      <Card className="flex min-h-0 flex-1 flex-col">
-        <CardContent className="flex min-h-0 flex-1 flex-col gap-3 p-4">
+      <Card className={cn("flex min-h-0 flex-1 flex-col", compact && "border-0 shadow-none")}>
+        <CardContent className={cn("flex min-h-0 flex-1 flex-col gap-3", compact ? "p-1" : "p-4")}>
+          {compact && (
+            <div className="flex justify-end">
+              <Button variant="ghost" size="sm" className="gap-1.5 text-xs" onClick={startNewChat}>
+                <MessageSquarePlus className="size-3.5" aria-hidden="true" />
+                {t("New Chat")}
+              </Button>
+            </div>
+          )}
           <div ref={scrollRef} className="min-h-0 flex-1 space-y-3 overflow-y-auto pr-1">
             {loadingMessages ? (
               <Skeleton className="h-24 w-full" />

@@ -11,7 +11,15 @@ import type { ChatTool } from "@/lib/chatbot/tools";
  * exactly like the existing ChatXFlow WhatsApp token. There is no shared/platform key.
  */
 
-const DEFAULT_MODEL = "gemini-2.0-flash";
+// "gemini-2.0-flash" (this constant's original value) was retired by Google after this
+// feature's own live-test session (which only ever stubbed the Gemini API, never called it
+// for real) — confirmed 2026-09-28 by querying the real ListModels endpoint against a real
+// configured key: it no longer appears in the list of models supporting generateContent at
+// all. "gemini-3.8-flash" was confirmed present in that same live list before being set here
+// — don't reset this back to a guessed/remembered name without checking the real
+// ListModels endpoint first, model availability on Google's side moves faster than this
+// codebase's own release cadence.
+const DEFAULT_MODEL = "gemini-3.8-flash";
 const API_BASE = "https://generativelanguage.googleapis.com/v1beta/models";
 
 export interface GeminiFunctionCall {

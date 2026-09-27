@@ -10,6 +10,7 @@ import LogoutButton from "@/app/dashboard/logout-button";
 import { OrgLogo } from "@/components/logo-picker";
 import SettingsMenu from "@/components/settings-menu";
 import ChangelogMenu from "@/components/changelog-menu";
+import ChatWidget from "@/components/chat-widget";
 
 const COLLAPSE_KEY = "pro-erp:sidebar-collapsed";
 
@@ -72,6 +73,7 @@ export default function SidebarShell({
   email,
   role,
   items,
+  showChatWidget = false,
   children,
 }: {
   orgName: string;
@@ -80,6 +82,7 @@ export default function SidebarShell({
   email: string;
   role: string;
   items: NavEntry[];
+  showChatWidget?: boolean;
   children: React.ReactNode;
 }) {
   const collapsed = useSyncExternalStore(
@@ -265,6 +268,8 @@ export default function SidebarShell({
           </div>
         </div>
       )}
+
+      {showChatWidget && <ChatWidget />}
     </div>
   );
 }

@@ -1751,4 +1751,8 @@ export const EN: Record<string, string> = {
     "Leave blank and this customer has no credit extended — a new order will require an advance.",
   "Credit Days": "Credit Days",
   "Customer update ho gaya.": "Customer updated.",
+
+  // --- Floating chat widget --------------------------------------------------------------
+  "AI Assistant band karein": "Close AI Assistant",
+  "AI Assistant kholein": "Open AI Assistant",
 };

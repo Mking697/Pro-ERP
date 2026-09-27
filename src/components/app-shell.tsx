@@ -175,6 +175,7 @@ export default async function AppShell({
       email={session.email}
       role={session.role}
       items={items}
+      showChatWidget={session.access.includes("AI_CHATBOT")}
     >
       {children}
     </SidebarShell>
