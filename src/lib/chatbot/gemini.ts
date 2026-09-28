@@ -25,6 +25,14 @@ const API_BASE = "https://generativelanguage.googleapis.com/v1beta/models";
 export interface GeminiFunctionCall {
   name: string;
   args: Record<string, unknown>;
+  /** Gemini 2.5+/3.x "thinking" models attach an opaque signature to a functionCall part in
+   * their response — it must be echoed back verbatim on that same part when the call is
+   * replayed into a later request's `contents` (our own multi-round tool-call loop does this
+   * every time), or the API rejects the request outright with "Function call is missing a
+   * thought_signature...". Confirmed live 2026-09-28 via error_logs: this was breaking every
+   * tool-using chatbot question after the gemini-3.8-flash switch, not just get_team_performance
+   * — see https://ai.google.dev/gemini-api/docs/thought-signatures. */
+  thoughtSignature?: string;
 }
 
 export interface GeminiTurn {
@@ -38,7 +46,7 @@ export interface GeminiTurn {
 export type GeminiContent =
   | { role: "user"; parts: [{ text: string }] }
   | { role: "model"; parts: [{ text: string }] }
-  | { role: "model"; parts: [{ functionCall: GeminiFunctionCall }] }
+  | { role: "model"; parts: [{ functionCall: { name: string; args: Record<string, unknown> }; thoughtSignature?: string }] }
   | { role: "user"; parts: [{ functionResponse: { name: string; response: Record<string, unknown> } }] };
 
 export function userText(text: string): GeminiContent {
@@ -50,7 +58,10 @@ export function modelText(text: string): GeminiContent {
 }
 
 export function modelFunctionCall(call: GeminiFunctionCall): GeminiContent {
-  return { role: "model", parts: [{ functionCall: call }] };
+  return {
+    role: "model",
+    parts: [{ functionCall: { name: call.name, args: call.args }, thoughtSignature: call.thoughtSignature }],
+  };
 }
 
 export function functionResponse(name: string, response: Record<string, unknown>): GeminiContent {
@@ -128,14 +139,17 @@ async function doOneCall(
     ?.candidates?.[0];
   const parts = (candidate?.content?.parts ?? []) as Array<{
     text?: string;
-    functionCall?: GeminiFunctionCall;
+    functionCall?: { name: string; args: Record<string, unknown> };
+    thoughtSignature?: string;
   }>;
 
   let text = "";
   const functionCalls: GeminiFunctionCall[] = [];
   for (const part of parts) {
     if (typeof part.text === "string") text += part.text;
-    if (part.functionCall) functionCalls.push(part.functionCall);
+    if (part.functionCall) {
+      functionCalls.push({ ...part.functionCall, thoughtSignature: part.thoughtSignature });
+    }
   }
 
   return { text, functionCalls };

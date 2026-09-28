@@ -34,13 +34,40 @@ type FetchQueueEntry = {
   functionCalls: { name: string; args: Record<string, unknown> }[];
 };
 
+// A real Gemini "thinking" model (2.5+/3.x) attaches this to a functionCall part and expects
+// it echoed back verbatim when that turn is replayed into a later request — see gemini.ts's
+// own comment on GeminiFunctionCall.thoughtSignature. The stub below both returns one (so a
+// real production response shape is exercised) and asserts any replayed functionCall part
+// carries a signature, so this exact 2026-09-28 bug (dropped on replay, confirmed live via
+// error_logs — every tool-using question broke after the gemini-3.8-flash switch) can never
+// silently regress again without this test catching it.
+const FAKE_THOUGHT_SIGNATURE = "fake-thought-signature-for-test";
+
 function geminiResponseBody(entry: FetchQueueEntry) {
   const parts: Record<string, unknown>[] = [];
   if (entry.text) parts.push({ text: entry.text });
-  for (const call of entry.functionCalls) parts.push({ functionCall: call });
+  for (const call of entry.functionCalls) {
+    parts.push({ functionCall: call, thoughtSignature: FAKE_THOUGHT_SIGNATURE });
+  }
   return {
     candidates: [{ content: { parts } }],
   };
+}
+
+/** Throws if any `contents` entry being sent TO Gemini replays a functionCall part without
+ * the thought_signature real Gemini requires on replay — this is what makes the stub a real
+ * regression guard for the 2026-09-28 bug, not just a shape-matching mock. */
+function assertReplayedFunctionCallsHaveSignature(body: unknown) {
+  const contents = (body as { contents?: Array<{ parts?: Array<Record<string, unknown>> }> })?.contents ?? [];
+  for (const content of contents) {
+    for (const part of content.parts ?? []) {
+      if (part.functionCall && !part.thoughtSignature) {
+        throw new Error(
+          "REGRESSION: a functionCall part was replayed to Gemini with no thoughtSignature — this is the exact 2026-09-28 bug (see gemini.ts's modelFunctionCall)."
+        );
+      }
+    }
+  }
 }
 
 async function main() {
@@ -187,6 +214,9 @@ async function main() {
           return realFetch(input, init);
         }
         fetchCallCount++;
+        if (init?.body) {
+          assertReplayedFunctionCallsHaveSignature(JSON.parse(init.body as string));
+        }
         if (overloadedResponsesRemaining > 0) {
           overloadedResponsesRemaining--;
           return new Response(
