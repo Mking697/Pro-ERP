@@ -31,7 +31,10 @@ function ok(msg: string) {
 
 type FetchQueueEntry = {
   text: string;
-  functionCalls: { name: string; args: Record<string, unknown> }[];
+  // `skipSignature: true` reproduces the real, confirmed-live 2026-09-28 Gemini behavior for
+  // parallel function calling: when a turn returns SEVERAL function calls at once, only one
+  // of them actually carries a thoughtSignature — the rest come back with none at all.
+  functionCalls: { name: string; args: Record<string, unknown>; skipSignature?: boolean }[];
 };
 
 // A real Gemini "thinking" model (2.5+/3.x) attaches this to a functionCall part and expects
@@ -47,7 +50,10 @@ function geminiResponseBody(entry: FetchQueueEntry) {
   const parts: Record<string, unknown>[] = [];
   if (entry.text) parts.push({ text: entry.text });
   for (const call of entry.functionCalls) {
-    parts.push({ functionCall: call, thoughtSignature: FAKE_THOUGHT_SIGNATURE });
+    const { skipSignature, ...functionCall } = call;
+    const part: Record<string, unknown> = { functionCall };
+    if (!skipSignature) part.thoughtSignature = FAKE_THOUGHT_SIGNATURE;
+    parts.push(part);
   }
   return {
     candidates: [{ content: { parts } }],
@@ -319,6 +325,31 @@ async function main() {
         assert(retried.groundedInTool, "the retried call should still ground a real answer");
         assert(fetchCallCount === callsBefore + 3, `expected exactly 3 fetch calls (1 failed + 2 succeeded), got ${fetchCallCount - callsBefore}`);
         ok("callGemini() retries a real HTTP 503 'high demand' response and recovers automatically");
+
+        // --- Scenario 9: parallel function calls, only the FIRST carries a thoughtSignature --
+        // Reproduces the real 2026-09-28 production bug: a single turn returning two function
+        // calls at once, where Gemini attached a signature to only one of them. Without the
+        // broadcast fix in gemini.ts's doOneCall(), the replayed second call would go out
+        // signature-less and assertReplayedFunctionCallsHaveSignature() below would catch it.
+        queue = [
+          {
+            text: "",
+            functionCalls: [
+              { name: "get_my_mis_score", args: {} },
+              { name: "get_my_pending_tasks", args: {}, skipSignature: true },
+            ],
+          },
+          { text: "Your score is on track and you have one pending task.", functionCalls: [] },
+        ];
+        const sessionParallel = await createChatSession(narrowUser.User_ID);
+        const parallel = await answerChatMessage(narrowSession, sessionParallel.id, "my score and my pending tasks?");
+        assert(parallel.kind === "answered", "expected an answered outcome for the parallel-call turn");
+        assert(parallel.groundedInTool, "a parallel turn with real tool data should still ground the answer");
+        assert(
+          parallel.toolsCalled.includes("get_my_mis_score") && parallel.toolsCalled.includes("get_my_pending_tasks"),
+          "both parallel tool calls should be recorded"
+        );
+        ok("A turn with parallel function calls (only one signed) still grounds a real answer, not the generic error");
       } finally {
         globalThis.fetch = realFetch;
       }

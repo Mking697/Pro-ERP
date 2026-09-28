@@ -152,6 +152,22 @@ async function doOneCall(
     }
   }
 
+  // Confirmed live 2026-09-28 (production error_logs): when a single turn returns SEVERAL
+  // function calls at once (parallel function calling), Gemini attaches a thoughtSignature to
+  // only one of them, not each — yet still hard-rejects the follow-up round-trip if any OTHER
+  // functionCall part in that same turn is replayed without one. The signature represents the
+  // model's reasoning for the whole turn, not one specific call, so the fix is to broadcast
+  // whichever signature the turn did carry onto every function-call part of that turn before
+  // it's ever replayed — never leave a same-turn sibling call signature-less.
+  if (functionCalls.length > 1) {
+    const turnSignature = functionCalls.find((c) => c.thoughtSignature)?.thoughtSignature;
+    if (turnSignature) {
+      for (const call of functionCalls) {
+        if (!call.thoughtSignature) call.thoughtSignature = turnSignature;
+      }
+    }
+  }
+
   return { text, functionCalls };
 }
 
