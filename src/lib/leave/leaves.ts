@@ -232,6 +232,15 @@ export async function listMyLeaves(userId: string): Promise<LeaveRecord[]> {
   return Promise.all(mine.map(rowToRecord));
 }
 
+/** Every leave record in the organization — for the Leave report's "poora organization"
+ * scope (Admin / PERFORMANCE_VIEW holders only, per reports.ts's own canSeeEveryone()). */
+export async function listAllLeaves(): Promise<LeaveRecord[]> {
+  const orgId = await getTenantOrgId();
+  const rows = await db.select().from(leaves).where(eq(leaves.orgId, orgId));
+  const sorted = [...rows].sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
+  return Promise.all(sorted.map(rowToRecord));
+}
+
 /** Every leave currently waiting on this user's own decision (they are the resolved
  * approver for its current step). */
 export async function listPendingApprovalsFor(userId: string): Promise<LeaveRecord[]> {

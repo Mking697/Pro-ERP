@@ -29,6 +29,8 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import ScoreBreakdown from "./score-breakdown";
+import DoerScoreDialog from "./doer-score-dialog";
 import { cn } from "@/lib/utils";
 import DateRangeFilter from "./date-range-filter";
 import { getT } from "@/lib/i18n/server";
@@ -37,6 +39,15 @@ import { getInventorySnapshot, itemsNeedingReorder } from "@/lib/inventory/servi
 import { listIndents } from "@/lib/inventory/indents";
 import { listBoms } from "@/lib/inventory/bom";
 import { listPlans } from "@/lib/inventory/plans";
+import { listAllLeaves } from "@/lib/leave/leaves";
+import { listLeads } from "@/lib/leads/leads";
+import { listOrders } from "@/lib/orders/orders";
+import { listInspections } from "@/lib/pdi/pdi";
+import { listShipments } from "@/lib/tms/tms";
+import { listInvoices } from "@/lib/accounts/accounts";
+import { listBills } from "@/lib/accounts/payables";
+import { listDispatches } from "@/lib/dispatch/dispatch";
+import { listPayslipsForUser } from "@/lib/payroll/payroll";
 import {
   canSeeReport,
   getReport,
@@ -207,11 +218,20 @@ export default async function Analytics({
       needs("inward") ? safe(() => listInwardEntries()) : null,
       needs("iqc") ? safe(() => listFailureLog()) : null,
       needs("iqc") || needs("ims") ? safe(() => listImsInward()) : null,
-      needs("inventory") ? safe(() => getInventorySnapshot()) : null,
+      needs("inventory") || needs("finished-goods") ? safe(() => getInventorySnapshot()) : null,
       needs("indents") ? safe(() => listIndents()) : null,
       needs("bom") ? safe(() => listBoms()) : null,
       needs("ppc") ? safe(() => listPlans()) : null,
       needs("performance") ? safe(() => listAllFmsRuns()) : null,
+      needs("leave") ? safe(() => listAllLeaves()) : null,
+      needs("leads") ? safe(() => listLeads()) : null,
+      needs("orders") ? safe(() => listOrders()) : null,
+      needs("pdi") ? safe(() => listInspections()) : null,
+      needs("tms") ? safe(() => listShipments()) : null,
+      needs("accounts") ? safe(() => listInvoices()) : null,
+      needs("accounts") ? safe(() => listBills()) : null,
+      needs("dispatch") ? safe(() => listDispatches()) : null,
+      needs("payroll") ? safe(() => listPayslipsForUser(session.userId)) : null,
     ]);
 
   const [
@@ -226,6 +246,15 @@ export default async function Analytics({
     allBoms,
     allPlans,
     allFmsRuns,
+    allLeaves,
+    allLeads,
+    allOrders,
+    allPdi,
+    allTms,
+    allInvoices,
+    allBills,
+    allDispatches,
+    payslips,
   ] = tenant ? await runWithTenant(tenant, read) : await read();
 
   // Scoped after the cached read, never inside it. The cache holds the organization's raw
@@ -242,7 +271,17 @@ export default async function Analytics({
   const indents = scopeFor(allIndents, "indents", scope, session);
   const boms = scopeFor(allBoms, "bom", scope, session);
   const plans = scopeFor(allPlans, "ppc", scope, session);
-
+  const leaveRecords = scopeFor(allLeaves, "leave", scope, session);
+  const leads = scopeFor(allLeads, "leads", scope, session);
+  const orders = scopeFor(allOrders, "orders", scope, session);
+  const pdi = scopeFor(allPdi, "pdi", scope, session);
+  const tms = scopeFor(allTms, "tms", scope, session);
+  const dispatches = scopeFor(allDispatches, "dispatch", scope, session);
+  // Accounts combines two sources (Receivables/Payables) with no shared per-person
+  // meaning — like Inventory, there is no "my invoice" to narrow either to.
+  const invoices = allInvoices;
+  const bills = allBills;
+  const fgItems = (stock?.items ?? []).filter((i) => i.item.Category === "FG");
 
   const tasks = filterTasks(allTasks ?? [], range);
   const myTasks = tasks.filter((t) => t.Assigned_To === session.userId);
@@ -588,6 +627,298 @@ export default async function Analytics({
         </Section>
       )}
 
+      {shows("leave") && leaveRecords && (
+        <Section
+          title={t("Leave")}
+          description={`${range.label} — ${t("Filed leaves aur unka approval status.")}`}
+        >
+          <ChartFrame title={t("Leave status")}>
+            <DonutChart
+              data={countBy(
+                leaveRecords.filter((l) => inRange(l.createdAt, range)),
+                (l) => l.status
+              ).map((b, i) => ({ ...b, color: seriesColor(i) }))}
+              emptyMessage={t("Is period me koi leave file nahi hui.")}
+            />
+          </ChartFrame>
+
+          <ChartFrame title={t("Leave Type ke hisaab se")}>
+            <BarChart
+              data={countBy(
+                leaveRecords.filter((l) => inRange(l.createdAt, range)),
+                (l) => l.leaveType
+              ).map((b, i) => ({ ...b, color: seriesColor(i) }))}
+              emptyMessage={t("Is period me koi leave file nahi hui.")}
+            />
+          </ChartFrame>
+        </Section>
+      )}
+
+      {shows("finished-goods") && stock && (
+        <Section
+          title={t("Finished Goods")}
+          description={t("Finished Goods ka aaj ka live stock — ye period filter par nahi badalta.")}
+        >
+          <ChartFrame title={t("Stock status")}>
+            <DonutChart
+              data={[
+                { label: "Healthy", value: statusCount(fgItems, "Healthy"), color: "var(--chart-good)" },
+                { label: "Low", value: statusCount(fgItems, "Low"), color: "var(--chart-warning)" },
+                { label: "Critical", value: statusCount(fgItems, "Critical"), color: "var(--chart-critical)" },
+                { label: "Out of Stock", value: statusCount(fgItems, "Out of Stock"), color: "var(--chart-critical)" },
+              ]}
+              emptyMessage={t("Abhi koi FG item nahi hai.")}
+            />
+          </ChartFrame>
+
+          <ChartFrame
+            title={t("Reorder point se sabse neeche")}
+            hint={t("Jo apne reorder point se sabse zyada neeche gir chuka hai.")}
+          >
+            <BarChart
+              data={itemsNeedingReorder(fgItems)
+                .slice(0, 8)
+                .map((i) => ({
+                  label: i.item.Item_Name || i.item.SKU,
+                  value: Math.round((i.rop ?? 0) - i.projected),
+                  color: "var(--chart-critical)",
+                }))}
+              emptyMessage={t("Abhi kisi item ko order ki zaroorat nahi")}
+            />
+          </ChartFrame>
+        </Section>
+      )}
+
+      {shows("leads") && leads && (
+        <Section
+          title={t("Leads")}
+          description={`${range.label} — ${t("Leads aur unki pipeline stage.")}`}
+        >
+          <ChartFrame title={t("Pipeline stage")}>
+            <DonutChart
+              data={countBy(
+                leads.filter((l) => inRange(l.createdAt, range)),
+                (l) => l.status
+              ).map((b, i) => ({ ...b, color: seriesColor(i) }))}
+              emptyMessage={t("Is period me koi lead nahi bana.")}
+            />
+          </ChartFrame>
+
+          <ChartFrame title={t("Leads kab bane")}>
+            <TimelineChart
+              emptyMessage={t("Is period me koi lead nahi bana.")}
+              points={bucketByDate(
+                leads.filter((l) => inRange(l.createdAt, range)).map((l) => l.createdAt),
+                range
+              )}
+            />
+          </ChartFrame>
+        </Section>
+      )}
+
+      {shows("orders") && orders && (
+        <Section
+          title={t("Orders")}
+          description={`${range.label} — ${t("Sales orders aur unki haalat.")}`}
+        >
+          <ChartFrame title={t("Order status")}>
+            <DonutChart
+              data={countBy(
+                orders.filter((o) => inRange(o.createdAt, range)),
+                (o) => o.status
+              ).map((b, i) => ({ ...b, color: seriesColor(i) }))}
+              emptyMessage={t("Is period me koi order nahi bana.")}
+            />
+          </ChartFrame>
+
+          <ChartFrame title={t("Orders kab bane")}>
+            <TimelineChart
+              emptyMessage={t("Is period me koi order nahi bana.")}
+              points={bucketByDate(
+                orders.filter((o) => inRange(o.createdAt, range)).map((o) => o.createdAt),
+                range
+              )}
+            />
+          </ChartFrame>
+        </Section>
+      )}
+
+      {shows("pdi") && pdi && (
+        <Section
+          title={t("PDI")}
+          description={`${range.label} — ${t("Pre-Dispatch Inspection ka result.")}`}
+        >
+          <ChartFrame title={t("Inspection status")}>
+            <DonutChart
+              data={[
+                {
+                  label: "Passed",
+                  value: pdi.filter((p) => p.status === "Passed" && inRange(p.createdAt, range)).length,
+                  color: "var(--chart-good)",
+                },
+                {
+                  label: "Pending",
+                  value: pdi.filter((p) => p.status === "Pending" && inRange(p.createdAt, range)).length,
+                  color: "var(--chart-warning)",
+                },
+              ]}
+              emptyMessage={t("Is period me koi PDI inspection nahi hui.")}
+            />
+          </ChartFrame>
+
+          <ChartFrame title={t("Inspections kab hui")}>
+            <TimelineChart
+              emptyMessage={t("Is period me koi PDI inspection nahi hui.")}
+              points={bucketByDate(
+                pdi.filter((p) => inRange(p.createdAt, range)).map((p) => p.createdAt),
+                range
+              )}
+            />
+          </ChartFrame>
+        </Section>
+      )}
+
+      {shows("tms") && tms && (
+        <Section
+          title={t("TMS")}
+          description={`${range.label} — ${t("Transport shipments aur unki haalat.")}`}
+        >
+          <ChartFrame title={t("Shipment status")}>
+            <DonutChart
+              data={[
+                {
+                  label: "At Loading Dock",
+                  value: tms.filter((s) => s.status === "At_Loading_Dock" && inRange(s.createdAt, range)).length,
+                  color: "var(--chart-good)",
+                },
+                {
+                  label: "Pending",
+                  value: tms.filter((s) => s.status === "Pending" && inRange(s.createdAt, range)).length,
+                  color: "var(--chart-warning)",
+                },
+              ]}
+              emptyMessage={t("Is period me koi shipment plan nahi hua.")}
+            />
+          </ChartFrame>
+
+          <ChartFrame title={t("Shipments kab plan hue")}>
+            <TimelineChart
+              emptyMessage={t("Is period me koi shipment plan nahi hua.")}
+              points={bucketByDate(
+                tms.filter((s) => inRange(s.createdAt, range)).map((s) => s.createdAt),
+                range
+              )}
+            />
+          </ChartFrame>
+        </Section>
+      )}
+
+      {shows("accounts") && invoices && bills && (
+        <Section
+          title={t("Accounts")}
+          description={`${range.label} — ${t("Invoices aur Bills ka status.")}`}
+        >
+          <ChartFrame title={t("Invoice status (Receivables)")}>
+            <DonutChart
+              data={countBy(
+                invoices.filter((i) => inRange(i.createdAt, range)),
+                (i) => i.status
+              ).map((b, i) => ({ ...b, color: seriesColor(i) }))}
+              emptyMessage={t("Is period me koi invoice nahi bani.")}
+            />
+          </ChartFrame>
+
+          <ChartFrame title={t("Bill status (Payables)")}>
+            <DonutChart
+              data={countBy(
+                bills.filter((b) => inRange(b.createdAt, range)),
+                (b) => b.status
+              ).map((b, i) => ({ ...b, color: seriesColor(i) }))}
+              emptyMessage={t("Is period me koi bill nahi bana.")}
+            />
+          </ChartFrame>
+        </Section>
+      )}
+
+      {shows("dispatch") && dispatches && (
+        <Section
+          title={t("Dispatch")}
+          description={`${range.label} — ${t("Dispatch aur unki delivery status.")}`}
+        >
+          <ChartFrame title={t("Dispatch status")}>
+            <DonutChart
+              data={[
+                {
+                  label: "In Transit",
+                  value: dispatches.filter((d) => d.status === "In_Transit" && inRange(d.createdAt, range)).length,
+                  color: "var(--chart-warning)",
+                },
+                {
+                  label: "Dispatched",
+                  value: dispatches.filter((d) => d.status === "Dispatched" && inRange(d.createdAt, range)).length,
+                  color: "var(--chart-series-1)",
+                },
+                {
+                  label: "Delivered",
+                  value: dispatches.filter((d) => d.status === "Delivered" && inRange(d.createdAt, range)).length,
+                  color: "var(--chart-good)",
+                },
+              ]}
+              emptyMessage={t("Is period me koi dispatch nahi hua.")}
+            />
+          </ChartFrame>
+
+          <ChartFrame title={t("Dispatch kab hue")}>
+            <TimelineChart
+              emptyMessage={t("Is period me koi dispatch nahi hua.")}
+              points={bucketByDate(
+                dispatches.filter((d) => inRange(d.createdAt, range)).map((d) => d.createdAt),
+                range
+              )}
+            />
+          </ChartFrame>
+        </Section>
+      )}
+
+      {shows("payroll") && payslips && (
+        <Section
+          title={t("Payroll")}
+          description={`${range.label} — ${t("Aapki apni payslip history.")}`}
+        >
+          <ChartFrame title={t("Mahine ke hisaab se Net Pay")}>
+            <BarChart
+              data={payslips
+                .filter((p) => inRange(p.createdAt, range))
+                .slice(0, 12)
+                .map((p, i) => ({ label: p.month, value: p.netPay, color: seriesColor(i) }))}
+              emptyMessage={t("Is period me koi payslip nahi bani.")}
+            />
+          </ChartFrame>
+
+          <ChartFrame title={t("Latest payslip — Gross vs Deduction")}>
+            <DonutChart
+              data={
+                payslips.length === 0
+                  ? []
+                  : [
+                      {
+                        label: "Net Pay",
+                        value: payslips[0].netPay,
+                        color: "var(--chart-good)",
+                      },
+                      {
+                        label: "Deduction",
+                        value: Math.max(0, payslips[0].grossPay - payslips[0].netPay),
+                        color: "var(--chart-warning)",
+                      },
+                    ]
+              }
+              emptyMessage={t("Is period me koi payslip nahi bani.")}
+            />
+          </ChartFrame>
+        </Section>
+      )}
+
       {shows("performance") && (
         <PerformanceSection
           tasks={tasks}
@@ -711,7 +1042,19 @@ function PerformanceSection({
             )}
             {rows.map((r) => (
               <TableRow key={r.userId}>
-                <TableCell className="font-medium">{r.name}</TableCell>
+                <TableCell className="font-medium">
+                  <DoerScoreDialog
+                    name={r.name}
+                    scoreLabel={formatScore(r.summary.score)}
+                    scoreColorClass={getScoreColorClass(r.summary.score)}
+                  >
+                    <ScoreBreakdown
+                      tasks={tasks.filter((t) => t.Assigned_To === r.userId)}
+                      fmsRuns={fmsRuns.filter((f) => f.Assigned_To === r.userId)}
+                      summary={r.summary}
+                    />
+                  </DoerScoreDialog>
+                </TableCell>
                 <TableCell>{r.role}</TableCell>
                 <TableCell>{r.department || "—"}</TableCell>
                 <TableCell className="text-center tabular-nums">{r.summary.onTime}</TableCell>
