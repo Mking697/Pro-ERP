@@ -38,6 +38,25 @@ export type ChatAnswerOutcome =
  * question still goes through the full tool-grounding backstop below regardless of this. */
 const GREETING_RE = /^(hi|hello|hey|namaste|thanks|thank you|ok|okay|good morning|good evening)[.! ]*$/i;
 
+/**
+ * The deterministic backstop replies below (greeting, decline, not-found, error, round-limit)
+ * never go through Gemini, so system-prompt rule 8 ("match the user's own language") can't
+ * reach them — they used to be hardcoded English no matter what language the user asked in,
+ * which is exactly what made the assistant feel broken/unresponsive to a Hindi/Hinglish asker
+ * (bug report 2026-09-29). Fixed with a tiny, cheap heuristic here rather than a second Gemini
+ * call: Devanagari script, or any common Hinglish (Hindi written in Latin script) word, flips
+ * every one of these fixed templates to their Hinglish counterpart. This only changes which
+ * FIXED string is shown — it adds no new fabrication risk, since both variants say the exact
+ * same deterministic thing (decline / not found / error), just in the asker's own language.
+ */
+const DEVANAGARI_RE = /[ऀ-ॿ]/;
+const HINGLISH_WORD_RE =
+  /\b(kya|kaise|kaisa|kaisi|mera|meri|mere|hamara|humko|mujhe|muje|aap|apna|apne|hai|hain|nahi|nahin|kro|karo|kijiye|chahiye|kitna|kitne|kitni|btao|batao|bata|dikhao|dikha|abhi|kab|kaun|kahan|kyu|kyun|namaste|haan|theek|thik)\b/i;
+
+function isHinglishOrHindi(text: string): boolean {
+  return DEVANAGARI_RE.test(text) || HINGLISH_WORD_RE.test(text);
+}
+
 function systemPrompt(session: SessionPayload, orgName: string, tools: ChatTool[]): string {
   const toolNames = tools.map((t) => t.name).join(", ") || "(none available to this user)";
   return [
@@ -98,12 +117,20 @@ async function executeTool(
 const NOT_CONNECTED_MESSAGE =
   "AI Assistant isn't connected yet — ask your Admin to add a Gemini API key in Settings → AI Chatbot.";
 
-const DECLINE_MESSAGE =
+const DECLINE_MESSAGE_EN =
   "I can only answer questions about your own Pro ERP data — try asking about your pending tasks, your MIS score, your FMS steps, or (if you have access) inventory/order lookups.";
+const DECLINE_MESSAGE_HI =
+  "Main sirf aapke Pro ERP data se juda sawal answer kar sakta hoon — apne pending tasks, MIS score, FMS steps, ya (agar access hai to) inventory/order ke baare me poochh kar dekhein.";
 
-function notFoundMessage(reasons: string[]): string {
-  if (reasons.length === 0) return "I couldn't find that.";
-  return `I couldn't find that: ${reasons.join(" ")}`;
+function declineMessage(userMessage: string): string {
+  return isHinglishOrHindi(userMessage) ? DECLINE_MESSAGE_HI : DECLINE_MESSAGE_EN;
+}
+
+function notFoundMessage(reasons: string[], userMessage: string): string {
+  const hi = isHinglishOrHindi(userMessage);
+  if (reasons.length === 0) return hi ? "Mujhe ye nahi mila." : "I couldn't find that.";
+  const joined = reasons.join(" ");
+  return hi ? `Mujhe ye nahi mila: ${joined}` : `I couldn't find that: ${joined}`;
 }
 
 /**
@@ -135,7 +162,9 @@ export async function answerChatMessage(
   // Pure UX shortcut — never touches Gemini, so it cannot weaken the tool-grounding
   // backstop below (there is nothing to weaken: no Gemini call happened at all).
   if (GREETING_RE.test(userMessage.trim())) {
-    const reply = "Hello! Ask me about your pending tasks, your MIS score, your FMS steps, or (if you have access) inventory/order lookups.";
+    const reply = isHinglishOrHindi(userMessage)
+      ? "Namaste! Apne pending tasks, MIS score, FMS steps, ya (agar access hai to) inventory/order ke baare me kuch bhi poochh sakte hain."
+      : "Hello! Ask me about your pending tasks, your MIS score, your FMS steps, or (if you have access) inventory/order lookups.";
     await appendMessage({ sessionId, userId: session.userId, role: "assistant", content: reply, toolsUsed: [] });
     await recordChatAudit({ userId: session.userId, sessionId, question: userMessage, toolsCalled: [], groundedInTool: true });
     return { kind: "answered", reply, toolsCalled: [], groundedInTool: true };
@@ -190,7 +219,9 @@ export async function answerChatMessage(
   let groundedInTool: boolean;
 
   if (errorMessage) {
-    reply = "Something went wrong reaching the AI Assistant just now — please try again in a moment.";
+    reply = isHinglishOrHindi(userMessage)
+      ? "Abhi AI Assistant tak pahunchne me kuch dikkat aa gayi — thodi der me dobara try karein."
+      : "Something went wrong reaching the AI Assistant just now — please try again in a moment.";
     groundedInTool = false;
   } else if (toolsCalled.length === 0) {
     // The non-negotiable backstop (CLAUDE.md point 3): a response Gemini produced without
@@ -199,7 +230,7 @@ export async function answerChatMessage(
     // general knowledge" rule real rather than a suggestion the model could talk its way
     // around. A prompt-only version of rule 1/4 above is NOT trusted to hold under a
     // jailbreak attempt; this check is what actually holds.
-    reply = DECLINE_MESSAGE;
+    reply = declineMessage(userMessage);
     groundedInTool = false;
   } else if (!anyToolFound) {
     // Every tool actually called this turn came back empty — the non-negotiable "I
@@ -212,7 +243,7 @@ export async function answerChatMessage(
     // populated ones from real data — that mixed case is a documented, softer spot (prompt-
     // trusted, not app-enforced) since forcing a single canned reply would also throw away
     // the real data Gemini WAS able to answer from.
-    reply = notFoundMessage(notFoundReasons);
+    reply = notFoundMessage(notFoundReasons, userMessage);
     groundedInTool = false;
   } else if (finalText) {
     reply = finalText;
@@ -220,7 +251,9 @@ export async function answerChatMessage(
   } else {
     // Ran out of tool-call rounds without ever producing text — a real answer exists in
     // principle (a tool did return data) but Gemini never converged on a final message.
-    reply = "I found some data but couldn't finish putting together an answer — please try rephrasing your question.";
+    reply = isHinglishOrHindi(userMessage)
+      ? "Data toh mil gaya lekin poora jawaab nahi bana paya — apna sawal thoda alag tareeke se dobara poochhein."
+      : "I found some data but couldn't finish putting together an answer — please try rephrasing your question.";
     groundedInTool = false;
   }
 
