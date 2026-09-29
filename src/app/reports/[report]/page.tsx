@@ -1,11 +1,7 @@
 import { cookies } from "next/headers";
 import { notFound, redirect } from "next/navigation";
-import Link from "next/link";
-import { ArrowLeft } from "lucide-react";
 import { verifySession, SESSION_COOKIE } from "@/lib/auth/session";
-import AppShell from "@/components/app-shell";
 import PageHeader from "@/components/page-header";
-import { Button } from "@/components/ui/button";
 import {
   canSeeEveryone,
   canSeeReport,
@@ -18,7 +14,8 @@ import Analytics from "@/app/dashboard/analytics";
 import ShareReport from "@/app/dashboard/share-report";
 import { getT } from "@/lib/i18n/server";
 
-/** One report on its own page, with its own date filter and its own share link. */
+/** One report's content pane — its own date filter and its own share link — rendered
+ * inside `reports/layout.tsx`'s persistent sidebar, one report at a time. */
 export default async function ReportPage({
   params,
   searchParams,
@@ -55,59 +52,44 @@ export default async function ReportPage({
   const seesEveryone = canSeeEveryone(session);
 
   return (
-    <AppShell session={session}>
-      <div className="space-y-6">
-        <div>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="-ml-2 mb-1"
-            render={
-              <Link href="/reports">
-                <ArrowLeft />
-                {t("Saari reports")}
-              </Link>
-            }
+    <div className="space-y-6">
+      <PageHeader title={t(definition.label)} description={t(definition.description)}>
+        {/* Personal reports carry no share button: a public link has no reader to
+            be personal to, so it would be empty or, worse, somebody else's. */}
+        {/* A public link carries the whole organization's rows, not the creator's
+            own slice — a supplier sent an inward report wants the shipments, not one
+            clerk's share of them. That makes creating a link a way of publishing
+            everybody's work, so it is offered only to someone already entitled to see
+            everybody's work. The API enforces the same rule. */}
+        {!definition.personal && seesEveryone && (
+          <ShareReport
+            reportId={definition.id}
+            reportLabel={t(definition.label)}
+            rangeKey={rangeKey}
           />
-          <PageHeader title={t(definition.label)} description={t(definition.description)}>
-            {/* Personal reports carry no share button: a public link has no reader to
-                be personal to, so it would be empty or, worse, somebody else's. */}
-            {/* A public link carries the whole organization's rows, not the creator's
-                own slice — a supplier sent an inward report wants the shipments, not one
-                clerk's share of them. That makes creating a link a way of publishing
-                everybody's work, so it is offered only to someone already entitled to see
-                everybody's work. The API enforces the same rule. */}
-            {!definition.personal && seesEveryone && (
-              <ShareReport
-                reportId={definition.id}
-                reportLabel={t(definition.label)}
-                rangeKey={rangeKey}
-              />
-            )}
-          </PageHeader>
-        </div>
+        )}
+      </PageHeader>
 
-        <DateRangeFilter
-          active={range}
-          presets={RANGE_PRESETS}
-          from={one("from")}
-          to={one("to")}
-          // A personal report is already only ever about the reader — offering to widen
-          // it would promise something the report cannot do.
-          scope={definition.personal ? undefined : scope}
-          canSeeEveryone={seesEveryone}
-        />
+      <DateRangeFilter
+        active={range}
+        presets={RANGE_PRESETS}
+        from={one("from")}
+        to={one("to")}
+        // A personal report is already only ever about the reader — offering to widen
+        // it would promise something the report cannot do.
+        scope={definition.personal ? undefined : scope}
+        canSeeEveryone={seesEveryone}
+      />
 
-        <Analytics
-          session={session}
-          rangeKey={rangeKey}
-          from={one("from")}
-          to={one("to")}
-          only={definition.id}
-          hideFilter
-          scope={scope}
-        />
-      </div>
-    </AppShell>
+      <Analytics
+        session={session}
+        rangeKey={rangeKey}
+        from={one("from")}
+        to={one("to")}
+        only={definition.id}
+        hideFilter
+        scope={scope}
+      />
+    </div>
   );
 }
