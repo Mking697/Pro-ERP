@@ -25,6 +25,19 @@ export const EN: Record<string, string> = {
   "Kaise use karein": "How to use this",
   "Pehle ye kar lein": "Do this first",
   "Setup poora karein": "Finish setup",
+  "Apna poora business chalayein, ek hi system se.": "Run your whole business from one system.",
+  "FMS Automation": "FMS Automation",
+  "Purchase se Dispatch tak, har flow khud-ba-khud aage badhta hai.":
+    "From Purchase to Dispatch, every flow moves itself forward.",
+  "Live Inventory": "Live Inventory",
+  "Stock, BOM aur Production hamesha real-time sync mein rehte hain.":
+    "Stock, BOM and Production always stay in real-time sync.",
+  "Real-time MIS": "Real-time MIS",
+  "Har team member ka score, seedha dashboard par dikhta hai.":
+    "Every team member's score shows up straight on the dashboard.",
+  "Multi-tenant Suraksha": "Multi-tenant Security",
+  "Ek hi system, har organization ka data alag aur surakshit rehta hai.":
+    "One system — every organization's data stays separate and secure.",
 
   // --- dashboard -------------------------------------------------------------------
   "Aapke modules": "Your modules",

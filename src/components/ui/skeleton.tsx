@@ -15,7 +15,11 @@ function Skeleton({ className, ...props }: React.ComponentProps<"div">) {
       // aria-hidden: the loading state is announced once by the region's own
       // aria-busy, not by every bar in the placeholder.
       aria-hidden="true"
-      className={cn("animate-pulse rounded-md bg-muted", className)}
+      className={cn(
+        "relative isolate overflow-hidden rounded-md bg-muted",
+        "after:absolute after:inset-0 after:animate-[skeleton-shimmer_1.8s_ease-in-out_infinite] after:bg-linear-to-r after:from-transparent after:via-foreground/10 after:to-transparent",
+        className
+      )}
       {...props}
     />
   )
