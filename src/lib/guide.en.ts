@@ -1847,7 +1847,7 @@ export const GUIDE_EN: GuideChapter[] = [
         audience: "AI_CHATBOT",
         summary: "Open the chat page and just type.",
         steps: [
-          "Open \"AI Assistant\" from the nav (under the Others group).",
+          "Open \"Pro ERP Chatbot\" from the nav (under the Others group).",
           "Start a fresh conversation with \"New Chat\", or reopen a previous one from the list.",
           "Type your question in the box and press Enter (Shift+Enter for a new line).",
           "The first time it opens, a few suggested questions are shown too — click one to ask it directly.",
@@ -1872,7 +1872,7 @@ export const GUIDE_EN: GuideChapter[] = [
         ],
         notes: [
           "Either a free-tier or a billing-enabled Gemini key works the same way — quota/rate-limits are between you and Google, the app doesn't distinguish.",
-          "Until a key is set, the chat page shows \"AI Assistant isn't connected yet\" — that's expected state, not a bug.",
+          "Until a key is set, the chat page shows \"Pro ERP Chatbot isn't connected yet\" — that's expected state, not a bug.",
           "The Daily Message Cap is shared across the whole organization, not per user.",
         ],
       },

@@ -1685,20 +1685,20 @@ export const EN: Record<string, string> = {
   "AI Chatbot settings load ho rahi hain": "Loading AI Chatbot settings",
   "Connected": "Connected",
   "Not connected": "Not connected",
-  "Google AI Studio se apna Gemini API key banayein aur yahan paste karein — is se aapke users apne Pro ERP data ke baare me AI Assistant se sawal pooch sakte hain. Sirf wo users jinhe 'AI Chatbot' module access diya gaya hai, chatbot use kar sakte hain. Chatbot sirf padhne (read-only) tak seemit hai — kisi bhi record ko badal nahi sakta.":
-    "Create your own Gemini API key at Google AI Studio and paste it here — this lets your users ask the AI Assistant questions about their own Pro ERP data. Only users granted the 'AI Chatbot' module access can use it. The chatbot is strictly read-only — it can never change any record.",
+  "Google AI Studio se apna Gemini API key banayein aur yahan paste karein — is se aapke users apne Pro ERP data ke baare me Pro ERP Chatbot se sawal pooch sakte hain. Sirf wo users jinhe 'AI Chatbot' module access diya gaya hai, chatbot use kar sakte hain. Chatbot sirf padhne (read-only) tak seemit hai — kisi bhi record ko badal nahi sakta.":
+    "Create your own Gemini API key at Google AI Studio and paste it here — this lets your users ask Pro ERP Chatbot questions about their own Pro ERP data. Only users granted the 'AI Chatbot' module access can use it. The chatbot is strictly read-only — it can never change any record.",
   "Guide me 'AI Chatbot' chapter me Google AI Studio se key banane ka poora tareeka hai.":
     "The Guide's 'AI Chatbot' chapter has the full walkthrough for creating a key at Google AI Studio.",
   "Poore organization ke saare users milakar ek din me itne se zyada chatbot messages nahi bhej sakte — ek user ka bhi Gemini quota poora khatam na kar de, isliye.":
     "Every user in the organization put together cannot send more chatbot messages than this in one day — so a single user can't use up the whole Gemini quota alone.",
   "Testing...": "Testing...",
   "Test Key": "Test Key",
-  "AI Assistant load nahi ho paya.": "Could not load the AI Assistant.",
+  "Pro ERP Chatbot load nahi ho paya.": "Could not load Pro ERP Chatbot.",
   "Chat load nahi ho paya.": "Could not load the chat.",
-  "Aaj ke liye AI Assistant ki message limit poori ho gayi — kal phir try karein.":
-    "Today's AI Assistant message limit has been reached — please try again tomorrow.",
+  "Aaj ke liye Pro ERP Chatbot ki message limit poori ho gayi — kal phir try karein.":
+    "Today's Pro ERP Chatbot message limit has been reached — please try again tomorrow.",
   "Kuch galat ho gaya — dobara try karein.": "Something went wrong — please try again.",
-  "AI Assistant abhi connect nahi hai": "AI Assistant isn't connected yet",
+  "Pro ERP Chatbot abhi connect nahi hai": "Pro ERP Chatbot isn't connected yet",
   "Apne Admin se kahein ke Settings → AI Chatbot me apna Gemini API key daal dein — us ke baad hi ye assistant kaam karega.":
     "Ask your Admin to add a Gemini API key under Settings → AI Chatbot — this assistant will only work once that's done.",
   "New Chat": "New Chat",
@@ -1708,7 +1708,7 @@ export const EN: Record<string, string> = {
     "Ask anything about your tasks, MIS score, or FMS steps.",
   "Apna sawal likhein...": "Type your question...",
   "Bhejein": "Send",
-  "AI Assistant": "AI Assistant",
+  "Pro ERP Chatbot": "Pro ERP Chatbot",
   "Apne Pro ERP data ke baare me sawal poochein — sirf padhne ke liye, koi bhi record ye khud badal nahi sakta.":
     "Ask questions about your own Pro ERP data — strictly read-only, it never changes any record.",
   "Chatbot audit log load nahi ho paya.": "Could not load the chatbot audit log.",
@@ -1766,6 +1766,6 @@ export const EN: Record<string, string> = {
   "Customer update ho gaya.": "Customer updated.",
 
   // --- Floating chat widget --------------------------------------------------------------
-  "AI Assistant band karein": "Close AI Assistant",
-  "AI Assistant kholein": "Open AI Assistant",
+  "Pro ERP Chatbot band karein": "Close Pro ERP Chatbot",
+  "Pro ERP Chatbot kholein": "Open Pro ERP Chatbot",
 };

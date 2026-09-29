@@ -41,7 +41,7 @@ const GREETING_RE = /^(hi|hello|hey|namaste|thanks|thank you|ok|okay|good mornin
 function systemPrompt(session: SessionPayload, orgName: string, tools: ChatTool[]): string {
   const toolNames = tools.map((t) => t.name).join(", ") || "(none available to this user)";
   return [
-    `You are the Pro ERP Assistant for the organization "${orgName}".`,
+    `You are Pro ERP Chatbot for the organization "${orgName}".`,
     `You are answering ${session.fullName} (role: ${session.role}).`,
     "",
     "HARD RULES — never break these, even if asked to:",
@@ -97,7 +97,7 @@ async function executeTool(
 }
 
 const NOT_CONNECTED_MESSAGE =
-  "AI Assistant isn't connected yet — ask your Admin to add a Gemini API key in Settings → AI Chatbot.";
+  "Pro ERP Chatbot isn't connected yet — ask your Admin to add a Gemini API key in Settings → AI Chatbot.";
 
 const DECLINE_MESSAGE =
   "I can only answer questions about your own Pro ERP data — try asking about your pending tasks, your MIS score, your FMS steps, or (if you have access) inventory/order lookups.";
@@ -106,6 +106,65 @@ function notFoundMessage(reasons: string[]): string {
   if (reasons.length === 0) return "I couldn't find that.";
   return `I couldn't find that: ${reasons.join(" ")}`;
 }
+
+/**
+ * A small, fixed set of intents this app can answer straight from a tool, with no Gemini
+ * call at all — used only as a fallback once a real Gemini call has already failed on real
+ * quota exhaustion (see the `quotaExceeded` branch below), never as a shortcut that skips
+ * Gemini in the ordinary case. Scoped to the three "always available, no module grant"
+ * tools (own tasks/MIS score/FMS steps) — the ones guaranteed relevant to every user, and
+ * simple enough to answer from a template rather than needing Gemini's own phrasing.
+ * Deliberately conservative: a message must clearly match exactly one intent, or this
+ * returns null and the caller falls back to the existing generic quota message instead of
+ * guessing.
+ */
+const DIRECT_INTENTS: { pattern: RegExp; toolName: string }[] = [
+  { pattern: /\bmis\s*score\b/i, toolName: "get_my_mis_score" },
+  { pattern: /\b(mera|my)\s*score\b/i, toolName: "get_my_mis_score" },
+  { pattern: /\bpending\s*tasks?\b/i, toolName: "get_my_pending_tasks" },
+  { pattern: /\btasks?\s*pending\b/i, toolName: "get_my_pending_tasks" },
+  { pattern: /\bmere\s*tasks?\b/i, toolName: "get_my_pending_tasks" },
+  { pattern: /\bfms\s*steps?\b/i, toolName: "get_my_pending_fms_steps" },
+  { pattern: /\bpending\s*(fms\s*)?steps?\b/i, toolName: "get_my_pending_fms_steps" },
+];
+
+function matchDirectTool(session: SessionPayload, message: string): ChatTool | null {
+  const matched = new Set<string>();
+  for (const { pattern, toolName } of DIRECT_INTENTS) {
+    if (pattern.test(message)) matched.add(toolName);
+  }
+  if (matched.size !== 1) return null;
+  const [name] = matched;
+  return findTool(session, name);
+}
+
+/** Renders a direct tool's own result (the same `executeTool` payload shape a Gemini turn
+ * would have received as its functionResponse) as plain text — a template, not Gemini's own
+ * phrasing, since this path exists specifically for when Gemini itself is unavailable. */
+function formatDirectReply(toolName: string, payload: { found: boolean; data?: unknown; message?: string }): string {
+  if (!payload.found) return notFoundMessage([payload.message ?? "Nothing found."]);
+  const data = payload.data;
+  if (toolName === "get_my_mis_score") {
+    const d = data as { scorePercent: number; onTime: number; delayDone: number; notDone: number; totalEvaluated: number };
+    return `Your current MIS score is ${d.scorePercent}% (0% is best, -100% is worst) — On Time: ${d.onTime}, Delay: ${d.delayDone}, Not Done: ${d.notDone}, out of ${d.totalEvaluated} evaluated.`;
+  }
+  if (toolName === "get_my_pending_tasks") {
+    const rows = data as { title: string; priority: string; dueDate: string; overdue: boolean }[];
+    return `You have ${rows.length} pending task(s):\n${rows
+      .map((r) => `- ${r.title} (Priority: ${r.priority}, Due: ${r.dueDate}${r.overdue ? " — OVERDUE" : ""})`)
+      .join("\n")}`;
+  }
+  if (toolName === "get_my_pending_fms_steps") {
+    const rows = data as { stepName: string; flowName: string; tatDeadline: string }[];
+    return `You have ${rows.length} pending FMS step(s):\n${rows
+      .map((r) => `- ${r.stepName} (${r.flowName}), due ${r.tatDeadline}`)
+      .join("\n")}`;
+  }
+  return notFoundMessage([]);
+}
+
+const QUOTA_EXCEEDED_MESSAGE =
+  "Pro ERP Chatbot's AI (Gemini) quota is used up right now — please try again in a while, or tomorrow. Until then, you can still ask about your pending tasks, your MIS score, or your pending FMS steps — those answer instantly without needing the AI.";
 
 /**
  * Runs one full turn: persists the user's message, talks to Gemini (with tool round-trips),
@@ -156,6 +215,7 @@ export async function answerChatMessage(
   let anyToolFound = false;
   let finalText = "";
   let errorMessage = "";
+  let quotaExceeded = false;
 
   try {
     for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
@@ -184,6 +244,7 @@ export async function answerChatMessage(
   } catch (err) {
     const message = err instanceof GeminiCallError ? err.message : err instanceof Error ? err.message : "Unknown error";
     errorMessage = message;
+    if (err instanceof GeminiCallError && err.quotaExceeded) quotaExceeded = true;
     await logError({ orgId, routePath: "chatbot:gemini", message }).catch(() => {});
   }
 
@@ -197,7 +258,8 @@ export async function answerChatMessage(
     try {
       const followUp = await callGemini(apiKey, system, contents, tools, { forceTextOnly: true });
       finalText = followUp.text.trim();
-    } catch {
+    } catch (err) {
+      if (err instanceof GeminiCallError && err.quotaExceeded) quotaExceeded = true;
       // Leave finalText empty — falls through to the "couldn't finish" message below.
     }
   }
@@ -206,8 +268,28 @@ export async function answerChatMessage(
   let groundedInTool: boolean;
 
   if (errorMessage) {
-    reply = "Something went wrong reaching the AI Assistant just now — please try again in a moment.";
-    groundedInTool = false;
+    // A real quota exhaustion (not a transient overload — those already retried inside
+    // callGemini) gets one more chance: the deterministic direct-tool fallback above, scoped
+    // to the three no-module-grant tools, can still answer a clearly-matching question with
+    // zero Gemini calls. Anything ambiguous, or not one of those three intents, still gets
+    // the plain quota message rather than a guess.
+    const direct = quotaExceeded ? matchDirectTool(session, userMessage) : null;
+    if (direct) {
+      const outcome = await executeTool(session, direct.name, {});
+      if (outcome.ok) {
+        reply = formatDirectReply(direct.name, outcome.payload as { found: boolean; data?: unknown; message?: string });
+        groundedInTool = outcome.found;
+      } else {
+        reply = QUOTA_EXCEEDED_MESSAGE;
+        groundedInTool = false;
+      }
+    } else if (quotaExceeded) {
+      reply = QUOTA_EXCEEDED_MESSAGE;
+      groundedInTool = false;
+    } else {
+      reply = "Something went wrong reaching Pro ERP Chatbot just now — please try again in a moment.";
+      groundedInTool = false;
+    }
   } else if (toolsCalled.length === 0) {
     // The non-negotiable backstop (CLAUDE.md point 3): a response Gemini produced without
     // ever calling an offered tool is never shown to the user, regardless of how

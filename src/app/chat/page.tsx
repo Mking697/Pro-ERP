@@ -19,7 +19,7 @@ export default async function ChatPage() {
     <AppShell session={session}>
       <div className="flex h-[calc(100vh-8rem)] flex-col space-y-4">
         <PageHeader
-          title={t("AI Assistant")}
+          title={t("Pro ERP Chatbot")}
           description={t(
             "Apne Pro ERP data ke baare me sawal poochein — sirf padhne ke liye, koi bhi record ye khud badal nahi sakta."
           )}

@@ -65,7 +65,7 @@ export default function ChatClient({ compact = false }: { compact?: boolean }) {
         setConfig(cfg);
         setSessions(sess.sessions ?? []);
       })
-      .catch(() => toast.error(t("AI Assistant load nahi ho paya.")))
+      .catch(() => toast.error(t("Pro ERP Chatbot load nahi ho paya.")))
       .finally(() => setLoadingConfig(false));
   }, [t]);
 
@@ -125,7 +125,7 @@ export default function ChatClient({ compact = false }: { compact?: boolean }) {
       }
 
       if (res.status === 429) {
-        toast.error(t("Aaj ke liye AI Assistant ki message limit poori ho gayi — kal phir try karein."));
+        toast.error(t("Aaj ke liye Pro ERP Chatbot ki message limit poori ho gayi — kal phir try karein."));
         setMessages((prev) => prev.slice(0, -1));
         return;
       }
@@ -175,7 +175,7 @@ export default function ChatClient({ compact = false }: { compact?: boolean }) {
       <Card className={cn("flex-1", compact && "border-0 shadow-none")}>
         <CardContent className="flex h-full flex-col items-center justify-center gap-3 p-10 text-center">
           <Sparkles className="size-10 text-muted-foreground" aria-hidden="true" />
-          <p className="text-lg font-medium">{t("AI Assistant abhi connect nahi hai")}</p>
+          <p className="text-lg font-medium">{t("Pro ERP Chatbot abhi connect nahi hai")}</p>
           <p className="max-w-md text-sm text-muted-foreground">
             {t(
               "Apne Admin se kahein ke Settings → AI Chatbot me apna Gemini API key daal dein — us ke baad hi ye assistant kaam karega."

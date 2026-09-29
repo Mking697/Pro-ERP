@@ -147,7 +147,7 @@ export const MODULE_ACCESS = [
   {
     key: "AI_CHATBOT",
     label: "AI Chatbot",
-    description: "Apne Pro ERP data ke baare me AI Assistant se sawal pooch sakta hai",
+    description: "Apne Pro ERP data ke baare me Pro ERP Chatbot se sawal pooch sakta hai",
     href: "/chat",
   },
 ] as const;
