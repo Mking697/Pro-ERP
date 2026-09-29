@@ -26,18 +26,30 @@ export const EN: Record<string, string> = {
   "Pehle ye kar lein": "Do this first",
   "Setup poora karein": "Finish setup",
   "Apna poora business chalayein, ek hi system se.": "Run your whole business from one system.",
-  "FMS Automation": "FMS Automation",
-  "Purchase se Dispatch tak, har flow khud-ba-khud aage badhta hai.":
-    "From Purchase to Dispatch, every flow moves itself forward.",
+  "Sales se Dispatch tak": "Sales to Dispatch",
+  "Lead, Order, PDI, Transport aur Dispatch — poora safar track hota hai.":
+    "Lead, Order, PDI, Transport and Dispatch — the whole journey, tracked.",
+  "Purchase & Vendors": "Purchase & Vendors",
+  "Indent se PO tak, material aane tak — sab ek jagah.":
+    "From Indent to PO to material received — all in one place.",
   "Live Inventory": "Live Inventory",
   "Stock, BOM aur Production hamesha real-time sync mein rehte hain.":
     "Stock, BOM and Production always stay in real-time sync.",
+  "Accounts & Ledger": "Accounts & Ledger",
+  "Real double-entry books — Invoices, Payments, GST sab track hota hai.":
+    "Real double-entry books — invoices, payments, and GST, all tracked.",
+  "Payroll & Leave": "Payroll & Leave",
+  "Salary runs aur buddy-system leave approval, ek hi system se.":
+    "Salary runs and buddy-system leave approval, from one system.",
   "Real-time MIS": "Real-time MIS",
   "Har team member ka score, seedha dashboard par dikhta hai.":
     "Every team member's score shows up straight on the dashboard.",
-  "Multi-tenant Suraksha": "Multi-tenant Security",
-  "Ek hi system, har organization ka data alag aur surakshit rehta hai.":
-    "One system — every organization's data stays separate and secure.",
+  "Bank jaisi Security": "Bank-grade security",
+  "Aapka Data, Sirf Aapka": "Your data belongs to only you",
+  "Bharat ke Business ke liye": "Built for Indian businesses",
+  "Setup Karein": "Set up",
+  "Team Add Karein": "Add your team",
+  "Kaam Shuru Karein": "Start working",
 
   // --- dashboard -------------------------------------------------------------------
   "Aapke modules": "Your modules",
