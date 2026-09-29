@@ -81,7 +81,19 @@ function toFunctionDeclarations(tools: ChatTool[]) {
   }));
 }
 
-export class GeminiCallError extends Error {}
+export class GeminiCallError extends Error {
+  status?: number;
+  /** True for a real 429/RESOURCE_EXHAUSTED quota response — distinct from a transient 503
+   * overload, since retrying a quota error within the same short window is pointless (the
+   * org's own free-tier limit genuinely needs time, or a paid plan, to clear). */
+  quotaExceeded?: boolean;
+}
+
+/** Google returns this for a real quota exhaustion (RESOURCE_EXHAUSTED, HTTP 429) —
+ * distinct from `isRetryableOverload`'s transient 503 "high demand" case below. */
+function isQuotaExceeded(status: number, message: string): boolean {
+  return status === 429 || /exceeded your current quota|resource_exhausted/i.test(message);
+}
 
 /** Gemini returns HTTP 503 with a message like "This model is currently experiencing high
  * demand..." when the model itself is momentarily overloaded — a real, observed-in-production
@@ -136,7 +148,8 @@ async function doOneCall(
   if (!res.ok) {
     const apiMessage = (json as { error?: { message?: string } } | null)?.error?.message ?? "";
     const error = new GeminiCallError(apiMessage || `Gemini HTTP ${res.status}`);
-    (error as GeminiCallError & { status: number }).status = res.status;
+    error.status = res.status;
+    error.quotaExceeded = isQuotaExceeded(res.status, apiMessage);
     throw error;
   }
 
@@ -202,7 +215,7 @@ export async function callGemini(
       return await doOneCall(apiKey, systemInstruction, contents, tools, options?.forceTextOnly);
     } catch (err) {
       lastError = err;
-      const status = err instanceof GeminiCallError ? (err as GeminiCallError & { status?: number }).status ?? 0 : 0;
+      const status = err instanceof GeminiCallError ? err.status ?? 0 : 0;
       const message = err instanceof Error ? err.message : "";
       const canRetry = attempt < RETRY_DELAYS_MS.length && isRetryableOverload(status, message);
       if (!canRetry) throw err;
@@ -221,6 +234,16 @@ export async function testGeminiKey(apiKey: string): Promise<{ ok: boolean; erro
     const turn = await callGemini(apiKey, "Reply with exactly: OK", [userText("ping")], []);
     return { ok: turn.text.trim().length > 0 };
   } catch (err) {
+    // A real quota exhaustion is common enough on a free-tier key that it deserves its own
+    // plain-language message here — the raw Google error text ("You exceeded your current
+    // quota, please check your plan and billing details...") reads as a scary, technical
+    // failure to a non-technical Admin, when the key itself is actually fine.
+    if (err instanceof GeminiCallError && err.quotaExceeded) {
+      return {
+        ok: false,
+        error: "Is key ki free quota abhi khatam hai — key khud sahi hai, thodi der baad (ya kal) dobara test karein, ya Google AI Studio me billing/paid plan enable karein.",
+      };
+    }
     return { ok: false, error: err instanceof Error ? err.message : "Unknown error" };
   }
 }

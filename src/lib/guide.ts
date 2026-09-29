@@ -1889,7 +1889,7 @@ export const GUIDE: GuideChapter[] = [
         audience: "AI_CHATBOT",
         summary: "Chat page kholein aur seedha type karein.",
         steps: [
-          "Nav me 'AI Assistant' (Others group ke neeche) kholein.",
+          "Nav me 'Pro ERP Chatbot' (Others group ke neeche) kholein.",
           "'New Chat' se nayi baat-cheet shuru karein, ya purani list me se koi chat wapas kholein.",
           "Neeche box me apna sawal likhein aur Enter dabayein (naya line ke liye Shift+Enter).",
           "Pehli baar khulne par kuch suggested sawal bhi dikhte hain — unpar click karke seedha poochh sakte hain.",
@@ -1914,7 +1914,7 @@ export const GUIDE: GuideChapter[] = [
         ],
         notes: [
           "Free-tier ya billing-enabled dono tarah ki Gemini key chalti hai — quota/rate-limit Google aur aapke beech ka mamla hai, app usme farak nahi karta.",
-          "Jab tak key nahi daali jaati, chatbot page 'AI Assistant abhi connect nahi hai' dikhayega — ye kharabi nahi hai, sirf setup baaki hai.",
+          "Jab tak key nahi daali jaati, chatbot page 'Pro ERP Chatbot abhi connect nahi hai' dikhayega — ye kharabi nahi hai, sirf setup baaki hai.",
           "Daily Message Cap poore organization ke saare users milakar hai, per-user nahi.",
         ],
       },

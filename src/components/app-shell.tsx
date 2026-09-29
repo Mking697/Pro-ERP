@@ -150,7 +150,7 @@ export default async function AppShell({
     otherItems.push({ icon: "parties", href: "/parties", label: "Vendors/Customers" });
   }
   if (session.access.includes("AI_CHATBOT")) {
-    otherItems.push({ icon: "chatbot", href: "/chat", label: "AI Assistant" });
+    otherItems.push({ icon: "chatbot", href: "/chat", label: "Pro ERP Chatbot" });
   }
   if (session.role === "Admin") {
     otherItems.push({ icon: "users", href: "/admin/users", label: "Users" });

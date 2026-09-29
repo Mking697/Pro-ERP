@@ -97,7 +97,7 @@ export default function ChatbotForm() {
         </div>
         <CardDescription>
           {t(
-            "Google AI Studio se apna Gemini API key banayein aur yahan paste karein — is se aapke users apne Pro ERP data ke baare me AI Assistant se sawal pooch sakte hain. Sirf wo users jinhe 'AI Chatbot' module access diya gaya hai, chatbot use kar sakte hain. Chatbot sirf padhne (read-only) tak seemit hai — kisi bhi record ko badal nahi sakta."
+            "Google AI Studio se apna Gemini API key banayein aur yahan paste karein — is se aapke users apne Pro ERP data ke baare me Pro ERP Chatbot se sawal pooch sakte hain. Sirf wo users jinhe 'AI Chatbot' module access diya gaya hai, chatbot use kar sakte hain. Chatbot sirf padhne (read-only) tak seemit hai — kisi bhi record ko badal nahi sakta."
           )}
         </CardDescription>
       </CardHeader>
