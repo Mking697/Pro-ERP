@@ -31,6 +31,7 @@ import {
 } from "@/components/ui/table";
 import ScoreBreakdown from "./score-breakdown";
 import DoerScoreDialog from "./doer-score-dialog";
+import SendReportsButton from "./send-reports-button";
 import { cn } from "@/lib/utils";
 import DateRangeFilter from "./date-range-filter";
 import { getT } from "@/lib/i18n/server";
@@ -952,11 +953,13 @@ function PerformanceSection({
   // The dates go back out as IST days, the same way they came in. `toISOString()` would
   // render an IST midnight as the previous day in UTC, so the downloaded CSV would cover
   // a window one day off from the screen it was exported from.
-  const exportHref = `/api/analytics/export?range=${range.key}${
+  const rangeQuery = `range=${range.key}${
     range.key === "custom"
       ? `&from=${istDayKey(range.from)}&to=${istDayKey(range.to)}`
       : ""
   }`;
+  const exportHref = `/api/analytics/export?${rangeQuery}`;
+  const doerExportHref = (userId: string) => `/api/analytics/export/doer/${userId}?${rangeQuery}`;
 
   return (
     <section className="space-y-3">
@@ -967,7 +970,10 @@ function PerformanceSection({
             {range.label} — <strong>0% sabse achha</strong>, −100% sabse kharab.
           </p>
         </div>
-        <Button variant="outline" size="sm" render={<Link href={exportHref}>Excel export</Link>} />
+        <div className="flex flex-wrap gap-2">
+          <SendReportsButton rangeQuery={rangeQuery} />
+          <Button variant="outline" size="sm" render={<Link href={exportHref}>Excel export</Link>} />
+        </div>
       </div>
 
       <div className="grid gap-4 lg:grid-cols-2">
@@ -1047,6 +1053,7 @@ function PerformanceSection({
                     name={r.name}
                     scoreLabel={formatScore(r.summary.score)}
                     scoreColorClass={getScoreColorClass(r.summary.score)}
+                    exportHref={doerExportHref(r.userId)}
                   >
                     <ScoreBreakdown
                       tasks={tasks.filter((t) => t.Assigned_To === r.userId)}

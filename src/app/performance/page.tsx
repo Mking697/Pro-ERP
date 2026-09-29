@@ -18,6 +18,9 @@ import { getT } from "@/lib/i18n/server";
 import { Download } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import PageHeader from "@/components/page-header";
+import DoerScoreDialog from "@/app/dashboard/doer-score-dialog";
+import ScoreBreakdown from "@/app/dashboard/score-breakdown";
+import SendReportsButton from "@/app/dashboard/send-reports-button";
 
 export default async function PerformancePage() {
   const t = await getT();
@@ -56,6 +59,7 @@ export default async function PerformancePage() {
             "MIS score timestamps se calculate hota hai. 0% sabse achha, −100% sabse kharab — late aur chhoote hue tasks penalty banate hain."
           )}
         >
+          <SendReportsButton rangeQuery="range=all" />
           {/* Downloads exactly the doer-wise list on screen, through the same
               perUserScores calculation — so the file can never disagree with the page. */}
           <Button
@@ -90,7 +94,20 @@ export default async function PerformancePage() {
             )}
             {rows.map(({ user, summary }) => (
               <TableRow key={user.User_ID}>
-                <TableCell className="font-medium">{user.Full_Name}</TableCell>
+                <TableCell className="font-medium">
+                  <DoerScoreDialog
+                    name={user.Full_Name}
+                    scoreLabel={formatScore(summary.score)}
+                    scoreColorClass={getScoreColorClass(summary.score)}
+                    exportHref={`/api/analytics/export/doer/${user.User_ID}?range=all`}
+                  >
+                    <ScoreBreakdown
+                      tasks={allTasks.filter((t) => t.Assigned_To === user.User_ID)}
+                      fmsRuns={fmsRuns.filter((r) => r.Assigned_To === user.User_ID)}
+                      summary={summary}
+                    />
+                  </DoerScoreDialog>
+                </TableCell>
                 <TableCell>{user.Role}</TableCell>
                 <TableCell className="text-center">{summary.onTime}</TableCell>
                 <TableCell className="text-center">{summary.delay}</TableCell>
