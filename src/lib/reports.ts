@@ -120,6 +120,67 @@ export const REPORTS: readonly ReportDefinition[] = [
     description: "Poori team ka MIS score, doer wise.",
     grants: ["PERFORMANCE_VIEW"],
   },
+  {
+    id: "leave",
+    label: "Leave",
+    description: "Filed leaves aur unka approval status.",
+    grants: [],
+    ownerFields: ["doerId", "filedBy"],
+  },
+  {
+    id: "finished-goods",
+    label: "Finished Goods",
+    description: "Finished Goods ka aaj ka live stock.",
+    grants: ["INVENTORY_VIEW"],
+  },
+  {
+    id: "leads",
+    label: "Leads",
+    description: "Leads aur unki pipeline stage.",
+    grants: ["LEAD_FMS"],
+    ownerFields: ["assignedTo", "createdBy"],
+  },
+  {
+    id: "orders",
+    label: "Orders",
+    description: "Sales orders aur unki haalat.",
+    grants: ["ORDER_FMS"],
+    ownerFields: ["createdBy"],
+  },
+  {
+    id: "pdi",
+    label: "PDI",
+    description: "Pre-Dispatch Inspection ka result.",
+    grants: ["PDI_FMS"],
+    ownerFields: ["passedBy"],
+  },
+  {
+    id: "tms",
+    label: "TMS",
+    description: "Transport shipments aur unki haalat.",
+    grants: ["TMS_FMS"],
+    ownerFields: ["createdBy"],
+  },
+  {
+    id: "accounts",
+    label: "Accounts",
+    description: "Invoices aur Bills ka status.",
+    grants: ["ACCOUNTS_FMS"],
+  },
+  {
+    id: "dispatch",
+    label: "Dispatch",
+    description: "Dispatch aur unki delivery status.",
+    grants: ["DISPATCH_FMS"],
+    ownerFields: ["assignedTo", "createdBy"],
+  },
+  {
+    id: "payroll",
+    label: "Payroll",
+    description: "Aapki apni payslip history.",
+    grants: [],
+    personal: true,
+  },
 ] as const;
 
 export type ReportId = (typeof REPORTS)[number]["id"];
