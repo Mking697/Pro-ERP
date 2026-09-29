@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { requireModule } from "@/lib/auth/guard";
 import { createCreditNote, CreditNoteError, listCreditNotes } from "@/lib/accounts/creditNotes";
+import { attachmentUrlSchema } from "@/lib/attachmentUrl";
 
 export async function GET() {
   const guard = await requireModule("ACCOUNTS_FMS");
@@ -18,7 +19,7 @@ const bodySchema = z.object({
   amount: z.coerce.number().positive(),
   reason: z.enum(REASONS).optional(),
   gstAmount: z.coerce.number().min(0).optional(),
-  attachmentUrl: z.string().trim().optional(),
+  attachmentUrl: attachmentUrlSchema,
 });
 
 export async function POST(request: Request) {

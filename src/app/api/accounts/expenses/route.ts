@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { requireModule } from "@/lib/auth/guard";
 import { createExpenseEntry, ExpenseError, listExpenseEntries } from "@/lib/accounts/expenses";
+import { attachmentUrlSchema } from "@/lib/attachmentUrl";
 
 export async function GET() {
   const guard = await requireModule("ACCOUNTS_FMS");
@@ -16,7 +17,7 @@ const bodySchema = z.object({
   description: z.string().trim().optional(),
   paidTo: z.string().trim().optional(),
   amount: z.coerce.number().positive(),
-  attachmentUrl: z.string().trim().optional(),
+  attachmentUrl: attachmentUrlSchema,
 });
 
 export async function POST(request: Request) {

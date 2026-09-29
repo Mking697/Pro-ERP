@@ -4,8 +4,9 @@ import { requireSession } from "@/lib/auth/guard";
 import { markTaskDone } from "@/lib/tasks";
 import { getUserById } from "@/lib/auth/users";
 import { sendWhatsAppMessage } from "@/lib/chatxflow";
+import { attachmentUrlWithDefaultSchema } from "@/lib/attachmentUrl";
 
-const completeSchema = z.object({ proofUrl: z.string().optional().default("") });
+const completeSchema = z.object({ proofUrl: attachmentUrlWithDefaultSchema });
 
 export async function POST(
   request: Request,

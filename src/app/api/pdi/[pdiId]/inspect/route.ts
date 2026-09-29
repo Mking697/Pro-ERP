@@ -2,11 +2,12 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { requireModule } from "@/lib/auth/guard";
 import { inspect, PdiError } from "@/lib/pdi/pdi";
+import { attachmentUrlSchema } from "@/lib/attachmentUrl";
 
 const bodySchema = z.object({
   result: z.enum(["Pass", "Fail"]),
   remark: z.string().trim().optional(),
-  attachmentUrl: z.string().trim().optional(),
+  attachmentUrl: attachmentUrlSchema,
 });
 
 export async function POST(

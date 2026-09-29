@@ -3,9 +3,10 @@ import { z } from "zod";
 import { requireSession } from "@/lib/auth/guard";
 import { markDispatched, DispatchError } from "@/lib/dispatch/dispatch";
 import type { ModuleAccessKey } from "@/lib/moduleAccess";
+import { attachmentUrlSchema } from "@/lib/attachmentUrl";
 
 const bodySchema = z.object({
-  proofOfDispatchUrl: z.string().trim().optional(),
+  proofOfDispatchUrl: attachmentUrlSchema,
 });
 
 /**

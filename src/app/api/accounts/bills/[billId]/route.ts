@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { requireModule } from "@/lib/auth/guard";
 import { PayablesError, getBill, updateBill } from "@/lib/accounts/payables";
+import { attachmentUrlSchema } from "@/lib/attachmentUrl";
 
 export async function GET(_request: Request, { params }: { params: Promise<{ billId: string }> }) {
   const guard = await requireModule("ACCOUNTS_FMS");
@@ -17,7 +18,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ bil
 
 const bodySchema = z.object({
   billNo: z.string().trim().optional(),
-  billAttachmentUrl: z.string().trim().optional(),
+  billAttachmentUrl: attachmentUrlSchema,
   amount: z.coerce.number().nonnegative().optional(),
   gstPercent: z.coerce.number().nonnegative().optional(),
 });

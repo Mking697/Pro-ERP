@@ -3,9 +3,10 @@ import { z } from "zod";
 import { requireSession } from "@/lib/auth/guard";
 import { markDelivered, DispatchError } from "@/lib/dispatch/dispatch";
 import type { ModuleAccessKey } from "@/lib/moduleAccess";
+import { attachmentUrlSchema } from "@/lib/attachmentUrl";
 
 const bodySchema = z.object({
-  podAttachmentUrl: z.string().trim().optional(),
+  podAttachmentUrl: attachmentUrlSchema,
 });
 
 /**

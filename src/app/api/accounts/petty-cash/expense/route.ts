@@ -3,12 +3,13 @@ import { z } from "zod";
 import { requireModule } from "@/lib/auth/guard";
 import { PettyCashError, recordPettyCashExpense } from "@/lib/accounts/pettyCash";
 import { LedgerError } from "@/lib/accounts/ledger";
+import { attachmentUrlSchema } from "@/lib/attachmentUrl";
 
 const bodySchema = z.object({
   categoryAccountId: z.string().trim().min(1),
   description: z.string().trim().optional(),
   amount: z.coerce.number().positive(),
-  attachmentUrl: z.string().trim().optional(),
+  attachmentUrl: attachmentUrlSchema,
 });
 
 export async function POST(request: Request) {

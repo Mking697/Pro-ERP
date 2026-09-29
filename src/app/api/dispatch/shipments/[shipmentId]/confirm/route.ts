@@ -2,12 +2,13 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { requireModule } from "@/lib/auth/guard";
 import { confirmDispatch, DispatchError } from "@/lib/dispatch/dispatch";
+import { attachmentUrlSchema } from "@/lib/attachmentUrl";
 
 const bodySchema = z.object({
   assignedTo: z.string().trim().min(1, "Assignee chunna zaroori hai."),
   tatValue: z.coerce.number().positive("TAT value 0 se zyada honi chahiye."),
   tatUnit: z.enum(["Minutes", "Hours", "Days"]),
-  gatePassAttachmentUrl: z.string().trim().optional(),
+  gatePassAttachmentUrl: attachmentUrlSchema,
 });
 
 /** Step 1 — Confirm Dispatch: issues the Gate Pass, writes the real stock_ledger "Out", and

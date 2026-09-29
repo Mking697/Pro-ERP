@@ -3,6 +3,7 @@ import { z } from "zod";
 import { requireModule, requireSession } from "@/lib/auth/guard";
 import { listTasks, createTask } from "@/lib/tasks";
 import { PRIORITIES } from "@/lib/priority";
+import { attachmentUrlWithDefaultSchema } from "@/lib/attachmentUrl";
 
 export async function GET() {
   const guard = await requireSession();
@@ -28,7 +29,7 @@ const createTaskSchema = z.object({
   assignedTo: z.string().min(1, "Assign to zaroori hai."),
   priority: z.enum(PRIORITIES),
   dueDate: z.string().min(1, "Completion date & time zaroori hai."),
-  attachmentUrl: z.string().optional().default(""),
+  attachmentUrl: attachmentUrlWithDefaultSchema,
   remark: z.string().optional().default(""),
 });
 

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { requireModule } from "@/lib/auth/guard";
 import { createOrderFromQuotation, OrderError } from "@/lib/orders/orders";
+import { attachmentUrlSchema } from "@/lib/attachmentUrl";
 
 const newCustomerSchema = z.object({
   customerName: z.string().trim().min(1),
@@ -21,7 +22,7 @@ const bodySchema = z
       .min(1, "Kam se kam ek line map karein."),
     customerId: z.string().trim().optional(),
     newCustomer: newCustomerSchema.optional(),
-    poAttachmentUrl: z.string().trim().optional(),
+    poAttachmentUrl: attachmentUrlSchema,
     transportArrangedBy: z.enum(["Self", "Party"]),
   })
   .refine((v) => v.customerId || v.newCustomer, {

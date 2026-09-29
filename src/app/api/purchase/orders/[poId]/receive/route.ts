@@ -3,11 +3,12 @@ import { z } from "zod";
 import { requireModule } from "@/lib/auth/guard";
 import { receivePurchaseOrderLine, PurchaseOrderError } from "@/lib/purchase/orders";
 import { IndentReceiptError } from "@/lib/inventory/indents";
+import { attachmentUrlSchema } from "@/lib/attachmentUrl";
 
 const bodySchema = z.object({
   indentId: z.string().trim().min(1),
   quantity: z.coerce.number().positive("Received quantity 0 se zyada honi chahiye."),
-  invoiceUrl: z.string().trim().optional(),
+  invoiceUrl: attachmentUrlSchema,
 });
 
 export async function POST(

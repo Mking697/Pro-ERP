@@ -7,6 +7,7 @@ import {
   PurchaseOrderError,
   type PurchaseOrderStage,
 } from "@/lib/purchase/orders";
+import { attachmentUrlSchema } from "@/lib/attachmentUrl";
 
 const STAGES: PurchaseOrderStage[] = ["follow_up", "receiving", "all"];
 
@@ -36,7 +37,7 @@ const bodySchema = z.object({
   // createPurchaseOrder() auto-generate one right after the PO row is created — see its own
   // doc comment. Not requiring one or the other here lets createPurchaseOrder() itself stay
   // the single place that enforces "a PO needs an attachment."
-  attachmentUrl: z.string().trim().optional(),
+  attachmentUrl: attachmentUrlSchema,
   generateAttachment: z.boolean().optional(),
   gstPercent: z.coerce.number().min(0).max(100).optional(),
   termsAndConditions: z.string().optional(),

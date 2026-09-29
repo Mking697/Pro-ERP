@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { requireModule } from "@/lib/auth/guard";
 import { PayablesError, createBill, listBills, type BillStatus } from "@/lib/accounts/payables";
+import { attachmentUrlSchema } from "@/lib/attachmentUrl";
 
 const STATUSES: BillStatus[] = ["Draft", "Issued"];
 
@@ -20,7 +21,7 @@ export async function GET(request: Request) {
 const bodySchema = z.object({
   poId: z.string().trim().min(1),
   billNo: z.string().trim().optional(),
-  billAttachmentUrl: z.string().trim().optional(),
+  billAttachmentUrl: attachmentUrlSchema,
   amount: z.coerce.number().nonnegative(),
   gstPercent: z.coerce.number().nonnegative().optional(),
 });

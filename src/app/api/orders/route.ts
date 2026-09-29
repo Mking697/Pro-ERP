@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { requireModule } from "@/lib/auth/guard";
 import { createDirectOrder, listOrders, OrderError, type OrderStatus } from "@/lib/orders/orders";
+import { attachmentUrlSchema } from "@/lib/attachmentUrl";
 
 const STATUSES: OrderStatus[] = [
   "Items_Pending",
@@ -46,7 +47,7 @@ const bodySchema = z
     customerId: z.string().trim().optional(),
     newCustomer: newCustomerSchema.optional(),
     items: z.array(itemSchema).min(1, "Kam se kam ek item chunein."),
-    poAttachmentUrl: z.string().trim().optional(),
+    poAttachmentUrl: attachmentUrlSchema,
     transportArrangedBy: z.enum(["Self", "Party"]),
     gstPercent: z.coerce.number().min(0).max(100).optional(),
   })

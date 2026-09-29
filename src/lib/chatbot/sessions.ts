@@ -121,7 +121,10 @@ export async function appendMessage(input: AppendMessageInput): Promise<ChatMess
       patch.title = input.content.slice(0, 80);
     }
   }
-  await db.update(chatSessions).set(patch).where(eq(chatSessions.id, input.sessionId));
+  await db
+    .update(chatSessions)
+    .set(patch)
+    .where(and(eq(chatSessions.orgId, orgId), eq(chatSessions.id, input.sessionId)));
 
   return messageToRecord(row);
 }

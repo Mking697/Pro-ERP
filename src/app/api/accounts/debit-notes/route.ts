@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { requireModule } from "@/lib/auth/guard";
 import { createDebitNote, DebitNoteError, listDebitNotes } from "@/lib/accounts/debitNotes";
+import { attachmentUrlSchema } from "@/lib/attachmentUrl";
 
 /** Listing/management view lives in Accounts. */
 export async function GET() {
@@ -19,7 +20,7 @@ const bodySchema = z.object({
   amount: z.coerce.number().positive(),
   reason: z.enum(REASONS).optional(),
   linkedFailureLogId: z.string().trim().optional(),
-  attachmentUrl: z.string().trim().optional(),
+  attachmentUrl: attachmentUrlSchema,
 });
 
 /** Whoever is assigned to work the Failure Log entry issues the Debit Note (not

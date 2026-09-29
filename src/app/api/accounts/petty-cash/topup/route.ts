@@ -3,12 +3,13 @@ import { z } from "zod";
 import { requireModule } from "@/lib/auth/guard";
 import { PettyCashError, topUpPettyCash } from "@/lib/accounts/pettyCash";
 import { LedgerError } from "@/lib/accounts/ledger";
+import { attachmentUrlSchema } from "@/lib/attachmentUrl";
 
 const bodySchema = z.object({
   amount: z.coerce.number().positive(),
   description: z.string().trim().optional(),
   sourceAccountId: z.string().trim().optional(),
-  attachmentUrl: z.string().trim().optional(),
+  attachmentUrl: attachmentUrlSchema,
 });
 
 export async function POST(request: Request) {

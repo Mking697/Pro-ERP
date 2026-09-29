@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { requireModule } from "@/lib/auth/guard";
 import { AccountsError, createInvoice, listInvoices, type InvoiceStatus } from "@/lib/accounts/accounts";
+import { attachmentUrlSchema } from "@/lib/attachmentUrl";
 
 const STATUSES: InvoiceStatus[] = ["Draft", "Issued"];
 
@@ -20,10 +21,10 @@ export async function GET(request: Request) {
 const bodySchema = z.object({
   orderId: z.string().trim().min(1),
   invoiceNo: z.string().trim().optional(),
-  invoiceAttachmentUrl: z.string().trim().optional(),
+  invoiceAttachmentUrl: attachmentUrlSchema,
   ewayBillNo: z.string().trim().optional(),
-  ewayBillAttachmentUrl: z.string().trim().optional(),
-  extraDocumentUrl: z.string().trim().optional(),
+  ewayBillAttachmentUrl: attachmentUrlSchema,
+  extraDocumentUrl: attachmentUrlSchema,
   finalValue: z.coerce.number().nonnegative(),
 });
 

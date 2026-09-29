@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { requireAnyModule, requireModule } from "@/lib/auth/guard";
 import { listInwardEntries, createInwardEntry } from "@/lib/inward";
+import { attachmentUrlWithDefaultSchema } from "@/lib/attachmentUrl";
 
 // Reading inward entries is not a public-to-the-org fact: party names, invoice numbers
 // and attachment URLs are commercial information. Any one of the three inward grants is
@@ -19,7 +20,7 @@ const createInwardSchema = z.object({
   vendorId: z.string().trim().optional().default(""),
   invoiceNo: z.string().min(1, "Invoice No. zaroori hai."),
   inwardType: z.enum(["Raw Material", "Consumable", "Other"]),
-  attachmentUrl: z.string().optional().default(""),
+  attachmentUrl: attachmentUrlWithDefaultSchema,
   remark: z.string().optional().default(""),
   // Optional: naming an item is what lets a passed quality check reach stock.
   sku: z.string().trim().optional().default(""),
