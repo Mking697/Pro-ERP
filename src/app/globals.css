@@ -133,6 +133,14 @@
   }
 }
 
+/* Used by Skeleton's loading shimmer. Motion is already cut to a single frame under
+   prefers-reduced-motion by the global rule below, so this needs no separate guard. */
+@keyframes skeleton-shimmer {
+  100% {
+    transform: translateX(100%);
+  }
+}
+
 /*
  * Chart palette — from a validated data-viz palette, not picked by eye.
  *

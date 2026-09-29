@@ -15,6 +15,12 @@ export const EN: Record<string, string> = {
   "Apne organization ka Pro ERP shuru karein": "Start Pro ERP for your organization",
   "Ek minute me aapka apna system taiyaar ho jaayega.": "Your own system will be ready in a minute.",
   "Apna email aur password daalein.": "Enter your email and password.",
+  "Ek hi jagah par apna poora business chalayein — Tasks se lekar Dispatch tak.":
+    "Run your whole business from one place — from Tasks to Dispatch.",
+  "Task aur Flow Management": "Task and Flow management",
+  "Inventory aur Production": "Inventory and production",
+  "Sales se Dispatch tak": "Sales through to dispatch",
+  "Live Dashboard aur MIS Score": "Live dashboard and MIS score",
   "Login karein": "Sign in",
   "Naya password": "New password",
   "Password kam se kam 6 characters ka ho.": "Password must be at least 6 characters.",

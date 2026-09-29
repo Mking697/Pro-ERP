@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { ListChecks, Boxes, ShoppingCart, LineChart } from "lucide-react";
 import {
   Card,
   CardContent,
@@ -8,13 +9,24 @@ import {
 } from "@/components/ui/card";
 import SignupForm from "./signup-form";
 import { getT } from "@/lib/i18n/server";
+import AuthLayout from "@/components/auth-layout";
 
 export default async function SignupPage() {
   const t = await getT();
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-muted/40 p-4">
-      <Card className="w-full max-w-xl">
+    <AuthLayout
+      tagline={t(
+        "Ek hi jagah par apna poora business chalayein — Tasks se lekar Dispatch tak."
+      )}
+      features={[
+        { icon: ListChecks, label: t("Task aur Flow Management") },
+        { icon: Boxes, label: t("Inventory aur Production") },
+        { icon: ShoppingCart, label: t("Sales se Dispatch tak") },
+        { icon: LineChart, label: t("Live Dashboard aur MIS Score") },
+      ]}
+    >
+      <Card className="w-full max-w-xl shadow-xl">
         <CardHeader>
           <CardTitle>{t("Apne organization ka Pro ERP shuru karein")}</CardTitle>
           <CardDescription>
@@ -29,6 +41,6 @@ export default async function SignupPage() {
           </p>
         </CardContent>
       </Card>
-    </div>
+    </AuthLayout>
   );
 }

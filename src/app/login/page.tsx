@@ -4,6 +4,7 @@ import { useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { toast } from "sonner";
+import { ListChecks, Boxes, ShoppingCart, LineChart } from "lucide-react";
 import {
   Card,
   CardContent,
@@ -16,6 +17,7 @@ import PasswordInput from "@/components/password-input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { useT } from "@/components/preferences-provider";
+import AuthLayout from "@/components/auth-layout";
 
 export default function LoginPage() {
   const t = useT();
@@ -51,8 +53,18 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-muted/40 p-4">
-      <Card className="w-full max-w-sm">
+    <AuthLayout
+      tagline={t(
+        "Ek hi jagah par apna poora business chalayein — Tasks se lekar Dispatch tak."
+      )}
+      features={[
+        { icon: ListChecks, label: t("Task aur Flow Management") },
+        { icon: Boxes, label: t("Inventory aur Production") },
+        { icon: ShoppingCart, label: t("Sales se Dispatch tak") },
+        { icon: LineChart, label: t("Live Dashboard aur MIS Score") },
+      ]}
+    >
+      <Card className="w-full max-w-sm shadow-xl">
         <CardHeader>
           <CardTitle>Pro ERP Login</CardTitle>
           <CardDescription>{t("Apna email aur password daalein.")}</CardDescription>
@@ -90,6 +102,6 @@ export default function LoginPage() {
           </p>
         </CardContent>
       </Card>
-    </div>
+    </AuthLayout>
   );
 }
