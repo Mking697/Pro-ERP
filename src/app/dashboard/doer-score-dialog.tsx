@@ -1,6 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
+import { Download } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -9,6 +10,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
 
 /**
  * Wraps a Doer's name in the Performance table so clicking it opens their own MIS score
@@ -26,16 +28,22 @@ import {
  * `next/headers`, so importing anything from it at all from a Client Component fails the
  * build. The caller (already a Server Component that imports `@/lib/mis` safely) does the
  * formatting instead.
+ *
+ * `exportHref`, when given, is a plain downloadable-CSV link (this same breakdown, as a
+ * file) — an `<a download>` needs no client-side state of its own, so it sits directly in
+ * the header rather than becoming its own component.
  */
 export default function DoerScoreDialog({
   name,
   scoreLabel,
   scoreColorClass,
+  exportHref,
   children,
 }: {
   name: string;
   scoreLabel: string;
   scoreColorClass: string;
+  exportHref?: string;
   children: ReactNode;
 }) {
   return (
@@ -44,11 +52,26 @@ export default function DoerScoreDialog({
         {name}
       </DialogTrigger>
       <DialogContent className="max-w-3xl">
-        <DialogHeader>
-          <DialogTitle>{name}</DialogTitle>
-          <DialogDescription>
-            Score: <span className={`font-semibold ${scoreColorClass}`}>{scoreLabel}</span>
-          </DialogDescription>
+        <DialogHeader className="flex-row items-start justify-between gap-4">
+          <div>
+            <DialogTitle>{name}</DialogTitle>
+            <DialogDescription>
+              Score: <span className={`font-semibold ${scoreColorClass}`}>{scoreLabel}</span>
+            </DialogDescription>
+          </div>
+          {exportHref && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="shrink-0"
+              render={
+                <a href={exportHref} download>
+                  <Download />
+                  Export
+                </a>
+              }
+            />
+          )}
         </DialogHeader>
         <div className="max-h-[65vh] overflow-y-auto">{children}</div>
       </DialogContent>

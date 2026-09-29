@@ -1824,4 +1824,11 @@ export const EN: Record<string, string> = {
   "Mahine ke hisaab se Net Pay": "Net pay by month",
   "Is period me koi payslip nahi bani.": "No payslip was generated in this period.",
   "Latest payslip — Gross vs Deduction": "Latest payslip — gross vs deduction",
+
+  // --- performance: Send Report (WhatsApp) + per-Doer export -----------------------------
+  "Send Report": "Send Report",
+  "Bhej rahe hain...": "Sending...",
+  "{sent} log ko report bhej di gayi.": "{sent} people were sent their report.",
+  "{failed} fail ho gaye.": "{failed} failed.",
+  "{skipped} skip ho gaye (phone number ya score nahi).": "{skipped} skipped (no phone number or nothing evaluated).",
 };
