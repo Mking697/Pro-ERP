@@ -1,21 +1,15 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
-import Link from "next/link";
 import { verifySession, SESSION_COOKIE } from "@/lib/auth/session";
-import AppShell from "@/components/app-shell";
-import PageHeader from "@/components/page-header";
 import EmptyState from "@/components/empty-state";
-import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { reportsFor } from "@/lib/reports";
 import { getT } from "@/lib/i18n/server";
 import { BarChart3 } from "lucide-react";
 
 /**
- * The index of reports.
- *
- * One card per report the reader is allowed, each opening its own page. Reports used to
- * be a single tab holding eleven stacked sections, which meant scrolling past ten of them
- * to reach the eleventh — and made a share link an all-or-nothing thing.
+ * `/reports` itself — the content pane before any specific report is chosen from the
+ * sidebar `reports/layout.tsx` renders alongside this. Picking one navigates to
+ * `/reports/[report]`, which reuses this same layout and only replaces this placeholder.
  */
 export default async function ReportsPage() {
   const cookieStore = await cookies();
@@ -27,51 +21,21 @@ export default async function ReportsPage() {
   const t = await getT();
   const reports = reportsFor(session.access);
 
-  return (
-    <AppShell session={session}>
-      <div className="space-y-6">
-        <PageHeader
-          title={t("Reports")}
-          description={t(
-            "Har module ki apni report. Jo aapke access me hai, wahi yahan dikhta hai — aur har report alag se share ki ja sakti hai."
-          )}
-        />
+  if (reports.length === 0) {
+    return (
+      <EmptyState
+        icon={<BarChart3 />}
+        title={t("Abhi koi report nahi hai")}
+        description={t("Aapke Admin ne jo modules diye honge, unki reports yahan aayengi.")}
+      />
+    );
+  }
 
-        {reports.length === 0 ? (
-          <EmptyState
-            icon={<BarChart3 />}
-            title={t("Abhi koi report nahi hai")}
-            description={t(
-              "Aapke Admin ne jo modules diye honge, unki reports yahan aayengi."
-            )}
-          />
-        ) : (
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {reports.map((report) => (
-              <Card
-                key={report.id}
-                className="relative transition-shadow duration-150 hover:ring-foreground/25"
-              >
-                <CardHeader>
-                  <CardTitle className="text-base">
-                    {/* The card stays `relative` on purpose: this link stretches over the whole
-                        card with `after:inset-0`, and with no positioned ancestor that overlay
-                        resolves against the viewport instead — every card then covers the whole
-                        page, and the last one drawn swallows every click on all the others. */}
-                    <Link
-                      href={`/reports/${report.id}`}
-                      className="after:absolute after:inset-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                    >
-                      {t(report.label)}
-                    </Link>
-                  </CardTitle>
-                  <CardDescription>{t(report.description)}</CardDescription>
-                </CardHeader>
-              </Card>
-            ))}
-          </div>
-        )}
-      </div>
-    </AppShell>
+  return (
+    <EmptyState
+      icon={<BarChart3 />}
+      title={t("Ek report chunein")}
+      description={t("Bayi taraf list se koi report chunein — wahi yahan dikhegi.")}
+    />
   );
 }

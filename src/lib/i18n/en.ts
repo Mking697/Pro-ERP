@@ -519,7 +519,9 @@ export const EN: Record<string, string> = {
   "Abhi koi report nahi hai": "No reports yet",
   "Aapke Admin ne jo modules diye honge, unki reports yahan aayengi.":
     "Reports appear here for whichever modules your Admin has given you.",
-  "Saari reports": "All reports",
+  "Ek report chunein": "Choose a report",
+  "Bayi taraf list se koi report chunein — wahi yahan dikhegi.":
+    "Choose a report from the list on the left — it will show up here.",
   "Aapka score": "Your score",
   "Ye report share nahi ho sakti.": "This report cannot be shared.",
   "Is report ka access nahi hai.": "You do not have access to this report.",
