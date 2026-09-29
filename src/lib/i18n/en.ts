@@ -749,6 +749,7 @@ export const EN: Record<string, string> = {
   "Naya version save karein": "Save new version",
 
   // --- fms: lookup field, reset, flow board -----------------------------------------
+  "Dekhein": "View",
   "Lookup (dusre module se)": "Lookup (from another module)",
   "Kaunsa module": "Which module",
   "Naam/label wala column": "Column with the name/label",

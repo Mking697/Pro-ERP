@@ -158,6 +158,40 @@ export function missingRequiredFields(
   return config.fields.filter((f) => f.required && !values[f.key]?.trim());
 }
 
+/** True for an http(s) URL — deliberately re-implemented here rather than imported from
+ * src/lib/attachmentUrl.ts, to keep this file's own "pure, no server imports" contract
+ * (see this file's header) intact for the client bundle that also imports it
+ * (complete-step-dialog.tsx, the Flow Board's own run-history render). Kept in sync by hand
+ * with that file's own `isHttpUrl()`. Exported so a render path can safely decide whether an
+ * attachment-type field's value is a real link worth rendering as `<a href>`, not just data
+ * to redisplay as text. */
+export function isHttpUrl(value: string): boolean {
+  try {
+    return ["http:", "https:"].includes(new URL(value).protocol);
+  } catch {
+    return false;
+  }
+}
+
+/** Which of a form's "attachment"-type fields hold a submitted value that isn't a real
+ * http(s) link — an "Attachment" field's value is meant to be a Blob URL the browser's own
+ * upload flow handed back (see FileUploadField), but nothing stops a tampered request from
+ * submitting `javascript:...` instead; this is the same stored-XSS class already fixed
+ * across every other attachment-URL-accepting API route (src/lib/attachmentUrl.ts) — a step's
+ * Form_Data is rendered back verbatim elsewhere (the Flow Board's own run-history view), so
+ * an unvalidated value here carries the same risk the moment that render path is ever
+ * changed from plain text into a clickable link. */
+export function invalidAttachmentFields(
+  config: FormDataSourceConfig,
+  values: Record<string, string>
+): FormField[] {
+  return config.fields.filter((f) => {
+    if (f.type !== "attachment") return false;
+    const value = values[f.key]?.trim();
+    return Boolean(value) && !isHttpUrl(value);
+  });
+}
+
 /** Parses whatever a completer typed, stored as Form_Data JSON on an FMS_RUNS row. */
 export function parseFormData(raw: string | undefined | null): Record<string, string> {
   if (!raw) return {};

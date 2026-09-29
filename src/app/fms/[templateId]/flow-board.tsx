@@ -22,7 +22,7 @@ import {
 } from "@/components/ui/dialog";
 import { formatDueDisplay } from "@/lib/formatDate";
 import { parseStamp, byNewest } from "@/lib/timestamp";
-import { parseStepDataSourceConfig, parseFormData, type FormField } from "@/lib/fms/dataSource";
+import { parseStepDataSourceConfig, parseFormData, isHttpUrl, type FormField } from "@/lib/fms/dataSource";
 import { TableSkeleton } from "@/components/loading-states";
 import EmptyState from "@/components/empty-state";
 import { Eye, Workflow } from "lucide-react";
@@ -270,8 +270,8 @@ function InstanceStepper({
             .sort((a, b) => (parseStamp(a.Created_At)?.getTime() ?? 0) - (parseStamp(b.Created_At)?.getTime() ?? 0));
 
           const config = parseStepDataSourceConfig(step.dataSourceConfig);
-          const fieldLabels = new Map<string, string>(
-            (config.form?.fields ?? []).map((f: FormField) => [f.key, f.label])
+          const fieldsByKey = new Map<string, FormField>(
+            (config.form?.fields ?? []).map((f: FormField) => [f.key, f])
           );
 
           return (
@@ -322,14 +322,36 @@ function InstanceStepper({
 
                         {entries.length > 0 && (
                           <div className="mt-2 space-y-0.5 border-t pt-2">
-                            {entries.map(([key, value]) => (
-                              <div key={key} className="flex justify-between gap-2">
-                                <span className="text-muted-foreground">
-                                  {fieldLabels.get(key) ?? key}
-                                </span>
-                                <span className="font-medium">{value || "—"}</span>
-                              </div>
-                            ))}
+                            {entries.map(([key, value]) => {
+                              const field = fieldsByKey.get(key);
+                              // An "attachment" field's value is a Blob URL the upload flow
+                              // handed back — but Form_Data is redisplayed verbatim here, so
+                              // it's only ever rendered as a clickable link when it's
+                              // actually http(s) (see src/lib/fms/dataSource.ts's own
+                              // invalidAttachmentFields(), which already refuses a
+                              // non-http(s) value at completion time — this is the second,
+                              // render-side half of the same guarantee).
+                              const isSafeLink = field?.type === "attachment" && value && isHttpUrl(value);
+                              return (
+                                <div key={key} className="flex justify-between gap-2">
+                                  <span className="text-muted-foreground">
+                                    {field?.label ?? key}
+                                  </span>
+                                  {isSafeLink ? (
+                                    <a
+                                      href={value}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="font-medium text-primary underline underline-offset-2"
+                                    >
+                                      {t("Dekhein")}
+                                    </a>
+                                  ) : (
+                                    <span className="font-medium">{value || "—"}</span>
+                                  )}
+                                </div>
+                              );
+                            })}
                           </div>
                         )}
 

@@ -18,6 +18,7 @@ import { computeNextWorkingInstant, computeTatDeadline, computeUserDayEnd } from
 import {
   parseStepDataSourceConfig,
   missingRequiredFields,
+  invalidAttachmentFields,
   type StepDataSourceConfig,
 } from "@/lib/fms/dataSource";
 import { resolveExistingFmsData } from "@/lib/fms/dataSourceResolver";
@@ -333,6 +334,12 @@ export async function completeFmsStep(
     const missing = missingRequiredFields(dataSource.form, formValues);
     if (missing.length > 0) {
       throw new Error(`Ye fields zaroori hain: ${missing.map((f) => f.label).join(", ")}`);
+    }
+    const invalidAttachments = invalidAttachmentFields(dataSource.form, formValues);
+    if (invalidAttachments.length > 0) {
+      throw new Error(
+        `Ye attachment link valid nahi hai: ${invalidAttachments.map((f) => f.label).join(", ")}`
+      );
     }
   }
 
