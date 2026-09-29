@@ -166,17 +166,27 @@ export const CHAT_TOOLS: ChatTool[] = [
         isPlatformAdmin: isPlatformAdmin(ctx.session.email),
         locale: "en",
       });
-      const hits: { chapter: string; section: string; summary: string }[] = [];
+      // A whole-phrase substring match was too brittle — Gemini's own phrasing of a query
+      // ("leave approval") rarely matches a section's exact wording verbatim, which was
+      // driving it to re-search with slightly different wording over and over (see
+      // orchestrator.ts's forced-synthesis fallback, added for the same underlying bug).
+      // Matching on individual words instead, ranked by how many words hit, finds the
+      // right section far more often on the first try.
+      const words = query.split(/\s+/).filter((w) => w.length >= 3);
+      const terms = words.length > 0 ? words : [query];
+      const hits: { chapter: string; section: string; summary: string; score: number }[] = [];
       for (const chapter of chapters) {
         for (const section of chapter.sections) {
           const haystack = `${section.title} ${section.summary}`.toLowerCase();
-          if (haystack.includes(query)) {
-            hits.push({ chapter: chapter.title, section: section.title, summary: section.summary });
+          const score = terms.filter((term) => haystack.includes(term)).length;
+          if (score > 0) {
+            hits.push({ chapter: chapter.title, section: section.title, summary: section.summary, score });
           }
         }
       }
       if (hits.length === 0) return notFound("No guidebook section matched that query.");
-      return found(hits.slice(0, 5));
+      hits.sort((a, b) => b.score - a.score);
+      return found(hits.slice(0, 5).map(({ chapter, section, summary }) => ({ chapter, section, summary })));
     },
   },
 

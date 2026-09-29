@@ -101,7 +101,8 @@ async function doOneCall(
   apiKey: string,
   systemInstruction: string,
   contents: GeminiContent[],
-  tools: ChatTool[]
+  tools: ChatTool[],
+  forceTextOnly = false
 ): Promise<GeminiTurn> {
   const body: Record<string, unknown> = {
     contents,
@@ -113,7 +114,11 @@ async function doOneCall(
     // orchestrator's own app-layer backstop, not this flag, is what actually enforces
     // "must be tool-grounded". ANY would force a call even for "hi", which is a worse UX
     // for no real security gain since the backstop already discards any ungrounded reply.
-    body.toolConfig = { functionCallingConfig: { mode: "AUTO" } };
+    // NONE (used for the orchestrator's own forced-synthesis follow-up once the tool-call
+    // round budget runs out) tells Gemini it may not call a tool at all this round, so it
+    // must produce a text answer from whatever functionResponse data already sits in
+    // `contents` instead of reaching for yet another tool call.
+    body.toolConfig = { functionCallingConfig: { mode: forceTextOnly ? "NONE" : "AUTO" } };
   }
 
   let res: Response;
@@ -188,12 +193,13 @@ export async function callGemini(
   apiKey: string,
   systemInstruction: string,
   contents: GeminiContent[],
-  tools: ChatTool[]
+  tools: ChatTool[],
+  options?: { forceTextOnly?: boolean }
 ): Promise<GeminiTurn> {
   let lastError: unknown;
   for (let attempt = 0; attempt <= RETRY_DELAYS_MS.length; attempt++) {
     try {
-      return await doOneCall(apiKey, systemInstruction, contents, tools);
+      return await doOneCall(apiKey, systemInstruction, contents, tools, options?.forceTextOnly);
     } catch (err) {
       lastError = err;
       const status = err instanceof GeminiCallError ? (err as GeminiCallError & { status?: number }).status ?? 0 : 0;
