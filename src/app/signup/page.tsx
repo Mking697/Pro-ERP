@@ -8,12 +8,13 @@ import {
 } from "@/components/ui/card";
 import SignupForm from "./signup-form";
 import { getT } from "@/lib/i18n/server";
+import AuthLayout from "@/components/auth-layout";
 
 export default async function SignupPage() {
   const t = await getT();
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-muted/40 p-4">
+    <AuthLayout t={t}>
       <Card className="w-full max-w-xl">
         <CardHeader>
           <CardTitle>{t("Apne organization ka Pro ERP shuru karein")}</CardTitle>
@@ -29,6 +30,6 @@ export default async function SignupPage() {
           </p>
         </CardContent>
       </Card>
-    </div>
+    </AuthLayout>
   );
 }

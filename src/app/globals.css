@@ -170,6 +170,21 @@
 }
 
 /**
+ * Skeleton shimmer sweep.
+ *
+ * A flat pulse dims the whole placeholder at once; a sweep instead moves left to right,
+ * which reads less like a stalled screen and more like content on its way in.
+ */
+@keyframes skeleton-shimmer {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+/**
  * Respect a reader who has asked their system for less movement.
  *
  * Motion sensitivity is a real accessibility need, not a preference to be talked out of:

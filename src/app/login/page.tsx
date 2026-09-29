@@ -16,6 +16,7 @@ import PasswordInput from "@/components/password-input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { useT } from "@/components/preferences-provider";
+import AuthLayout from "@/components/auth-layout";
 
 export default function LoginPage() {
   const t = useT();
@@ -51,7 +52,7 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-muted/40 p-4">
+    <AuthLayout t={t}>
       <Card className="w-full max-w-sm">
         <CardHeader>
           <CardTitle>Pro ERP Login</CardTitle>
@@ -90,6 +91,6 @@ export default function LoginPage() {
           </p>
         </CardContent>
       </Card>
-    </div>
+    </AuthLayout>
   );
 }
