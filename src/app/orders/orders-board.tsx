@@ -32,8 +32,8 @@ const TABS: { value: string; label: string; status: OrderStatus | "intake" | "al
   { value: "all", label: "All", status: "all" },
 ];
 
-function statusVariant(status: OrderStatus): "default" | "secondary" | "destructive" | "outline" {
-  if (status === "Ready_For_PDI") return "default";
+function statusVariant(status: OrderStatus): "default" | "secondary" | "destructive" | "outline" | "success" {
+  if (status === "Ready_For_PDI") return "success";
   if (status === "Credit_Hold" || status === "Cancelled") return "destructive";
   if (status === "Items_Pending") return "outline";
   return "secondary";

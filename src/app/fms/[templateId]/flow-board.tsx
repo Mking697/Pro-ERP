@@ -68,8 +68,8 @@ function classifyInstance(runs: FmsRunRecord[]): BoardStatus {
   return runs.some((r) => r.Status === "Delay Done") ? "Delay Done" : "On Time";
 }
 
-function statusVariant(status: BoardStatus): "default" | "secondary" | "destructive" | "outline" {
-  if (status === "On Time") return "default";
+function statusVariant(status: BoardStatus): "success" | "secondary" | "destructive" | "outline" {
+  if (status === "On Time") return "success";
   if (status === "Delay Done") return "secondary";
   if (status === "Not Done") return "destructive";
   return "outline"; // In Progress

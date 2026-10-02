@@ -66,18 +66,25 @@ export function BarChart({
   const max = Math.max(...rows.map((r) => Math.abs(r.value)), 1);
 
   return (
-    <div className="space-y-2">
-      {rows.map((row) => {
+    <div className="space-y-2.5">
+      {rows.map((row, i) => {
         const pct = (Math.abs(row.value) / max) * 100;
         return (
-          <div key={row.label} className="grid grid-cols-[minmax(0,7rem)_1fr_auto] items-center gap-3">
+          <div
+            key={row.label}
+            style={{ animationDelay: `${i * 50}ms` }}
+            className="grid animate-in grid-cols-[minmax(0,7rem)_1fr_auto] items-center gap-3 fade-in-0 fill-mode-both duration-500"
+          >
             <span className="truncate text-xs text-muted-foreground" title={row.label}>
               {row.label}
             </span>
-            <div className="h-5 overflow-hidden rounded-[4px] bg-muted">
+            <div className="h-5 overflow-hidden rounded-full bg-muted">
               <div
-                className="h-full rounded-[4px]"
-                style={{ width: `${Math.max(pct, 1.5)}%`, background: row.color }}
+                className="h-full rounded-full shadow-sm transition-[width] duration-700 ease-out"
+                style={{
+                  width: `${Math.max(pct, 1.5)}%`,
+                  background: `linear-gradient(90deg, color-mix(in oklch, ${row.color}, white 18%), ${row.color})`,
+                }}
                 title={`${row.label}: ${row.value}${valueSuffix}`}
               />
             </div>
@@ -149,7 +156,7 @@ export function DonutChart({
       <div className="flex justify-center">
         <svg
           viewBox={`0 0 ${size} ${size}`}
-          className="h-40 w-40"
+          className="h-40 w-40 drop-shadow-sm"
           role="img"
           aria-label={slices
             .map((s) => `${s.label}: ${s.value}`)
@@ -166,6 +173,8 @@ export function DonutChart({
                 fill="none"
                 stroke={slice.color}
                 strokeWidth={stroke}
+                strokeLinecap="round"
+                className="transition-[stroke-width] duration-300"
               >
                 <title>{`${slice.label}: ${slice.value}`}</title>
               </circle>
@@ -176,7 +185,7 @@ export function DonutChart({
                 fill="none"
                 stroke={slice.color}
                 strokeWidth={stroke}
-                strokeLinecap="butt"
+                strokeLinecap="round"
               >
                 <title>{`${slice.label}: ${slice.value} (${pct}%)`}</title>
               </path>
@@ -230,6 +239,12 @@ export function TimelineChart({
 }) {
   if (points.length === 0) return <EmptyChart message={emptyMessage} />;
 
+  // SVG `<defs>` ids must be unique per page, but this chart is deliberately a plain
+  // server component (no client bundle) so React's `useId()` isn't an option here.
+  // Derived from the data itself — stable across re-renders, distinct enough that two
+  // timeline charts with different data/colors on the same page never collide.
+  const gradientId = `timeline-fill-${color.replace(/[^a-zA-Z0-9]/g, "")}-${points[0].label.replace(/[^a-zA-Z0-9]/g, "")}-${points.length}`;
+
   const w = 560;
   const h = 160;
   const pad = { top: 12, right: 8, bottom: 24, left: 28 };
@@ -258,6 +273,13 @@ export function TimelineChart({
       role="img"
       aria-label={`Timeline: ${points.map((p) => `${p.label} ${p.value}`).join(", ")}`}
     >
+      <defs>
+        <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor={color} stopOpacity={0.35} />
+          <stop offset="100%" stopColor={color} stopOpacity={0} />
+        </linearGradient>
+      </defs>
+
       {[0, 0.5, 1].map((f) => (
         <line
           key={f}
@@ -277,11 +299,18 @@ export function TimelineChart({
         0
       </text>
 
-      <path d={area} fill={color} opacity={0.12} />
-      <path d={line} fill="none" stroke={color} strokeWidth={2} strokeLinejoin="round" />
+      <path d={area} fill={`url(#${gradientId})`} />
+      <path
+        d={line}
+        fill="none"
+        stroke={color}
+        strokeWidth={2.5}
+        strokeLinejoin="round"
+        strokeLinecap="round"
+      />
 
       {xy.map((p) => (
-        <circle key={p.label} cx={p.x} cy={p.y} r={4} fill={color}>
+        <circle key={p.label} cx={p.x} cy={p.y} r={4} fill="var(--card)" stroke={color} strokeWidth={2.5}>
           <title>{`${p.label}: ${p.value}`}</title>
         </circle>
       ))}
@@ -316,7 +345,7 @@ export function ChartFrame({
   className?: string;
 }) {
   return (
-    <div className={cn("rounded-lg border p-4", className)}>
+    <div className={cn("rounded-xl border bg-card p-4 shadow-sm transition-shadow duration-200 hover:shadow-md", className)}>
       <p className="text-sm font-medium">{title}</p>
       {hint && <p className="mt-0.5 text-xs text-muted-foreground">{hint}</p>}
       <div className="mt-4">{children}</div>

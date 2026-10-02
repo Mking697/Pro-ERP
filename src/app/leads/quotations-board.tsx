@@ -20,8 +20,8 @@ import { useT } from "@/components/preferences-provider";
 import WalkInQuotationDialog from "./walk-in-quotation-dialog";
 import type { QuotationRow, QuotationStatus } from "./types";
 
-function statusVariant(status: QuotationStatus): "default" | "secondary" | "destructive" | "outline" {
-  if (status === "Accepted") return "default";
+function statusVariant(status: QuotationStatus): "success" | "secondary" | "destructive" | "outline" {
+  if (status === "Accepted") return "success";
   if (status === "Rejected" || status === "Expired") return "destructive";
   if (status === "Draft") return "outline";
   return "secondary";

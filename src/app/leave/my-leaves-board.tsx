@@ -21,8 +21,8 @@ import ApplyLeaveDialog from "./apply-leave-dialog";
 import EmergencyLeaveDialog from "./emergency-leave-dialog";
 import type { LeaveRow } from "./types";
 
-function statusVariant(status: string): "default" | "secondary" | "destructive" | "outline" {
-  if (status === "Approved") return "default";
+function statusVariant(status: string): "success" | "secondary" | "destructive" | "outline" {
+  if (status === "Approved") return "success";
   if (status === "Rejected" || status === "Cancelled") return "destructive";
   return "secondary";
 }

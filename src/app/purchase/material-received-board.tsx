@@ -21,8 +21,8 @@ import { qty } from "@/app/inventory/types";
 import { useT } from "@/components/preferences-provider";
 import type { PoOrder } from "./types";
 
-function statusVariant(status: string): "default" | "secondary" | "outline" {
-  if (status === "Received") return "default";
+function statusVariant(status: string): "success" | "secondary" | "outline" {
+  if (status === "Received") return "success";
   if (status === "Partially_Received") return "outline";
   return "secondary";
 }

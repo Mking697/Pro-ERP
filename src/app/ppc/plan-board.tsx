@@ -67,7 +67,8 @@ const STATUS_LABEL: Record<Plan["status"], string> = {
 
 function statusVariant(status: Plan["status"]) {
   if (status === "Shortage") return "destructive" as const;
-  if (status === "Completed" || status === "Cancelled") return "outline" as const;
+  if (status === "Completed") return "success" as const;
+  if (status === "Cancelled") return "outline" as const;
   return "default" as const;
 }
 

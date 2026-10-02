@@ -456,6 +456,20 @@ export const EN: Record<string, string> = {
     "Only the things you can actually do in this system",
   "Aapka access badlega to ye guide bhi apne aap badal jaayegi.":
     "As your access changes, this guide changes with it.",
+  "Guide mein dhoondein... (jaise 'stock', 'payroll', 'approval')":
+    "Search the guide... (e.g. 'stock', 'payroll', 'approval')",
+  "Guidebook search": "Guidebook search",
+  "Search saaf karein": "Clear search",
+  "{count} topic(s) mile \"{query}\" ke liye": "{count} topic(s) found for \"{query}\"",
+  "Koi topic nahi mila \"{query}\" ke liye": "No topics found for \"{query}\"",
+  "Koi topic nahi mila": "No topics found",
+  "Kisi aur keyword se dhoondh kar dekhein, ya search saaf karke poori guide dekhein.":
+    "Try a different keyword, or clear the search to see the whole guide.",
+
+  // --- file upload (drag-and-drop zone) -----------------------------------------------
+  "File yahan drag karein, ya click karke choose karein":
+    "Drag a file here, or click to choose one",
+  "Uploading...": "Uploading...",
 
   // --- user and organization deletion -----------------------------------------------
   "User delete karein": "Delete this user",

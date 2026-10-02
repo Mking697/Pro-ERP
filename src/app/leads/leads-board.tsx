@@ -33,10 +33,11 @@ const TABS: { value: string; label: string; statuses: LeadStatus[] | null }[] = 
   { value: "all", label: "All", statuses: null },
 ];
 
-function statusVariant(status: LeadStatus): "default" | "secondary" | "destructive" | "outline" {
-  if (status === "Order_Confirmed") return "default";
+function statusVariant(status: LeadStatus): "default" | "secondary" | "destructive" | "outline" | "success" {
+  if (status === "Order_Confirmed") return "success";
   if (status === "Lost" || status === "Junk") return "destructive";
   if (status === "New") return "outline";
+  if (status === "Negotiation" || status === "Quotation_Sent") return "default";
   return "secondary";
 }
 

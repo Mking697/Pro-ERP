@@ -35,8 +35,8 @@ interface FmsHistoryRow {
   productName: string;
 }
 
-function statusVariant(status: string): "default" | "secondary" | "destructive" {
-  if (status === "On Time") return "default";
+function statusVariant(status: string): "success" | "secondary" | "destructive" {
+  if (status === "On Time") return "success";
   if (status === "Delay Done") return "secondary";
   return "destructive";
 }

@@ -43,8 +43,8 @@ const STATUS_FILTERS = [
   "All",
 ] as const;
 
-function statusVariant(status: string): "default" | "secondary" | "destructive" | "outline" {
-  if (status === "Received") return "default";
+function statusVariant(status: string): "success" | "secondary" | "destructive" | "outline" {
+  if (status === "Received") return "success";
   if (status === "Cancelled") return "destructive";
   if (status === "Pending") return "secondary";
   return "outline";

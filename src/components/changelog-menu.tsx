@@ -13,6 +13,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useT } from "@/components/preferences-provider";
+import { cn } from "@/lib/utils";
 import { CHANGELOG } from "@/lib/changelog";
 
 const SEEN_KEY = "pro-erp-changelog-last-seen";
@@ -96,12 +97,22 @@ export default function ChangelogMenu() {
           >
             <Bell />
             {unseenCount > 0 && (
-              <Badge
-                variant="default"
-                className="absolute -right-1 -top-1 h-4 min-w-4 justify-center rounded-full px-1 text-[10px] leading-none"
-              >
-                {unseenCount > 9 ? "9+" : unseenCount}
-              </Badge>
+              <>
+                {/* A soft pulsing ring behind the count — catches the eye once without
+                    looping forever (animate-ping's default iteration is already finite
+                    per-mount via Tailwind's utility, matching this project's existing
+                    "don't nag" stance on repeating animations elsewhere in the app). */}
+                <span
+                  aria-hidden="true"
+                  className="absolute -right-1 -top-1 size-4 animate-ping rounded-full bg-primary/60"
+                />
+                <Badge
+                  variant="default"
+                  className="absolute -right-1 -top-1 h-4 min-w-4 justify-center rounded-full px-1 text-[10px] leading-none"
+                >
+                  {unseenCount > 9 ? "9+" : unseenCount}
+                </Badge>
+              </>
             )}
           </Button>
         }
@@ -115,10 +126,21 @@ export default function ChangelogMenu() {
         </DropdownMenuGroup>
         <DropdownMenuSeparator />
         <div className="flex max-h-80 flex-col gap-0.5 overflow-y-auto px-1.5 py-1">
-          {CHANGELOG.map((entry) => (
-            <div key={entry.id} className="rounded-md px-1.5 py-1.5">
+          {CHANGELOG.map((entry, i) => (
+            <div
+              key={entry.id}
+              className={cn(
+                "rounded-md px-1.5 py-1.5",
+                i < unseenCount && "bg-primary/5"
+              )}
+            >
               <div className="flex items-center justify-between gap-2">
-                <span className="text-sm font-medium">{t(entry.title)}</span>
+                <span className="flex items-center gap-1.5 text-sm font-medium">
+                  {i < unseenCount && (
+                    <span aria-hidden="true" className="size-1.5 shrink-0 rounded-full bg-primary" />
+                  )}
+                  {t(entry.title)}
+                </span>
                 <span className="shrink-0 text-xs text-muted-foreground">{entry.date}</span>
               </div>
               <p className="mt-0.5 text-xs text-muted-foreground">{t(entry.description)}</p>

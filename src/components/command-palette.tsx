@@ -23,6 +23,17 @@ const KIND_LABEL: Record<SearchResult["kind"], string> = {
   lead: "Lead",
 };
 
+/** Each result kind gets its own icon-badge color — the same "distinct identity per
+ * category" reasoning as the dashboard's StatCard accents — so a mixed result list
+ * scans faster than one where every row's icon is the same muted gray. */
+const KIND_ACCENT: Record<SearchResult["kind"], string> = {
+  customer: "var(--chart-series-1)",
+  vendor: "var(--chart-series-2)",
+  order: "var(--chart-good)",
+  item: "var(--chart-warning)",
+  lead: "var(--primary)",
+};
+
 /**
  * Global search / command-palette (Cmd+K or Ctrl+K) — searches Customers, Vendors,
  * Orders, Items, and Leads across modules from anywhere in the app.
@@ -156,11 +167,11 @@ export default function CommandPalette({ iconOnly = false }: { iconOnly?: boolea
 
       <Dialog open={open} onOpenChange={handleOpenChange}>
         <DialogContent
-          className="top-[12%] max-w-lg translate-y-0 gap-0 p-0"
+          className="top-[12%] max-w-lg translate-y-0 gap-0 overflow-hidden p-0 shadow-xl"
           showCloseButton={false}
         >
           <DialogTitle className="sr-only">Global Search</DialogTitle>
-          <div className="flex items-center gap-2 border-b px-3.5 py-3">
+          <div className="flex items-center gap-2 border-b bg-muted/30 px-3.5 py-3">
             <Search aria-hidden="true" className="size-4 shrink-0 text-muted-foreground" />
             <input
               ref={inputRef}
@@ -198,6 +209,7 @@ export default function CommandPalette({ iconOnly = false }: { iconOnly?: boolea
             )}
             {results.map((result, index) => {
               const Icon = KIND_ICON[result.kind];
+              const accent = KIND_ACCENT[result.kind];
               const active = index === activeIndex;
               return (
                 <button
@@ -209,11 +221,20 @@ export default function CommandPalette({ iconOnly = false }: { iconOnly?: boolea
                   onMouseEnter={() => setActiveIndex(index)}
                   onClick={() => goTo(result)}
                   className={cn(
-                    "flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-sm",
+                    "flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-sm transition-colors duration-100",
                     active ? "bg-accent text-accent-foreground" : "hover:bg-muted"
                   )}
                 >
-                  <Icon aria-hidden="true" className="size-4 shrink-0 text-muted-foreground" />
+                  <span
+                    aria-hidden="true"
+                    className="flex size-7 shrink-0 items-center justify-center rounded-md"
+                    style={{
+                      background: `color-mix(in oklch, ${accent}, transparent 85%)`,
+                      color: accent,
+                    }}
+                  >
+                    <Icon className="size-3.5" />
+                  </span>
                   <span className="min-w-0 flex-1 truncate">{result.title}</span>
                   <span className="shrink-0 truncate text-xs text-muted-foreground">
                     {result.subtitle}
@@ -224,6 +245,24 @@ export default function CommandPalette({ iconOnly = false }: { iconOnly?: boolea
                 </button>
               );
             })}
+          </div>
+
+          {/* Keyboard affordance footer — a small, unobtrusive reminder of the arrow
+              keys/Enter/Esc shortcuts the palette already supports, so first-time users
+              don't have to discover them by accident. */}
+          <div className="flex items-center gap-3 border-t bg-muted/20 px-3.5 py-2 text-[11px] text-muted-foreground">
+            <span className="flex items-center gap-1">
+              <kbd className="rounded border bg-background px-1 py-0.5 font-mono">↑↓</kbd>
+              navigate
+            </span>
+            <span className="flex items-center gap-1">
+              <kbd className="rounded border bg-background px-1 py-0.5 font-mono">↵</kbd>
+              open
+            </span>
+            <span className="flex items-center gap-1">
+              <kbd className="rounded border bg-background px-1 py-0.5 font-mono">esc</kbd>
+              close
+            </span>
           </div>
         </DialogContent>
       </Dialog>
