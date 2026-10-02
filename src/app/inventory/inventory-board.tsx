@@ -46,6 +46,7 @@ export default function InventoryBoard({
   canTransact,
   canSetup,
   scope = "goods",
+  initialItems,
 }: {
   canTransact: boolean;
   canSetup: boolean;
@@ -54,16 +55,21 @@ export default function InventoryBoard({
    * with raw material/consumable/semi-FG stock. Both read the same live items+ledger
    * data; this is a display split, not a separate stock system. */
   scope?: "goods" | "finished";
+  /** Server-rendered (page.tsx already resolves the session and must read the same data
+   * for /inventory/fg's missing-FG-items banner check anyway) — removes the always-
+   * shows-once loading skeleton a client-only fetch used to produce on first paint. */
+  initialItems: ItemRow[];
 }) {
   const t = useT();
-  const [items, setItems] = useState<ItemRow[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [items, setItems] = useState<ItemRow[]>(initialItems);
+  const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState<StockStatus | "All">("All");
   const [version, setVersion] = useState(0);
   const [boms, setBoms] = useState<BomProductRow[]>([]);
 
   useEffect(() => {
+    if (version === 0) return;
     fetch("/api/inventory/items")
       .then((res) => res.json())
       .then((data: { items?: ItemRow[] }) => {
@@ -72,6 +78,14 @@ export default function InventoryBoard({
       .catch(() => toast.error(t("Items load nahi ho paye.")))
       .finally(() => setLoading(false));
   }, [version, t]);
+
+  // setLoading(true) happens here, at the one call site every mutation already routes
+  // through, rather than synchronously inside the effect above — this project's lint
+  // config (react-hooks/set-state-in-effect) disallows the latter.
+  function refetch() {
+    setLoading(true);
+    setVersion((v) => v + 1);
+  }
 
   // A product's Item is only auto-created going forward, the moment its BOM is next
   // saved (see createBom()) — a product whose BOM predates that fix still has no Item,
@@ -177,11 +191,11 @@ export default function InventoryBoard({
               render={<Link href="/inventory/setup">Bulk Setup</Link>}
             />
             <BulkImportDialog
-              onImported={() => setVersion((v) => v + 1)}
+              onImported={refetch}
               forcedCategory={scope === "finished" ? "FG" : undefined}
             />
             <CreateItemDialog
-              onCreated={() => setVersion((v) => v + 1)}
+              onCreated={refetch}
               defaultCategory={scope === "finished" ? "FG" : "Raw Material"}
               categoryOptions={scope === "finished" ? FG_CATEGORIES : GOODS_CATEGORIES}
               uomOptions={uomOptions}
@@ -203,7 +217,7 @@ export default function InventoryBoard({
             {missingFgItems.map((p) => (
               <CreateItemDialog
                 key={p.productSku}
-                onCreated={() => setVersion((v) => v + 1)}
+                onCreated={refetch}
                 defaultCategory="FG"
                 categoryOptions={FG_CATEGORIES}
                 initialSku={p.productSku}
@@ -329,12 +343,12 @@ export default function InventoryBoard({
                       <StockMovementDialog
                         item={item}
                         direction="In"
-                        onDone={() => setVersion((v) => v + 1)}
+                        onDone={refetch}
                       />
                       <StockMovementDialog
                         item={item}
                         direction="Out"
-                        onDone={() => setVersion((v) => v + 1)}
+                        onDone={refetch}
                       />
                     </div>
                   </TableCell>

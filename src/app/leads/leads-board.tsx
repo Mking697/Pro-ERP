@@ -40,15 +40,22 @@ function statusVariant(status: LeadStatus): "default" | "secondary" | "destructi
   return "secondary";
 }
 
-export default function LeadsBoard() {
+export default function LeadsBoard({ initialLeads }: { initialLeads: LeadRow[] }) {
   const t = useT();
-  const [leads, setLeads] = useState<LeadRow[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [leads, setLeads] = useState<LeadRow[]>(initialLeads);
+  const [loading, setLoading] = useState(false);
   const [version, setVersion] = useState(0);
   const [tab, setTab] = useState("open");
   const [openLeadId, setOpenLeadId] = useState<string | null>(null);
 
+  // version 0 is the server-rendered initial data already passed in as a prop — only a
+  // bump past that (import, create, etc.) needs a real refetch. This is what removes the
+  // always-loading-on-first-paint skeleton every client-fetched board used to show.
+  // setLoading(true) happens at the call site that bumps version (handleImported below),
+  // not synchronously in this effect body — this project's lint config
+  // (react-hooks/set-state-in-effect) disallows the latter.
   useEffect(() => {
+    if (version === 0) return;
     fetch("/api/leads")
       .then((res) => res.json())
       .then((data: { leads?: LeadRow[] }) => setLeads(data.leads ?? []))
@@ -74,7 +81,10 @@ export default function LeadsBoard() {
           entityLabel="Lead"
           templateUrl="/api/leads/import-template"
           importUrl="/api/leads/import"
-          onImported={() => setVersion((v) => v + 1)}
+          onImported={() => {
+            setLoading(true);
+            setVersion((v) => v + 1);
+          }}
         />
         <CreateLeadDialog onCreated={handleCreated} />
       </div>

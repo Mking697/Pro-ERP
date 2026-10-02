@@ -23,6 +23,8 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { Info } from "lucide-react";
 import ScoreBreakdown from "./score-breakdown";
 import { getT } from "@/lib/i18n/server";
 import { reportsFor } from "@/lib/reports";
@@ -34,6 +36,7 @@ function StatCard({
   hint,
   icon,
   style,
+  infoTooltip,
 }: {
   label: string;
   value: string;
@@ -41,12 +44,27 @@ function StatCard({
   hint?: string;
   icon?: ReactNode;
   style?: CSSProperties;
+  /** Shown as a small info icon next to the label — for a figure (like MIS Score) whose
+   * scale isn't self-explanatory. Keep this out of `hint` since hint is always-visible
+   * text below the number; this is an opt-in explanation for anyone who's unsure. */
+  infoTooltip?: ReactNode;
 }) {
   return (
     <Card className="animate-in fade-in-0 slide-in-from-bottom-2 fill-mode-both duration-500" style={style}>
       <CardHeader className="flex items-start justify-between pb-2">
-        <CardTitle className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+        <CardTitle className="flex items-center gap-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">
           {label}
+          {infoTooltip && (
+            <Tooltip>
+              <TooltipTrigger
+                aria-label={`${label} ke baare mein`}
+                className="rounded-full text-muted-foreground/70 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                <Info aria-hidden="true" className="size-3.5" />
+              </TooltipTrigger>
+              <TooltipContent>{infoTooltip}</TooltipContent>
+            </Tooltip>
+          )}
         </CardTitle>
         {icon && (
           <div
@@ -134,9 +152,18 @@ export default async function DashboardPage({
             label="MIS Score"
             value={formatScore(mis.score)}
             valueClassName={getScoreColorClass(mis.score)}
-            hint={`On Time ${mis.onTime} · Delay ${mis.delay} · Not Done ${mis.notDone} — 0% best`}
+            hint={`On Time ${mis.onTime} · Delay ${mis.delay} · Not Done ${mis.notDone} — 0% is best, -100% is worst`}
             icon={<Gauge />}
             style={{ animationDelay: "160ms" }}
+            infoTooltip={
+              <>
+                Yeh ek penalty score hai — 0% matlab sab tasks/steps on time pure hue
+                (best), -100% matlab sab miss hue (worst). On-time ka cost 0, late ka
+                cost 0.5, miss hone ka cost 1 — total evaluated items se divide karke
+                yeh % milta hai. Neeche &quot;Aapka score kaise bana&quot; tab mein
+                har task ka breakdown dekhein.
+              </>
+            }
           />
         </div>
 

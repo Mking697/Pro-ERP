@@ -2,29 +2,15 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { requireModule } from "@/lib/auth/guard";
 import { createItem, ITEM_CATEGORIES } from "@/lib/inventory/items";
-import { getInventorySnapshot } from "@/lib/inventory/service";
+import { getInventoryItemRows } from "@/lib/inventory/service";
 
 export async function GET() {
   const guard = await requireModule("INVENTORY_VIEW");
   if (!guard.ok) return guard.response;
 
-  const snapshot = await getInventorySnapshot();
+  const items = await getInventoryItemRows();
 
-  return NextResponse.json({
-    items: snapshot.items.map((i) => ({
-      ...i.item,
-      onHand: i.onHand,
-      committed: i.committed,
-      free: i.free,
-      inTransit: i.inTransit,
-      projected: i.projected,
-      adc: i.adc,
-      adcIsManual: i.adcIsManual,
-      rop: i.rop,
-      status: i.status,
-      missingFields: i.missingFields,
-    })),
-  });
+  return NextResponse.json({ items });
 }
 
 // Blank is meaningful here: it means "not set yet", which the reorder maths treats

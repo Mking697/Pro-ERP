@@ -128,3 +128,39 @@ export function itemsNeedingReorder(items: ItemStock[]): ItemStock[] {
 }
 
 export type { ItemRecord, ItemStock, LedgerRecord };
+
+/** The exact flattening GET /api/inventory/items sends to the client — pulled out here
+ * so a server component (a page.tsx needing initial data to avoid a client-only fetch
+ * waterfall on first paint) can produce the identical shape without duplicating it.
+ * Matches src/app/inventory/types.ts's own ItemRow exactly (that file can't import this
+ * one without a client/server boundary issue, so the shape is kept in sync by hand —
+ * both are a flat merge of ItemRecord with ItemStock's own computed fields). */
+export interface InventoryItemRow extends ItemRecord {
+  onHand: number;
+  committed: number;
+  free: number;
+  inTransit: number;
+  projected: number;
+  adc: number | null;
+  adcIsManual: boolean;
+  rop: number | null;
+  status: ItemStock["status"];
+  missingFields: string[];
+}
+
+export async function getInventoryItemRows(): Promise<InventoryItemRow[]> {
+  const snapshot = await getInventorySnapshot();
+  return snapshot.items.map((i) => ({
+    ...i.item,
+    onHand: i.onHand,
+    committed: i.committed,
+    free: i.free,
+    inTransit: i.inTransit,
+    projected: i.projected,
+    adc: i.adc,
+    adcIsManual: i.adcIsManual,
+    rop: i.rop,
+    status: i.status,
+    missingFields: i.missingFields,
+  }));
+}

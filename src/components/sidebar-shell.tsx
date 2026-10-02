@@ -6,6 +6,7 @@ import { Menu, PanelLeftClose, PanelLeftOpen, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import NavLinks, { type NavEntry } from "@/components/nav-links";
+import CommandPalette from "@/components/command-palette";
 import LogoutButton from "@/app/dashboard/logout-button";
 import { OrgLogo } from "@/components/logo-picker";
 import SettingsMenu from "@/components/settings-menu";
@@ -129,6 +130,12 @@ export default function SidebarShell({
           </Link>
         </div>
 
+        {!collapsed && (
+          <div className="shrink-0 px-2.5 pt-3">
+            <CommandPalette />
+          </div>
+        )}
+
         <div className="flex-1 overflow-y-auto px-2.5 py-3">
           <NavLinks items={items} collapsed={collapsed} />
         </div>
@@ -206,6 +213,7 @@ export default function SidebarShell({
             <span className="truncate text-sm font-semibold">{orgName}</span>
           </Link>
           <div className="ml-auto flex shrink-0 items-center gap-1">
+            <CommandPalette iconOnly />
             <ChangelogMenu />
             <SettingsMenu />
           </div>

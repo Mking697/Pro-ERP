@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { cookies } from "next/headers";
 import { Geist, Geist_Mono } from "next/font/google";
 import { Toaster } from "@/components/ui/sonner";
+import { TooltipProvider } from "@/components/ui/tooltip";
 import PreferencesProvider from "@/components/preferences-provider";
 import ServiceWorkerRegister from "@/components/sw-register";
 import {
@@ -84,8 +85,10 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
       </head>
       <body className="min-h-full flex flex-col">
         <PreferencesProvider mode={mode} accent={accent} locale={locale}>
-          {children}
-          <Toaster />
+          <TooltipProvider delay={200}>
+            {children}
+            <Toaster />
+          </TooltipProvider>
         </PreferencesProvider>
         <ServiceWorkerRegister />
       </body>

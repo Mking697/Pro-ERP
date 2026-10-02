@@ -1,19 +1,10 @@
-import type { ItemRecord } from "@/lib/inventory/items";
+import type { InventoryItemRow } from "@/lib/inventory/service";
 import type { StockStatus } from "@/lib/inventory/constants";
 
-/** One row as the API returns it: the master fields flattened with its live position. */
-export interface ItemRow extends ItemRecord {
-  onHand: number;
-  committed: number;
-  free: number;
-  inTransit: number;
-  projected: number;
-  adc: number | null;
-  adcIsManual: boolean;
-  rop: number | null;
-  status: StockStatus;
-  missingFields: string[];
-}
+/** One row as the API returns it: the master fields flattened with its live position.
+ * Identical in shape to InventoryItemRow (service.ts) — extending it directly keeps the
+ * two from drifting instead of hand-duplicating every field a second time. */
+export type ItemRow = InventoryItemRow;
 
 export type { StockStatus };
 

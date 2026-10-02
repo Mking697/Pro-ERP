@@ -89,7 +89,11 @@ export default function StockMovementDialog({
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger
         render={
-          <Button variant={isOut ? "outline" : "default"} size="sm">
+          <Button
+            variant={isOut ? "outline" : "default"}
+            size="sm"
+            className="pointer-coarse:min-h-11 pointer-coarse:min-w-11"
+          >
             {isOut ? "Out" : "In"}
           </Button>
         }

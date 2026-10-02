@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { toast } from "sonner";
 import {
   Table,
@@ -19,8 +19,7 @@ import CreateTaskDialog from "./create-task-dialog";
 import CreateRecurringDialog from "./create-recurring-dialog";
 import RecurringRules from "./recurring-rules";
 import CompleteTaskDialog from "./complete-task-dialog";
-import type { TaskRecord, UserOption } from "./types";
-import { CardListSkeleton } from "@/components/loading-states";
+import type { TaskRecord } from "./types";
 import { useT } from "@/components/preferences-provider";
 import { parseStamp } from "@/lib/timestamp";
 
@@ -39,43 +38,29 @@ function statusBadge(task: TaskRecord) {
   return { label: task.Status, variant: "secondary" as const };
 }
 
-export default function TaskBoard({ currentUserId }: { currentUserId: string }) {
+export default function TaskBoard({
+  currentUserId,
+  initialMyTasks,
+  initialDelegatedTasks,
+  initialCanDelegate,
+  initialCanAssignRecurring,
+  initialUserMap,
+}: {
+  currentUserId: string;
+  initialMyTasks: TaskRecord[];
+  initialDelegatedTasks: TaskRecord[];
+  initialCanDelegate: boolean;
+  initialCanAssignRecurring: boolean;
+  initialUserMap: Record<string, string>;
+}) {
   const t = useT();
-  const [myTasks, setMyTasks] = useState<TaskRecord[]>([]);
-  const [delegatedTasks, setDelegatedTasks] = useState<TaskRecord[]>([]);
-  const [canDelegate, setCanDelegate] = useState(false);
-  const [canAssignRecurring, setCanAssignRecurring] = useState(false);
+  const [myTasks, setMyTasks] = useState<TaskRecord[]>(initialMyTasks);
+  const [delegatedTasks, setDelegatedTasks] = useState<TaskRecord[]>(initialDelegatedTasks);
+  const [canDelegate] = useState(initialCanDelegate);
+  const [canAssignRecurring] = useState(initialCanAssignRecurring);
   // Bumped after a rule is created so the rules tab refetches.
   const [rulesVersion, setRulesVersion] = useState(0);
-  const [userMap, setUserMap] = useState<Record<string, string>>({});
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    Promise.all([
-      fetch("/api/tasks").then((res) => res.json()),
-      fetch("/api/users/directory").then((res) => res.json()),
-    ])
-      .then(([tasksData, usersData]: [
-        {
-          myTasks: TaskRecord[];
-          delegatedTasks: TaskRecord[];
-          canDelegate: boolean;
-          canAssignRecurring: boolean;
-        },
-        { users: UserOption[] },
-      ]) => {
-        setMyTasks(tasksData.myTasks ?? []);
-        setDelegatedTasks(tasksData.delegatedTasks ?? []);
-        setCanDelegate(tasksData.canDelegate ?? false);
-        setCanAssignRecurring(tasksData.canAssignRecurring ?? false);
-
-        const map: Record<string, string> = {};
-        for (const u of usersData.users ?? []) map[u.userId] = u.fullName;
-        setUserMap(map);
-      })
-      .catch(() => toast.error(t("Tasks load nahi ho paye.")))
-      .finally(() => setLoading(false));
-  }, [t]);
+  const [userMap] = useState<Record<string, string>>(initialUserMap);
 
   function handleCreated(task: TaskRecord) {
     setDelegatedTasks((prev) => [...prev, task]);
@@ -87,10 +72,6 @@ export default function TaskBoard({ currentUserId }: { currentUserId: string }) 
   function handleCompleted(updated: TaskRecord) {
     setMyTasks((prev) => prev.map((t) => (t.Task_ID === updated.Task_ID ? updated : t)));
     setDelegatedTasks((prev) => prev.map((t) => (t.Task_ID === updated.Task_ID ? updated : t)));
-  }
-
-  if (loading) {
-    return <CardListSkeleton label={t("Tasks load ho rahe hain")} />;
   }
 
   const myTasksTable = (

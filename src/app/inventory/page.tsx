@@ -5,6 +5,7 @@ import AppShell from "@/components/app-shell";
 import InventoryBoard from "./inventory-board";
 import PageHeader from "@/components/page-header";
 import { getT } from "@/lib/i18n/server";
+import { getInventoryItemRows } from "@/lib/inventory/service";
 
 export default async function InventoryPage() {
   const t = await getT();
@@ -14,6 +15,11 @@ export default async function InventoryPage() {
 
   if (!session) redirect("/login");
   if (!session.access.includes("INVENTORY_VIEW")) redirect("/dashboard");
+
+  // Fetched here (server-rendered, same request the page itself needs) rather than left
+  // for InventoryBoard's own client-side effect to fetch after hydration — removes the
+  // always-shows-once loading skeleton a client-only fetch used to produce on first paint.
+  const initialItems = await getInventoryItemRows();
 
   return (
     <AppShell session={session}>
@@ -28,6 +34,7 @@ export default async function InventoryPage() {
         <InventoryBoard
           canTransact={session.access.includes("INVENTORY_TXN")}
           canSetup={session.access.includes("INVENTORY_SETUP")}
+          initialItems={initialItems}
         />
       </div>
     </AppShell>
