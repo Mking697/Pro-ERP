@@ -1,10 +1,9 @@
-import { getTableColumns, getTableName, is, sql } from "drizzle-orm";
-import { PgTable } from "drizzle-orm/pg-core";
+import { getTableColumns, getTableName, sql } from "drizzle-orm";
 import { db } from "@/db/client";
-import * as schema from "@/db/schema";
 import { tenantUsageMetrics } from "@/db/schema";
 import { todayIST } from "@/lib/dateUtil";
 import { forEachActiveOrganization, type OrgRunResult } from "@/lib/platform/runner";
+import { tenantScopedTables } from "@/lib/platform/tenantTables";
 
 /**
  * Per-tenant usage measurement — the shared-schema architecture has no native per-tenant
@@ -14,31 +13,6 @@ import { forEachActiveOrganization, type OrgRunResult } from "@/lib/platform/run
  * for the full reasoning; this file is the implementation of its "Per-tenant usage
  * measurement" bullet.
  */
-
-// Tables that carry an org_id column but are NOT tenant-owned business data (see their own
-// schema-file comments in src/db/schema/platform.ts) — excluded here the same way
-// deleteOrganization()'s cascade excludes them from tenant-data operations.
-const NOT_TENANT_OWNED = new Set(["error_logs", "rate_limit_hits", "tenant_usage_metrics"]);
-
-/**
- * Every tenant-scoped table, found by reflection over the schema module rather than a
- * second hand-maintained list — `deleteOrganization()` (src/lib/platform/registry.ts) has
- * its own explicit list for the same "every table with org_id" concept, and CLAUDE.md's own
- * working notes warn hand-duplicating a list like that is exactly how it drifts out of sync.
- * Reflection means a future table with an `orgId` column is picked up here automatically,
- * with no second edit required.
- */
-function tenantScopedTables(): PgTable[] {
-  const tables: PgTable[] = [];
-  for (const value of Object.values(schema)) {
-    if (!is(value, PgTable)) continue;
-    const name = getTableName(value);
-    if (NOT_TENANT_OWNED.has(name)) continue;
-    const columns = getTableColumns(value) as Record<string, unknown>;
-    if ("orgId" in columns) tables.push(value);
-  }
-  return tables;
-}
 
 interface StorageShare {
   rowCount: number;
