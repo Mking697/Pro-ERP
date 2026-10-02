@@ -6,7 +6,9 @@ import { forEachActiveOrganization } from "@/lib/platform/runner";
 import { computeTenantUsageMetrics } from "@/lib/platform/usageMetrics";
 import { logError } from "@/lib/errorLog";
 
-// Walking every tenant sequentially takes longer than a single-org run ever did.
+// forEachActiveOrganization() now runs orgs through a bounded worker pool, not strictly
+// sequentially — kept generous anyway since Vercel Cron's own timeout is separate from
+// this, and a genuinely large org count still takes real wall-clock time even parallelized.
 export const maxDuration = 60;
 
 function isCronCall(request: Request): boolean {
