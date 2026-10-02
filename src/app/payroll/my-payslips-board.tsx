@@ -23,6 +23,9 @@ interface MyPayslip {
   daysInMonth: number;
   daysEmployed: number;
   grossPay: number;
+  pfEmployee: number;
+  esiEmployee: number;
+  tds: number;
   netPay: number;
   pdfUrl: string;
 }
@@ -46,7 +49,7 @@ export default function MyPayslipsBoard() {
       .finally(() => setLoading(false));
   }, [t]);
 
-  if (loading) return <TableSkeleton columns={5} />;
+  if (loading) return <TableSkeleton columns={6} />;
 
   if (payslips.length === 0) {
     return (
@@ -66,6 +69,7 @@ export default function MyPayslipsBoard() {
           <TableHead>{t("Monthly Salary")}</TableHead>
           <TableHead>{t("Days Employed")}</TableHead>
           <TableHead>{t("Gross Pay")}</TableHead>
+          <TableHead>{t("Deductions")}</TableHead>
           <TableHead>{t("Net Pay")}</TableHead>
           <TableHead>{t("PDF")}</TableHead>
         </TableRow>
@@ -81,6 +85,11 @@ export default function MyPayslipsBoard() {
               </Badge>
             </TableCell>
             <TableCell>{formatMoney(p.grossPay)}</TableCell>
+            <TableCell>
+              {p.pfEmployee + p.esiEmployee + p.tds > 0
+                ? formatMoney(p.pfEmployee + p.esiEmployee + p.tds)
+                : "—"}
+            </TableCell>
             <TableCell className="font-medium">{formatMoney(p.netPay)}</TableCell>
             <TableCell>
               {p.pdfUrl ? (

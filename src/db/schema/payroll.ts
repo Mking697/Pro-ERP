@@ -12,15 +12,18 @@ import {
 import { organizations } from "./platform";
 
 /**
- * Payroll — simple v1, by explicit user choice over a full statutory-compliance system
- * (no PF/ESI/TDS; that is a separate, later conversation). There is no clock-in/clock-out
- * or biometric attendance module anywhere in this codebase, so "attendance" here means
- * join/exit-date proration within the month, not daily presence — a user created or
- * deactivated partway through a month is paid only for the days they were an Active
- * employee. Approved Leave does NOT reduce pay (that is the entire point of the annual
- * leave quota now existing — it is paid time off up to that quota); a real unpaid-leave/
- * absence deduction is a natural v2 extension once this codebase has any way to know a day
- * was genuinely unpaid, which it does not yet.
+ * Payroll — v1 was simple by explicit user choice (no PF/ESI/TDS); as of 2026-10-02,
+ * optional statutory deduction calculation (PF/ESI/TDS) exists — see
+ * src/lib/payroll/statutory.ts for the real formulas and their documented
+ * simplifications — gated per-org behind Settings (PF_ENABLED/ESI_ENABLED/TDS_ENABLED),
+ * all OFF by default so no existing org's payroll numbers change unless they opt in.
+ * There is no clock-in/clock-out or biometric attendance module anywhere in this
+ * codebase, so "attendance" here still means join/exit-date proration within the month,
+ * not daily presence — a user created or deactivated partway through a month is paid
+ * only for the days they were an Active employee. Approved Leave does NOT reduce pay
+ * (that is the entire point of the annual leave quota now existing — it is paid time off
+ * up to that quota); a real unpaid-leave/absence deduction is a natural v2 extension once
+ * this codebase has any way to know a day was genuinely unpaid, which it does not yet.
  */
 export const salaryStructures = pgTable(
   "salary_structures",
@@ -86,9 +89,19 @@ export const payslips = pgTable(
     // Days this user was an Active employee during this month (join/exit-date prorated).
     daysEmployed: integer("days_employed").notNull(),
     grossPay: numeric("gross_pay").notNull().default("0"),
-    // Equals grossPay in v1 — no deductions exist yet (PF/ESI/TDS are a separate, later
-    // conversation). Kept as its own column now so a v2 deduction never has to rename or
-    // repurpose grossPay's own meaning.
+    // Statutory deductions — all zero unless the org has opted in via Settings
+    // (PF_ENABLED/ESI_ENABLED/TDS_ENABLED; see src/lib/payroll/statutory.ts for the real
+    // formulas and their documented simplifications). Employee-side amounts are deducted
+    // from netPay below; employer-side amounts are the org's own cost and never touch
+    // netPay, but are stored so a payslip/report can show the org's full employer cost.
+    pfEmployee: numeric("pf_employee").notNull().default("0"),
+    pfEmployer: numeric("pf_employer").notNull().default("0"),
+    esiEmployee: numeric("esi_employee").notNull().default("0"),
+    esiEmployer: numeric("esi_employer").notNull().default("0"),
+    tds: numeric("tds").notNull().default("0"),
+    // grossPay minus pfEmployee, esiEmployee, and tds — equals grossPay when none of the
+    // three statutory settings are enabled (v1's exact prior behavior, unchanged for any
+    // org that never opts in).
     netPay: numeric("net_pay").notNull().default("0"),
     pdfUrl: text("pdf_url").notNull().default(""),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),

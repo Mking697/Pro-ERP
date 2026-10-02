@@ -1603,6 +1603,7 @@ export const EN: Record<string, string> = {
   "Monthly Salary": "Monthly Salary",
   "Days Employed": "Days Employed",
   "Gross Pay": "Gross Pay",
+  "Deductions": "Deductions",
   "Net Pay": "Net Pay",
   "PDF": "PDF",
   "Download": "Download",
@@ -1824,6 +1825,20 @@ export const EN: Record<string, string> = {
   "Mahine ke hisaab se Net Pay": "Net pay by month",
   "Is period me koi payslip nahi bani.": "No payslip was generated in this period.",
   "Latest payslip — Gross vs Deduction": "Latest payslip — gross vs deduction",
+
+  // --- payroll compliance (PF/ESI/TDS) ------------------------------------------------
+  "Payroll Compliance settings load nahi ho payi.": "Could not load Payroll Compliance settings.",
+  "Payroll Compliance settings save ho gayi.": "Payroll Compliance settings saved.",
+  "Payroll Compliance settings load ho rahi hain": "Loading Payroll Compliance settings",
+  "Payroll — Statutory Compliance": "Payroll — Statutory Compliance",
+  "PF/ESI/TDS har organization ke liye default OFF hain — enable karne par hi payslips me ye deductions dikhenge. Ye sirf calculation hai, koi government filing nahi karta — aapka CA/accountant hi EPFO/ESIC/Income Tax me real return file karega, inhi figures ka use karke.":
+    "PF/ESI/TDS are OFF by default for every organization — enabling one only makes payslips show that deduction. This is calculation only, not a government filing — your own CA/accountant still files the real return with EPFO/ESIC/Income Tax, using these same figures.",
+  "12% employee + 12% employer (8.33% EPS + 3.67% EPF), ₹15,000/month wage ceiling.":
+    "12% employee + 12% employer (8.33% EPS + 3.67% EPF), ₹15,000/month wage ceiling.",
+  "0.75% employee + 3.25% employer, sirf ₹21,000/month ya kam gross wage walon ke liye.":
+    "0.75% employee + 3.25% employer, only for those with gross wage at or below ₹21,000/month.",
+  "New tax regime slabs ka ek estimate — employee ke investment declarations ya purani job ka TDS consider nahi karta. Final Form 16 nahi hai.":
+    "An estimate using the new tax regime's slabs — does not consider the employee's own investment declarations or a previous job's TDS. Not a final Form 16.",
 
   // --- performance: Send Report (WhatsApp) + per-Doer export -----------------------------
   "Send Report": "Send Report",

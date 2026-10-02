@@ -69,6 +69,9 @@ interface RunPayslip {
   daysInMonth: number;
   daysEmployed: number;
   grossPay: number;
+  pfEmployee: number;
+  esiEmployee: number;
+  tds: number;
   netPay: number;
   pdfUrl: string;
 }
@@ -262,7 +265,7 @@ function RunPayslipsDialog({ run }: { run: PayrollRun }) {
           </DialogDescription>
         </DialogHeader>
         {loading ? (
-          <TableSkeleton columns={5} />
+          <TableSkeleton columns={6} />
         ) : payslips.length === 0 ? (
           <EmptyState icon={<FileText />} title={t("Is run me koi payslip nahi hai.")} />
         ) : (
@@ -272,6 +275,7 @@ function RunPayslipsDialog({ run }: { run: PayrollRun }) {
                 <TableHead>{t("User")}</TableHead>
                 <TableHead>{t("Days Employed")}</TableHead>
                 <TableHead>{t("Gross Pay")}</TableHead>
+                <TableHead>{t("Deductions")}</TableHead>
                 <TableHead>{t("Net Pay")}</TableHead>
                 <TableHead>{t("PDF")}</TableHead>
               </TableRow>
@@ -284,6 +288,11 @@ function RunPayslipsDialog({ run }: { run: PayrollRun }) {
                     {p.daysEmployed} / {p.daysInMonth}
                   </TableCell>
                   <TableCell>{formatMoney(p.grossPay)}</TableCell>
+                  <TableCell>
+                    {p.pfEmployee + p.esiEmployee + p.tds > 0
+                      ? formatMoney(p.pfEmployee + p.esiEmployee + p.tds)
+                      : "—"}
+                  </TableCell>
                   <TableCell>{formatMoney(p.netPay)}</TableCell>
                   <TableCell>
                     {p.pdfUrl ? (

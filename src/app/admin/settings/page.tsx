@@ -11,6 +11,7 @@ import LeaveQuotaSetupForm from "./leave-quota-setup-form";
 import QuotationSetupForm from "./quotation-setup-form";
 import OrderSetupForm from "./order-setup-form";
 import ChatbotForm from "./chatbot-form";
+import PayrollComplianceForm from "./payroll-compliance-form";
 import { getT } from "@/lib/i18n/server";
 
 export default async function AdminSettingsPage() {
@@ -34,6 +35,7 @@ export default async function AdminSettingsPage() {
       <LeaveApprovalSetupForm />
       <LeaveQuotaSetupForm />
       <ChatbotForm />
+      <PayrollComplianceForm />
     </div>
   );
 }

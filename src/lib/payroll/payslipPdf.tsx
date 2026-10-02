@@ -100,11 +100,15 @@ export interface PayslipPdfInput {
   daysInMonth: number;
   daysEmployed: number;
   grossPay: number;
+  pfEmployee: number;
+  esiEmployee: number;
+  tds: number;
   netPay: number;
 }
 
 function PayslipDocument({ input }: { input: PayslipPdfInput }) {
   const monthText = formatMonth(input.month);
+  const hasDeductions = input.pfEmployee > 0 || input.esiEmployee > 0 || input.tds > 0;
   return (
     <Document title={`Payslip ${monthText} - ${input.employeeName}`} author={input.companyName}>
       <Page size="A4" style={styles.page}>
@@ -139,10 +143,28 @@ function PayslipDocument({ input }: { input: PayslipPdfInput }) {
               {input.daysEmployed} / {input.daysInMonth}
             </Text>
           </View>
-          <View style={styles.rowLast}>
+          <View style={hasDeductions ? styles.row : styles.rowLast}>
             <Text style={styles.cellLabel}>Gross Pay</Text>
             <Text style={styles.cellValue}>{formatMoney(input.grossPay)}</Text>
           </View>
+          {input.pfEmployee > 0 ? (
+            <View style={styles.row}>
+              <Text style={styles.cellLabel}>PF Deduction (Employee)</Text>
+              <Text style={styles.cellValue}>{formatMoney(input.pfEmployee)}</Text>
+            </View>
+          ) : null}
+          {input.esiEmployee > 0 ? (
+            <View style={styles.row}>
+              <Text style={styles.cellLabel}>ESI Deduction (Employee)</Text>
+              <Text style={styles.cellValue}>{formatMoney(input.esiEmployee)}</Text>
+            </View>
+          ) : null}
+          {input.tds > 0 ? (
+            <View style={styles.rowLast}>
+              <Text style={styles.cellLabel}>TDS (estimated)</Text>
+              <Text style={styles.cellValue}>{formatMoney(input.tds)}</Text>
+            </View>
+          ) : null}
         </View>
 
         <View style={styles.totalRow}>
@@ -151,8 +173,12 @@ function PayslipDocument({ input }: { input: PayslipPdfInput }) {
         </View>
 
         <Text style={styles.note}>
-          This is a simplified payslip. No statutory deductions (PF/ESI/TDS) are included in
-          this version.
+          {hasDeductions
+            ? "PF/ESI figures follow this organization's own enabled statutory settings. " +
+              "TDS is an estimate (new tax regime, no investment declarations considered) " +
+              "— not a substitute for your employer's own Form 16/compliance filing."
+            : "This is a simplified payslip. No statutory deductions (PF/ESI/TDS) are " +
+              "enabled for this organization."}
         </Text>
       </Page>
     </Document>

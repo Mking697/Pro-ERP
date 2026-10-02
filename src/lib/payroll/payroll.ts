@@ -6,8 +6,9 @@ import { getTenantOrgId } from "@/lib/tenant";
 import { generateId } from "@/lib/id";
 import { listUsers } from "@/lib/auth/users";
 import { getOrganization } from "@/lib/platform/registry";
-import { getSetting } from "@/lib/settings";
+import { getAllSettings, getSetting } from "@/lib/settings";
 import { uploadAttachment } from "@/lib/storage";
+import { computeStatutoryDeductions, type StatutoryFlags } from "@/lib/payroll/statutory";
 
 /**
  * Payroll v1 — simple, explicitly NOT statutory-compliant (see src/db/schema/payroll.ts's
@@ -76,6 +77,11 @@ export interface PayslipRecord {
   daysInMonth: number;
   daysEmployed: number;
   grossPay: number;
+  pfEmployee: number;
+  pfEmployer: number;
+  esiEmployee: number;
+  esiEmployer: number;
+  tds: number;
   netPay: number;
   pdfUrl: string;
   createdAt: string;
@@ -131,6 +137,11 @@ function rowToPayslip(row: PayslipRow): PayslipRecord {
     daysInMonth: row.daysInMonth,
     daysEmployed: row.daysEmployed,
     grossPay: Number(row.grossPay),
+    pfEmployee: Number(row.pfEmployee),
+    pfEmployer: Number(row.pfEmployer),
+    esiEmployee: Number(row.esiEmployee),
+    esiEmployer: Number(row.esiEmployer),
+    tds: Number(row.tds),
     netPay: Number(row.netPay),
     pdfUrl: row.pdfUrl,
     createdAt: row.createdAt.toISOString(),
@@ -348,10 +359,16 @@ export async function generatePayrollRun(
   const monthEndUTC = Date.UTC(year, monthNum - 1, daysInMonth);
   const monthEndStr = new Date(monthEndUTC).toISOString().slice(0, 10);
 
-  const [allUsers, allSalaryRows] = await Promise.all([
+  const [allUsers, allSalaryRows, allSettings] = await Promise.all([
     listUsers(),
     db.select().from(salaryStructures).where(eq(salaryStructures.orgId, orgId)),
+    getAllSettings(),
   ]);
+  const statutoryFlags: StatutoryFlags = {
+    pfEnabled: allSettings.PF_ENABLED === "true",
+    esiEnabled: allSettings.ESI_ENABLED === "true",
+    tdsEnabled: allSettings.TDS_ENABLED === "true",
+  };
 
   const byUser = new Map<string, SalaryStructureRow[]>();
   for (const row of allSalaryRows) {
@@ -380,7 +397,13 @@ export async function generatePayrollRun(
         daysInMonth,
       });
       const grossPay = round2((monthlySalary * daysEmployed) / daysInMonth);
-      const netPay = grossPay; // no deductions exist yet — see payslips.netPay's own comment
+      const { pfEmployee, pfEmployer, esiEmployee, esiEmployer, tds } =
+        computeStatutoryDeductions(monthlySalary, grossPay, statutoryFlags);
+      // Deliberately computed on the full monthlySalary/grossPay, not reduced for
+      // proration beyond what grossPay itself already reflects — matches how a real
+      // payroll system computes PF/ESI/TDS off the (already prorated) gross actually paid
+      // this month, not off the full-month figure a partial-month employee never received.
+      const netPay = round2(grossPay - pfEmployee - esiEmployee - tds);
 
       const [row] = await db
         .insert(payslips)
@@ -393,6 +416,11 @@ export async function generatePayrollRun(
           daysInMonth,
           daysEmployed,
           grossPay: String(grossPay),
+          pfEmployee: String(pfEmployee),
+          pfEmployer: String(pfEmployer),
+          esiEmployee: String(esiEmployee),
+          esiEmployer: String(esiEmployer),
+          tds: String(tds),
           netPay: String(netPay),
         })
         .onConflictDoUpdate({
@@ -402,6 +430,11 @@ export async function generatePayrollRun(
             daysInMonth,
             daysEmployed,
             grossPay: String(grossPay),
+            pfEmployee: String(pfEmployee),
+            pfEmployer: String(pfEmployer),
+            esiEmployee: String(esiEmployee),
+            esiEmployer: String(esiEmployer),
+            tds: String(tds),
             netPay: String(netPay),
           },
         })
@@ -488,6 +521,9 @@ async function generatePayslipPdfs(orgId: string, runId: string): Promise<void> 
         daysInMonth: row.daysInMonth,
         daysEmployed: row.daysEmployed,
         grossPay: Number(row.grossPay),
+        pfEmployee: Number(row.pfEmployee),
+        esiEmployee: Number(row.esiEmployee),
+        tds: Number(row.tds),
         netPay: Number(row.netPay),
       });
 
