@@ -53,9 +53,9 @@ export default function LoginPage() {
 
   return (
     <AuthLayout t={t}>
-      <Card className="w-full max-w-sm">
+      <Card className="w-full max-w-sm shadow-lg ring-foreground/5">
         <CardHeader>
-          <CardTitle>Pro ERP Login</CardTitle>
+          <CardTitle className="text-xl">Pro ERP Login</CardTitle>
           <CardDescription>{t("Apna email aur password daalein.")}</CardDescription>
         </CardHeader>
         <CardContent>

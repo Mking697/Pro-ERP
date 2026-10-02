@@ -95,6 +95,16 @@ const ROW_CLASSES = cn(
   "text-muted-foreground hover:bg-muted hover:text-foreground"
 );
 
+/** Active-item accent bar — a short rounded rule at the inline-start edge, the same
+ * pattern a group-active row already used, now shared by every leaf link too so the
+ * "where am I" signal is consistent everywhere in the nav, not just on group headers. */
+const ACTIVE_BAR = (
+  <span
+    aria-hidden="true"
+    className="absolute inset-y-1.5 left-0 w-0.5 rounded-full bg-primary"
+  />
+);
+
 /**
  * The sidebar's nav body — rendered once inside the persistent desktop `<aside>` and once
  * inside the mobile drawer (two mounts, not one JS-toggled tree), since the two contexts
@@ -154,9 +164,14 @@ export default function NavLinks({
                 aria-expanded={open}
                 aria-controls={panelId}
                 title={collapsed ? entry.label : undefined}
-                className={cn(ROW_CLASSES, groupActive && "text-foreground", collapsed && "justify-center px-0")}
+                className={cn(ROW_CLASSES, groupActive && "font-semibold text-foreground", collapsed && "justify-center px-0")}
               >
-                {GroupIcon && <GroupIcon aria-hidden="true" className="size-4 shrink-0" />}
+                {GroupIcon && (
+                  <GroupIcon
+                    aria-hidden="true"
+                    className={cn("size-4 shrink-0", groupActive && "text-primary")}
+                  />
+                )}
                 {!collapsed && <span className="min-w-0 flex-1 truncate text-left">{entry.label}</span>}
                 {!collapsed && (
                   <ChevronDown
@@ -164,12 +179,7 @@ export default function NavLinks({
                     className={cn("size-4 shrink-0 text-muted-foreground/70 transition-transform duration-150", open && "rotate-180")}
                   />
                 )}
-                {groupActive && (
-                  <span
-                    aria-hidden="true"
-                    className="absolute inset-y-1.5 left-0 w-0.5 rounded-full bg-foreground"
-                  />
-                )}
+                {groupActive && ACTIVE_BAR}
               </button>
               {!collapsed && open && (
                 <div id={panelId} className="mt-0.5 ml-4 flex flex-col gap-0.5 border-l pl-3 py-0.5">
@@ -185,11 +195,13 @@ export default function NavLinks({
                         className={cn(
                           ROW_CLASSES,
                           "py-1.5",
-                          active && "bg-accent text-accent-foreground hover:bg-accent hover:text-accent-foreground"
+                          active &&
+                            "bg-primary/10 font-semibold text-primary hover:bg-primary/15 hover:text-primary"
                         )}
                       >
                         {ChildIcon && <ChildIcon aria-hidden="true" className="size-4 shrink-0" />}
                         <span className="min-w-0 truncate">{child.label}</span>
+                        {active && ACTIVE_BAR}
                       </Link>
                     );
                   })}
@@ -210,12 +222,13 @@ export default function NavLinks({
             title={collapsed ? entry.label : undefined}
             className={cn(
               ROW_CLASSES,
-              active && "bg-accent text-accent-foreground hover:bg-accent hover:text-accent-foreground",
+              active && "bg-primary/10 font-semibold text-primary hover:bg-primary/15 hover:text-primary",
               collapsed && "justify-center px-0"
             )}
           >
             {Icon && <Icon aria-hidden="true" className="size-4 shrink-0" />}
             {!collapsed && <span className="min-w-0 truncate">{entry.label}</span>}
+            {active && ACTIVE_BAR}
           </Link>
         );
       })}

@@ -17,38 +17,57 @@ interface AuthFeature {
   icon: LucideIcon;
   title: string;
   description: string;
+  /** One of the fixed chart-status tokens (globals.css) — each feature gets its own
+   * identity color instead of every tile reusing one primary tint, the same reasoning
+   * as the dashboard StatCard's own per-metric accent. */
+  accent: "good" | "warning" | "critical" | "primary" | "series1" | "series2";
 }
+
+const ACCENT_VAR: Record<AuthFeature["accent"], string> = {
+  good: "var(--chart-good)",
+  warning: "var(--chart-warning)",
+  critical: "var(--chart-critical)",
+  primary: "var(--primary)",
+  series1: "var(--chart-series-1)",
+  series2: "var(--chart-series-2)",
+};
 
 const FEATURES: AuthFeature[] = [
   {
     icon: Truck,
     title: "Sales se Dispatch tak",
     description: "Lead, Order, PDI, Transport aur Dispatch — poora safar track hota hai.",
+    accent: "series1",
   },
   {
     icon: Handshake,
     title: "Purchase & Vendors",
     description: "Indent se PO tak, material aane tak — sab ek jagah.",
+    accent: "series2",
   },
   {
     icon: Package,
     title: "Live Inventory",
     description: "Stock, BOM aur Production hamesha real-time sync mein rehte hain.",
+    accent: "good",
   },
   {
     icon: Wallet,
     title: "Accounts & Ledger",
     description: "Real double-entry books — Invoices, Payments, GST sab track hota hai.",
+    accent: "warning",
   },
   {
     icon: CalendarOff,
     title: "Payroll & Leave",
     description: "Salary runs aur buddy-system leave approval, ek hi system se.",
+    accent: "critical",
   },
   {
     icon: BarChart3,
     title: "Real-time MIS",
     description: "Har team member ka score, seedha dashboard par dikhta hai.",
+    accent: "primary",
   },
 ];
 
@@ -85,10 +104,12 @@ export default function AuthLayout({
         className="relative hidden overflow-hidden bg-muted/30 lg:flex lg:w-[48%] lg:flex-col lg:justify-between lg:gap-8 lg:p-8 xl:p-12"
         style={{
           backgroundImage: [
-            "linear-gradient(135deg, color-mix(in oklch, var(--primary), transparent 85%), transparent 55%)",
-            "radial-gradient(color-mix(in oklch, var(--primary), transparent 78%) 1px, transparent 1px)",
+            "radial-gradient(circle at 15% 10%, color-mix(in oklch, var(--chart-series-1), transparent 82%), transparent 45%)",
+            "radial-gradient(circle at 85% 85%, color-mix(in oklch, var(--primary), transparent 85%), transparent 50%)",
+            "linear-gradient(135deg, color-mix(in oklch, var(--primary), transparent 88%), transparent 55%)",
+            "radial-gradient(color-mix(in oklch, var(--primary), transparent 80%) 1px, transparent 1px)",
           ].join(", "),
-          backgroundSize: "auto, 22px 22px",
+          backgroundSize: "auto, auto, auto, 22px 22px",
         }}
       >
         <div className="relative z-10 space-y-5">
@@ -128,17 +149,30 @@ export default function AuthLayout({
         </div>
 
         <div className="relative z-10 grid grid-cols-2 gap-4">
-          {FEATURES.map((feature) => (
-            <div key={feature.title} className="flex items-start gap-3">
-              <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
-                <feature.icon className="size-5" />
+          {FEATURES.map((feature, i) => {
+            const accentVar = ACCENT_VAR[feature.accent];
+            return (
+              <div
+                key={feature.title}
+                style={{ animationDelay: `${i * 60}ms` }}
+                className="flex animate-in items-start gap-3 fade-in-0 slide-in-from-bottom-1 fill-mode-both duration-500"
+              >
+                <div
+                  className="flex size-9 shrink-0 items-center justify-center rounded-lg shadow-sm"
+                  style={{
+                    background: `color-mix(in oklch, ${accentVar}, transparent 85%)`,
+                    color: accentVar,
+                  }}
+                >
+                  <feature.icon className="size-5" />
+                </div>
+                <div>
+                  <p className="text-sm font-medium text-foreground">{t(feature.title)}</p>
+                  <p className="text-xs text-muted-foreground">{t(feature.description)}</p>
+                </div>
               </div>
-              <div>
-                <p className="text-sm font-medium text-foreground">{t(feature.title)}</p>
-                <p className="text-xs text-muted-foreground">{t(feature.description)}</p>
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </div>
 

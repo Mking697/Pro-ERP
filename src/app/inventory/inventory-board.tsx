@@ -15,6 +15,8 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
+import { PackageSearch } from "lucide-react";
+import EmptyState from "@/components/empty-state";
 import CreateItemDialog from "./create-item-dialog";
 import BulkImportDialog from "./bulk-import-dialog";
 import StockMovementDialog from "./stock-movement-dialog";
@@ -274,13 +276,16 @@ export default function InventoryBoard({
           <TableBody>
             {filtered.length === 0 && (
               <TableRow>
-                <TableCell
-                  colSpan={canTransact ? 8 : 7}
-                  className="py-10 text-center text-muted-foreground"
-                >
-                  {items.length === 0
-                    ? t("Abhi koi item nahi hai.")
-                    : t("Is filter par koi item nahi mila.")}
+                <TableCell colSpan={canTransact ? 8 : 7} className="p-0">
+                  <EmptyState
+                    icon={<PackageSearch />}
+                    title={
+                      items.length === 0
+                        ? t("Abhi koi item nahi hai.")
+                        : t("Is filter par koi item nahi mila.")
+                    }
+                    className="rounded-none border-0"
+                  />
                 </TableCell>
               </TableRow>
             )}

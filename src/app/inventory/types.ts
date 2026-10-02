@@ -15,7 +15,7 @@ export type { StockStatus };
  */
 export function statusVariant(
   status: StockStatus
-): "default" | "secondary" | "destructive" | "outline" {
+): "default" | "secondary" | "destructive" | "outline" | "success" {
   switch (status) {
     case "Out of Stock":
     case "Critical":
@@ -26,6 +26,8 @@ export function statusVariant(
       return "outline";
     case "Not Set Up":
       return "outline";
+    case "Healthy":
+      return "success";
     default:
       return "default";
   }

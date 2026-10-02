@@ -12,6 +12,8 @@ import {
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { ListChecks } from "lucide-react";
+import EmptyState from "@/components/empty-state";
 import { formatDueDisplay } from "@/lib/formatDate";
 import { priorityVariant } from "@/lib/priority";
 import AttachmentLink from "@/components/attachment-link";
@@ -33,7 +35,7 @@ function statusBadge(task: TaskRecord) {
   if (task.Status === "Pending" && due && new Date() > due) {
     return { label: "Overdue", variant: "destructive" as const };
   }
-  if (task.Status === "Done on Time") return { label: task.Status, variant: "default" as const };
+  if (task.Status === "Done on Time") return { label: task.Status, variant: "success" as const };
   if (task.Status === "Delay Done") return { label: task.Status, variant: "outline" as const };
   return { label: task.Status, variant: "secondary" as const };
 }
@@ -90,7 +92,13 @@ export default function TaskBoard({
         <TableBody>
           {myTasks.length === 0 && (
             <TableRow>
-              <TableCell colSpan={6} className="text-center text-muted-foreground">{t("Koi task assign nahi hua.")}</TableCell>
+              <TableCell colSpan={6} className="p-0">
+                <EmptyState
+                  icon={<ListChecks />}
+                  title={t("Koi task assign nahi hua.")}
+                  className="rounded-none border-0"
+                />
+              </TableCell>
             </TableRow>
           )}
           {myTasks.map((task) => {
@@ -168,7 +176,13 @@ export default function TaskBoard({
             <TableBody>
               {delegatedTasks.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={6} className="text-center text-muted-foreground">{t("Aapne abhi tak koi task assign nahi kiya.")}</TableCell>
+                  <TableCell colSpan={6} className="p-0">
+                    <EmptyState
+                      icon={<ListChecks />}
+                      title={t("Aapne abhi tak koi task assign nahi kiya.")}
+                      className="rounded-none border-0"
+                    />
+                  </TableCell>
                 </TableRow>
               )}
               {delegatedTasks.map((task) => {

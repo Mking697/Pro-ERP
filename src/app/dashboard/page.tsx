@@ -37,6 +37,7 @@ function StatCard({
   icon,
   style,
   infoTooltip,
+  accent = "primary",
 }: {
   label: string;
   value: string;
@@ -48,9 +49,33 @@ function StatCard({
    * scale isn't self-explanatory. Keep this out of `hint` since hint is always-visible
    * text below the number; this is an opt-in explanation for anyone who's unsure. */
   infoTooltip?: ReactNode;
+  /** Which of the fixed chart-status tokens (globals.css) colors this card's icon badge
+   * and top accent bar — each stat gets its own identity instead of every card reusing
+   * one primary tint, so the row reads as distinct metrics at a glance, not three copies
+   * of the same card with different numbers. */
+  accent?: "primary" | "good" | "warning" | "critical";
 }) {
+  const accentVar =
+    accent === "good"
+      ? "var(--chart-good)"
+      : accent === "warning"
+        ? "var(--chart-warning)"
+        : accent === "critical"
+          ? "var(--chart-critical)"
+          : "var(--primary)";
   return (
-    <Card className="animate-in fade-in-0 slide-in-from-bottom-2 fill-mode-both duration-500" style={style}>
+    <Card
+      className="group/stat relative animate-in overflow-hidden fade-in-0 slide-in-from-bottom-2 fill-mode-both duration-500"
+      style={style}
+    >
+      {/* A 2px top accent instead of a flat border gives each metric its own identity
+          color without needing a full-card tint, which would fight the shared Card
+          background/shadow treatment every other card in the app relies on. */}
+      <div
+        aria-hidden="true"
+        className="absolute inset-x-0 top-0 h-[3px]"
+        style={{ background: `linear-gradient(90deg, ${accentVar}, color-mix(in oklch, ${accentVar}, transparent 70%))` }}
+      />
       <CardHeader className="flex items-start justify-between pb-2">
         <CardTitle className="flex items-center gap-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">
           {label}
@@ -69,7 +94,11 @@ function StatCard({
         {icon && (
           <div
             aria-hidden="true"
-            className="flex size-9 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary [&_svg]:size-4.5"
+            className="flex size-9 shrink-0 items-center justify-center rounded-full text-[color:var(--accent-icon)] shadow-sm transition-transform duration-200 group-hover/stat:scale-110 [&_svg]:size-4.5"
+            style={{
+              background: `color-mix(in oklch, ${accentVar}, transparent 88%)`,
+              ["--accent-icon" as string]: accentVar,
+            }}
           >
             {icon}
           </div>
@@ -141,12 +170,14 @@ export default async function DashboardPage({
             value={String(pending.length)}
             icon={<ListTodo />}
             style={{ animationDelay: "0ms" }}
+            accent={overdueCount > 0 ? "warning" : "primary"}
           />
           <StatCard
             label="Completed Tasks"
             value={String(completed.length)}
             icon={<CheckCircle2 />}
             style={{ animationDelay: "80ms" }}
+            accent="good"
           />
           <StatCard
             label="MIS Score"
@@ -155,6 +186,7 @@ export default async function DashboardPage({
             hint={`On Time ${mis.onTime} · Delay ${mis.delay} · Not Done ${mis.notDone} — 0% is best, -100% is worst`}
             icon={<Gauge />}
             style={{ animationDelay: "160ms" }}
+            accent={mis.score === null ? "primary" : mis.score >= -10 ? "good" : mis.score >= -40 ? "warning" : "critical"}
             infoTooltip={
               <>
                 Yeh ek penalty score hai — 0% matlab sab tasks/steps on time pure hue

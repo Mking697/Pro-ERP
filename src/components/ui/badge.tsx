@@ -21,6 +21,12 @@ const badgeVariants = cva(
         ghost:
           "hover:bg-muted hover:text-muted-foreground dark:hover:bg-muted/50",
         link: "text-primary underline-offset-4 hover:underline",
+        // Additive — the fixed "good" status token (globals.css --chart-good), for a
+        // badge that means a genuinely positive outcome (Done on Time, Active, Approved)
+        // rather than just "the default/brand color". Never replaces `default`; existing
+        // call sites that already pass `default`/`secondary`/etc. are untouched.
+        success:
+          "bg-[color-mix(in_oklch,var(--chart-good),transparent_88%)] text-[color:var(--chart-good)] [a]:hover:bg-[color-mix(in_oklch,var(--chart-good),transparent_78%)]",
       },
     },
     defaultVariants: {
