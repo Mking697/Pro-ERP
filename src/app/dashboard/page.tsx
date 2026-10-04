@@ -26,6 +26,10 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Info } from "lucide-react";
 import ScoreBreakdown from "./score-breakdown";
+import ReportsQuickAccess from "./reports-quick-access";
+import ModuleQuickNav from "./module-quick-nav";
+import AttentionStrip from "./attention-strip";
+import RecentActivityCard from "./recent-activity-card";
 import { getT } from "@/lib/i18n/server";
 import { reportsFor } from "@/lib/reports";
 
@@ -164,6 +168,10 @@ export default async function DashboardPage({
           </p>
         </div>
 
+        <ModuleQuickNav access={session.access} t={t} />
+
+        <AttentionStrip access={session.access} t={t} />
+
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
           <StatCard
             label="Pending Tasks"
@@ -235,6 +243,18 @@ export default async function DashboardPage({
                 </CardContent>
               </Card>
             )}
+
+            <Card>
+              <CardHeader>
+                <CardTitle>{t("Reports")}</CardTitle>
+                <CardDescription>
+                  {t("Ek click mein apni report kholein.")}
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <ReportsQuickAccess reports={reportsFor(session.access)} t={t} />
+              </CardContent>
+            </Card>
 
             <Card>
               <CardHeader>
@@ -318,6 +338,8 @@ export default async function DashboardPage({
                 )}
               </CardContent>
             </Card>
+
+            <RecentActivityCard access={session.access} t={t} />
           </TabsContent>
 
           <TabsContent value="analytics" className="mt-4 space-y-4">

@@ -150,8 +150,13 @@ export const MODULE_ACCESS = [
     description: "Apne Pro ERP data ke baare me Pro ERP Chatbot se sawal pooch sakta hai",
     href: "/chat",
   },
+  {
+    key: "MAINTENANCE_FMS",
+    label: "Maintenance",
+    description: "Breakdown aur maintenance requests handle kar sakta hai, Production Line ka pause/resume manage kar sakta hai",
+    href: "/maintenance",
+  },
 ] as const;
-
 export type ModuleAccessKey = (typeof MODULE_ACCESS)[number]["key"];
 
 export const MODULE_ACCESS_KEYS = MODULE_ACCESS.map((m) => m.key) as ModuleAccessKey[];

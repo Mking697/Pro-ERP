@@ -22,3 +22,4 @@ export * from "./accounts";
 export * from "./dispatch";
 export * from "./payroll";
 export * from "./chatbot";
+export * from "./maintenance";

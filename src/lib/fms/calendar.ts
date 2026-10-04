@@ -6,6 +6,7 @@ import {
   nextWorkingInstant as pureNextWorkingInstant,
   addWorkingMinutes as pureAddWorkingMinutes,
   endOfWorkingDay as pureEndOfWorkingDay,
+  workingMinutesBetween as pureWorkingMinutesBetween,
   type WeekSchedule,
   type CalendarOverrides,
   type DayWindow,
@@ -205,4 +206,19 @@ export async function computeDefaultTatDeadline(
   );
   const minutes = tatValue * unitToMinutes(tatUnit, minutesPerDay);
   return pureAddWorkingMinutes(startEpochMs, minutes, schedule, overrides);
+}
+
+/**
+ * Working minutes between `fromEpochMs` and `toEpochMs` on `userId`'s own calendar —
+ * the pause/resume primitive a Maintenance breakdown uses to preserve a step's remaining
+ * TAT exactly across however long the line was actually down. See
+ * src/lib/fms/workingCalendar.ts's workingMinutesBetween for the pure math.
+ */
+export async function computeWorkingMinutesBetween(
+  userId: string,
+  fromEpochMs: number,
+  toEpochMs: number
+): Promise<number> {
+  const { schedule, overrides } = await getUserWorkingSchedule(userId);
+  return pureWorkingMinutesBetween(fromEpochMs, toEpochMs, schedule, overrides);
 }

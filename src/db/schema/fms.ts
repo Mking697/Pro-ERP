@@ -116,8 +116,16 @@ export const fmsTemplates = pgTable(
 
 // FmsRunRecord.Status — src/lib/fms/engine.ts: "Pending" while open, then "On Time" or
 // "Delay Done" once completed (same on-time/late framing as TaskRecord.Status, but FMS
-// never has a task's "Done on Time" wording — it's "On Time").
-export const fmsRunStatusEnum = pgEnum("fms_run_status", ["Pending", "On Time", "Delay Done"]);
+// never has a task's "Done on Time" wording — it's "On Time"). "Paused" is new (Maintenance,
+// src/lib/maintenance/maintenance.ts): a Pending run whose Production Line has an open
+// breakdown sits here instead, so isFmsStepOverdue() never counts it against MIS while the
+// line is actually down — see fms_runs.pausedAt/pausedMinutesTotal below.
+export const fmsRunStatusEnum = pgEnum("fms_run_status", [
+  "Pending",
+  "Paused",
+  "On Time",
+  "Delay Done",
+]);
 
 export const fmsRuns = pgTable(
   "fms_runs",

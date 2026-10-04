@@ -181,3 +181,54 @@ export function addWorkingMinutes(
     `addWorkingMinutes: exceeded ${MAX_DAYS_SCANNED} days without consuming the requested minutes — check the calendar configuration.`
   );
 }
+
+/**
+ * The inverse of addWorkingMinutes: how many working minutes fall between `fromEpochMs`
+ * and `toEpochMs` (both already real instants, not required to land inside a window) —
+ * off-days, holidays and excluded breaks don't count. Zero if `toEpochMs` is at or before
+ * `fromEpochMs`.
+ *
+ * Used to pause/resume a TAT: the working minutes remaining between "now" and a step's
+ * existing deadline are measured once (at pause time) and preserved exactly across
+ * however long the pause itself lasts (which may span any number of working/non-working
+ * days) — see src/lib/maintenance/maintenance.ts.
+ */
+export function workingMinutesBetween(
+  fromEpochMs: number,
+  toEpochMs: number,
+  schedule: WeekSchedule,
+  overrides: CalendarOverrides
+): number {
+  if (toEpochMs <= fromEpochMs) return 0;
+
+  let cursor = nextWorkingInstant(fromEpochMs, schedule, overrides);
+  let minutes = 0;
+
+  for (let day = 0; day < MAX_DAYS_SCANNED; day++) {
+    if (cursor >= toEpochMs) return minutes;
+
+    const istMs = toIst(cursor);
+    const dayStart = startOfIstDay(istMs);
+    const dayKey = istDayKey(istMs);
+    const weekday = istWeekday(istMs);
+    const windows = sortedWindows(windowsForDate(dayKey, weekday, schedule, overrides));
+    const minuteOfDay = Math.floor((istMs - dayStart) / MINUTE_MS);
+
+    const current = windows.find((w) => minuteOfDay >= w.startMin && minuteOfDay < w.endMin);
+    if (!current) {
+      cursor = nextWorkingInstant(cursor, schedule, overrides);
+      continue;
+    }
+
+    const windowEndEpoch = fromIst(dayStart + current.endMin * MINUTE_MS);
+    const segmentEnd = Math.min(windowEndEpoch, toEpochMs);
+    minutes += Math.round((segmentEnd - cursor) / MINUTE_MS);
+
+    if (windowEndEpoch >= toEpochMs) return minutes;
+    cursor = nextWorkingInstant(windowEndEpoch, schedule, overrides);
+  }
+
+  throw new Error(
+    `workingMinutesBetween: exceeded ${MAX_DAYS_SCANNED} days — check the calendar configuration.`
+  );
+}

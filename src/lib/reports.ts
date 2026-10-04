@@ -181,6 +181,13 @@ export const REPORTS: readonly ReportDefinition[] = [
     grants: [],
     personal: true,
   },
+  {
+    id: "maintenance",
+    label: "Maintenance",
+    description: "Breakdown aur maintenance requests, unka status.",
+    grants: ["MAINTENANCE_FMS"],
+    ownerFields: ["reportedBy", "assignedTo"],
+  },
 ] as const;
 
 export type ReportId = (typeof REPORTS)[number]["id"];

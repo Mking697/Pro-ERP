@@ -633,7 +633,10 @@ export async function listMyPendingFmsSteps(userId: string): Promise<FmsRunRecor
  */
 export async function listMyDashboardFmsSteps(userId: string): Promise<FmsRunRecord[]> {
   const mine = await listFmsRunsForUser(userId);
-  const pending = mine.filter((r) => r.Status === "Pending");
+  // Pending and Paused both stay visible — Paused (an open Maintenance breakdown) is not
+  // actionable here, but a line operator should still see it on their own Dashboard
+  // rather than have the step silently vanish until Maintenance resolves it.
+  const pending = mine.filter((r) => r.Status === "Pending" || r.Status === "Paused");
 
   const completedToday: FmsRunRecord[] = [];
   for (const run of mine) {
