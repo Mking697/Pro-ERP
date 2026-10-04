@@ -38,15 +38,19 @@ export default function FileUploadField({
       // size/type limits it enforces live there (src/app/api/blob/upload/route.ts).
       //
       // The path is scoped under the caller's own orgId — the upload route only issues a
-      // token when the pathname's orgId segment matches the session's, so this first asks
-      // which org that session belongs to (the session cookie itself is httpOnly and can't
-      // be read from here).
-      const orgIdRes = await fetch("/api/auth/org-id");
-      if (!orgIdRes.ok) throw new Error(t("Session expire ho gaya. Dubara login karein."));
-      const { orgId } = (await orgIdRes.json()) as { orgId: string };
+      // token when the pathname's orgId segment matches the session's, so this first reads
+      // which org that session belongs to via /api/auth/me (the session cookie itself is
+      // httpOnly and can't be read directly from here). The upload route re-verifies the
+      // session itself, so a stale/wrong orgId read here would simply fail the upload, not
+      // grant access to anything.
+      const meRes = await fetch("/api/auth/me");
+      const { user } = (await meRes.json().catch(() => ({ user: null }))) as {
+        user: { orgId?: string } | null;
+      };
+      if (!user?.orgId) throw new Error(t("Session expire ho gaya. Dubara login karein."));
 
       const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_").slice(0, 100) || "file";
-      const pathname = `attachments/${orgId}/${crypto.randomUUID()}-${safeName}`;
+      const pathname = `attachments/${user.orgId}/${crypto.randomUUID()}-${safeName}`;
 
       const blob = await upload(pathname, file, {
         access: "public",

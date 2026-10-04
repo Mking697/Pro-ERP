@@ -256,19 +256,18 @@ export async function updateUser(userId: string, patch: UpdateUserInput): Promis
   // deleteUser()'s own "last Admin" guard, which this lacked even though PATCH can produce
   // the identical lockout: demoting the last Admin away from the role, or deactivating
   // them, leaves nobody who can manage users or settings.
+  //
+  // The "is there another active Admin" check is folded into the UPDATE's own WHERE
+  // clause below (an EXISTS subquery evaluated atomically by Postgres as part of the same
+  // statement) rather than read-then-decide beforehand — two concurrent requests each
+  // demoting a different one of the last two Admins would otherwise both see "one other
+  // Admin still exists" at read time and both succeed, leaving zero. Folding the check
+  // into the WHERE means only one of the two statements can match a row; the other
+  // affects zero rows and this function detects that via an empty `.returning()`.
   const demotedAwayFromAdmin = found.role === "Admin" && newRole !== "Admin";
   const deactivatingAdmin =
     found.role === "Admin" && found.status === "Active" && newStatus === "Inactive";
-  if (demotedAwayFromAdmin || deactivatingAdmin) {
-    const admins = (await listUsers()).filter(
-      (u) => u.Role === "Admin" && u.Status === "Active"
-    );
-    if (admins.length <= 1 && admins[0]?.User_ID === userId) {
-      throw new UserDeletionError(
-        "Ye organization ka aakhri Admin hai. Pehle kisi aur ko Admin banayein."
-      );
-    }
-  }
+  const removesThisUsersAdminStatus = demotedAwayFromAdmin || deactivatingAdmin;
 
   // deactivatedAt tracks the real Active -> Inactive transition moment (used by Payroll's
   // computeDaysEmployed() to prorate a mid-month exit instead of zeroing the whole month).
@@ -293,6 +292,17 @@ export async function updateUser(userId: string, patch: UpdateUserInput): Promis
     (patch.status !== undefined && patch.status !== found.status) ||
     accessChanged;
 
+  // When this update would remove the target's own Admin status, require — as part of
+  // the very same statement — that at least one OTHER Active Admin row already exists;
+  // see this function's own comment above on why this can't be a separate read-then-check.
+  const anotherActiveAdminExists = sql`exists (
+    select 1 from ${users}
+    where ${users.orgId} = ${orgId}
+      and ${users.role} = 'Admin'
+      and ${users.status} = 'Active'
+      and ${users.id} != ${userId}
+  )`;
+
   const [row] = await db
     .update(users)
     .set({
@@ -314,8 +324,26 @@ export async function updateUser(userId: string, patch: UpdateUserInput): Promis
         ? sql`${users.tokenVersion} + 1`
         : sql`${users.tokenVersion}`,
     })
-    .where(and(eq(users.orgId, orgId), eq(users.id, userId)))
+    .where(
+      and(
+        eq(users.orgId, orgId),
+        eq(users.id, userId),
+        removesThisUsersAdminStatus ? anotherActiveAdminExists : undefined
+      )
+    )
     .returning();
+
+  if (!row) {
+    // Either the row vanished between the read above and here, or (the real reason this
+    // guard exists) this was the organization's last Active Admin and the WHERE clause's
+    // EXISTS check correctly refused to match any row.
+    if (removesThisUsersAdminStatus) {
+      throw new UserDeletionError(
+        "Ye organization ka aakhri Admin hai. Pehle kisi aur ko Admin banayein."
+      );
+    }
+    throw new Error("User nahi mila.");
+  }
 
   const updated = rowToSheetUser(row);
 
@@ -352,22 +380,45 @@ export async function deleteUser(userId: string, actingUserId: string): Promise<
   }
 
   // An organization with no Admin cannot be administered again — there would be nobody
-  // left who can create users or manage settings.
-  if (found.role === "Admin") {
-    const admins = (await listUsers()).filter(
-      (u) => u.Role === "Admin" && u.Status === "Active"
-    );
-    if (admins.length <= 1) {
-      throw new UserDeletionError(
-        "Ye organization ka aakhri Admin hai. Pehle kisi aur ko Admin banayein."
-      );
-    }
-  }
+  // left who can create users or manage settings. Folded into the DELETE's own WHERE
+  // clause (not a separate read-then-check) for the same atomicity reason updateUser()'s
+  // own Admin guard is — see that function's comment for the exact race this closes.
+  const isTargetAdmin = found.role === "Admin";
+  const anotherActiveAdminExists = sql`exists (
+    select 1 from ${users}
+    where ${users.orgId} = ${orgId}
+      and ${users.role} = 'Admin'
+      and ${users.status} = 'Active'
+      and ${users.id} != ${userId}
+  )`;
 
   // The index entry goes first: if the second half fails, the user still exists and the
   // action can simply be retried. The other order would leave an email pointing nowhere.
   await removeIndexedUser(found.email);
-  await db.delete(users).where(and(eq(users.orgId, orgId), eq(users.id, userId)));
+  const [deleted] = await db
+    .delete(users)
+    .where(
+      and(
+        eq(users.orgId, orgId),
+        eq(users.id, userId),
+        isTargetAdmin ? anotherActiveAdminExists : undefined
+      )
+    )
+    .returning({ id: users.id });
+
+  if (!deleted) {
+    // The delete's WHERE clause refused to match — this was the organization's last
+    // Active Admin. Re-index the entry removed above so the email isn't left orphaned.
+    await indexUser({
+      email: found.email,
+      orgId,
+      userId: found.id,
+      status: found.status,
+    });
+    throw new UserDeletionError(
+      "Ye organization ka aakhri Admin hai. Pehle kisi aur ko Admin banayein."
+    );
+  }
 }
 
 export async function resetUserPassword(userId: string, newPassword: string): Promise<void> {
