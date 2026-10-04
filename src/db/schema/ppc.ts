@@ -46,7 +46,12 @@ export const productionPlans = pgTable(
   // hadn't picked one, which is exactly the ambiguity picking a Line exists to remove).
   fmsTemplateId: text("fms_template_id").notNull().default(""),
   },
-  (table) => [index("production_plans_org_id_idx").on(table.orgId)]
+  (table) => [
+    index("production_plans_org_id_idx").on(table.orgId),
+    // committedBySku() filters (org_id, status) on every plan-creation/preview and every
+    // Start Production call — previously only the org_id-only index above existed.
+    index("production_plans_org_id_status_idx").on(table.orgId, table.status),
+  ]
 );
 
 // PlanMaterialRecord.Status — src/lib/inventory/plans.ts: "Allocated" | "Shortage" (set
@@ -91,5 +96,10 @@ export const planMaterials = pgTable(
   (table) => [
     primaryKey({ columns: [table.planId, table.sku] }),
     index("plan_materials_org_id_idx").on(table.orgId),
+    // committedBySku() filters planMaterials by (org_id, plan_id) once the set of
+    // reserving plan ids is known — the plan_id-leading PK can't help with an org_id-first
+    // lookup across many plan ids, so this composite is what makes that batch actually
+    // indexed rather than a per-org sequential scan.
+    index("plan_materials_org_id_plan_id_idx").on(table.orgId, table.planId),
   ]
 );

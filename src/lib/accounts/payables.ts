@@ -6,7 +6,7 @@ import { findById, insertRecord, listByOrg, updateById } from "@/db/repo";
 import { getTenantOrgId } from "@/lib/tenant";
 import { generateId } from "@/lib/id";
 import { round2 } from "@/lib/leads/quotationMath";
-import { getPurchaseOrder } from "@/lib/purchase/orders";
+import { loadPoLinesBatch } from "@/lib/purchase/orders";
 import { postJournalEntry, SYSTEM_ACCOUNT_CODES } from "@/lib/accounts/ledger";
 
 /**
@@ -153,22 +153,41 @@ export async function listBillCandidates(): Promise<BillCandidate[]> {
     .from(purchaseOrders)
     .where(and(eq(purchaseOrders.orgId, orgId), eq(purchaseOrders.status, "Completed")));
 
+  if (poRows.length === 0) return [];
+
+  // Batch every lookup this used to make one-PO-at-a-time: the existing-bill check, the
+  // PO lines (via purchase/orders.ts's own batch helper, so this still agrees with
+  // getPurchaseOrder()'s line-derivation logic), and the vendor names.
+  const poIds = poRows.map((po) => po.id);
+  const existingBillRows = await db
+    .select({ poId: bills.poId })
+    .from(bills)
+    .where(and(eq(bills.orgId, orgId), inArray(bills.poId, poIds)));
+  const alreadyBilled = new Set(existingBillRows.map((r) => r.poId));
+
+  const candidates = poRows.filter((po) => !alreadyBilled.has(po.id));
+  const linesByPo = await loadPoLinesBatch(orgId, candidates.map((po) => po.id));
+
+  const vendorIds = [...new Set(candidates.map((po) => po.vendorId))];
+  const vendorRows = vendorIds.length
+    ? await db.select().from(vendors).where(and(eq(vendors.orgId, orgId), inArray(vendors.id, vendorIds)))
+    : [];
+  const vendorNameMap = new Map(vendorRows.map((v) => [v.id, v.vendorName]));
+
   const result: BillCandidate[] = [];
-  for (const po of poRows) {
-    const existing = await findBillByPoId(orgId, po.id);
-    if (existing) continue;
-    const full = await getPurchaseOrder(po.id);
-    if (!full) continue;
+  for (const po of candidates) {
+    const lines = linesByPo.get(po.id) ?? [];
+    const gstPercent = Number(po.gstPercent) || 0;
     const subTotal = round2(
-      full.lines.reduce((sum, line) => sum + line.qty * (Number(line.newPrice || line.oldPrice) || 0), 0)
+      lines.reduce((sum, line) => sum + line.qty * (Number(line.newPrice || line.oldPrice) || 0), 0)
     );
-    const poValue = round2(subTotal * (1 + full.gstPercent / 100));
+    const poValue = round2(subTotal * (1 + gstPercent / 100));
     result.push({
       poId: po.id,
       vendorId: po.vendorId,
-      vendorName: full.vendorName,
+      vendorName: vendorNameMap.get(po.vendorId) ?? "",
       poValue,
-      gstPercent: full.gstPercent,
+      gstPercent,
       issuedAt: po.issuedAt.toISOString(),
     });
   }

@@ -1,5 +1,8 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
+import { eq, and } from "drizzle-orm";
+import { db } from "@/db/client";
+import { users } from "@/db/schema";
 import { verifySession, SESSION_COOKIE, type SessionPayload } from "@/lib/auth/session";
 import { getModuleAccessDefinition, type ModuleAccessKey } from "@/lib/moduleAccess";
 import { isPlatformAdmin } from "@/lib/platform/admin";
@@ -10,17 +13,35 @@ type GuardResult =
   | { ok: true; session: SessionPayload }
   | { ok: false; response: NextResponse };
 
-/** For use inside API route handlers — just checks that someone is logged in. */
+const unauthorized = () =>
+  NextResponse.json({ error: "Unauthorized." }, { status: 401 });
+
+/** For use inside API route handlers — just checks that someone is logged in.
+ *
+ * Also re-checks the signed-in user's live `tokenVersion` against the JWT's own snapshot
+ * of it (one indexed Postgres read, same cost model as resolveTenantOr403's own tenant
+ * read below). Without this, a deactivated/role-downgraded/module-revoked/
+ * password-reset user's already-issued cookie kept working exactly as before for the rest
+ * of its 8h lifetime — the signature still verified, and nothing else in the request path
+ * ever looked at whether the account behind it had changed since. See updateUser()/
+ * resetUserPassword() in src/lib/auth/users.ts for where tokenVersion gets bumped. */
 export async function requireSession(): Promise<GuardResult> {
   const cookieStore = await cookies();
   const token = cookieStore.get(SESSION_COOKIE)?.value;
   const session = token ? await verifySession(token) : null;
 
   if (!session) {
-    return {
-      ok: false,
-      response: NextResponse.json({ error: "Unauthorized." }, { status: 401 }),
-    };
+    return { ok: false, response: unauthorized() };
+  }
+
+  const [row] = await db
+    .select({ tokenVersion: users.tokenVersion, status: users.status })
+    .from(users)
+    .where(and(eq(users.orgId, session.orgId), eq(users.id, session.userId)))
+    .limit(1);
+
+  if (!row || row.status !== "Active" || Number(row.tokenVersion) !== session.tokenVersion) {
+    return { ok: false, response: unauthorized() };
   }
 
   return { ok: true, session };

@@ -123,6 +123,7 @@ async function main() {
         fullName: user.Full_Name,
         role: user.Role,
         access: ["AI_CHATBOT", "TASK_VIEW"],
+        tokenVersion: 0,
       };
 
       const chatSession = await createChatSession(user.User_ID);

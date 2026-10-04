@@ -36,8 +36,17 @@ export default function FileUploadField({
       // this app's own serverless function, so there's no ~4.5MB Vercel body-size ceiling
       // to hit. /api/blob/upload only ever hands out a scoped, one-time token; the real
       // size/type limits it enforces live there (src/app/api/blob/upload/route.ts).
+      //
+      // The path is scoped under the caller's own orgId — the upload route only issues a
+      // token when the pathname's orgId segment matches the session's, so this first asks
+      // which org that session belongs to (the session cookie itself is httpOnly and can't
+      // be read from here).
+      const orgIdRes = await fetch("/api/auth/org-id");
+      if (!orgIdRes.ok) throw new Error(t("Session expire ho gaya. Dubara login karein."));
+      const { orgId } = (await orgIdRes.json()) as { orgId: string };
+
       const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_").slice(0, 100) || "file";
-      const pathname = `attachments/${crypto.randomUUID()}-${safeName}`;
+      const pathname = `attachments/${orgId}/${crypto.randomUUID()}-${safeName}`;
 
       const blob = await upload(pathname, file, {
         access: "public",

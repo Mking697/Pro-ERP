@@ -75,7 +75,12 @@ export const invoices = pgTable(
   createdBy: text("created_by").notNull().default(""),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (table) => [index("invoices_org_id_order_id_idx").on(table.orgId, table.orderId)]
+  (table) => [index("invoices_org_id_order_id_idx").on(table.orgId, table.orderId),
+    // listInvoices(status), getReceivablesAging(), and getGstReturnSummary()'s invoice
+    // branch all filter (org_id, status) — the latter two also range over issuedAt — with
+    // no supporting index before this; the join-key index above only helps per-order reads.
+    index("invoices_org_id_status_idx").on(table.orgId, table.status, table.issuedAt),
+  ]
 );
 
 /**
@@ -219,6 +224,11 @@ export const bills = pgTable(
     // Same reasoning as invoices_org_id_order_id_unique above — one bill per PO, enforced
     // for real rather than only by a check-then-insert race in application code.
     unique("bills_org_id_po_id_unique").on(table.orgId, table.poId),
+    // listBills(status) filters (org_id, status); listIssuedBillsForVendor() filters
+    // (org_id, vendor_id, status) — neither was covered by the po_id-leading unique
+    // constraint above, so both ran as a full per-org scan.
+    index("bills_org_id_status_idx").on(table.orgId, table.status),
+    index("bills_org_id_vendor_id_idx").on(table.orgId, table.vendorId, table.status),
   ]
 );
 

@@ -148,6 +148,7 @@ async function main() {
         fullName: powerUser.Full_Name,
         role: powerUser.Role,
         access: ["AI_CHATBOT", "INVENTORY_VIEW", "ORDER_FMS"],
+        tokenVersion: 0,
       };
       const narrowSession = {
         userId: narrowUser.User_ID,
@@ -156,6 +157,7 @@ async function main() {
         fullName: narrowUser.Full_Name,
         role: narrowUser.Role,
         access: ["AI_CHATBOT"],
+        tokenVersion: 0,
       };
       const managerSession = {
         userId: managerUser.User_ID,
@@ -164,6 +166,7 @@ async function main() {
         fullName: managerUser.Full_Name,
         role: managerUser.Role,
         access: ["AI_CHATBOT", "PERFORMANCE_VIEW"],
+        tokenVersion: 0,
       };
 
       // --- Layer 1: module scoping is enforced by omission, not just refusal -----------

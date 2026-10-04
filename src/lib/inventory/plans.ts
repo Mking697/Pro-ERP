@@ -1,5 +1,5 @@
 import type { InferSelectModel } from "drizzle-orm";
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { productionPlans, planMaterials } from "@/db/schema";
 import { db } from "@/db/client";
 import { listByOrg, updateById } from "@/db/repo";
@@ -197,18 +197,28 @@ export async function listPlans(): Promise<Plan[]> {
  */
 export async function committedBySku(): Promise<Map<string, number>> {
   const orgId = await getTenantOrgId();
-  const [planRows, materialRows] = await Promise.all([
-    listByOrg(productionPlans, orgId).catch(() => [] as PlanRow[]),
-    listByOrg(planMaterials, orgId).catch(() => [] as PlanMaterialRow[]),
-  ]);
+  // Filters by status in SQL (production_plans_org_id_status_idx) and scopes planMaterials
+  // to just the reserving plan ids (plan_materials_org_id_plan_id_idx) instead of pulling
+  // every plan/material row the org has ever created — this ran on every plan creation/
+  // preview and every Start Production call.
+  const planRows = await db
+    .select({ id: productionPlans.id })
+    .from(productionPlans)
+    .where(and(eq(productionPlans.orgId, orgId), inArray(productionPlans.status, RESERVING)))
+    .catch(() => [] as { id: string }[]);
+  const reservingIds = planRows.map((p) => p.id);
 
-  const reserving = new Set(
-    planRows.filter((p) => RESERVING.includes(p.status as PlanStatus)).map((p) => p.id)
-  );
+  const materialRows = reservingIds.length
+    ? await db
+        .select()
+        .from(planMaterials)
+        .where(and(eq(planMaterials.orgId, orgId), inArray(planMaterials.planId, reservingIds)))
+        .catch(() => [] as PlanMaterialRow[])
+    : [];
 
   const out = new Map<string, number>();
   for (const row of materialRows) {
-    if (!reserving.has(row.planId) || !row.sku) continue;
+    if (!row.sku) continue;
     const held = numOr0(row.allocatedQty) - numOr0(row.consumedQty);
     if (held <= 0) continue;
     out.set(row.sku, round3((out.get(row.sku) ?? 0) + held));

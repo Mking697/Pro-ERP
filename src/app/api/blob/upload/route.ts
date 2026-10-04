@@ -37,7 +37,7 @@ function isAllowedMimeType(mimeType: string): boolean {
   );
 }
 
-// The only shape file-upload-field.tsx ever actually requests: `attachments/<uuid>-<name>`.
+// The only shape file-upload-field.tsx ever actually requests: `attachments/<orgId>/<uuid>-<name>`.
 // This route used to trust the client-supplied pathname completely (only the MIME type was
 // checked) — since @vercel/blob defaults `allowOverwrite` to true whenever it's left
 // unspecified, and this route pinned `addRandomSuffix: false`, any signed-in user (from any
@@ -47,12 +47,23 @@ function isAllowedMimeType(mimeType: string): boolean {
 // content while the trusted URL stays the same, or (b) target the `orgs/<orgId>/...` prefix
 // the trusted server-side upload path (src/lib/storage.ts) uses. Restricting the pathname to
 // this one pattern, plus disallowing overwrite outright, closes both.
-const PATHNAME_PATTERN = /^attachments\/[A-Za-z0-9._-]{1,160}$/;
+//
+// The prefix now also carries the caller's own orgId (checked against the session, never
+// the client-supplied pathname alone) — otherwise every tenant wrote into the same flat
+// `attachments/` namespace of one shared Blob store, so the only thing standing between one
+// org's uploaded file and another org's ability to guess/enumerate its URL was the random
+// UUID in the filename. Scoping the path itself to `attachments/<orgId>/...` means even a
+// leaked filename pattern can't be replayed against another tenant's prefix.
+function pathnamePatternFor(orgId: string): RegExp {
+  const escapedOrgId = orgId.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(`^attachments/${escapedOrgId}/[A-Za-z0-9._-]{1,160}$`);
+}
 
 export async function POST(request: Request) {
   const guard = await requireSession();
   if (!guard.ok) return guard.response;
 
+  const pathnamePattern = pathnamePatternFor(guard.session.orgId);
   const body = (await request.json()) as HandleUploadBody;
 
   try {
@@ -60,7 +71,7 @@ export async function POST(request: Request) {
       body,
       request,
       onBeforeGenerateToken: async (pathname, clientPayload) => {
-        if (!PATHNAME_PATTERN.test(pathname)) {
+        if (!pathnamePattern.test(pathname)) {
           throw new Error("Invalid upload path.");
         }
 

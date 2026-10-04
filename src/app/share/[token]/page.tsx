@@ -99,6 +99,7 @@ export default async function SharedReportPage({
               fullName: "",
               role: "Viewer",
               access: share.Access ? share.Access.split(",") : [],
+              tokenVersion: 0,
             }}
             rangeKey={range}
             from={from}

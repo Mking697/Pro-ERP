@@ -1,4 +1,4 @@
-import { index, pgEnum, pgTable, text, timestamp } from "drizzle-orm/pg-core";
+import { index, numeric, pgEnum, pgTable, text, timestamp } from "drizzle-orm/pg-core";
 import { organizations } from "./platform";
 
 /**
@@ -43,6 +43,13 @@ export const users = pgTable(
     // purely so Payroll's computeDaysEmployed() can prorate a mid-month exit instead of
     // zeroing the whole month; nothing else in this codebase reads it yet.
     deactivatedAt: timestamp("deactivated_at", { withTimezone: true }),
+    // Bumped by updateUser()/resetUserPassword() on every role/status/module-access change
+    // or password reset. Baked into the session JWT at login (see signSession) and checked
+    // on every guarded request (requireSession) so a revoked/downgraded/deactivated user's
+    // already-issued cookie stops working immediately instead of staying valid for the rest
+    // of its 8h TTL — without this, an Admin deactivating a compromised account had no real
+    // way to actually cut off a session already in someone's browser.
+    tokenVersion: numeric("token_version").notNull().default("0"),
   },
   (table) => [index("users_org_id_idx").on(table.orgId)]
 );

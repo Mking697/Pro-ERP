@@ -104,7 +104,14 @@ export const orders = pgTable(
   createdBy: text("created_by").notNull().default(""),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (table) => [index("orders_org_id_status_idx").on(table.orgId, table.status)]
+  (table) => [
+    index("orders_org_id_status_idx").on(table.orgId, table.status),
+    // listOrdersForCustomer() and computeCreditPosition() both filter by (org_id,
+    // customer_id) on the Payment_Review hot path (every credit check) — previously
+    // unindexed, so both ran as a sequential scan filtered in Postgres by customer_id with
+    // only the org_id prefix narrowing it.
+    index("orders_org_id_customer_id_idx").on(table.orgId, table.customerId),
+  ]
 );
 
 /**

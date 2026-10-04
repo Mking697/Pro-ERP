@@ -11,6 +11,13 @@ import { checkRateLimit, clientIp } from "@/lib/rateLimit";
 
 const SIGNUP_LIMIT = 5;
 const SIGNUP_WINDOW_SECONDS = 60 * 60;
+// A separate, tighter per-email cap alongside the IP cap above — mirrors login's own
+// two-axis rate limit (see src/app/api/auth/login/route.ts's own comment on why). Without
+// this, a distributed caller (rotating IPs, or sharing a NAT with many other IPs) could
+// create unlimited accounts against the same victim email as fast as the IP cap alone
+// allowed, since IP and email were never checked together.
+const SIGNUP_EMAIL_LIMIT = 5;
+const SIGNUP_EMAIL_WINDOW_SECONDS = 60 * 60;
 
 const signupSchema = z.object({
   orgName: z.string().trim().min(2, "Organization ka naam daalein."),
@@ -45,6 +52,19 @@ export async function POST(request: Request) {
   }
 
   const { orgName, fullName, email, password, phoneNumber, logo } = parsed.data;
+
+  // Second axis: keyed on the submitted email itself, independent of which IP it came
+  // from — see this file's own comment on SIGNUP_EMAIL_LIMIT for why the IP-only check
+  // above isn't enough on its own.
+  const emailRate = await checkRateLimit(
+    "signup-email",
+    email.toLowerCase(),
+    SIGNUP_EMAIL_LIMIT,
+    SIGNUP_EMAIL_WINDOW_SECONDS
+  );
+  if (!emailRate.allowed) {
+    return fail("Bahut zyada koshishein ho gayi hain. Thodi der baad try karein.", 429);
+  }
 
   if (await isEmailTaken(email)) {
     return fail("Is email se pehle se ek account maujood hai. Login karein.");
@@ -93,6 +113,7 @@ export async function POST(request: Request) {
     fullName: admin.Full_Name,
     role: admin.Role,
     access: effectiveModuleAccess(admin.Role, admin.Module_Access),
+    tokenVersion: admin.Token_Version,
   });
 
   const response = NextResponse.json({

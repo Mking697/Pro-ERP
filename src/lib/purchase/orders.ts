@@ -144,6 +144,51 @@ async function loadPoLines(orgId: string, poId: string): Promise<PurchaseOrderLi
   });
 }
 
+/** Batch version of loadPoLines() for list endpoints — one query for every line across all
+ * given POs plus one query for every referenced indent, instead of 2 round trips per PO. */
+export async function loadPoLinesBatch(
+  orgId: string,
+  poIds: string[]
+): Promise<Map<string, PurchaseOrderLine[]>> {
+  const map = new Map<string, PurchaseOrderLine[]>();
+  if (poIds.length === 0) return map;
+
+  const lineRows = await db
+    .select()
+    .from(purchaseOrderLines)
+    .where(and(eq(purchaseOrderLines.orgId, orgId), inArray(purchaseOrderLines.poId, poIds)));
+  if (lineRows.length === 0) return map;
+
+  const indentIds = [...new Set(lineRows.map((l) => l.indentId))];
+  const indentRows = indentIds.length
+    ? await db
+        .select()
+        .from(indents)
+        .where(and(eq(indents.orgId, orgId), inArray(indents.id, indentIds)))
+    : [];
+  const indentMap = new Map(indentRows.map((i) => [i.id, i]));
+
+  for (const l of lineRows) {
+    const indent = indentMap.get(l.indentId);
+    const line: PurchaseOrderLine = {
+      id: l.id,
+      indentId: l.indentId,
+      sku: l.sku,
+      itemName: indent?.itemName ?? "",
+      uom: indent?.uom ?? "",
+      qty: indent ? Number(indent.finalQty) || 0 : 0,
+      oldPrice: l.oldPrice ?? "",
+      newPrice: l.newPrice ?? "",
+      indentStatus: indent?.status ?? "",
+      receivedQty: indent?.receivedQty ?? "",
+    };
+    const list = map.get(l.poId);
+    if (list) list.push(line);
+    else map.set(l.poId, [line]);
+  }
+  return map;
+}
+
 export async function getPurchaseOrder(poId: string): Promise<PurchaseOrder | null> {
   const orgId = await getTenantOrgId();
   const po = await findById(purchaseOrders, orgId, poId);
@@ -178,8 +223,9 @@ export async function listPurchaseOrders(stage: PurchaseOrderStage = "all"): Pro
   const vendorNameMap = new Map(vendorRows.map((v) => [v.id, v.vendorName]));
 
   const result: PurchaseOrder[] = [];
+  const linesByPo = await loadPoLinesBatch(orgId, filtered.map((p) => p.id));
   for (const po of filtered) {
-    const lines = await loadPoLines(orgId, po.id);
+    const lines = linesByPo.get(po.id) ?? [];
     result.push(rowToPo(po, vendorNameMap.get(po.vendorId) ?? "", lines));
   }
 

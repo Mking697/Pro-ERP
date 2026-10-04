@@ -1,5 +1,5 @@
 import bcrypt from "bcryptjs";
-import { and, eq, type InferSelectModel } from "drizzle-orm";
+import { and, eq, sql, type InferSelectModel } from "drizzle-orm";
 import { db } from "@/db/client";
 import { users } from "@/db/schema";
 import { getTenantOrgId } from "@/lib/tenant";
@@ -42,9 +42,16 @@ export interface SheetUser {
    * updateUser() on a real status transition. See src/lib/payroll/payroll.ts's
    * computeDaysEmployed() for the one place this is actually read. */
   Deactivated_At: string | null;
+  /** Bumped on every role/status/module-access change or password reset — baked into the
+   * session JWT at login and re-checked on every guarded request (requireSession) so an
+   * already-issued cookie stops working the moment the account changes, instead of staying
+   * valid for the rest of its 8h TTL. See session.ts's SessionPayload.tokenVersion. */
+  Token_Version: number;
 }
 
-export type SafeSheetUser = Omit<SheetUser, "Password_Hash">;
+// Also excluded from the client-facing shape: it is purely a server-side revocation
+// counter (see its own comment on SheetUser), never something a client needs to read.
+export type SafeSheetUser = Omit<SheetUser, "Password_Hash" | "Token_Version">;
 
 export function toSafeUser(user: SheetUser): SafeSheetUser {
   return {
@@ -82,6 +89,7 @@ function rowToSheetUser(row: UserRow): SheetUser {
     Shift: row.shift,
     Reporting_Manager_ID: row.reportingManagerId,
     Deactivated_At: row.deactivatedAt ? row.deactivatedAt.toISOString() : null,
+    Token_Version: Number(row.tokenVersion) || 0,
   };
 }
 
@@ -109,13 +117,20 @@ async function getUserRow(orgId: string, userId: string): Promise<UserRow | null
  * implicitly scoped to "whichever spreadsheet getTenantSheetId() resolved to." Email is
  * unique platform-wide (see the platform registry), so this filter is defense in depth
  * rather than the only thing narrowing the match.
+ *
+ * Queries by the indexed (org_id, email) pair directly instead of loading every user row
+ * in the organization and filtering in JS — this sits on the login path, so it used to mean
+ * every sign-in read the whole tenant's Users table just to find one row.
  */
 export async function findUserByEmail(email: string): Promise<SheetUser | null> {
   const orgId = await getTenantOrgId();
   const normalized = email.trim().toLowerCase();
-  const rows = await db.select().from(users).where(eq(users.orgId, orgId));
-  const match = rows.find((u) => u.email?.trim().toLowerCase() === normalized);
-  return match ? rowToSheetUser(match) : null;
+  const rows = await db
+    .select()
+    .from(users)
+    .where(and(eq(users.orgId, orgId), sql`lower(${users.email}) = ${normalized}`))
+    .limit(1);
+  return rows[0] ? rowToSheetUser(rows[0]) : null;
 }
 
 export async function verifyPassword(plain: string, hash: string): Promise<boolean> {
@@ -234,7 +249,27 @@ export async function updateUser(userId: string, patch: UpdateUserInput): Promis
     throw new Error("User nahi mila.");
   }
 
+  const newRole = patch.role ?? found.role;
   const newStatus = (patch.status ?? found.status) as "Active" | "Inactive";
+
+  // An organization with no Active Admin cannot be administered again — mirrors
+  // deleteUser()'s own "last Admin" guard, which this lacked even though PATCH can produce
+  // the identical lockout: demoting the last Admin away from the role, or deactivating
+  // them, leaves nobody who can manage users or settings.
+  const demotedAwayFromAdmin = found.role === "Admin" && newRole !== "Admin";
+  const deactivatingAdmin =
+    found.role === "Admin" && found.status === "Active" && newStatus === "Inactive";
+  if (demotedAwayFromAdmin || deactivatingAdmin) {
+    const admins = (await listUsers()).filter(
+      (u) => u.Role === "Admin" && u.Status === "Active"
+    );
+    if (admins.length <= 1 && admins[0]?.User_ID === userId) {
+      throw new UserDeletionError(
+        "Ye organization ka aakhri Admin hai. Pehle kisi aur ko Admin banayein."
+      );
+    }
+  }
+
   // deactivatedAt tracks the real Active -> Inactive transition moment (used by Payroll's
   // computeDaysEmployed() to prorate a mid-month exit instead of zeroing the whole month).
   // Only touch it on a genuine flip; leave it exactly as-is when status isn't changing.
@@ -247,10 +282,21 @@ export async function updateUser(userId: string, patch: UpdateUserInput): Promis
     }
   }
 
+  // A role, status, or module-access change invalidates any session already issued for
+  // this user — bumping tokenVersion is what makes requireSession() reject their old
+  // cookie on the next request instead of letting it coast to the natural 8h expiry.
+  const accessChanged =
+    patch.moduleAccess !== undefined &&
+    serializeModuleAccess(patch.moduleAccess) !== found.moduleAccess.join(",");
+  const securityRelevantChange =
+    (patch.role !== undefined && patch.role !== found.role) ||
+    (patch.status !== undefined && patch.status !== found.status) ||
+    accessChanged;
+
   const [row] = await db
     .update(users)
     .set({
-      role: patch.role ?? found.role,
+      role: newRole,
       department: patch.department ?? found.department,
       phoneNumber: patch.phoneNumber ?? found.phoneNumber,
       status: newStatus,
@@ -264,6 +310,9 @@ export async function updateUser(userId: string, patch: UpdateUserInput): Promis
           ? patch.reportingManagerId.trim()
           : found.reportingManagerId,
       deactivatedAt,
+      tokenVersion: securityRelevantChange
+        ? sql`${users.tokenVersion} + 1`
+        : sql`${users.tokenVersion}`,
     })
     .where(and(eq(users.orgId, orgId), eq(users.id, userId)))
     .returning();
@@ -329,8 +378,11 @@ export async function resetUserPassword(userId: string, newPassword: string): Pr
   }
 
   const passwordHash = await hashPassword(newPassword);
+  // Bumping tokenVersion here too: a password reset is usually a response to a suspected
+  // compromise, so the whole point is cutting off whatever session is currently live —
+  // leaving the old cookie valid until its natural 8h expiry would defeat that.
   await db
     .update(users)
-    .set({ passwordHash })
+    .set({ passwordHash, tokenVersion: sql`${users.tokenVersion} + 1` })
     .where(and(eq(users.orgId, orgId), eq(users.id, userId)));
 }

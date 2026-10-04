@@ -74,5 +74,10 @@ export const purchaseOrderLines = pgTable(
   (table) => [
     unique("purchase_order_lines_po_indent_unique").on(table.poId, table.indentId),
     index("purchase_order_lines_org_id_idx").on(table.orgId),
+    // loadPoLines()/loadPoLinesBatch()/receivePurchaseOrderLine() all filter by
+    // (org_id, po_id) — the org_id-only index above doesn't help narrow by po_id, and the
+    // unique constraint's (po_id, indent_id) column order means it can't substitute for a
+    // true (org_id, po_id) composite either.
+    index("purchase_order_lines_org_id_po_id_idx").on(table.orgId, table.poId),
   ]
 );

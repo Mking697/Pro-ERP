@@ -11,6 +11,13 @@ export interface SessionPayload {
   role: string;
   /** Module keys this user may work in — see src/lib/moduleAccess.ts. */
   access: string[];
+  /** Snapshot of the user row's tokenVersion at sign-in time. requireSession() compares
+   * this against the live DB value on every guarded request — a mismatch means the
+   * account's role/status/modules changed (or its password was reset) since this token
+   * was issued, so the request is rejected even though the JWT signature itself still
+   * verifies. This is what lets a deactivation/role-downgrade/password-reset take effect
+   * immediately instead of waiting out the rest of the 8h TTL. */
+  tokenVersion: number;
 }
 
 let warnedWeakSecret = false;
@@ -50,7 +57,10 @@ export async function verifySession(token: string): Promise<SessionPayload | nul
     const { payload } = await jwtVerify(token, getSecretKey(), {
       algorithms: ["HS256"],
     });
-    const { userId, orgId, email, fullName, role, access } = payload as Record<string, unknown>;
+    const { userId, orgId, email, fullName, role, access, tokenVersion } = payload as Record<
+      string,
+      unknown
+    >;
     // orgId is what scopes every sheet read to one tenant — a token without it is
     // rejected outright rather than being allowed to fall back to some default org.
     if (
@@ -60,11 +70,12 @@ export async function verifySession(token: string): Promise<SessionPayload | nul
       typeof fullName !== "string" ||
       typeof role !== "string" ||
       !Array.isArray(access) ||
-      !access.every((a): a is string => typeof a === "string")
+      !access.every((a): a is string => typeof a === "string") ||
+      typeof tokenVersion !== "number"
     ) {
       return null;
     }
-    return { userId, orgId, email, fullName, role, access };
+    return { userId, orgId, email, fullName, role, access, tokenVersion };
   } catch {
     return null;
   }

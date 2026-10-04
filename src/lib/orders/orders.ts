@@ -1,5 +1,5 @@
 import type { InferSelectModel } from "drizzle-orm";
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, inArray } from "drizzle-orm";
 import {
   customers,
   orderActivities,
@@ -254,6 +254,31 @@ async function loadOrderItems(orgId: string, orderId: string): Promise<OrderItem
   return rows.map(rowToItem).sort((a, b) => Number(a.lineNo) - Number(b.lineNo));
 }
 
+/** Batch-loads every line for a set of orders in one query, grouped by order id — used by
+ * list endpoints (listOrders/listOrdersForCustomer) instead of calling loadOrderItems()
+ * once per order, which turned every list call into 1 + N sequential round trips. */
+async function loadOrderItemsBatch(
+  orgId: string,
+  orderIds: string[]
+): Promise<Map<string, OrderItemRecord[]>> {
+  const map = new Map<string, OrderItemRecord[]>();
+  if (orderIds.length === 0) return map;
+  const rows = await db
+    .select()
+    .from(orderItems)
+    .where(and(eq(orderItems.orgId, orgId), inArray(orderItems.orderId, orderIds)));
+  for (const row of rows) {
+    const item = rowToItem(row);
+    const list = map.get(row.orderId);
+    if (list) list.push(item);
+    else map.set(row.orderId, [item]);
+  }
+  for (const list of map.values()) {
+    list.sort((a, b) => Number(a.lineNo) - Number(b.lineNo));
+  }
+  return map;
+}
+
 async function logOrderActivity(
   orgId: string,
   orderId: string,
@@ -285,10 +310,8 @@ export async function listOrders(status?: OrderStatus): Promise<OrderRecord[]> {
     ? await db.select().from(orders).where(and(eq(orders.orgId, orgId), eq(orders.status, status)))
     : await listByOrg(orders, orgId);
 
-  const result: OrderRecord[] = [];
-  for (const row of rows) {
-    result.push(rowToOrder(row, await loadOrderItems(orgId, row.id)));
-  }
+  const itemsByOrder = await loadOrderItemsBatch(orgId, rows.map((r) => r.id));
+  const result = rows.map((row) => rowToOrder(row, itemsByOrder.get(row.id) ?? []));
   return result.sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
 }
 
@@ -304,11 +327,9 @@ export async function listOrdersForCustomer(customerId: string): Promise<OrderRe
     .from(orders)
     .where(and(eq(orders.orgId, orgId), eq(orders.customerId, customerId)));
 
-  const result: OrderRecord[] = [];
-  for (const row of rows) {
-    if (row.status === "Cancelled") continue;
-    result.push(rowToOrder(row, await loadOrderItems(orgId, row.id)));
-  }
+  const active = rows.filter((row) => row.status !== "Cancelled");
+  const itemsByOrder = await loadOrderItemsBatch(orgId, active.map((r) => r.id));
+  const result = active.map((row) => rowToOrder(row, itemsByOrder.get(row.id) ?? []));
   return result.sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
 }
 
@@ -360,18 +381,27 @@ export async function listOrderPayments(orderId: string): Promise<OrderPaymentRe
  */
 export async function orderReservedBySku(): Promise<Map<string, number>> {
   const orgId = await getTenantOrgId();
-  const [orderRows, itemRows] = await Promise.all([
-    listByOrg(orders, orgId).catch(() => [] as OrderRow[]),
-    listByOrg(orderItems, orgId).catch(() => [] as OrderItemRow[]),
-  ]);
+  // Filters by status in SQL (covered by the orders_org_id_status_idx index) instead of
+  // pulling every order the org has ever created — this ran on every stock-check and
+  // every "In" stock movement anywhere in the org (see recheckShortfallForSku below).
+  const orderRows = await db
+    .select({ id: orders.id })
+    .from(orders)
+    .where(and(eq(orders.orgId, orgId), inArray(orders.status, RESERVING_ORDER_STATUSES)))
+    .catch(() => [] as { id: string }[]);
+  const reservingIds = orderRows.map((o) => o.id);
 
-  const reserving = new Set(
-    orderRows.filter((o) => RESERVING_ORDER_STATUSES.includes(o.status)).map((o) => o.id)
-  );
+  const itemRows = reservingIds.length
+    ? await db
+        .select()
+        .from(orderItems)
+        .where(and(eq(orderItems.orgId, orgId), inArray(orderItems.orderId, reservingIds)))
+        .catch(() => [] as OrderItemRow[])
+    : [];
 
   const out = new Map<string, number>();
   for (const row of itemRows) {
-    if (!reserving.has(row.orderId) || !row.sku) continue;
+    if (!row.sku) continue;
     const qty = round3((Number(row.reservedQty) || 0) - (Number(row.consumedQty) || 0));
     if (qty <= 0) continue;
     out.set(row.sku, round3((out.get(row.sku) ?? 0) + qty));
@@ -512,12 +542,27 @@ export async function listIntakeCandidates(): Promise<OrderIntakeCandidate[]> {
       and(eq(quotations.orgId, orgId), eq(quotations.status, "Accepted"), eq(quotations.orderId, ""))
     );
 
+  const lineRows = rows.length
+    ? await db
+        .select()
+        .from(quotationItems)
+        .where(
+          and(
+            eq(quotationItems.orgId, orgId),
+            inArray(quotationItems.quotationId, rows.map((r) => r.id))
+          )
+        )
+    : [];
+  const linesByQuotation = new Map<string, typeof lineRows>();
+  for (const line of lineRows) {
+    const list = linesByQuotation.get(line.quotationId);
+    if (list) list.push(line);
+    else linesByQuotation.set(line.quotationId, [line]);
+  }
+
   const result: OrderIntakeCandidate[] = [];
   for (const row of rows) {
-    const lineRows = await db
-      .select()
-      .from(quotationItems)
-      .where(and(eq(quotationItems.orgId, orgId), eq(quotationItems.quotationId, row.id)));
+    const rowLines = linesByQuotation.get(row.id) ?? [];
 
     result.push({
       quotationId: row.id,
@@ -534,7 +579,7 @@ export async function listIntakeCandidates(): Promise<OrderIntakeCandidate[]> {
       billingPincode: row.billingPincode,
       payableAmount: Number(row.payableAmount) || 0,
       acceptedAt: row.acceptedAt ? row.acceptedAt.toISOString() : "",
-      items: lineRows
+      items: rowLines
         .map((l) => ({
           lineNo: l.lineNo,
           particular: l.particular,
@@ -949,11 +994,29 @@ async function computeCreditPosition(
     .where(and(eq(orders.orgId, orgId), eq(orders.customerId, customerId)));
   const openOrders = allOrders.filter((o) => o.status !== "Cancelled");
 
+  // One batched query for every open order's payments instead of a per-order round trip —
+  // this runs on every Payment_Review transition for every credit customer.
+  const paidByOrder = new Map<string, number>();
+  if (openOrders.length > 0) {
+    const paymentRows = await db
+      .select({ orderId: orderPayments.orderId, amount: orderPayments.amount })
+      .from(orderPayments)
+      .where(
+        and(
+          eq(orderPayments.orgId, orgId),
+          inArray(orderPayments.orderId, openOrders.map((o) => o.id))
+        )
+      );
+    for (const row of paymentRows) {
+      paidByOrder.set(row.orderId, (paidByOrder.get(row.orderId) ?? 0) + (Number(row.amount) || 0));
+    }
+  }
+
   let totalOutstanding = 0;
   let overdueOrderId: string | null = null;
 
   for (const o of openOrders) {
-    const paid = await sumPaymentsForOrder(orgId, o.id);
+    const paid = round2(paidByOrder.get(o.id) ?? 0);
     const outstanding = round2((Number(o.orderValue) || 0) - paid);
     if (outstanding <= 0) continue;
 
@@ -1344,28 +1407,36 @@ export async function recheckShortfallForSku(sku: string): Promise<void> {
   try {
     const orgId = await getTenantOrgId();
 
-    const [orderRows, itemRows] = await Promise.all([
-      listByOrg(orders, orgId).catch(() => [] as OrderRow[]),
-      listByOrg(orderItems, orgId).catch(() => [] as OrderItemRow[]),
-    ]);
+    // Filters orders by status in SQL (orders_org_id_status_idx) and order_items by
+    // (org_id, sku) (order_items_org_id_sku_idx) instead of pulling every order/line the
+    // org has ever created — this fires on every single "In" stock movement anywhere in
+    // the org (see this function's own header comment), so an unbounded, ever-growing scan
+    // here was the costliest query in the whole stock-in path.
+    const orderRows = await db
+      .select({ id: orders.id, createdAt: orders.createdAt })
+      .from(orders)
+      .where(and(eq(orders.orgId, orgId), inArray(orders.status, RESERVING_ORDER_STATUSES)))
+      .catch(() => [] as { id: string; createdAt: Date }[]);
+    const reservingOrderIds = new Set(orderRows.map((o) => o.id));
+    const createdAtById = new Map(orderRows.map((o) => [o.id, o.createdAt]));
 
-    const orderById = new Map(orderRows.map((o) => [o.id, o]));
-    const reservingOrderIds = new Set(
-      orderRows.filter((o) => RESERVING_ORDER_STATUSES.includes(o.status)).map((o) => o.id)
-    );
+    const itemRows = reservingOrderIds.size
+      ? await db
+          .select({ orderId: orderItems.orderId, shortageQty: orderItems.shortageQty })
+          .from(orderItems)
+          .where(and(eq(orderItems.orgId, orgId), eq(orderItems.sku, sku)))
+          .catch(() => [] as { orderId: string; shortageQty: string | null }[])
+      : [];
 
     const shortOrderIds = Array.from(
       new Set(
         itemRows
-          .filter(
-            (r) =>
-              r.sku === sku && reservingOrderIds.has(r.orderId) && (Number(r.shortageQty) || 0) > 0
-          )
+          .filter((r) => reservingOrderIds.has(r.orderId) && (Number(r.shortageQty) || 0) > 0)
           .map((r) => r.orderId)
       )
     ).sort((a, b) => {
-      const ta = orderById.get(a)?.createdAt.getTime() ?? 0;
-      const tb = orderById.get(b)?.createdAt.getTime() ?? 0;
+      const ta = createdAtById.get(a)?.getTime() ?? 0;
+      const tb = createdAtById.get(b)?.getTime() ?? 0;
       return ta - tb; // oldest first — see this function's own fairness note above.
     });
 
