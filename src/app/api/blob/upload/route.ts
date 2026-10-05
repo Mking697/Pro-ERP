@@ -64,9 +64,9 @@ export async function POST(request: Request) {
   if (!guard.ok) return guard.response;
 
   const pathnamePattern = pathnamePatternFor(guard.session.orgId);
-  const body = (await request.json()) as HandleUploadBody;
 
   try {
+    const body = (await request.json()) as HandleUploadBody;
     const jsonResponse = await handleUpload({
       body,
       request,
