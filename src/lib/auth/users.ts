@@ -293,14 +293,24 @@ export async function updateUser(userId: string, patch: UpdateUserInput): Promis
     accessChanged;
 
   // When this update would remove the target's own Admin status, require — as part of
-  // the very same statement — that at least one OTHER Active Admin row already exists;
-  // see this function's own comment above on why this can't be a separate read-then-check.
+  // the very same statement — that at least one OTHER Active Admin row already exists.
+  // `FOR UPDATE` inside the subquery is what actually makes this atomic: without it,
+  // Postgres evaluates a plain EXISTS against whatever was last committed when the
+  // statement started, so two concurrent UPDATEs each demoting a different one of the
+  // last two Admins both see "one other Admin still exists" and both succeed — leaving
+  // zero (confirmed by a real concurrency test; a plain EXISTS alone was not enough).
+  // `FOR UPDATE` takes a row lock on the matching admin row(s): the second transaction
+  // blocks until the first commits, then re-reads that row fresh and re-checks the WHERE
+  // predicate against its NEW state — by which point the first transaction's own demotion
+  // has already flipped that row's role away from "Admin", so the second transaction's
+  // EXISTS correctly evaluates to false.
   const anotherActiveAdminExists = sql`exists (
     select 1 from ${users}
     where ${users.orgId} = ${orgId}
       and ${users.role} = 'Admin'
       and ${users.status} = 'Active'
       and ${users.id} != ${userId}
+    for update
   )`;
 
   const [row] = await db
@@ -381,8 +391,9 @@ export async function deleteUser(userId: string, actingUserId: string): Promise<
 
   // An organization with no Admin cannot be administered again — there would be nobody
   // left who can create users or manage settings. Folded into the DELETE's own WHERE
-  // clause (not a separate read-then-check) for the same atomicity reason updateUser()'s
-  // own Admin guard is — see that function's comment for the exact race this closes.
+  // clause with a `FOR UPDATE` row lock on the subquery — same atomicity reason and same
+  // mechanism as updateUser()'s own Admin guard (see that function's comment for the race
+  // this closes and why a plain EXISTS alone doesn't).
   const isTargetAdmin = found.role === "Admin";
   const anotherActiveAdminExists = sql`exists (
     select 1 from ${users}
@@ -390,6 +401,7 @@ export async function deleteUser(userId: string, actingUserId: string): Promise<
       and ${users.role} = 'Admin'
       and ${users.status} = 'Active'
       and ${users.id} != ${userId}
+    for update
   )`;
 
   // The index entry goes first: if the second half fails, the user still exists and the
