@@ -105,7 +105,12 @@ export async function POST(request: Request) {
 
   response.cookies.set(SESSION_COOKIE, token, {
     httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
+    // Tied to NODE_ENV exactly rather than just "not literally development" — a staging/
+    // preview deploy that still serves over HTTPS but doesn't set NODE_ENV=production
+    // would otherwise get a non-Secure cookie. Vercel's own deployments always set
+    // NODE_ENV=production (including Preview), so this only matters for a self-hosted
+    // staging config that doesn't.
+    secure: process.env.NODE_ENV !== "development",
     sameSite: "lax",
     path: "/",
     maxAge: 60 * 60 * 8,
