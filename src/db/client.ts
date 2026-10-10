@@ -1,3 +1,4 @@
+import "./local-proxy";
 import { neon, Pool, type PoolClient } from "@neondatabase/serverless";
 import { sql } from "drizzle-orm";
 import { drizzle as httpDrizzle } from "drizzle-orm/neon-http";

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import "@/db/local-proxy";
 import { neon } from "@neondatabase/serverless";
 import { getPlatformAdminEmails } from "@/lib/platform/admin";
 import { expectedMigrationLineage } from "@/lib/expected-migration-lineage";
