@@ -1,0 +1,13 @@
+Dependency recovery evidence — parent continuation 2026-10-10
+
+Delayed recovery child completion failed at model-provider access, NOT at npm installation. Runtime explicitly returned its tracked npm ci --no-audit --no-fund process proc_1928ae9bf433 exit code 0. npm warned some esbuild/unrs-resolver install scripts were not covered by allowScripts. Do not blindly enable lifecycle scripts or reinstall shared dependencies while Phase4 writers run.
+
+Parent independently executed local tooling after installation:
+node node_modules/typescript/bin/tsc --version => Version 5.9.3, exit 0.
+node node_modules/eslint/bin/eslint.js --version => v9.39.5, exit 0.
+node node_modules/vitest/vitest.mjs run --config tests/fms-trusted-fields.vitest.config.ts => 1 file, 35 tests passed, exit 0. Config read first: setupFiles [], Node environment, mocked engine, no dotenv/live DB.
+Earlier parent actual tsc --noEmit -p tsconfig.json returned exit 2 with one diagnostic at tests/perf02-perf03-reports.unit.test.ts:48 (Object.keys Row|undefined); assigned to current performance owner. No final whole-tree clean claim.
+
+Manifest/lock diff remains existing shadcn move: package.json 1 addition/1 deletion, lock 306 additions/2 deletions. These counts alone do not establish full dependency equality/security acceptance.
+
+Four Phase4 implementation/review agents already dispatched; dependency tooling must remain stable. Pending full lint/i18n/build and independent acceptance, install-script-dependent tooling coverage. No .env reads, live DB tests, production migrations/deployment/commit/push.

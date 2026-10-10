@@ -1,0 +1,222 @@
+SECOND-phase deferred gap A — bulk opening-stock item import replay protection
+(inventory/items/import route), 2026-10-09
+
+STATUS: DONE, strict vertical TDD, bounded to the named gap. Parent review requested.
+
+PROBLEM (from handoff/2026-10-09/item5-replay-recovery-gaps.txt, R6 "genuinely still
+open" item)
+inventory/items/import/route.ts called createItemsBulk() then recordMovementsBulk()
+with NO idempotency key and no runIdempotentTenantMutation wrapper at all. A
+retried/duplicated bulk import request had no replay guarantee — every imported row's
+opening stock (and every created item) could be duplicated on retry.
+
+TRACE DONE BEFORE DESIGNING (per instruction — do not assume the shape)
+- createItemsBulk() (src/lib/inventory/items.ts) does NOT open its own transaction —
+  it calls `db.insert(items).values(rows)` directly via the ambient `db` proxy
+  (src/db/client.ts -> src/db/transaction-context.ts). That proxy resolves to whatever
+  tenant transaction is active in AsyncLocalStorage, or to the plain HTTP client if none
+  is active.
+- recordMovementsBulk() (src/lib/inventory/ledger.ts) DOES call its own
+  `runInTenantTransaction(orgId, ...)`, but transaction-context.ts's
+  `runInTenantTransaction` is reentrant for the SAME orgId: if a tenant transaction is
+  already active in AsyncLocalStorage it just runs `work()` inline (no nested
+  BEGIN/commit) — see src/db/transaction-context.ts:95-101 ("Cross-tenant nested
+  transaction is forbidden" is the only reentrancy guard; same-org reentry is allowed
+  and intentional).
+- Consequence: wrapping the ROUTE's whole call sequence in ONE
+  runIdempotentTenantMutation(orgId, ...) call — which itself opens exactly one
+  top-level runInTenantTransaction(orgId, ...) — makes BOTH createItemsBulk()'s insert
+  AND recordMovementsBulk()'s transaction automatically join that same single
+  transaction. NEITHER src/lib/inventory/items.ts NOR src/lib/inventory/ledger.ts
+  needed any signature or behavior change. ledger.ts's already-approved recheck logic
+  (lines ~294-314/360-362, item1's settled code) was not touched, read, or re-verified
+  beyond confirming recordMovementsBulk's reentrant transaction call untouched.
+
+FIX (route-level only)
+src/app/api/inventory/items/import/route.ts:
+- After file parsing/row validation (all unchanged, still pure/no side effects), the
+  route now calls `getTenantOrgId()` once and wraps createItemsBulk() + the
+  opening-stock recordMovementsBulk() call inside ONE
+  `runIdempotentTenantMutation(orgId, { operation: "inventory.items.import.v1",
+  actorId: guard.session.userId, key: getMutationKey(request), payload: <full
+  validated row array> }, work)` call, mirroring the existing reference pattern in
+  src/app/api/inventory/movements/route.ts.
+- Payload is `JSON.parse(JSON.stringify(rows))` — the complete validated row array
+  (post forcedCategory normalization), not a per-row key, per the task's instructed
+  design: a retry must match the ENTIRE request, not one row. The JSON round-trip is
+  needed because a row's `sku` field can be `undefined` (itemsImport.ts:126, blank-SKU
+  rows) and mutations.ts's canonicalJson() rejects raw `undefined` object-property
+  values as JSON-unsafe; JSON.stringify drops them the same way a real HTTP JSON body
+  would.
+- Catch block added mirroring the R7 committed-result pattern already used elsewhere
+  (e.g. inventory/movements/route.ts): a `committed:true` AggregateError (transaction
+  committed, post-commit cleanup failed) returns the committed result + `committed:
+  true` + `warning` at HTTP 200 instead of a misleading 400; MutationConflictError
+  (same key, different payload) returns HTTP 409. This route's response shape (`{
+  created, openingStockRecorded, errors }` at the top level, no wrapping key) is
+  preserved via `{ ...result, committed: true, warning }` rather than the
+  `{<payload-key>: result, ...}` nesting other R7-fixed routes use, because this
+  route's frontend expects those three fields directly on the JSON body, not nested.
+
+FILES CHANGED
+- src/app/api/inventory/items/import/route.ts (only file touched for the fix itself)
+- tests/items-import-replay.unit.test.ts (new)
+- tests/items-import-replay.unit.vitest.config.ts (new)
+- handoff/2026-10-09/second-gap-a-bulk-import-replay.txt (this file)
+
+src/lib/inventory/items.ts and src/lib/inventory/ledger.ts: UNCHANGED. No schema or
+migration change. No commit/push/deploy/install.
+
+STRICT TDD EVIDENCE (vertical tracer bullet, DB-free)
+Test file: tests/items-import-replay.unit.test.ts (2 cases). Mocks
+@/lib/auth/guard, @/lib/mutations, @/lib/tenant, @/lib/inventory/itemsImport,
+@/lib/inventory/items, @/lib/inventory/ledger — no real DB. Note on scope: this does
+NOT re-test mutations.ts's own replay/409 semantics (already covered end-to-end
+against real Postgres by the existing tests/mutation-idempotency.test.ts, settled
+infra, not touched). It DOES reimplement that same observable contract as an in-memory
+fake (receipts keyed by idempotency key + JSON-stringified payload) so the test proves
+the ROUTE itself wires createItemsBulk()+recordMovementsBulk() as one unit under one
+key — a fake that merely echoed `work()` (the pattern replay-recovery-api.unit.test.ts
+uses to test R7's committed-result mapping) could not have caught this gap, since it
+never exercises replay-vs-conflict branching at all.
+
+RED (ran before any src edit):
+Command: node node_modules/vitest/vitest.mjs run --config tests/items-import-replay.unit.vitest.config.ts
+Result: 2 failed — "replays the same committed result..." failed because
+createItemsBulk was called 2 times instead of 1 (route re-ran the whole import on
+retry); "rejects a reused idempotency key..." failed because the second request
+returned 200 instead of 409 (no conflict detection existed at all). Both failed for
+the expected reason: the route had zero idempotency wiring.
+
+GREEN (after the route.ts edit above):
+Same command. Result: 2 passed.
+- "replays the same committed result for a retried import without creating items
+  twice": createItemsBulk called exactly once, recordMovementsBulk called exactly
+  once, both POST calls return identical JSON, despite two separate HTTP requests
+  with the same Idempotency-Key and payload.
+- "rejects a reused idempotency key bound to a different import payload with 409":
+  second request (same key, different rows) returns 409; createItemsBulk never ran a
+  second time.
+
+REGRESSION CHECKS RUN
+- tests/items-import-replay.unit.test.ts: 2/2 passed (new, this item).
+- tests/replay-recovery-api.unit.test.ts (item5's own 8-case R7 suite, untouched by
+  this item): FAILED TO LOAD on a later rerun — `Missing DATABASE_URL environment
+  variable` thrown from src/lib/inventory/service.ts (a module that did not exist
+  earlier in this session) via src/lib/inventory/indents.ts, pulled in transitively by
+  one of that suite's mocked routes. This is NOT caused by this item's edit (route.ts
+  for items/import does not import service.ts or indents.ts at all, confirmed by
+  grepping its import list). src/lib/inventory/plans.ts was also independently
+  observed mid-edit during this session (see CAVEAT below) — strong evidence another
+  gap-closure item (likely PPC cancel/recheck, item B/C of the 3 remaining gaps) is
+  being worked concurrently in this same checkout and is transiently breaking
+  unrelated DB-free suites that eagerly import inventory modules. Did not investigate
+  or fix: service.ts and indents.ts are outside this item's owned files
+  (src/app/api/inventory/items/import/route.ts, src/lib/inventory/items.ts,
+  src/lib/inventory/ledger.ts's call site only). Flagging for parent to re-run once
+  concurrent work settles, not claiming it fixed.
+- tests/stock-workflow-unit.test.ts: similarly regressed (23 failed/15 passed) on the
+  same rerun, for the same reason (concurrent inventory-domain edits), not this item's
+  files.
+- node node_modules/eslint/bin/eslint.js on the 3 files this item touched: exit 0, no
+  warnings or errors.
+- git diff --check on route.ts: exit 0.
+- Full-tree `tsc --noEmit` was NOT re-run clean this pass: it reports pre-existing
+  TS2554 arity errors in tests/stock-workflow-unit.test.ts and
+  tests/stock-workflow.real.test.ts that predate this item (confirmed by diffing
+  against stash@{0} — see INCIDENT below) and are owned by the concurrent PPC
+  cancel/recheck work on src/lib/inventory/plans.ts, not this item.
+
+INCIDENT DURING THIS PASS (full disclosure, no data lost)
+While isolating a baseline tsc signal, I ran `git stash` / `git stash pop` to compare
+against HEAD. This was a mistake in a shared working tree with another agent actively
+editing files concurrently (src/lib/inventory/plans.ts was mid-edit) — `git stash pop`
+correctly refused with a merge conflict on plans.ts rather than silently overwriting
+either side, but it also silently reverted MY OWN uncommitted edit to
+src/app/api/inventory/items/import/route.ts (the only file in this item without a
+concurrent writer, so stash's "revert to HEAD" and "nothing to reconcile on pop"
+combined to just drop it). I detected this immediately via `git status`/`git diff`
+showing route.ts as unmodified, confirmed via `git diff stash@{0}` that plans.ts's
+working-tree content was already equal-or-newer than the stash (no sibling work lost),
+dropped the now-redundant stash (`git stash drop`, not `pop` — never applied it to
+avoid clobbering the sibling's newer edits), and re-applied my own route.ts patch from
+the diff I already had, then re-verified RED-is-gone/GREEN again (same 2/2 pass).
+Lesson: never run `git stash` in a shared working tree with other active agents: it is
+safe-ish for a long-lived single-owner session only in theory and clearly isn't safe
+even then. Recommend amending the project's agent-shared-worktree convention to
+forbid `git stash`/`git checkout -- <file>` entirely when multiple agents may be
+editing concurrently, in favor of read-only `git diff`/`git show HEAD:<path>` for any
+baseline comparison.
+
+CAVEATS / HONEST REMAINING GAPS
+1. Partial-row failure semantics are UNCHANGED and now apply to the WHOLE wrapped
+   transaction, which is a real behavior widening worth flagging explicitly:
+   - Before this change: createItemsBulk() already behaved as "skip a bad row, create
+     the rest, report errors" (see its own doc comment) — a bad row never rolled back
+     good rows, because there was no shared transaction between the items insert and
+     the ledger movements insert; they were two independent, sequential writes.
+   - After this change: both writes now share ONE transaction (because they're both
+     inside runIdempotentTenantMutation's runInTenantTransaction). createItemsBulk()'s
+     internal partial-success behavior (skip-and-report per-row) is UNCHANGED — it
+     still produces its `errors` array for individually-bad rows without throwing. But
+     if recordMovementsBulk() throws for any reason (e.g. one row's opening-stock
+     quantity fails validateMovementQuantity(), or assertStockAvailableMany() rejects
+     because of a cross-row aggregate "Out"-direction shortage — not reachable for this
+     route since this route only ever sends "In" movements, but reachable in principle
+     if ledger.ts's contract ever changes), the ENTIRE transaction — including the item
+     rows that createItemsBulk() already successfully inserted in the same call — now
+     rolls back together, where previously the items would have stayed committed even
+     if the opening-stock write failed afterwards. This is the correct, INTENDED
+     effect of "wrap the whole bulk import call... in ONE atomic unit" per the task's
+     design instruction, but it is a genuine behavior change from before (items could
+     previously commit without their opening stock; now they cannot), not a pure
+     bug fix with zero behavior delta. Flagging explicitly rather than treating it as
+     free.
+2. This route only ever emits "In" direction movements (opening stock), so
+   assertStockAvailableMany() inside recordMovementsBulk() is a no-op for this call
+   site today (it only runs for "Out" requests) — the rollback-together risk in (1) is
+   currently only reachable via validateMovementQuantity() throwing on a malformed
+   openingStock value. Not a currently observed failure path in testing, just noting
+   the real (if narrow) surface.
+3. No real-PG test was added for this item. The task's own guidance was to add one
+   "only if the fix requires proof beyond DB-free mocking (e.g. verifying
+   createItemsBulk actually joins the same transaction as the stock movements, not two
+   separate commits)" — that specific claim (same-transaction joining) is proven by
+   static trace of src/db/transaction-context.ts's reentrant same-org
+   runInTenantTransaction behavior (quoted above) and by the existing
+   tests/mutation-idempotency.test.ts "rejects nested entry before domain work..."
+   case, which already exercises runInTenantTransaction's one-transaction-per-org
+   reentrancy against real Postgres (not duplicated here as a new test, per scope: I
+   do not own mutations.ts or its test file). If parent wants an explicit real-PG
+   proof scoped to THIS route's own two writes committing/rolling back together
+   (items + movements), that is a reasonable follow-up but was judged not strictly
+   required given the DB-free trace plus the settled, already-real-PG-tested
+   primitive it composes.
+4. MAX_ROWS is 2000 and createItemsBulk's own existing-SKU lookup
+   (`listItems()` then substring/lowercase membership) is unchanged — this item did
+   not touch or re-audit performance of the bulk insert path; only added the
+   idempotency/transaction wrapper around it.
+
+NOT TOUCHED (confirmed, per scope)
+- src/lib/inventory/ledger.ts: zero changes. recordMovementsBulk's existing
+  runInTenantTransaction call site did not need a key parameter or any signature
+  change — its reentrant same-org transaction join already gives it for free. Lines
+  ~294-314/360-362 (item1's settled recheck logic) were read only to confirm they are
+  nowhere near the touched call site; not modified.
+- src/lib/inventory/items.ts: zero changes. createItemsBulk's lack of its own
+  transaction wrapper is exactly why it joins the route's ambient transaction for free
+  via the `db` proxy; nothing to change.
+- No migration, no schema file, no production/deploy/install/commit/push.
+
+TEST COMMANDS (for parent to re-run)
+node node_modules/vitest/vitest.mjs run --config tests/items-import-replay.unit.vitest.config.ts
+  -> 2/2 passed (this item's own suite)
+node node_modules/eslint/bin/eslint.js src/app/api/inventory/items/import/route.ts tests/items-import-replay.unit.test.ts tests/items-import-replay.unit.vitest.config.ts
+  -> exit 0, clean
+
+Stopping point: item A of the 3 remaining second-phase gaps is closed to the extent
+scoped (route-level idempotency wrapper, no persistence-layer signature changes
+needed). Items B and C (accounts bills/invoices issue-route replay; PPC cancel/recheck
+replay) are explicitly out of this item's scope and appear to already be under
+concurrent work by another agent in this same checkout (plans.ts observed mid-edit).
+Parent review requested before any further continuation.

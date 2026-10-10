@@ -1,3 +1,6 @@
+import { getMutationKey, runIdempotentTenantMutation, MutationConflictError, MutationInputError } from "@/lib/mutations";
+import { getTenantOrgId } from "@/lib/tenant";
+import { LedgerConflictError } from "@/lib/accounts/ledger";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { requireModule } from "@/lib/auth/guard";
@@ -23,12 +26,17 @@ export async function POST(request: Request, { params }: { params: Promise<{ cre
   }
 
   try {
-    const creditNote = await applyCreditNoteToOrder(
-      { creditNoteId, orderId: parsed.data.orderId, amount: parsed.data.amount },
-      guard.session.userId
-    );
+    const creditNote = await runIdempotentTenantMutation(await getTenantOrgId(), {
+      operation: "accounts.credit-note.apply.v1", actorId: guard.session.userId, key: getMutationKey(request),
+      payload: { creditNoteId, ...parsed.data },
+    }, async () => ({ ...await applyCreditNoteToOrder(
+      { creditNoteId, ...parsed.data }, guard.session.userId
+    ) }));
     return NextResponse.json({ creditNote });
   } catch (err) {
+    if (err instanceof MutationConflictError || err instanceof MutationInputError || err instanceof LedgerConflictError) {
+      return NextResponse.json({ error: err.message }, { status: err.status });
+    }
     const message =
       err instanceof CreditNoteError || err instanceof Error ? err.message : "Apply nahi ho paya.";
     return NextResponse.json({ error: message }, { status: 400 });

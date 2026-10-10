@@ -37,6 +37,7 @@ import {
   leaves,
   maintenanceActivities,
   maintenanceRequests,
+  mutationReceipts,
   orderActivities,
   orderItems,
   orderPayments,
@@ -189,6 +190,7 @@ export async function deleteOrganization(orgId: string): Promise<void> {
   }
 
   await db.batch([
+    db.delete(mutationReceipts).where(eq(mutationReceipts.orgId, orgId)),
     db.delete(usersIndex).where(eq(usersIndex.orgId, orgId)),
     db.delete(reportShares).where(eq(reportShares.orgId, orgId)),
     db.delete(settings).where(eq(settings.orgId, orgId)),

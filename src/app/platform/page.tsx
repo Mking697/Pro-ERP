@@ -1,6 +1,5 @@
-import { cookies } from "next/headers";
 import { notFound, redirect } from "next/navigation";
-import { verifySession, SESSION_COOKIE } from "@/lib/auth/session";
+import { getLiveSession } from "@/lib/auth/live-session";
 import { isPlatformAdmin } from "@/lib/platform/admin";
 import AppShell from "@/components/app-shell";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -13,9 +12,7 @@ import { getT } from "@/lib/i18n/server";
 
 export default async function PlatformPage() {
   const t = await getT();
-  const cookieStore = await cookies();
-  const token = cookieStore.get(SESSION_COOKIE)?.value;
-  const session = token ? await verifySession(token) : null;
+  const session = await getLiveSession();
 
   if (!session) redirect("/login");
 

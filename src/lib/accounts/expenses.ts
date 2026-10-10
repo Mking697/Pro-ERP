@@ -1,6 +1,6 @@
 import type { InferSelectModel } from "drizzle-orm";
 import { expenseEntries, journalEntries, journalLines } from "@/db/schema";
-import { db } from "@/db/client";
+import { db, runInTenantTransaction } from "@/db/client";
 import { findById, listByOrg } from "@/db/repo";
 import { getTenantOrgId } from "@/lib/tenant";
 import { generateId } from "@/lib/id";
@@ -71,13 +71,18 @@ export interface CreateExpenseEntryInput {
  * trivially balanced by construction (both lines carry the same rounded `amount`), so
  * `postJournalEntry()`'s generic multi-line balance-checking isn't needed.
  */
-export async function createExpenseEntry(
+export async function createExpenseEntry(input: CreateExpenseEntryInput, createdBy: string): Promise<ExpenseEntryRecord> {
+  const orgId = await getTenantOrgId();
+  return runInTenantTransaction(orgId, () => createExpenseEntryInTransaction(input, createdBy));
+}
+
+async function createExpenseEntryInTransaction(
   input: CreateExpenseEntryInput,
   createdBy: string
 ): Promise<ExpenseEntryRecord> {
   const orgId = await getTenantOrgId();
   const amount = round2(input.amount);
-  if (!(amount > 0)) throw new ExpenseError("Amount 0 se zyada hona chahiye.");
+  if (!Number.isFinite(amount) || !(amount > 0)) throw new ExpenseError("Amount 0 se zyada hona chahiye.");
 
   const accounts = await listChartOfAccounts(); // seeds the org's default accounts, then lists.
   const category = accounts.find((a) => a.id === input.categoryAccountId);

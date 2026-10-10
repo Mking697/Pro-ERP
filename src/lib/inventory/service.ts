@@ -1,4 +1,4 @@
-import { listItems, type ItemRecord } from "@/lib/inventory/items";
+import { findItem, listItems, type ItemRecord } from "@/lib/inventory/items";
 // In-transit lives with indents, which own the data it is derived from.
 import { inTransitBySku, suggestIndentQty } from "@/lib/inventory/indents";
 // Reservations live with plans, which own the data they are derived from.
@@ -6,11 +6,17 @@ import { committedBySku } from "@/lib/inventory/plans";
 // FG stock reserved against Orders lives with orders, which own the data it is derived
 // from — same reasoning as committedBySku above.
 import { orderReservedBySku } from "@/lib/orders/orders";
+import { getTenantOrgId } from "@/lib/tenant";
 import {
   listLedger,
+  listLedgerForSku,
   onHandBySku,
   buildItemStock,
   positionFor,
+  fetchAdcBySku,
+  fetchAdcForSku,
+  fetchOnHandForSku,
+  type MovementPage,
   type ItemStock,
   type LedgerRecord,
 } from "@/lib/inventory/ledger";
@@ -30,15 +36,16 @@ export interface InventorySnapshot {
 export async function getInventorySnapshot(
   adcWindowDays = 30
 ): Promise<InventorySnapshot> {
-  // All five in one round. None of them depends on another, so waiting for items and the
-  // ledger before asking about reservations and open orders doubled the wall-clock time
-  // of the slowest call on every inventory screen.
-  const [items, ledger, committed, inTransit, orderReserved] = await Promise.all([
+  const orgId = await getTenantOrgId();
+  // Fetch independent inputs together. ADC is one SQL-filtered operand fold rather than
+  // a full-history JS scan for every item; on-hand retains its existing round3 fold.
+  const [items, ledger, committed, inTransit, orderReserved, adcBySku] = await Promise.all([
     listItems(),
     listLedger(),
     committedBySku(),
     inTransitBySku(),
     orderReservedBySku(),
+    fetchAdcBySku(orgId, adcWindowDays),
   ]);
 
   const onHand = onHandBySku(ledger);
@@ -47,7 +54,14 @@ export async function getInventorySnapshot(
     items: items
       .filter((i) => i.SKU)
       .map((item) =>
-        buildItemStock(item, ledger, onHand, committed, inTransit, orderReserved, adcWindowDays)
+        buildItemStock(
+          item,
+          adcBySku.get(item.SKU) ?? null,
+          onHand,
+          committed,
+          inTransit,
+          orderReserved
+        )
       ),
     ledger,
   };
@@ -72,17 +86,34 @@ export interface ItemDetail {
 
 export async function getItemDetail(
   sku: string,
-  adcWindowDays = 30
+  adcWindowDays = 30,
+  movementPage: MovementPage = {}
 ): Promise<ItemDetail | null> {
-  const snapshot = await getInventorySnapshot(adcWindowDays);
-  const stock = snapshot.items.find((i) => i.item.SKU === sku);
-  if (!stock) return null;
+  const item = await findItem(sku);
+  if (!item) return null;
 
-  const movements = snapshot.ledger
-    .filter((r) => r.SKU === sku)
-    .sort((a, b) => byNewest(a.Timestamp, b.Timestamp));
+  // Only this SKU's own movements/ADC are read — not the whole inventory snapshot
+  // (PERF-02): building every item's stock and the organization's entire ledger history
+  // to show one item's detail page made that page's cost grow with total item count ×
+  // history size. committed/inTransit/orderReserved stay organization-wide maps (they
+  // come from plans.ts/indents.ts/orders.ts, which own that data and don't expose a
+  // single-SKU read), but the SKU's own movements/ADC are now SQL-filtered to it alone.
+  const [movements, committed, inTransit, orderReserved, adc, onHandQuantity] = await Promise.all([
+    listLedgerForSku(sku, movementPage),
+    committedBySku(),
+    inTransitBySku(),
+    orderReservedBySku(),
+    fetchAdcForSku(sku, adcWindowDays),
+    fetchOnHandForSku(sku),
+  ]);
 
-  return { stock, movements };
+  const onHand = new Map([[sku, onHandQuantity]]);
+  const stock = buildItemStock(item, adc, onHand, committed, inTransit, orderReserved);
+
+  return {
+    stock,
+    movements: [...movements].sort((a, b) => byNewest(a.Timestamp, b.Timestamp)),
+  };
 }
 
 /** Counts by status, for the inventory dashboard's donut. */

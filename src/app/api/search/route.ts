@@ -1,26 +1,9 @@
 import { NextResponse } from "next/server";
+import { and, asc, eq, ilike, or, sql } from "drizzle-orm";
+import { db } from "@/db/client";
+import { customers, vendors, orders, items, leads } from "@/db/schema";
 import { requireSession } from "@/lib/auth/guard";
-import { listCustomers } from "@/lib/parties/customers";
-import { listVendors } from "@/lib/parties/vendors";
-import { listOrders } from "@/lib/orders/orders";
-import { listItems } from "@/lib/inventory/items";
-import { listLeads } from "@/lib/leads/leads";
-
-/**
- * Global search / command-palette backend (Cmd+K, see command-palette.tsx).
- *
- * Deliberately NOT a new search index or SQL ILIKE query across tables — every list here
- * is already read in full by its own page today (Parties, Orders, Inventory, Leads all
- * load their full org-scoped list client-side), so this reuses those exact same
- * already-access-checked functions and filters the result in memory. A genuinely large
- * org (tens of thousands of rows per module) would want a real indexed search instead,
- * but none of this codebase's existing list reads do that today either — this endpoint
- * stays consistent with that, not a new performance cliff.
- *
- * Each module is skipped outright (not just filtered down) when the asking user lacks the
- * matching grant — same access boundary every page/API route already enforces, mirrored
- * here rather than re-derived.
- */
+import { getTenantOrgId } from "@/lib/tenant";
 
 export interface SearchResult {
   kind: "customer" | "vendor" | "order" | "item" | "lead";
@@ -29,122 +12,55 @@ export interface SearchResult {
   subtitle: string;
   href: string;
 }
+const PAGE_SIZE = 6;
 
-const MAX_PER_KIND = 6;
-
-function matches(haystack: string[], query: string): boolean {
-  const q = query.toLowerCase();
-  return haystack.some((h) => h && h.toLowerCase().includes(q));
-}
-
+/** Bounded transfer, not an index claim: substring ILIKE may still scan a tenant.
+ * Stable unique-id ordering and one lookahead row per allowed kind; no detail hydration.
+ * Page offsets are bounded; concurrent inserts may shift offsets (not snapshot paging). */
 export async function GET(request: Request) {
   const guard = await requireSession();
   if (!guard.ok) return guard.response;
-
   const url = new URL(request.url);
   const query = (url.searchParams.get("q") ?? "").trim();
-  if (query.length < 2) {
-    return NextResponse.json({ results: [] satisfies SearchResult[] });
+  const pageText = url.searchParams.get("page") ?? "0";
+  if (!/^\d+$/.test(pageText) || Number(pageText) > 1000 || query.length > 200) {
+    return NextResponse.json({ error: "Invalid search query or page." }, { status: 400 });
   }
-
+  const page = Number(pageText);
+  if (query.length < 2) return NextResponse.json({ results: [], page, hasMore: false });
+  const orgId = await getTenantOrgId();
+  const pattern = `%${query.replace(/[\\%_]/g, "\\$&")}%`;
   const access = guard.session.access;
-  const results: SearchResult[] = [];
-
-  const tasks: Promise<void>[] = [];
-
+  const pending: Promise<SearchResult[]>[] = [];
+  let hasMore = false;
+  const collect = async (kind: SearchResult["kind"], rows: PromiseLike<{ id: string; title: string; subtitle: string }[]>, href: string) => {
+    const matches = await rows;
+    if (matches.length > PAGE_SIZE) hasMore = true;
+    return matches.slice(0, PAGE_SIZE).map(row => ({ ...row, kind,
+      href: kind === "item" ? `/inventory/${encodeURIComponent(row.id)}` : href }));
+  };
   if (access.includes("PARTY_MASTER")) {
-    tasks.push(
-      listCustomers().then((rows) => {
-        for (const c of rows) {
-          if (results.filter((r) => r.kind === "customer").length >= MAX_PER_KIND) break;
-          if (matches([c.Customer_Name, c.Contact_Person, c.Phone, c.Email, c.GSTIN], query)) {
-            results.push({
-              kind: "customer",
-              id: c.Customer_ID,
-              title: c.Customer_Name,
-              subtitle: c.Contact_Person || c.Phone || "Customer",
-              href: "/parties",
-            });
-          }
-        }
-      })
-    );
-    tasks.push(
-      listVendors().then((rows) => {
-        for (const v of rows) {
-          if (results.filter((r) => r.kind === "vendor").length >= MAX_PER_KIND) break;
-          if (matches([v.Vendor_Name, v.Contact_Person, v.Phone, v.Email, v.GSTIN], query)) {
-            results.push({
-              kind: "vendor",
-              id: v.Vendor_ID,
-              title: v.Vendor_Name,
-              subtitle: v.Contact_Person || v.Phone || "Vendor",
-              href: "/parties",
-            });
-          }
-        }
-      })
-    );
+    pending.push(collect("customer", db.select({ id: customers.id, title: customers.customerName,
+      subtitle: sql<string>`coalesce(nullif(${customers.contactPerson}, ''), nullif(${customers.phone}, ''), 'Customer')` })
+      .from(customers).where(and(eq(customers.orgId, orgId), or(...[customers.customerName, customers.contactPerson, customers.phone, customers.email, customers.gstin].map(c => ilike(c, pattern)))))
+      .orderBy(asc(customers.id)).limit(PAGE_SIZE + 1).offset(page * PAGE_SIZE), "/parties"));
+    pending.push(collect("vendor", db.select({ id: vendors.id, title: vendors.vendorName,
+      subtitle: sql<string>`coalesce(nullif(${vendors.contactPerson}, ''), nullif(${vendors.phone}, ''), 'Vendor')` })
+      .from(vendors).where(and(eq(vendors.orgId, orgId), or(...[vendors.vendorName, vendors.contactPerson, vendors.phone, vendors.email, vendors.gstin].map(c => ilike(c, pattern)))))
+      .orderBy(asc(vendors.id)).limit(PAGE_SIZE + 1).offset(page * PAGE_SIZE), "/parties"));
   }
-
-  if (access.includes("ORDER_FMS")) {
-    tasks.push(
-      listOrders().then((rows) => {
-        for (const o of rows) {
-          if (results.filter((r) => r.kind === "order").length >= MAX_PER_KIND) break;
-          if (matches([o.id, o.partyName, o.contactPerson, o.customerMobile], query)) {
-            results.push({
-              kind: "order",
-              id: o.id,
-              title: o.id,
-              subtitle: `${o.partyName} — ${o.status}`,
-              href: "/orders",
-            });
-          }
-        }
-      })
-    );
-  }
-
-  if (access.includes("INVENTORY_VIEW")) {
-    tasks.push(
-      listItems().then((rows) => {
-        for (const i of rows) {
-          if (results.filter((r) => r.kind === "item").length >= MAX_PER_KIND) break;
-          if (matches([i.SKU, i.Item_Name], query)) {
-            results.push({
-              kind: "item",
-              id: i.SKU,
-              title: i.SKU,
-              subtitle: i.Item_Name,
-              href: `/inventory/${encodeURIComponent(i.SKU)}`,
-            });
-          }
-        }
-      })
-    );
-  }
-
-  if (access.includes("LEAD_FMS")) {
-    tasks.push(
-      listLeads().then((rows) => {
-        for (const l of rows) {
-          if (results.filter((r) => r.kind === "lead").length >= MAX_PER_KIND) break;
-          if (matches([l.personName, l.companyName, l.phone, l.email], query)) {
-            results.push({
-              kind: "lead",
-              id: l.id,
-              title: l.personName,
-              subtitle: l.companyName || l.status,
-              href: "/leads",
-            });
-          }
-        }
-      })
-    );
-  }
-
-  await Promise.all(tasks);
-
-  return NextResponse.json({ results });
+  if (access.includes("ORDER_FMS")) pending.push(collect("order", db.select({ id: orders.id, title: orders.id,
+    subtitle: sql<string>`${orders.partyName} || ' — ' || ${orders.status}` }).from(orders)
+    .where(and(eq(orders.orgId, orgId), or(...[orders.id, orders.partyName, orders.contactPerson, orders.customerMobile].map(c => ilike(c, pattern)))))
+    .orderBy(asc(orders.id)).limit(PAGE_SIZE + 1).offset(page * PAGE_SIZE), "/orders"));
+  if (access.includes("INVENTORY_VIEW")) pending.push(collect("item", db.select({ id: items.sku, title: items.sku, subtitle: items.itemName }).from(items)
+    .where(and(eq(items.orgId, orgId), or(ilike(items.sku, pattern), ilike(items.itemName, pattern))))
+    .orderBy(asc(items.sku)).limit(PAGE_SIZE + 1).offset(page * PAGE_SIZE), "/inventory"));
+  if (access.includes("LEAD_FMS")) pending.push(collect("lead", db.select({ id: leads.id, title: leads.personName,
+    subtitle: sql<string>`coalesce(nullif(${leads.companyName}, ''), ${leads.status}::text)` }).from(leads)
+    .where(and(eq(leads.orgId, orgId), or(...[leads.personName, leads.companyName, leads.phone, leads.email].map(c => ilike(c, pattern)))))
+    .orderBy(asc(leads.id)).limit(PAGE_SIZE + 1).offset(page * PAGE_SIZE), "/leads"));
+  const results = (await Promise.all(pending)).flat();
+  return NextResponse.json({ results, page, hasMore });
 }
+

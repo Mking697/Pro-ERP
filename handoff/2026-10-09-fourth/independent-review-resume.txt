@@ -1,0 +1,54 @@
+Independent READ-ONLY Phase FOURTH review — D:/Pro-ERP
+Verdict: NOT ready for full acceptance. Security admission fixes pass isolated regressions; UX/i18n/quality and DEP acceptance remain partial.
+
+Scope / evidence
+- Read the actual SEC04/05, UX01/02, UX03/04, UX05 and QA05/DEP01 handoffs, implementation-tracker.json acceptance records, git diff HEAD and current source/test/config files. Tracker items remain pending in the inspected snapshot.
+- Read installed Next docs: node_modules/next/dist/docs/01-app/01-getting-started/15-route-handlers.md. Native Request/Response POST handlers and uncached POST behavior are consistent with this guide; no framework-convention blocker found.
+- Shared checkout has active writers. chatxflow changed during review; reread its enhanced 158-line version and reran SEC04/05 against it. This is a working-tree snapshot review, NOT an immutable final-tree signoff.
+- No source/tests/package/node_modules modifications, installs, secrets/env reads, real DB/provider calls, default npm test, migrations, commits or deployments deliberately performed. Only owned report created. Test tooling may perform its normal transient cache operations.
+
+Executed results (local binaries, no npx fallback/install)
+1. node node_modules/vitest/vitest.mjs run --config tests/sec04-sec05.vitest.config.ts --reporter=dot
+   2 files / 51 passed, zero failed. Executed twice; second run after enhanced chatxflow source reread, also 51/51.
+2. node node_modules/vitest/vitest.mjs run --config tests/stale-response-guard.unit.vitest.config.ts --reporter=dot
+   1 file / 10 passed, zero failed.
+3. node node_modules/vitest/vitest.mjs run --config tests/ux03-ux04.vitest.config.ts --reporter=dot
+   1 file / 8 passed, zero failed.
+4. node --test tests/ux01-ux02.node.test.cjs
+   12 passed, zero failed/skipped/cancelled. Experimental stripTypeScriptTypes warning only.
+   Totals: 81 distinct existing suite cases; 132 passing case executions including repeat SEC run. Do NOT count repeat cases as additional coverage.
+5. node scripts/i18n-check.mjs
+   exit 1. 1495 EN keys, 1396 wrapped keys, 53 baselined missing EN keys, zero new missing keys, zero duplicate/orphan keys, guide IDs 125/125, 1500 unwrapped identities. One NEW copy identity and one STALE baseline identity (WhatsApp validation message).
+6. Actual checker with actual locally installed TypeScript parser, in-memory virtual-filesystem fixtures (no repository probe files): 11 passed / zero failed. Checked JSX text, single/template t keys, placeholder, conditional copy, toast, excluded comments/className/internal identifiers, allowed debt, increased occurrence, stale allowance, complete dictionary. Initial command-argument escaping attempt failed BEFORE fixture execution; base64-safe invocation then executed all 11. This validates static ratchet behavior, not full UI translation/dataflow.
+7. Actual extracted mutation handlers under rejected mock fetch: 3/3 probes reproduced uncaught offline rejection, no error feedback, saving cleared and no draft reset (NewOrderDialog, CreateInvoiceDialog, IntakeMapDialog). These are reproduced defects, NOT passing acceptance scenarios.
+8. Scoped local ESLint over 20 source/test/config files executed twice, exit 1 each: exactly 2 errors, zero warnings, both src/app/chat/chat-client.tsx:151 (react-hooks/purity, Date.now and Math.random). No diagnostics in other scoped files. No full-repository lint claim.
+9. node node_modules/typescript/bin/tsc --noEmit --incremental false -p tsconfig.json
+   exit 2: tests/perf02-inventory-adc.unit.test.ts:91:37 TS2552 Cannot find name 'sql'. No other diagnostics in this run. This is an active-writer perf test blocker, not attributed to reviewed UX/security sources. incremental disabled to avoid tsbuildinfo write.
+10. git diff --check HEAD -- [15 scoped tracked source/script/manifest/lock files]
+    exit 0; CRLF advisories only.
+11. Programmatic lockfile-vs-HEAD inspection: 1016 package entries, zero new/removed entries, zero changed package versions. shadcn now dev:true, root manifest/lock classify it in devDependencies. Source search confirms the sole shadcn reference is src/app/globals.css:3 @import "shadcn/tailwind.css".
+
+Actionable blockers / acceptance gaps
+A. QA05 actual gate fails: src/app/api/admin/settings/whatsapp/route.ts:46 changed validation text is unwrapped; scripts/i18n-baseline.json still allows the previous text. Translate/wrap the current user-facing message and remove the obsolete allowance, or explicitly review a baseline replacement; do NOT silently expand baseline or claim i18n clean. Static ratchet itself correctly rejects this cross-agent drift. Current 53 missing EN strings remain explicitly accepted debt, not translated UI proof.
+B. Scoped lint gate fails: src/app/chat/chat-client.tsx:151:33 and :151:47. The calls are inside an event-driven send function; lint output does NOT establish that they actually execute during render. Nevertheless current configured gate fails. A deterministic monotonic per-mount optimistic-ID ref can preserve rollback identity without random/time calls; rerun lint and race tests after repair.
+C. UX01 acceptance includes offline mutations showing errors while preserving input, but actual adjacent mutation handlers still have try/finally without catch:
+   - src/app/orders/new-order-dialog.tsx:106-130
+   - src/app/accounts/create-invoice-dialog.tsx:67-92
+   - src/app/orders/intake-map-dialog.tsx:70-91
+   Rejected fetch produces an unhandled rejected event promise and no visible error. Drafts are retained, but feedback acceptance fails. Add explicit error feedback preserving draft and distinguish unknown POST outcome; do not encourage blind retry of potentially committed mutations. The board-fetch guard tests do not exercise these dialog handlers.
+D. UX05 requested line/item context is NOT supplied by unique IDs alone: src/app/orders/new-order-dialog.tsx:185 and :205 still give every row the identical accessible names Qty/Rate. Their error text at :199-200 also has no item/line context. IDs/htmlFor and row error references are associated correctly, but add item/line context to each label/accessibility name (e.g. sr-only text with line/item identifier). Verify label-click focus and accessible tree in real DOM. PO per-row names include itemName at src/app/purchase/po-issue-board.tsx:318, but same item on different indents needs indent/line context to remain distinguishable.
+E. UX03 browser acceptance remains UNPROVEN: tests/ux03-ux04.unit.test.tsx:9-28 mock hooks, refs and Dialog. Its 8 passing tests cannot establish Tab/Shift+Tab containment, background inertness, actual initial/return focus, responsive focus return or nested overlay dismissal. Source wiring at src/components/sidebar-shell.tsx:220-224 delegates to real Base UI primitive with focus refs, and chat Escape is scoped, which is the right structural repair. Run the real drawer keyboard/nested-overlay/focus-return scenarios before closing acceptance; do not call mocked Dialog a browser proof.
+F. SEC05 tenant admission fixed, but broader acceptance policy remains partial: src/app/api/blob/upload/route.ts:101-106 retains per-file 100MiB/MIME/path/no-overwrite policy; there is no aggregate usage/quota accounting. Tracker explicitly requests authorization/usage policy. Parent must approve/document whether retained limits satisfy that policy or keep aggregate-usage work explicitly deferred; do not claim quota enforcement implemented.
+G. DEP01 classification is justified, not dependency removal: shadcn is needed during CSS build, not runtime server imports. Moving it to devDependencies does NOT patch its development-tool advisory chain. Fresh plain scratch lockfile installation/build were not run by this read-only review; audit counts in prior handoff were not independently refreshed. eslint-config-next 16.3.1 vs next 16.3.8 remains unaligned in package.json:27/:47. Full build/install/type/lint acceptance cannot be signed off merely because production audit classification improved.
+H. Whole-tree type gate currently blocked by the perf test at tests/perf02-inventory-adc.unit.test.ts:91; ask its owner to finish the missing sql import and rerun on settled tree.
+
+Positive implementation findings
+- SEC04 exact approved-origin comparison rejects custom DNS hosts/IPs/subdomains/credentials/nondefault ports/paths/query/fragment; canonical equivalent :443 is accepted. Enhanced chatxflow keeps validation before fetch at src/lib/chatxflow.ts:63-64 and redirect:error at :79, including batch sendConfigured reuse at :137. Approved-provider DNS/TLS is a trusted dependency, not arbitrary custom-host connection pinning. No allowlist/redirect regression found in enhanced snapshot.
+- SEC05 requireSession resolves a live active/tokenVersion-matching user (guard.ts:29-36; live-session.ts:19-32), then tenantFromOrgId uses live organization/trial status before handleUpload (upload route :64-82). Missing/suspended/expired tenants and registry failures issue no Blob token. Unexpected registry/auth outages propagate fail-closed. Ambient tenant context does not override the upload session org. Tests mock auth/Blob boundaries and exercise real tenant policy; they do not prove real provider handshake.
+- UX01 actual board code checks response status, aborts/invalidates synchronously at tab/retry/mutation-refresh actions, suppresses stale completion/error, caches order/invoice results per tab and leaves dialog drafts mounted. Helper tests prove pure guards, NOT mounted board rendering.
+- UX02 actual extracted actions protect history sequence, block switching/New Chat/double send synchronously during send, block send during history, roll back exactly the originating optimistic ID and suppress late send updates on unmount. No origin-transcript race found in this snapshot. HTTP failure branches do not restore the cleared draft (network catch does); this is a remaining usability improvement beyond the stated session-isolation fix.
+- UX04 collapsed group activation expands the actual shell and sets the group open; aria-expanded follows rendered panel visibility and useId separates nav mounts. Native button mouse/keyboard semantics are retained. Actual browser keyboard execution was not performed.
+
+Files created/modified by reviewer
+- Created only handoff/2026-10-09-fourth/independent-review-resume.txt.
+Parent owns fixes and tracker updates. Re-run checks after all concurrent writers settle; this report is not deployment approval.

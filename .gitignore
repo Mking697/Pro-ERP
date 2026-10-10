@@ -43,3 +43,17 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Local AI-tool state and installed skill bundles — reproducible via their own
+# installers, machine-specific, never part of the application.
+.agents/
+.claude/
+
+# marketing/ is an isolated video-production side-workspace (own package.json) —
+# its own dependency tree and rendered video output are large and reproducible
+# from marketing/remotion's source, never part of the production app.
+marketing/node_modules/
+marketing/output/
+
+# Personal session resume notes, not application content.
+/RESUME-PROMPT.txt

@@ -1,0 +1,128 @@
+Local disposable test infrastructure — 2026-10-09
+
+OUTCOME
+Recreated actual PostgreSQL 17.11 and installed Neon Pool/WS + HTTP transports.
+Verified Pool SELECT current_database()/current_user BEFORE migrations; same target
+verified through actual HTTP SDK and the application db adapter. No dotenv or
+production credentials read/copied; no install/pull, production writes, commit,
+push or deploy. Unrelated Docker resources left untouched. Resources LEFT RUNNING
+for parent verification; bridge ownership transferred to parent.
+
+RESOURCE HANDLES (task label: pro-erp-local-tests-2026-10-09)
+Postgres: pro-erp-regression-pg
+  ID 66307f3d38c362474a728fe46b81d9feed198c40953605c91cd2fa4835c58373
+  Cached postgres:17-alpine image; database/user pro_erp_test, port5432 INTERNAL.
+  No published PostgreSQL port, no host mounts; data /var/lib/postgresql/data tmpfs.
+WS proxy: pro-erp-regression-ws
+  ID 17a6678b6815c90a95dc23be1935ec3ed50f90e58e6e13b6eb08e06fb44b21fa
+  Cached ghcr.io/neondatabase/wsproxy:latest; 127.0.0.1:55007 ->80/tcp ONLY.
+  ALLOW_ADDR_REGEX=^pro-erp-regression-pg:5432$
+Internal network: pro-erp-local-tests-20261009-internal (Internal=true)
+  ID 5691d52c9dc7002aaa5111a762559e0c76e62f7776a6ddc76356f33bdccb9607
+Ingress network: pro-erp-local-tests-20261009-ingress (proxy only, Internal=false)
+  ID 3cb97851c2a405d5dd14ef76104108093ff49062817ad81868bb16a3eefd3440
+HTTP bridge: 127.0.0.1:55008, actual Node PID13400
+  process_manage handle proc_2ef754214eb4 — HANDED OFF to parent.
+  Launch native Node executable; health checks query real Pool, not a static fixture.
+Fresh credential scratch path (NEVER print/read in chat, NEVER transfer in Git):
+  C:/Users/Admin/AppData/Local/hermes/cache/scratch/pro-erp-local-20261009.credentials.json
+  Generated randomBytes(32), ACL readback only MANOJ\Admin:(F), no inheritance.
+  Database authentication is password-based, not host trust. Password never printed.
+  Test-facing DATABASE_URL is the historical nonsecret disposable URL, Pool password
+  comes from fresh PGPASSWORD and guarded fetch adds credentials only for local SQL.
+
+PORTABLE FILES
+New tests/local-isolated/: safety.cjs + safety.test.cjs; runtime.cjs; start.cjs;
+bridge.cjs; migrate.cjs; cleanup.cjs; setup.ts; smoke.test.ts;
+smoke.vitest.config.ts; safety.d.cts + runtime.d.cts; tsconfig.json; README.md.
+Changed ONLY absolute setup path to path.resolve(__dirname,"local-isolated/setup.ts"):
+  atomic-tenant-transactions.real.vitest.config.ts
+  dispatch-domain.vitest.config.ts
+  finance-atomicity.vitest.config.ts
+  mutation-idempotency.vitest.config.ts
+  orders-domain.real.vitest.config.ts
+  receipt-domain.real.vitest.config.ts
+  stock-availability-policy.vitest.config.ts
+  stock-workflow.real.vitest.config.ts
+No existing test cases, default setup/config, production/domain files or checked-in
+migrations modified by this delegate. Other agents concurrently own domain edits.
+
+MIGRATIONS / LOCAL-ONLY DDL
+All 29 checked-in migration records read back and compared one-for-one with
+installed Drizzle readMigrationFiles hashes AND journal timestamps; matched.
+LOCAL ONLY (not accepted/generated production migrations):
+  CREATE TABLE mutation_receipts (org_id text NOT NULL REFERENCES organizations(id),
+    key text NOT NULL, actor_id text NOT NULL, operation text NOT NULL,
+    payload_hash text NOT NULL, result jsonb NOT NULL,
+    created_at timestamptz NOT NULL DEFAULT now(), PRIMARY KEY(org_id,key));
+  duplicate preflight WHERE shipment_id<>'' then
+  CREATE UNIQUE INDEX dispatches_org_id_shipment_id_unique
+    ON dispatches(org_id,shipment_id) WHERE shipment_id<>'';
+Readback verified receipt relation and pg_get_indexdef partial uniqueness.
+The current source describes unconditional dispatch uniqueness; this local-only
+partial index preserves historical blank-shipment fixtures. Parent owns coordinated
+schema/migration decision and real production preflight. Fresh install != upgrade.
+
+COMMANDS (Git Bash, cwd=G:/Pro-ERP; portable recreate recipe in README)
+For each real command, prefix or export these exact nonsecret environment values:
+  PRO_ERP_LOCAL_TESTS=1
+  PRO_ERP_LOCAL_CREDENTIALS=C:/Users/Admin/AppData/Local/hermes/cache/scratch/pro-erp-local-20261009.credentials.json
+Executed startup: node tests/local-isolated/start.cjs
+Running bridge: node tests/local-isolated/bridge.cjs
+  Native executable used on this machine:
+  C:/Users/Admin/AppData/Local/hermes/tools/node-26.7.0-win32-x64/node.exe
+Executed migrations: node tests/local-isolated/migrate.cjs
+Readiness: curl --fail --silent http://127.0.0.1:55008/health
+  Final readback {"database":"pro_erp_test","username":"pro_erp_test"}.
+
+FINAL PASSING VERIFICATION
+node --test tests/local-isolated/safety.test.cjs
+  4 passed /0 failed. RED observed for missing guard, connection guard, SDK
+  application_name compatibility, and explicit passwordless expected-target support.
+node node_modules/vitest/vitest.mjs run --config tests/local-isolated/smoke.vitest.config.ts --reporter=dot
+  1 file /3 passed: actual HTTP and Pool identity, READ COMMITTED/local budgets/
+  held advisory lock, ordered batch/savepoint recovery, nested commit effect dedupe/
+  rollback suppression; actual HTTP batch SQL error22012 and table rollback absence
+  readback; external fetch/forged target blocked before network.
+node node_modules/vitest/vitest.mjs run --config tests/atomic-tenant-transactions.real.vitest.config.ts --reporter=dot
+  1 file /4 passed (final rerun after nonsecret URL/password handling).
+node node_modules/vitest/vitest.mjs run --config tests/atomic-tenant-transactions.vitest.config.ts --reporter=dot
+  2 files /22 passed; DB-free existing unit config unchanged.
+node node_modules/vitest/vitest.mjs run --config tests/stock-availability-policy.vitest.config.ts --reporter=dot
+  1 file /76 passed (including actual local PostgreSQL fixtures).
+node node_modules/typescript/bin/tsc -p tests/local-isolated/tsconfig.json
+  exit0; targeted strict no-emit check, no tsbuildinfo.
+node node_modules/eslint/bin/eslint.js tests/local-isolated
+  exit0; CommonJS require rule disabled narrowly only in standalone CJS harness files.
+git diff --check -- tests handoff/2026-10-09/local-test-infrastructure.txt
+  exit0 at verification (repeat after final handoff write).
+Missing-opt-in actual real config run:
+  env -u PRO_ERP_LOCAL_TESTS -u PRO_ERP_LOCAL_CREDENTIALS node node_modules/vitest/vitest.mjs run --config tests/atomic-tenant-transactions.real.vitest.config.ts --reporter=dot
+  EXPECTED exit1, suite failed in setup: explicit PRO_ERP_LOCAL_TESTS=1 required;
+  no tests executed, before app imports/credentials load. No production fallback.
+
+DISCLOSED LIMITATION — DO NOT CLAIM FULL 44-TEST MUTATION PASS
+First full mutation-idempotency run:43 passed/1 failed (connection acquisition
+10-second timeout in confirmed-commit replay test). Focused -t 'confirmed commit'
+rerun:1 passed/43 skipped. Second full run:42 passed/2 failed with the same connection
+acquisition timeout, now in array-order roundtrip and nested-entry tests.
+No domain source or expectations changed to conceal this. Root cause NOT established.
+No auth failure or connection exhaustion found in local PG; read-only handshake
+probe scratch/pro-erp-ws-handshake-probe.cjs passed30/30 native and30/30 installed
+undici constructor connections. That is limited evidence, NOT resolution of the
+intermittent Vitest timeout. Final infrastructure smoke and real transaction shard
+both passed; parent must investigate intermittent transport/worker scheduling before
+accepting full mutation/domain gates. No other domain or full-current-tree suite run.
+
+SAFETY / CLEANUP
+SDK/global fetch only permit exact local SQL endpoint and validated disposable
+connection; redirects blocked. WS callback only permits disposable host/port.
+Fetch-based external notifications blocked; this is not a malicious-code/raw-socket
+sandbox. No application production flags or env files changed.
+Stop ONLY bridge proc_2ef754214eb4 through process_manage(action=kill), then:
+  node tests/local-isolated/cleanup.cjs (dry-run checked labels:PASS)
+  PRO_ERP_LOCAL_STOP=1 node tests/local-isolated/cleanup.cjs
+Cleanup requires opt-in + fresh credential path, exact handles and task labels.
+Destructive cleanup branch NOT run; resources retained for parent. Verify absence
+of those exact containers/networks after cleanup; remove only generated credential
+file explicitly when finished. Never stop Docker/unrelated containers.

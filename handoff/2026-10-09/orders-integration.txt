@@ -1,0 +1,41 @@
+SECOND Orders integration continuation — 2026-10-09
+Status: Orders-owned code inspected and DB-free checks green; NOT real acceptance and NOT SECOND complete.
+
+Scope/preservation
+- Resumed actual dirty main tree, preserving FIRST/shared primitives and all prior partial Orders/payment/API edits.
+- This continuation modified ONLY src/lib/orders/orders.ts, tests/orders-unit.test.ts, tests/orders-domain.real.test.ts, and this report.
+- src/app/api/orders/[orderId]/payment/route.ts and tests/orders-payment-api.unit.test.ts were inspected/tested, not rewritten.
+- No accounts/shared/default config/schema/migration/env changes; no install, DB suite, production access, build, commit, push or deployment.
+
+Current integrated Orders paths (inherited partial implementation preserved and inspected)
+- createDirectOrder/createOrderFromQuotation, workPaymentReview, approveCreditHold, runStockCheck, commitDispatch, setTransportArrangedBy, cancelOrder and automatic recheck acquire runInTenantTransaction before authoritative domain reads/writes.
+- Reservation uses central getStockAvailability, verified own-order exclusion, aggregate duplicate-SKU pool, and consumed quantity accounting. Automatic FIFO top-up uses central remaining free without adding its own existing reservations back. Authoritative failures propagate.
+- Required shortage tasks/activity, FMS successors and PDI activity are awaited inside the transaction; shortage WhatsApp alone is best-effort after commit.
+- recordPayment retains unique OPY journal source, atomic payment/activity/GL, canonical parsed amount/reference/ISO date receipt payload and trusted actor. Optional external key owns durable replay; existing 3-argument CN calls join the transaction without nesting an idempotent wrapper. Payment API forwards header key, returns binding conflicts as 409, and acknowledges committed:true rather than inviting a payment retry.
+
+New fixes with observed vertical RED -> GREEN
+1. Another SKU's numeric NaN shortage was masked by rowToItem Number(...) || 0; automatic top-up could falsely notify PDI that the order was fully reserved. RED resolved instead of rejecting. GREEN validates all projected stock quantities and rolls top-up back on corrupt unrelated lines.
+2. Stock demand 0.0001 and 1.0004 was rounded down and admitted. RED 2 failed, overflow preservation case already passed. GREEN validates finite rounded output, strictly positive demand at stock precision, and precision mismatch with binary noise tolerance.
+3. Direct intake rounded 1.0004 to 1 before admission. RED 1 failed / 5 preservation cases passed. GREEN uses the same quantity validator before persisting direct order demand. Quotation corrupt-demand cases also assert source claim rollback.
+4. Own-order exclusion hid NaN/Infinity/negative/over-demand reservedQty and stock check silently overwrote it. RED 4 failed. GREEN validates own reservation and consumed bounds before writes.
+5. Stock check overwrote NaN/Infinity/negative/over-demand shortageQty. RED 4 failed. GREEN validates own shortage before any reservation write.
+
+Executed checks (DB-free)
+- Inspected tests/orders-unit.vitest.config.ts: environment node, setupFiles [], ONLY tests/orders-unit.test.ts and tests/orders-payment-api.unit.test.ts. Persistence, tenant, stock policy, GL/FMS/tasks/provider boundaries are mocked; no default dotenv setup.
+- Initial actual-tree baseline: node node_modules/vitest/vitest.mjs run --config tests/orders-unit.vitest.config.ts -> 2 files / 42 tests passed.
+- Ran each named tracer RED before its production fix; full GREEN after each slice: 43, 46, 52, 56, then 60 passing tests.
+- Final exact command: node node_modules/vitest/vitest.mjs run --config tests/orders-unit.vitest.config.ts -> 2 files / 60 tests passed, 1.81s.
+- node node_modules/eslint/bin/eslint.js src/lib/orders/orders.ts 'src/app/api/orders/[orderId]/payment/route.ts' tests/orders-unit.test.ts tests/orders-payment-api.unit.test.ts tests/orders-domain.real.test.ts -> exit 0.
+- In-memory TypeScript createProgram rooted at the above five files, repository tsconfig aliases/options, noEmit:true and incremental:false -> Diagnostics: 0, exit 0. Dependency graph included; no compiler artifacts.
+- git diff --check -- src/lib/orders/orders.ts src/app/api/orders -> exit 0 (existing LF/CRLF warnings only).
+- Source/diff self-review done; parent independent review remains required.
+
+Real coverage prepared but NOT executed here
+- tests/orders-domain.real.test.ts keeps existing replay/conflict/equal-installment/CN outer rollback/concurrent reservation/cancel/FIFO/fault cases.
+- Added actual-PG readback regressions for corrupt own reservation (NaN/negative/over-demand) and another SKU's NaN shortage rolling automatic top-up back.
+- Parent must inspect tests/orders-domain.real.vitest.config.ts and guarded tests/local-isolated setup, then run this suite serially on the approved disposable backend. Unit mock transaction rollback does not prove actual driver concurrency/atomicity.
+
+Exact unresolved integration boundary observed
+- src/lib/inventory/ledger.ts: recordMovement currently calls afterTenantCommit(() => recheckReceivedSkus([input.sku])) around line 295; recordMovementsBulk uses afterTenantCommit around line 366. recheckReceivedSkus around lines 310-316 catches/logs recheck errors. This violates required atomic stock-in + Orders top-up/PDI work: Orders now propagates faults, but these callers defer/suppress them. Stock-domain owner must await rechecks inside the same tenant transaction and propagate failure (or implement explicitly accepted durable recovery), with rollback tests. Not edited because outside Orders ownership.
+- src/lib/pdi/pdi.ts: noteStockAvailable awaits its DB writes and does not itself catch them; stale best-effort comment around lines 314-317 is outside this ownership. Other PDI writers are not certified by this continuation.
+- Real payment receipt/GL rollback/concurrency and stock races remain parent acceptance; global competing writers, financial historical source recovery, migration preparation and final whole-tree gates are not certified here.

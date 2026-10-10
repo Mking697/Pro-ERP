@@ -1,0 +1,309 @@
+SECOND independent cross-domain source/coverage review — 2026-10-09
+Baseline HEAD inspected: d79673041258ea324cff032d4aef23750200d43a (dirty main).
+Verdict: NOT final approval. Domain agents were editing while inspected; several API
+replay gaps closed during this review. Reinspect exact final source/tests before gating.
+READ-ONLY inspection only: no tests, DB queries, installs, env/credential reads,
+production/schema application, commits, or agent restarts. Only this report written.
+Read checkpoint, portable finding/tracker/transaction/idempotency/stock contracts and
+local infrastructure/finance resume evidence. Historical passes are not current passes.
+
+HIGH-PRIORITY REMAINING SIBLING PATHS / ACTIONABLE FINDINGS
+
+R1 [P1 DATA-01/07] Debit-note bill application bypasses the bill payment cap.
+Owner: Finance.
+src/lib/accounts/debitNotes.ts:475-482 checks vendor and Issued status, but :495-535
+spends note balance and directly inserts billPayments without comparing amount with
+billDetail.bill.amount - billDetail.totalPaid. In contrast payables.ts:474-478 caps
+cash payments. A fully paid bill can receive another valid DN payment; two different
+notes can exceed the same bill even though the common lock serializes both commands.
+Required: same remaining-payable policy for EVERY billPayments writer, under admission;
+regress cash-vs-DN and DN-vs-DN plus already-paid bill, rollback usage/payment/GL together.
+CN application is likewise a direct orderPayments writer (creditNotes.ts:466-492), not
+a call to recordPayment: parent must inventory this path independently, not infer its
+activity/GL behavior from the nested three-argument Orders regression.
+
+R2 [P1 DATA-03/04] Destructive FMS reset changes the FG-writer election.
+Owner: Stock/PPC/FMS; parent must assign companion reset.ts explicitly.
+src/lib/fms/reset.ts:20-26 deletes templates/runs via two independent ordinary queries,
+without tenant lock. hasFmsLine (engine.ts:735-742) elects the output writer purely by
+run existence; completePlan (plans.ts:608-627) writes FG when no run remains. Complete
+a Line stock action while its plan is In_Production, reset FMS, then completePlan:
+the historical Line stock remains but the evidence suppressing PPC output is gone.
+Lock alone does not fix this sequential duplicate-output case. Guard reset against
+real linked production/history or retain durable output ownership/event identity.
+Regress sequential reset-after-Line-output and reset-vs-start/complete, not only normal
+single-writer flow. This is a SECOND stock invariant companion, not a THIRD restart.
+
+R3 [P1 DATA-04] Maintenance can overwrite an atomically completed FMS run.
+Owner: Stock/PPC/FMS + parent-assigned narrow maintenance companion.
+src/lib/maintenance/maintenance.ts:192-219 reads Pending then later unconditionally
+sets Paused, without common admission; :316-324 and :476-479 can restore Pending from
+stale Paused reads. If completeFmsStep commits between those reads/writes, maintenance
+can clobber the terminal state; later resumption/completion can repeat the stock action.
+Required: serialize these FMS status writers and conditional transitions with request/
+activity work. Regression force breakdown/resolve/cancel versus stock-step completion.
+Leave reassignment (leave/reassignment.ts:58,103) and recomputeRunTat(engine.ts:247-268)
+are additional assignment/TAT writers to inventory; their broader OPS acceptance stays
+THIRD, but assignee authorization must not rely on an uncontrolled stale read.
+
+R4 [P1 DATA-03/04] Stock-in required auto-reservation work is still nondurable.
+Owner: Stock/PPC/FMS + Orders, parent owns composition decision.
+src/lib/inventory/ledger.ts:295,366 defers recheckReceivedSkus until commit; :310-316
+catches all recheck failures and reports movement success. This is DB reservation/PDI
+work, not an external notification. No durable retry intent exists. A new tenant
+mutation may acquire admission after stock-in commits but before the recheck, spending
+free stock ahead of older unmet Orders; failure can strand the shortfall indefinitely.
+Required: if automatic/FIFO successor behavior is required, perform it in outer work
+or persist recoverable work atomically. An afterTenantCommit Set is not an outbox.
+Orders direct recheck now propagates errors and locks correctly; the enclosing ledger
+caller still swallows them. Real stock tests mock recheck, so do not cover this seam.
+
+R5 [P1 DATA-04] Standalone indent receipt and cancellation bypass PO lifecycle.
+Owner: Purchase/receipts.
+src/lib/inventory/indents.ts:251-260 permits cancel of Ordered/Partially_Received indent
+unless fully Received; linked PO line/header are not repaired. :277-344 accepts any
+OPEN indent without its PO follow-up gate or header completion/invoice update.
+Public inventory/indents/[indentId]/receive/route.ts:17,31-37 exposes that entry with
+INVENTORY_TXN. purchase/orders.ts:655-657 separately requires follow-up, and :677-686
+only updates PO completion if called through PO entry. A direct receive can finish a
+PO-linked indent while PO remains Open; direct cancellation strands its claim.
+Required: choose explicit policy (reject direct operations on linked claims or route
+through shared internal PO lifecycle); preserve partial receipts with distinct keys.
+Regression direct-vs-PO receipt, linked cancellation, follow-up bypass, last-line status
+consistency and concurrent approval/PO claim/receive/cancel. Tenant lock is necessary
+but not sufficient to make the siblings semantically consistent.
+
+R6 [P1 DATA-01/04/05] Replay wiring inventory is incomplete, but changing rapidly.
+Owner: Finance and Stock/PPC/FMS for their own APIs; parent tracks each endpoint.
+At final targeted read:
+- accounts/debit-notes/[debitNoteId]/apply/route.ts:26-29 and receive/route.ts:25-28
+  still ignore request key; repeated partial spend can create another usage/GL event.
+- accounts/ledger/journal-entries/route.ts:36-47 still ignores key; sourceId remains
+  empty by design (ledger.ts:440-445), so same request creates another journal.
+- CN apply NOW has root receipt wrapper (route.ts:29-34); bill payment NOW wrapped
+  (bills/[billId]/payments/route.ts:31-34). Do not report earlier missing wiring as final.
+- Both FMS instances and step completion NOW pass getMutationKey; their catch still
+  maps all errors to 400 (instances:34-36, steps/complete:36-38), not conflict 409.
+- PPC create/start/complete keyed; PPC PATCH :76-81 and deviation routes similarly
+  collapse typed mutation conflict to 400. Correct mapping is part of API acceptance.
+- Manual inventory movements and opening import have no durable request key.
+- Invoice/bill issue are serialized but repeated already-issued command returns 400,
+  not replay DTO. Distinguish natural guarded idempotence from durable response replay.
+Required: parsed canonical payload + trusted actor, root receipt wrapper, explicit
+optional/default/date DTO projection, conflict 409, JSON first/replay equivalence tests.
+No key remains explicitly NO replay guarantee; do not promise duplicate protection for
+manual/import/payment callers that do not send it. Do not dedupe by amount.
+
+R7 [P1 DATA-04/05] Most API catches misreport confirmed-commit failures as rollback.
+Owner: all domain owners; parent coordinates response contract.
+Orders payment route.ts:36-37 correctly returns committed result/warning. Finance bill
+payment route.ts:36-41, inventory receipt route.ts:39-47, PPC PATCH :76-81, FMS and
+purchase catches generally return 400 for foundation AggregateError committed:true.
+Cleanup can fail AFTER durable commit even with no external effects. A generic error
+encourages a new-key/no-key retry and duplicates genuine partial receipts/payments.
+Required: surface committed result/status with safe warning; never blindly retry.
+For void mutations return known committed success rather than pretending no effect.
+Regression injected after-commit/cleanup failure at public endpoint, receipt survives,
+same-key replay is stable, UI/caller does not create another event with a fresh key.
+
+R8 [P1 DATA-04/05] DN follow-up mixes required DB work and external sends before commit.
+Owner: Finance.
+src/lib/accounts/debitNotes.ts:386-390 awaits notifyDebitNoteIssued INSIDE the new outer
+transaction; :194-207 creates required follow-up Tasks but catches their failures;
+:210-217 sends WhatsApp before COMMIT. Outer receipt/result/commit failure can roll back
+note and Tasks after message escaped; a task error can be swallowed (mock/application
+failure) or poison the PG transaction (SQL failure). Split required Task persistence
+from best-effort external delivery; await required DB work, defer messages to commit.
+Regress task insertion failure and receipt/outer failure AFTER notification point.
+
+R9 [P1 DATA-04] PO PDF/upload executes inside the new transaction with false recovery text.
+Owner: Purchase/receipts.
+src/lib/purchase/orders.ts:417-434 calls generatePoPdf during createPurchaseOrder outer
+work. That path renders/uploads Blob then updates PO attachment. Network work holds
+tenant admission and can leave an orphan Blob if DB/receipt/COMMIT fails afterwards.
+Catch text :432 claims PO exists/reserved and tells retry-by-ID, but transaction rollback
+means that ID may not exist. Existing comments describe old HTTP partial commits.
+Required: prepare/upload before narrow DB work or a deliberate recoverable attachment
+workflow with clear semantics/cleanup, without silently losing required attachment.
+Regress renderer/upload/attachment update/receipt faults; honest committed vs rolled
+back response. Static review did not invoke Blob or generate a PDF.
+
+R10 [P1 DATA-05] COA seeding is a competing writer outside common admission/savepoints.
+Owner: Finance.
+src/lib/accounts/ledger.ts:174-191 is called from ordinary listChartOfAccounts (:197),
+getTrialBalance (:476), createAccount (:238), manual journal (:428) as well as inside
+postJournalEntry (:303). Seeding reads missing codes, inserts and catches 23505 without
+savepoint. An unlocked GET seeder can win while a locked financial transaction inserts;
+catching SQL uniqueness cannot repair aborted PG transaction, later work fails 25P02.
+Required: common serialized seeding or conflict-safe INSERT, and savepoint for recoverable
+SQL errors. Add concurrency GET-seeder-vs-finance write and real SQL failure regression.
+CN/DN numbering batches already use transaction adapter savepoints; dispatch uses an
+explicit db.transaction retry region. Do not remove these when fixing siblings.
+
+R11 [P1 DATA-02 schema gate] Source and local uniqueness are different invariants.
+Owner: Dispatch/TMS + parent migration owner.
+src/db/schema/dispatch.ts:72-76 specifies unconditional UNIQUE(org_id,shipment_id);
+tests/local-isolated/migrate.cjs:28-30 creates PARTIAL index WHERE shipment_id<>'' and
+preflights only nonempty IDs. Same name is not equivalent schema; source duplicate
+preflight includes blanks. Local passing fixture tests cannot certify source migration,
+fresh install or upgrade. Parent must decide blank-history policy, reconcile duplicate
+stock/consumption/links (never auto-delete), generate one reviewed migration after all
+schemas settle, and exercise exact intended index locally. No production preflight was
+run by this review. mutation_receipts likewise remains local-only DDL pending migration.
+
+R12 [P1 DATA-04 sibling coverage] Remaining outside-lock successor/stock-admission seams.
+Owner: parent assigns narrowly; Orders/Stock coordinate required-successor convention.
+pdi/pdi.ts:252-289 validates stock outside common admission; writes Pass then activity
+then catches ORDER_PDI_PASSED start failure. Orders automatic noteStockAvailable joins
+its own transaction, but public inspect does not. Force stock-check/cancel/inspect and
+successor insert failure: required state must not vanish behind business success.
+leads/quotations.ts:663-665 still catches its FMS successor after acceptance; inventory
+items/import/route.ts:88-111 creates Items before opening movements, with no outer
+command, so stock validation/write failure leaves imported items without Opening stock;
+retry skips duplicate item and cannot reconstruct lost movement from created rows.
+These are explicit parent coverage decisions, not implied exemptions because current
+agents own only the headline files. FMS template delete guard/read and template removal
+are another nonserialized definition seam (templates.ts:341-357); inspect use with
+required start/successor flow before declaring all FMS lifecycle commands atomic.
+
+COMPOSITION / AUTHORIZATION / DTO CONTRACT FINDINGS
+- Shared runIdempotentTenantMutation explicitly refuses ambient transaction (:126).
+  Current legitimate patterns: root API receipt -> service runInTenantTransaction join;
+  keyed domain root -> same method without key -> join. PO receive -> receiveIndent
+  WITHOUT key; production start -> startFmsInstance WITHOUT key; FMS chained starts
+  WITHOUT key. Retain these, never pass outer key into nested service receipt wrappers.
+- JSON receipt validation happens for payload before admission and result before commit,
+  including no-key root calls. Current Plan/FMS/domain DTOs stringify timestamps; shallow
+  spread is safe ONLY while nested members are already JSON DTOs. Never cast Date-bearing
+  DB rows/undefined through any; explicit projection and stable operation version needed.
+  Finance APIs currently JSON.parse(JSON.stringify(parsed.data)) to omit undefined: test
+  canonical effective defaults (absent vs empty reference, rounding/date normalization),
+  not only malformed-key rejection. This serialization is not domain validation.
+- Replay skips callback authorization/state checks. Basic live module/session guards
+  are before receipt entry (preserved FIRST). Deviation configured approver authorization
+  occurs inside work (deviation.ts:144-147); FMS assignee check likewise inside work
+  (engine.ts:343-345). A same actor's receipt can replay after reassignment/config change.
+  This does NOT repeat stock, but parent must explicitly decide whether returning prior
+  authorized success is allowed or current resource authorization must run pre-replay.
+  Bind tenant to guarded context; an actor string is not independent authentication.
+- Public Orders payment mode excludes Credit_Note (route.ts:9); public bill payment
+  excludes Debit_Note (route.ts:11). Internal note modes must remain unreachable via
+  public raw DTO. Do not weaken the enum to make integration tests pass.
+- Public manual movement uses item canonical UOM and named fields only (route.ts:34-57),
+  never forwards exclusion fields; PPC passes server-loaded planId; Dispatch passes
+  server-loaded order.id. Current exclusions are ownership-checked but not permissions:
+  the helper cannot tell arbitrary same-tenant caller IDs from legitimate owners.
+  Regress public body excludeOrderId/excludePlanId/available spoof and foreign IDs.
+- Legacy available arg is now ignored; actionRunner's old local map is redundant, not
+  an admission bypass because recordMovement checks authoritative free stock. New
+  InsufficientAvailableStockError differs from old InsufficientStockError: manual/PPC
+  catches still need deliberate translation. Do not claim failure-open admission here.
+- Existing Invoice/Bill GL log-and-success catches are gone in current implementation;
+  issueInvoice/issueBill await postJournalEntry in tenant transaction. Payment source
+  IDs now unique individual payment IDs. Stale 'best-effort' comments remain misleading.
+- Ledger immutable source recovery rejects differing lines/duplicate history but does
+  not document migration/reconciliation of old order/bill-level payment aliases. Parent
+  must define audited recovery policy; unique new payment IDs do not repair old postings.
+
+PARENT-OWNED ENTRYPOINT INVENTORY (IMPLEMENTED SOURCE != EXECUTED/APPROVED)
+
+Money/GL — Finance owner:
+  create/update/issue Invoice; create/update/issue Bill; recordBillPayment;
+  create/apply/refund CN; create/apply/receive DN; createExpenseEntry;
+  topUpPettyCash/recordPettyCashExpense; postJournalEntry/createManualJournalEntry;
+  createAccount and all read-triggered COA seeders. Orders recordPayment is separate
+  Orders owner. Direct CN/DN usage/payment/journal batches remain separate writers.
+  Source common lock covers primary finance services; missing sibling cap/replay/effect
+  work listed R1/R6-R10. No global Finance acceptance proven.
+
+Reservations/movements — Orders + Stock/PPC/FMS + Dispatch owners:
+  Orders quotation/direct item creation, workPaymentReview, approveCreditHold,
+  runStockCheck, commitDispatch, cancelOrder, setTransportArrangedBy,
+  recheckShortfallForSku/topUpOneOrderForSku;
+  PPC createPlans/reallocatePlan/cancelPlan/startProduction/completePlan;
+  ledger recordMovement/recordMovementsBulk (Manual/Opening/IQC/Deviation/Indent/
+  Production/FMS sources); Dispatch direct ledger Out + consumed increment;
+  FMS startFmsInstance/completeFmsStep/emitFmsEvent and runLedgerMovementAction.
+  Primary writers now share admission and central policy. Companion reset/maintenance/
+  post-commit recheck/import/PDI remain explicit inventory rows, not presumed covered.
+
+Shipments — Dispatch/TMS owner:
+  planShipment exact-line allocation; confirmLoadingDock + required successors;
+  followUpShipment; confirmDispatch; markDispatched/markDelivered + required successors.
+  Source confirms lock-before-reads, guarded increment and shipment claim, retry savepoint,
+  and tenant/order/Issued filtered invoice query. Same-shipment natural replay returns
+  first dispatch regardless changed actor/input (dispatch.ts:455-457); intentionally
+  distinguish this from durable caller-key conflict behavior. Add cancelled-order-vs-TMS
+  allocation/loading tests: planShipment checks PDI/transport but not order status.
+
+Receipts/PO — Purchase owner:
+  createPurchaseOrder/resolvePoLines/indent claim; markFollowUpDone;
+  receivePurchaseOrderLine; approve/cancel/receive Indent; createInwardEntry/
+  submitQualityCheck; request/approve/reject Deviation; generatePoPdf attachment writer.
+  Primary command roots lock, supplied keys replay via JSON DTOs, required Inward/Indent
+  successor starts join. Standalone linked lifecycle and external PDF work remain R5/R9.
+
+Administrative deletion companions — parent:
+  FMS reset/template removal; deleteOrganization stock/money/reservation/receipt deletes
+  (registry.ts ordinary db.batch, no common admission). Organization FK may force a
+  concurrent transaction rollback, but domain-wide destructive synchronization must be
+  consciously inventoried, not inferred from batch atomicity. Do not touch production.
+
+ACCEPTANCE TEST COVERAGE INVENTORY — STATIC, NONE RUN BY THIS REVIEW
+
+DATA-01: Finance unit contains usage/payment/GL rollback for all four spend forms.
+  Finance real finance-atomicity currently tests generic journals only (nonfinite,
+  immutable mismatch/empty source, concurrent identical journal). Imports of note
+  functions are NOT tests. Missing real 60+60/100 apply-refund and apply-receive,
+  usage/payment/GL fault + retry + key replay for each form, foreign IDs, R1 target cap.
+DATA-02: dispatch-domain includes same shipment, separate shared-line shipments,
+  exact-line guard, fault rollback, real gate-pass SQL collision and both Draft/Issued
+  insertion orders. dispatch-unit covers successor and claim faults. Real seam mocks
+  Orders DTO/user/calendar/engine; needs actual cross-domain source and intended schema
+  rerun. No upgrade/fresh source-index parity proof (R11).
+DATA-03: stock-policy helper historical/current infrastructure evidence exists;
+  Orders real covers stock-check contention/cancel/FIFO top-up and policy fault;
+  stock-workflow real covers ledger legacy available, bulk duplicate-SKU demand, manual
+  Out contention and nested commit effects. No real Order-vs-PPC-vs-FMS-vs-Dispatch race
+  using all actual services; add one shared-stock multi-domain scenario and R4 behavior.
+DATA-04: Stock workflow unit covers PPC/FMS failures/replay/successors, but real file
+  currently exercises ledger only, not real plan/FMS lifecycle. Receipt real currently
+  has two tests: indent final-state fault and PO line insert fault. Missing real keyed
+  partial receipt concurrency, approval/deviation contention, IQC rollback/replay,
+  PO competing indent claim and R2/R3/R5/R9 destructive/linked/external seams.
+DATA-05: Orders real payment replay/distinct keys/actor conflicts/GL-fault/nested CN
+  compatibility exists. Finance units cover issue and payment GL rollback. Missing real
+  invoice/bill concurrent issue/edit-vs-issue, genuine equal payments + unique sources,
+  receipt/GL atomicity and old-alias reconciliation; direct CN path independently tested.
+DATA-07: TMS real allocation contention exists. Finance unit admission assertions are
+  not PostgreSQL invoice/petty contention proof. Missing real split-invoice create-vs-
+  update/cap, petty cash simultaneous spends, all billPayments competitors (R1).
+
+Safe command inventory for parent (NOT execution evidence):
+  cd G:/Pro-ERP
+  node node_modules/vitest/vitest.mjs run --config tests/finance-unit.vitest.config.ts
+  node node_modules/vitest/vitest.mjs run --config tests/orders-unit.vitest.config.ts
+  node node_modules/vitest/vitest.mjs run --config tests/dispatch-unit.vitest.config.ts
+  node node_modules/vitest/vitest.mjs run --config tests/stock-workflow-unit.vitest.config.ts
+  node node_modules/vitest/vitest.mjs run --config tests/receipt-domain.unit.vitest.config.ts
+Each selected unit config inspected: setupFiles:[], precise includes. Before executing
+new changes recheck complete DB/provider mocks; unit filename alone is not isolation.
+Real suites only AFTER parent confirms explicit disposable guard + prerequisite:
+  finance-atomicity.vitest.config.ts
+  orders-domain.real.vitest.config.ts
+  dispatch-domain.vitest.config.ts
+  stock-workflow.real.vitest.config.ts
+  receipt-domain.real.vitest.config.ts
+Run each with node node_modules/vitest/vitest.mjs run --config tests/<config>, approved
+PRO_ERP_LOCAL_TESTS=1 and parent-owned local credential FILE PATH per infrastructure
+handoff (do not read/print credentials). Never default npm test or generic DATABASE_URL.
+Infrastructure handoff discloses intermittent mutation suite acquisition timeouts;
+focused pass is not a full primitive/domain suite pass. Parent owns diagnosis and rerun.
+After all owners finish: actual final source inspection + safe test matrix, type/lint/
+build/diff (with appropriate isolated build configuration) + independent final review.
+No SECOND finding closes merely because these planned commands exist.
+
+Review completion: static source/diff/test/config inspection performed; findings grounded
+in actual file reads. In-flight endpoints re-read immediately before report; FMS and CN
+apply replay wiring had advanced, reflected above. Only report authored. No acceptance,
+full test pass, deployment or production schema state asserted.

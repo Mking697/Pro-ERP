@@ -1,6 +1,5 @@
-import { cookies } from "next/headers";
 import { notFound, redirect } from "next/navigation";
-import { verifySession, SESSION_COOKIE } from "@/lib/auth/session";
+import { getLiveSession } from "@/lib/auth/live-session";
 import PageHeader from "@/components/page-header";
 import {
   canSeeEveryone,
@@ -23,9 +22,7 @@ export default async function ReportPage({
   const { report: reportId } = await params;
   const sp = await searchParams;
 
-  const cookieStore = await cookies();
-  const token = cookieStore.get(SESSION_COOKIE)?.value;
-  const session = token ? await verifySession(token) : null;
+  const session = await getLiveSession();
   if (!session) redirect("/login");
 
   const definition = getReport(reportId);

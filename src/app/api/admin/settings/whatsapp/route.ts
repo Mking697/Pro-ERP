@@ -3,7 +3,7 @@ import { z } from "zod";
 import { requireRole } from "@/lib/auth/guard";
 import { getSetting, upsertSetting } from "@/lib/settings";
 
-const DEFAULT_BASE_URL = "https://chatxflow.online";
+import { approvedChatXFlowBaseUrl, DEFAULT_CHATXFLOW_BASE_URL as DEFAULT_BASE_URL } from "@/lib/chatxflow";
 
 function maskToken(token: string): string {
   if (token.length <= 8) return "••••••••";
@@ -28,29 +28,10 @@ export async function GET() {
   });
 }
 
-/**
- * Whether a base URL is somewhere this server may be pointed at.
- *
- * The saved value goes straight into `fetch()` (src/lib/chatxflow.ts), and an Admin can
- * fire that request on demand through the "test message" endpoint — so an unvalidated
- * box here is a server-side request forgery: aim it at `http://169.254.169.254/…` or an
- * address inside the hosting network and read the answer back out of the error message.
- *
- * Rather than pinning one hostname — an organization may legitimately run ChatXFlow on
- * its own domain — this requires HTTPS and refuses the addresses that only ever mean
- * "somewhere inside the infrastructure".
- */
-const PRIVATE_HOST = /^(localhost$|127\.|0\.0\.0\.0$|10\.|192\.168\.|169\.254\.|172\.(1[6-9]|2\d|3[01])\.|\[?::1\]?$|\[?f[cd][0-9a-f]{2}:|.*\.internal$|.*\.local$)/i;
-
+/** Save-time policy matches the send-time policy; custom host DNS and redirects
+ * are not trusted egress paths. */
 function isSafeBaseUrl(value: string): boolean {
-  let url: URL;
-  try {
-    url = new URL(value);
-  } catch {
-    return false;
-  }
-  if (url.protocol !== "https:") return false;
-  return !PRIVATE_HOST.test(url.hostname);
+  return approvedChatXFlowBaseUrl(value) !== null;
 }
 
 const bodySchema = z.object({
@@ -62,7 +43,7 @@ const bodySchema = z.object({
     .default(DEFAULT_BASE_URL)
     .refine((v) => !v.trim() || isSafeBaseUrl(v.trim()), {
       message:
-        "Base URL ek https:// address hona chahiye, aur internal network ka pata nahi ho sakta.",
+        "Base URL sirf https://chatxflow.online hona chahiye; custom hosts allowed nahi hain.",
     }),
 });
 
@@ -83,7 +64,7 @@ export async function POST(request: Request) {
 
   const writes = [
     upsertSetting("CHATXFLOW_PHONE_NUMBER", parsed.data.phoneNumber),
-    upsertSetting("CHATXFLOW_BASE_URL", parsed.data.baseUrl.trim() || DEFAULT_BASE_URL),
+    upsertSetting("CHATXFLOW_BASE_URL", approvedChatXFlowBaseUrl(parsed.data.baseUrl)!),
   ];
 
   // Only overwrite the token if the admin actually typed a new one — the field is

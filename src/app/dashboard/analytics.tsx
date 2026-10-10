@@ -1,21 +1,18 @@
 import Link from "next/link";
+import { readPerf04ReportRows, readPerf04TaskInputs, readPerf04Performance, readPerf04Recurring, readPerf04Boms, readPerf04Payroll, type Perf04PerformanceData } from "@/lib/perf04-report-queries";
 import type { SessionPayload } from "@/lib/auth/session";
-import { listTasks, type TaskRecord } from "@/lib/tasks";
+import { cookies } from "next/headers";
+import { requireSession } from "@/lib/auth/guard";
 import { listUsers } from "@/lib/auth/users";
-import { listRecurringTasks } from "@/lib/recurringTasks";
-import { listInwardEntries, listFailureLog, listImsInward } from "@/lib/inward";
 import { getFrequencyLabel } from "@/lib/frequency";
-import { formatScore, getScoreColorClass } from "@/lib/mis";
-import { listAllFmsRuns, type FmsRunRecord } from "@/lib/fms/engine";
+import { computeMisBreakdown, formatScore, getScoreColorClass } from "@/lib/mis";
 import {
   RANGE_PRESETS,
   resolveRange,
   filterTasks,
-  filterFmsRuns,
   inRange,
   bucketByDate,
   countBy,
-  perUserScores,
   taskTotals,
   type DateRange,
 } from "@/lib/analytics";
@@ -29,7 +26,6 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import ScoreBreakdown from "./score-breakdown";
 import DoerScoreDialog from "./doer-score-dialog";
 import SendReportsButton from "./send-reports-button";
 import { cn } from "@/lib/utils";
@@ -37,18 +33,6 @@ import DateRangeFilter from "./date-range-filter";
 import { getT } from "@/lib/i18n/server";
 import type { Translator } from "@/lib/i18n";
 import { getInventorySnapshot, itemsNeedingReorder } from "@/lib/inventory/service";
-import { listIndents } from "@/lib/inventory/indents";
-import { listBoms } from "@/lib/inventory/bom";
-import { listPlans } from "@/lib/inventory/plans";
-import { listAllLeaves } from "@/lib/leave/leaves";
-import { listLeads } from "@/lib/leads/leads";
-import { listOrders } from "@/lib/orders/orders";
-import { listInspections } from "@/lib/pdi/pdi";
-import { listShipments } from "@/lib/tms/tms";
-import { listInvoices } from "@/lib/accounts/accounts";
-import { listBills } from "@/lib/accounts/payables";
-import { listDispatches } from "@/lib/dispatch/dispatch";
-import { listPayslipsForUser } from "@/lib/payroll/payroll";
 import {
   canSeeReport,
   getReport,
@@ -58,6 +42,21 @@ import {
 } from "@/lib/reports";
 import { runWithTenant, type TenantContext } from "@/lib/tenant";
 import { istDayKey } from "@/lib/timestamp";
+
+const PERFORMANCE_PAGE_COOKIE = "perf04-performance-page";
+const rangeIdentity = (range: DateRange) => `${range.key}:${istDayKey(range.from)}:${istDayKey(range.to)}`;
+
+/** Pagination state is cosmetic only; every render still applies live auth and tenant filters. */
+async function setPerf04PerformancePage(identity: string, form: FormData) {
+  "use server";
+  const guard = await requireSession();
+  if (!guard.ok || identity.length > 100) return;
+  const raw = String(form.get("page") ?? "0");
+  const page = /^\d+$/.test(raw) ? Math.min(1000, Number(raw)) : 0;
+  (await cookies()).set(PERFORMANCE_PAGE_COOKIE, JSON.stringify({
+    orgId: guard.session.orgId, userId: guard.session.userId, identity, page,
+  }), { httpOnly: true, sameSite: "lax", secure: process.env.NODE_ENV === "production", path: "/", maxAge: 3600 });
+}
 
 const SERIES = [
   "var(--chart-series-1)",
@@ -192,6 +191,16 @@ export default async function Analytics({
   };
   const needs = (id: string) => shows(id);
 
+  let performancePage = 0;
+  if (needs("performance")) {
+    try {
+      const value = JSON.parse((await cookies()).get(PERFORMANCE_PAGE_COOKIE)?.value ?? "null");
+      if (value?.orgId === session.orgId && value?.userId === session.userId && value?.identity === rangeIdentity(range)) {
+        performancePage = Number.isInteger(value.page) ? Math.min(1000, Math.max(0, value.page)) : 0;
+      }
+    } catch { /* Missing/malformed cosmetic pagination never affects authorization. */ }
+  }
+
   // Only read the modules this viewer is actually allowed to see — every extra read is
   // wasted work for no one's benefit.
   //
@@ -209,30 +218,30 @@ export default async function Analytics({
   // bad query, a genuinely empty module) leaves the rest of the report standing.
   const read = () =>
     Promise.all([
-      needs("tasks") || needs("delegation") || needs("performance")
-        ? safe(() => listTasks())
+      needs("tasks") || needs("delegation")
+        ? safe(() => readPerf04TaskInputs(range, session.userId, needs("delegation")))
         : null,
-      needs("performance") || needs("delegation")
+      needs("delegation")
         ? listUsers().catch(() => [])
         : Promise.resolve([]),
-      needs("recurring") ? safe(() => listRecurringTasks()) : null,
-      needs("inward") ? safe(() => listInwardEntries()) : null,
-      needs("iqc") ? safe(() => listFailureLog()) : null,
-      needs("iqc") || needs("ims") ? safe(() => listImsInward()) : null,
+      needs("recurring") ? safe(() => readPerf04Recurring(scope, session)) : null,
+      needs("inward") ? safe(() => readPerf04ReportRows("inward", range, scope, session)) : null,
+      needs("iqc") ? safe(() => readPerf04ReportRows("failures", range, scope, session)) : null,
+      needs("iqc") || needs("ims") ? safe(() => readPerf04ReportRows("ims", range, scope, session)) : null,
       needs("inventory") || needs("finished-goods") ? safe(() => getInventorySnapshot()) : null,
-      needs("indents") ? safe(() => listIndents()) : null,
-      needs("bom") ? safe(() => listBoms()) : null,
-      needs("ppc") ? safe(() => listPlans()) : null,
-      needs("performance") ? safe(() => listAllFmsRuns()) : null,
-      needs("leave") ? safe(() => listAllLeaves()) : null,
-      needs("leads") ? safe(() => listLeads()) : null,
-      needs("orders") ? safe(() => listOrders()) : null,
-      needs("pdi") ? safe(() => listInspections()) : null,
-      needs("tms") ? safe(() => listShipments()) : null,
-      needs("accounts") ? safe(() => listInvoices()) : null,
-      needs("accounts") ? safe(() => listBills()) : null,
-      needs("dispatch") ? safe(() => listDispatches()) : null,
-      needs("payroll") ? safe(() => listPayslipsForUser(session.userId)) : null,
+      needs("indents") ? safe(() => readPerf04ReportRows("indents", range, scope, session)) : null,
+      needs("bom") ? safe(() => readPerf04Boms(scope, session)) : null,
+      needs("ppc") ? safe(() => readPerf04ReportRows("ppc", range, scope, session)) : null,
+      needs("performance") ? safe(() => readPerf04Performance(range, performancePage)) : null,
+      needs("leave") ? safe(() => readPerf04ReportRows("leave", range, scope, session)) : null,
+      needs("leads") ? safe(() => readPerf04ReportRows("leads", range, scope, session)) : null,
+      needs("orders") ? safe(() => readPerf04ReportRows("orders", range, scope, session)) : null,
+      needs("pdi") ? safe(() => readPerf04ReportRows("pdi", range, scope, session)) : null,
+      needs("tms") ? safe(() => readPerf04ReportRows("tms", range, scope, session)) : null,
+      needs("accounts") ? safe(() => readPerf04ReportRows("invoices", range, scope, session)) : null,
+      needs("accounts") ? safe(() => readPerf04ReportRows("bills", range, scope, session)) : null,
+      needs("dispatch") ? safe(() => readPerf04ReportRows("dispatch", range, scope, session)) : null,
+      needs("payroll") ? safe(() => readPerf04Payroll(range, session.userId)) : null,
     ]);
 
   const [
@@ -246,7 +255,7 @@ export default async function Analytics({
     allIndents,
     allBoms,
     allPlans,
-    allFmsRuns,
+    performance,
     allLeaves,
     allLeads,
     allOrders,
@@ -258,19 +267,14 @@ export default async function Analytics({
     payslips,
   ] = tenant ? await runWithTenant(tenant, read) : await read();
 
-  // Scoped after the cached read, never inside it. The cache holds the organization's raw
-  // rows, so two people with the same grants still share one set of sheet reads while
-  // seeing different slices — narrowing before the cache would have made the cache key
-  // per-person and multiplied the reads this page costs against a shared quota.
-  //
-  // Inventory is deliberately absent: stock on a shelf is a fact about the warehouse, not
-  // anybody's work, so there is no "my stock" to narrow it to.
-  const rules = scopeFor(allRules, "recurring", scope, session);
+  // SQL already applies the same range/ownership to thin report-only projections.
+  // Keep the registry scope pass as defense in depth; never truncate chart inputs.
+  const rules = allRules;
   const inward = scopeFor(allInward, "inward", scope, session);
   const failures = scopeFor(allFailures, "iqc", scope, session);
   const ims = scopeFor(allIms, "ims", scope, session);
   const indents = scopeFor(allIndents, "indents", scope, session);
-  const boms = scopeFor(allBoms, "bom", scope, session);
+  const boms = allBoms;
   const plans = scopeFor(allPlans, "ppc", scope, session);
   const leaveRecords = scopeFor(allLeaves, "leave", scope, session);
   const leads = scopeFor(allLeads, "leads", scope, session);
@@ -360,16 +364,16 @@ export default async function Analytics({
               data={[
                 {
                   label: "Active",
-                  value: (rules ?? []).filter((r) => r.Status === "Active").length,
+                  value: rules?.statuses.find(r => r.label === "Active")?.value ?? 0,
                   color: "var(--chart-good)",
                 },
                 {
                   label: "Paused",
-                  value: (rules ?? []).filter((r) => r.Status !== "Active").length,
+                  value: rules?.statuses.filter(r => r.label !== "Active").reduce((sum, r) => sum + r.value, 0) ?? 0,
                   color: "var(--chart-warning)",
                 },
               ]}
-              centerValue={String((rules ?? []).length)}
+              centerValue={String(rules?.statuses.reduce((sum, r) => sum + r.value, 0) ?? 0)}
               centerLabel="rules"
               emptyMessage={t("Koi recurring rule nahi hai.")}
             />
@@ -377,7 +381,7 @@ export default async function Analytics({
 
           <ChartFrame title={t("Frequency ke hisaab se")}>
             <BarChart
-              data={countBy(rules ?? [], (r) => getFrequencyLabel(r.Frequency)).map(
+              data={(rules?.frequencies ?? []).map(r => ({ label: getFrequencyLabel(r.frequency), value: r.value })).map(
                 (b, i) => ({ ...b, color: seriesColor(i) })
               )}
               emptyMessage={t("Koi recurring rule nahi hai.")}
@@ -563,12 +567,10 @@ export default async function Analytics({
             hint={t("Sirf active version ginti me hai.")}
           >
             <BarChart
-              data={boms
-                .filter((b) => b.status === "Active")
-                .slice(0, 10)
+              data={boms.active
                 .map((b, idx) => ({
                   label: b.productName,
-                  value: b.lines.length,
+                  value: b.lineCount,
                   color: seriesColor(idx),
                 }))}
               emptyMessage={t("Abhi koi BOM nahi hai")}
@@ -580,12 +582,12 @@ export default async function Analytics({
               data={[
                 {
                   label: "Active",
-                  value: boms.filter((b) => b.status === "Active").length,
+                  value: boms.statuses.find(b => b.label === "Active")?.value ?? 0,
                   color: "var(--chart-good)",
                 },
                 {
                   label: "Archived",
-                  value: boms.filter((b) => b.status !== "Active").length,
+                  value: boms.statuses.filter(b => b.label !== "Active").reduce((sum, b) => sum + b.value, 0),
                   color: "var(--chart-axis)",
                 },
               ]}
@@ -888,9 +890,7 @@ export default async function Analytics({
         >
           <ChartFrame title={t("Mahine ke hisaab se Net Pay")}>
             <BarChart
-              data={payslips
-                .filter((p) => inRange(p.createdAt, range))
-                .slice(0, 12)
+              data={payslips.history
                 .map((p, i) => ({ label: p.month, value: p.netPay, color: seriesColor(i) }))}
               emptyMessage={t("Is period me koi payslip nahi bani.")}
             />
@@ -899,17 +899,17 @@ export default async function Analytics({
           <ChartFrame title={t("Latest payslip — Gross vs Deduction")}>
             <DonutChart
               data={
-                payslips.length === 0
+                payslips.latest === null
                   ? []
                   : [
                       {
                         label: "Net Pay",
-                        value: payslips[0].netPay,
+                        value: payslips.latest.netPay,
                         color: "var(--chart-good)",
                       },
                       {
                         label: "Deduction",
-                        value: Math.max(0, payslips[0].grossPay - payslips[0].netPay),
+                        value: Math.max(0, payslips.latest.grossPay - payslips.latest.netPay),
                         color: "var(--chart-warning)",
                       },
                     ]
@@ -920,11 +920,9 @@ export default async function Analytics({
         </Section>
       )}
 
-      {shows("performance") && (
+      {shows("performance") && performance && (
         <PerformanceSection
-          tasks={tasks}
-          fmsRuns={filterFmsRuns(allFmsRuns ?? [], range)}
-          users={users}
+          data={performance}
           range={range}
           t={t}
         />
@@ -934,21 +932,16 @@ export default async function Analytics({
 }
 
 function PerformanceSection({
-  tasks,
-  fmsRuns,
-  users,
+  data,
   range,
   t,
 }: {
-  tasks: TaskRecord[];
-  fmsRuns: FmsRunRecord[];
-  users: Awaited<ReturnType<typeof listUsers>>;
+  data: Perf04PerformanceData;
   range: DateRange;
-  /** Passed down: this is a plain function, so it cannot await the request's locale. */
   t: Translator;
 }) {
-  const rows = perUserScores(users, tasks, fmsRuns);
-  const scored = rows.filter((r) => r.summary.score !== null);
+  const { rows, tasks, fmsRuns } = data;
+  const scored = data.charts.filter((r) => r.summary.score !== null);
 
   // The dates go back out as IST days, the same way they came in. `toISOString()` would
   // render an IST midnight as the previous day in UTC, so the downloaded CSV would cover
@@ -1055,11 +1048,16 @@ function PerformanceSection({
                     scoreColorClass={getScoreColorClass(r.summary.score)}
                     exportHref={doerExportHref(r.userId)}
                   >
-                    <ScoreBreakdown
-                      tasks={tasks.filter((t) => t.Assigned_To === r.userId)}
-                      fmsRuns={fmsRuns.filter((f) => f.Assigned_To === r.userId)}
-                      summary={r.summary}
-                    />
+                    <div className="space-y-3">
+                      <p>{t("Full score:")} {r.summary.penalty} {t("penalty")} / {r.summary.totalEvaluated} {t("evaluated")} = {formatScore(r.summary.score)}.</p>
+                      <p className="text-sm text-muted-foreground">{t("Recent evaluated details only: up to 20 tasks and 20 FMS steps. Use Excel export for the complete breakdown.")}</p>
+                      <Table>
+                        <TableHeader><TableRow><TableHead>{t("Task / Step")}</TableHead><TableHead>{t("Result")}</TableHead><TableHead>{t("Penalty")}</TableHead></TableRow></TableHeader>
+                        <TableBody>{computeMisBreakdown(tasks.filter(task => task.Assigned_To === r.userId), fmsRuns.filter(run => run.Assigned_To === r.userId)).map(detail => (
+                          <TableRow key={detail.id}><TableCell>{detail.label}</TableCell><TableCell>{detail.outcome}</TableCell><TableCell>{detail.penalty} / {detail.evaluated}</TableCell></TableRow>
+                        ))}</TableBody>
+                      </Table>
+                    </div>
                   </DoerScoreDialog>
                 </TableCell>
                 <TableCell>{r.role}</TableCell>
@@ -1080,6 +1078,11 @@ function PerformanceSection({
           </TableBody>
         </Table>
       </div>
+      <form action={setPerf04PerformancePage.bind(null, rangeIdentity(range))} className="flex items-center justify-between gap-3">
+        <button type="submit" name="page" value={Math.max(0, data.page - 1)} disabled={data.page === 0} className="rounded border px-3 py-2 disabled:opacity-50">{t("Previous page")}</button>
+        <span className="text-sm text-muted-foreground">{t("Page")} {data.page + 1} — {t("up to 25 users; charts include the full team.")}</span>
+        <button type="submit" name="page" value={data.page + 1} disabled={!data.hasMore} className="rounded border px-3 py-2 disabled:opacity-50">{t("Next page")}</button>
+      </form>
     </section>
   );
 }

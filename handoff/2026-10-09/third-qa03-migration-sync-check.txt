@@ -1,0 +1,154 @@
+QA-03 — Migration count equality is not identity or schema parity
+====================================================================
+Scope owned: scripts/check-migration-sync.ts, new test tests/check-migration-sync.test.ts
+.github/workflows/ci.yml: READ ONLY (see "CI scope" section below) — NOT modified by this item.
+No schema/migration change. No commit/push/deploy/install/production/destructive git ops.
+
+1. Traced actual current content first (finding's line numbers were stale)
+----------------------------------------------------------------------------
+Original scripts/check-migration-sync.ts (before this fix) at the time of tracing:
+  - Read drizzle/meta/_journal.json, took journal.entries.length as "localCount".
+  - Queried `SELECT COUNT(*)::text AS count FROM drizzle.__drizzle_migrations` for
+    "appliedCount".
+  - Compared ONLY the two integers (appliedCount > localCount => "ahead" error;
+    appliedCount < localCount => "behind" warning; equal => "In sync", unconditionally).
+  - No hash, no timestamp, no per-entry comparison anywhere. Confirmed the finding is
+    real: an edited-after-applied migration file, or a reordered local/remote journal,
+    with the SAME total count, hits the `appliedCount === localCount` branch and prints
+    "✅ In sync" — silently wrong.
+  - This exact gap was already called out by a prior session's own handoff note
+    (handoff/2026-10-09/second-schema-migration.txt:187-194): "check-migration-sync.ts
+    only compares counts ... it has no awareness of ... drift".
+
+Confirmed tests/local-isolated/migrate.cjs's already-proven-correct comparison
+(line 21): `assert.deepEqual(rows.map(r => ({hash, when: Number(r.created_at)})),
+migrations.map(m => ({hash: m.hash, when: m.folderMillis})))`, where `migrations` comes
+from drizzle-orm/migrator's `readMigrationFiles()` (hash = sha256 of the .sql file
+content, folderMillis = the journal entry's `when`). This is the exact algorithm
+mirrored below — no new algorithm invented.
+
+2. Confirmed DB-free unit testing is possible (no live DB needed)
+----------------------------------------------------------------------------
+The script's comparison logic was inline inside `main()`, mixed with the DB query and
+dotenv/db-client import — not independently testable. Verified (by reading
+node_modules/drizzle-orm/migrator.js) that `readMigrationFiles()` returns plain
+`{hash, folderMillis, sql, bps}` objects from local files with zero DB I/O, and the live
+side only needs `{hash, when}` pairs. So the comparison itself is pure data in/data out
+and needs no DB connection to unit-test — extracted it into an exported pure function.
+
+3. Strict TDD — RED observed, then minimal GREEN
+----------------------------------------------------------------------------
+RED (before implementing `diagnoseMigrationLineage`):
+  Command: npx vitest run tests/check-migration-sync.test.ts
+  Result:  Test Files  1 failed (1) / Tests  5 failed (5)
+           TypeError: diagnoseMigrationLineage is not a function  (all 5 tests)
+  (captured via tool output at 16:48:33 run — import target did not exist yet)
+
+GREEN (after implementing `diagnoseMigrationLineage` + wiring main() to use it):
+  Command: npx vitest run tests/check-migration-sync.test.ts
+  Result:  Test Files  1 passed (1) / Tests  5 passed (5)   (16:49:36 run)
+  Re-verified again later in the session (16:53:42 run, with a harmless
+  DATABASE_URL/TEST_DATABASE_URL_PATTERN override for the shared global test-DB guard —
+  see "Unrelated environment note" below): Test Files 1 passed (1) / Tests 5 passed (5).
+
+Test file: tests/check-migration-sync.test.ts (5 cases, all synthetic fixtures, no DB):
+  - in-sync: ordered hash+timestamp lineage matches exactly.
+  - behind: fewer applied than local, matching prefix (legitimate "not yet migrated").
+  - ahead: more applied than local journal knows (existing "stale snapshot" case).
+  - THE GAP #1: equal count, one hash edited after being applied -> now reports "drift"
+    at the correct index (previously would have been silently "in sync" under the old
+    count-only script).
+  - THE GAP #2: equal count, applied order diverged (two timestamps swapped) -> now
+    reports "drift" (previously silently "in sync").
+
+4. Fix implemented (scripts/check-migration-sync.ts)
+----------------------------------------------------------------------------
+- Added `readMigrationFiles` (drizzle-orm/migrator, the same function
+  tests/local-isolated/migrate.cjs uses) to get the local lineage as
+  `{hash, folderMillis}[]` instead of only journal `{idx, tag}`.
+- Changed the live-DB query from `SELECT COUNT(*)` to
+  `SELECT hash, created_at FROM drizzle.__drizzle_migrations ORDER BY created_at`,
+  mapped to `{hash, when: Number(created_at)}[]` — ordered by created_at, exactly as
+  migrate.cjs's live assertion does.
+- Extracted and exported a pure function `diagnoseMigrationLineage(local, applied)`
+  that walks the ordered overlap and returns one of:
+    "ahead"   — applied.length > local.length (unchanged meaning/message from before)
+    "drift"   — same algorithm as migrate.cjs's assert.deepEqual, generalized to the
+                overlapping prefix only (so a legitimate "generated but not yet
+                migrated" local-ahead state is NOT flagged as drift) — reports the
+                first mismatching index plus both sides' hash/when for diagnosis
+    "behind"  — applied.length < local.length AND the overlapping prefix matched
+                (unchanged meaning/message from before)
+    "in-sync" — full equality, ordered, hash-for-hash and timestamp-for-timestamp
+- `main()` now branches on `diagnosis.status` instead of two bare integer comparisons;
+  the new "drift" branch exits 1 with a message naming the mismatched index/tag and
+  both recorded hash/when pairs, distinct from the existing "ahead"/"behind" messages.
+- Guarded the script's self-invocation (`if (isMain) main().catch(...)`) using
+  `fileURLToPath(import.meta.url) === resolve(process.argv[1])` so the module can be
+  imported by the test file (and any future caller) without triggering the dotenv/
+  db-client/live-query side effects of `main()` — this is what made the pure function
+  independently testable without mocking the DB client at all.
+
+5. Verification run commands + counts
+----------------------------------------------------------------------------
+  npx vitest run tests/check-migration-sync.test.ts
+    -> RED:   1 failed file, 5 failed tests (TypeError: not a function)
+    -> GREEN: 1 passed file, 5 passed tests
+  npx tsc --noEmit
+    -> Only pre-existing unrelated error: tests/setup.guard.test.ts(2,48) Cannot find
+       module './helpers/databaseTargetGuard' — present before this item's changes,
+       not caused by it, not in scope (that's a different item's test infra file).
+
+6. CI scope (.github/workflows/ci.yml) — read, NOT modified
+----------------------------------------------------------------------------
+Read .github/workflows/ci.yml (lines 1-40): steps are checkout, setup-node, npm ci,
+tsc --noEmit, lint, i18n:check, build, test (`npm test` = `vitest run`). There is NO
+step anywhere that runs `npm run db:check-sync` / `db:generate` / the sync script at
+all — the preflight only ever runs locally via `npm run db:generate`, never in CI.
+That is a genuinely missing CI step, but per task instructions ("report before adding
+a new CI job") this is reported for parent review, NOT added: running the live-DB
+comparison in CI would need the job's existing `DATABASE_URL` secret plus a decision on
+failure policy (should a lineage drift fail the whole CI build, and is CI's
+`DATABASE_URL` even the same disposable target the script should ever touch?) — that's
+a product decision outside this item's "no schema/migration change,
+no CI job addition without sign-off" boundary. No ci.yml edits made.
+NOTE: `git status` shows .github/workflows/ci.yml as modified in the shared working
+tree — that change was NOT made by this item; left untouched, not inspected further
+since it belongs to a different task's scope per this item's ownership boundary.
+
+7. README.md:73 — not touched
+----------------------------------------------------------------------------
+README.md's "Migrations" section (around line 69-75) documents running
+`npx drizzle-kit generate`/`migrate` directly and doesn't even mention
+`npm run db:generate` / `db:check-sync` by name. That's a pre-existing doc gap (the
+safe wrapper exists per CLAUDE.md:373 and package.json but isn't surfaced in the
+README's quickstart), unrelated to the count-vs-lineage algorithm fix and outside this
+item's ownership (README.md was not listed as an owned file) — reported only, not
+edited.
+
+Files created
+----------------------------------------------------------------------------
+  tests/check-migration-sync.test.ts   (new, 5 passing unit tests, DB-free)
+
+Files modified
+----------------------------------------------------------------------------
+  scripts/check-migration-sync.ts      (count-only -> ordered hash+timestamp lineage
+                                         comparison; see section 4)
+
+Files NOT touched despite being named in the original finding's evidence string
+----------------------------------------------------------------------------
+  .github/workflows/ci.yml   — no missing-step fix applied; reported in section 6 for
+                                parent sign-off.
+  README.md                  — reported in section 7, not this item's scope.
+
+Unrelated environment note (not caused by this item, for parent awareness)
+----------------------------------------------------------------------------
+Mid-session, running the FULL `npx vitest run` suite showed 113 failing tests across
+15 files, all failing at `tests/setup.ts:13` via `assertDisposableDatabaseTarget`
+("TEST_DATABASE_URL_PATTERN is not set" / "DATABASE_URL is not set") — a global test
+setup guard, not touched by this item, whose env dependency (.env.local's
+TEST_DATABASE_URL_PATTERN/DATABASE_URL) appears to have changed during the session in
+this shared working tree (presumably another concurrent agent's phase). Re-running
+tests/check-migration-sync.test.ts in isolation with a harmless inline env override
+(not persisted to .env.local) reconfirmed 5/5 green, so this item's own change is not
+responsible for and not affected by that global guard's current environment state.

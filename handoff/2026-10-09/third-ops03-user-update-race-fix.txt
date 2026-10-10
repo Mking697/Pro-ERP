@@ -1,0 +1,44 @@
+OPS-03 stale user-update status race — implementation handoff (2026-10-09)
+Status: IMPLEMENTED + DB-free agent verification; STOPPED FOR PARENT VERIFICATION.
+Not full Phase3 approval. No commit/push/deploy/install/production/secret/env reads.
+
+Scope
+- Modified only src/lib/auth/users.ts; existing create/cap work in that file was already dirty at delegation and preserved.
+- Added tests/user-update-race.unit.test.ts, tests/user-update-race.unit.vitest.config.ts, tests/user-update-race.unit.tsconfig.json, and this handoff.
+- No runner/tenant/schema/guard changes; no working-tree-wide commands.
+
+Fix
+- updateUser now enters runInTenantTransaction(orgId) BEFORE getUserRow. Authoritative read, status/role/module security-change decisions, cap check, last-admin guarded update and returned row all share the admission lock.
+- Every user update participates, including department-only edits. Omitted status is omitted from the persistence patch, rather than copied from any snapshot.
+- Cap checking still applies only to real Inactive -> Active admission; Trial/null limit, at-cap ordinary profile edits and already-Active no-op remain allowed.
+- Preserved SQL tokenVersion increment, genuine deactivatedAt transitions, last-admin EXISTS/FOR UPDATE predicate and UserDeletionError. Platform status indexing remains after the tenant transaction with the actual transition decision returned from its authoritative read.
+
+Executed strict RED -> minimal GREEN
+1. First test pauses a copied Active row read, then starts deactivation + replacement creation. On original delegated code successors commit before the department update resumes. RED: expected Inactive, received Active (18:06:58, test exit 1).
+   Moved authoritative update read/decision/write into tenant transaction. GREEN: same named test passes (18:07:55).
+2. Added omitted-status persistence contract. RED: department-only set payload unexpectedly contained status Active (18:08:16, exit 1; original race remained green).
+   Conditional status spread only when patch.status is supplied. GREEN: both tests pass (18:08:32).
+- Regression cases then characterize final-seat create/reactivate competition, cap rejection state/index preservation, same-user concurrent reactivation/idempotent revocation, at-cap no-op/profile edits, unlimited plan, last-admin demotion/deactivation and concurrent demotions, role/module revocation changes.
+- Mock persistence copies reads, evaluates tokenVersion expressions, simulates per-org FIFO lock and rollback; it does NOT prove actual PostgreSQL transport/locking. Race uses a deterministic read barrier, releases when competing work completes (old path) or lock contention is observed (fixed path), not sleep/timing.
+
+Executed verification (all exit 0)
+- node node_modules/vitest/vitest.mjs run --config tests/user-update-race.unit.vitest.config.ts --reporter verbose
+  Final after formatting/comment cleanup: 11/11 named tests, 1 file (18:11:12).
+- node node_modules/vitest/vitest.mjs run --config tests/user-admission-unit.vitest.config.ts --reporter verbose
+  3/3 named tests, 1 file (18:09:35).
+- node node_modules/vitest/vitest.mjs run --config tests/sec01.vitest.config.ts --reporter verbose
+  301/301 named tests, 5 files (18:09:36); live-session/SSR/API guard revocation preserved.
+- node node_modules/typescript/bin/tsc --noEmit -p tests/user-update-race.unit.tsconfig.json
+  Scoped compilation passed without diagnostics.
+- node node_modules/eslint/bin/eslint.js src/lib/auth/users.ts tests/user-update-race.unit.test.ts tests/user-update-race.unit.vitest.config.ts
+  Passed without diagnostics.
+- git diff --check -- src/lib/auth/users.ts
+  Passed.
+All executed Vitest configs have setupFiles: []; default npm test/real DB setup was not run.
+
+Remaining parent acceptance gates
+- Parent must rerun focused tests, inspect settled diff/new tests, and independently review. Git diff against HEAD includes the preexisting create/cap changes, not only this subagent's updateUser delta.
+- Approved disposable real-driver tests are UNEXECUTED by this subagent: tests/user-admission-cap.real.vitest.config.ts and tests/last-admin-guard.real.vitest.config.ts. Parent should run them serially through their guarded local-isolated setup, not default npm test.
+- Add/run the actual stale department-update + concurrent deactivate/replacement interleaving on the disposable pooled driver, read back committed status/count/deactivatedAt/tokenVersion, verify last-slot admission and same-user reactivation, retain real last-admin update/delete concurrency and rollback gates. Mock FIFO/EXISTS is supplemental, not replacement evidence.
+- Existing platform index update remains post-transaction (unchanged external-effect design); ordered index/tenant status behavior under further concurrent status transitions is not established by this unit suite.
+- Full Phase3 acceptance, production and deployment remain parent-owned; no active test/resource/agent work left by this subagent.

@@ -1,9 +1,5 @@
 import { findItem } from "@/lib/inventory/items";
-import { listLedger, onHandBySku, recordMovement } from "@/lib/inventory/ledger";
-import { committedBySku } from "@/lib/inventory/plans";
-// round3 lives with the allocation, which imports nothing at all — see ledger.ts's own
-// import of it for the same reason.
-import { round3 } from "@/lib/inventory/allocation";
+import { recordMovement } from "@/lib/inventory/ledger";
 import type { LedgerMovementActionConfig } from "@/lib/fms/actions";
 
 /**
@@ -41,14 +37,11 @@ export async function runLedgerMovementAction(
     );
   }
 
-  const uom = (action.uomField ? resolvedFields[action.uomField]?.trim() : "") || item.UOM;
-
-  let available: number | undefined;
-  if (action.direction === "Out") {
-    const [ledger, committed] = await Promise.all([listLedger(), committedBySku()]);
-    const onHand = onHandBySku(ledger);
-    available = round3((onHand.get(sku) ?? 0) - (committed.get(sku) ?? 0));
+  const suppliedUom = action.uomField ? resolvedFields[action.uomField]?.trim() : "";
+  if (suppliedUom && suppliedUom !== item.UOM) {
+    throw new Error(`Action UOM must match SKU "${sku}": ${item.UOM}.`);
   }
+  const uom = item.UOM;
 
   await recordMovement(
     {
@@ -61,7 +54,6 @@ export async function runLedgerMovementAction(
       location: item.Location,
       remark: `FMS action — outcome "${outcome}"`,
       userId,
-    },
-    available
+    }
   );
 }

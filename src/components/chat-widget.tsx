@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useId, useRef, useState, type KeyboardEvent } from "react";
 import { Bot, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import ChatClient from "@/app/chat/chat-client";
@@ -17,23 +17,32 @@ export default function ChatWidget() {
   const t = useT();
   const [open, setOpen] = useState(false);
 
-  // Escape closes the panel without closing anything else on the page — same reasoning as
-  // the mobile sidebar drawer's own hand-built Escape listener (this is a plain fixed div,
-  // not the Dialog primitive, so it gets no such handling for free).
-  useEffect(() => {
-    if (!open) return;
-    function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") setOpen(false);
-    }
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [open]);
+  const launcherRef = useRef<HTMLButtonElement>(null);
+  const panelId = useId();
+
+  function closePanel() {
+    setOpen(false);
+    launcherRef.current?.focus();
+  }
+
+  // Only Escape originating in this panel/launcher belongs to chat. A child that
+  // consumed it (e.g. a menu) wins; stop bubbling so the same key cannot dismiss
+  // another overlay. No window listener: background Escape leaves chat open.
+  function onKeyDown(event: KeyboardEvent<HTMLElement>) {
+    if (event.key !== "Escape" || event.defaultPrevented) return;
+    event.preventDefault();
+    event.stopPropagation();
+    closePanel();
+  }
 
   return (
     <>
       <button
         type="button"
+        ref={launcherRef}
         onClick={() => setOpen((v) => !v)}
+        onKeyDown={open ? onKeyDown : undefined}
+        aria-controls={open ? panelId : undefined}
         aria-label={open ? t("Pro ERP Chatbot band karein") : t("Pro ERP Chatbot kholein")}
         aria-expanded={open}
         className="fixed right-5 bottom-5 z-50 flex size-14 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-lg shadow-primary/30 transition-transform duration-150 hover:scale-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
@@ -43,6 +52,8 @@ export default function ChatWidget() {
 
       {open && (
         <div
+          id={panelId}
+          onKeyDown={onKeyDown}
           role="dialog"
           aria-modal="false"
           aria-label={t("Pro ERP Chatbot")}
@@ -58,7 +69,7 @@ export default function ChatWidget() {
               variant="ghost"
               size="icon-sm"
               aria-label={t("Band karein")}
-              onClick={() => setOpen(false)}
+              onClick={closePanel}
             >
               <X className="size-4" aria-hidden="true" />
             </Button>

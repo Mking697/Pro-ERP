@@ -1,0 +1,19 @@
+Bounded Finance resume, 2026-10-09
+
+Changed only tests/finance-unit.test.ts: removed eight spurious second arguments from static POST handler calls. All status/error/no-read assertions remain unchanged. Static accounts POST handlers take Request only; the refund dynamic route legitimately retains its promised params context. Installed Next route.md confirms context is optional and intended for dynamic params. No route/service/shared-foundation implementation changed.
+
+Safety: inspected tests/finance-unit.vitest.config.ts (setupFiles: [], node environment, exactly one test file). Complete db/client and db/repo mocks plus tenant/auth/order/purchase/users/tasks/chat mocks isolate persistence and notifications. Imported schema definitions and remaining helpers have no persistence setup. No default tests/setup.ts, dotenv, credential/env reads, real DB suites, install, commit, push, deploy or production access.
+
+Executed before correction:
+- node node_modules/vitest/vitest.mjs run --config tests/finance-unit.vitest.config.ts --reporter=dot: exit 0, 1 file / 30 tests passed.
+- node node_modules/typescript/bin/tsc --noEmit --incremental false: exit 2, eight finance TS2554 diagnostics plus stock-workflow-unit.test.ts:73 TS18048.
+
+Executed after correction:
+- same Finance Vitest command: exit 0, 1 file / 30 tests passed.
+- same TypeScript command: exit 2, only stock-workflow-unit.test.ts(73,77) TS18048 remains (outside ownership).
+- node node_modules/eslint/bin/eslint.js tests/finance-unit.test.ts: exit 0.
+- git diff --no-index --check /dev/null tests/finance-unit.test.ts: exit 3; flags preexisting trailing whitespace on lines 128/198/207 and blank EOF line 329, not changed by this patch. Report check against /dev/null exits 1 (new-file difference), with no whitespace diagnostics. LF/CRLF warnings present.
+
+TDD qualification: existing eight behavioral key-validation tests were already GREEN before edits, not a behavioral RED. The observed RED was compilation. No missing runtime behavior was demonstrated in this bounded slice; no production change or fabricated behavioral RED was made. This is a test-call integration correction, not new behavior or Finance completion.
+
+Remaining Finance work (not implemented in this task): inspected accounts APIs for bill payment, CN apply, DN apply/receive, and manual journal creation still bypass durable idempotent mutation wrapping and do not map LedgerConflictError separately to 409. The eight static-route tests exercise malformed keys only, not each route's successful durable replay/changed-payload/rollback behavior. Real isolated PostgreSQL concurrent admission/fault/replay regressions, historical ambiguous journal recovery policy, parent independent review and full-current-tree quality gates remain pending. No SECOND/Finance completion claim.

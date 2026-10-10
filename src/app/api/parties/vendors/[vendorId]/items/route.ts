@@ -4,7 +4,7 @@ import { requireModule } from "@/lib/auth/guard";
 import { findById } from "@/db/repo";
 import { vendors } from "@/db/schema";
 import { getTenantOrgId } from "@/lib/tenant";
-import { listVendorItems, upsertVendorItem } from "@/lib/parties/vendorItems";
+import { listVendorItems, upsertVendorItem, VendorItemAdmissionError } from "@/lib/parties/vendorItems";
 
 export async function GET(
   _request: Request,
@@ -20,17 +20,18 @@ export async function GET(
 
 const optionalNumber = z
   .union([z.number(), z.string()])
-  .optional()
+  .nullish()
   .transform((v) => {
     if (v === undefined || v === null || String(v).trim() === "") return null;
     const n = Number(v);
-    return Number.isFinite(n) ? n : null;
-  });
+    return n;
+  })
+  .pipe(z.number().nullable());
 
 const upsertSchema = z.object({
   sku: z.string().trim().min(1, "Item chunna zaroori hai."),
-  leadTimeDays: optionalNumber,
-  unitPrice: optionalNumber,
+  leadTimeDays: optionalNumber.pipe(z.number().int().min(0).max(2147483647).nullable()),
+  unitPrice: optionalNumber.pipe(z.number().min(0).nullable()),
 });
 
 export async function POST(
@@ -56,12 +57,22 @@ export async function POST(
     );
   }
 
-  const item = await upsertVendorItem({
-    vendorId,
-    sku: parsed.data.sku,
-    leadTimeDays: parsed.data.leadTimeDays,
-    unitPrice: parsed.data.unitPrice,
-    createdBy: guard.session.email,
-  });
-  return NextResponse.json({ item });
+  try {
+    const item = await upsertVendorItem({
+      vendorId,
+      sku: parsed.data.sku,
+      leadTimeDays: parsed.data.leadTimeDays,
+      unitPrice: parsed.data.unitPrice,
+      createdBy: guard.session.email,
+    });
+    return NextResponse.json({ item });
+  } catch (error) {
+    if (error instanceof Error && "committed" in error && error.committed === true && "result" in error) {
+      return NextResponse.json({ item: error.result, committed: true, warning: error.message });
+    }
+    if (error instanceof VendorItemAdmissionError) {
+      return NextResponse.json({ error: error.message }, { status: error.status });
+    }
+    throw error;
+  }
 }

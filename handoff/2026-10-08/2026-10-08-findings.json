@@ -1,0 +1,413 @@
+{
+  "metadata": {
+    "date": "2026-10-08",
+    "root": "G:/Pro-ERP",
+    "head": "d796730",
+    "scope": "Read-only six-specialist source audit plus parent verification and network-free probes",
+    "agents": [
+      "Application Security Engineer",
+      "Database Optimizer",
+      "Software Architect",
+      "Frontend Developer",
+      "Performance Benchmarker",
+      "Test Automation Engineer"
+    ],
+    "observation_count": 32,
+    "counts_by_priority": {
+      "P1": 13,
+      "P2": 19
+    },
+    "checks": {
+      "earlier_same_session": {
+        "tsc": "pass",
+        "lint": "pass",
+        "production_build": "pass",
+        "chatbot_tests": "20 pass",
+        "full_tests": "68 pass / 1 fail; existing credit-overdue test reproduced with original chatbot code",
+        "i18n": "exit 0; 47 missing EN strings"
+      },
+      "fresh_audit": {
+        "npm_production_install": "7 high / 0 critical",
+        "npm_full": "9 high / 4 moderate / 0 critical",
+        "credential_pattern_scan": "0 matches in scanned tracked code/scripts/workflows; not a comprehensive secret audit",
+        "env_history_paths": "git history query returned no .env/.env.local entries",
+        "payroll_probe": "monthly salary 20000, zero gross, PF employee 1800 => net -1800; no DB",
+        "ssrf_probe": "mapped-loopback and link-local IPv6 passed source filter; no network request",
+        "git": "status unchanged; diff whitespace check passed"
+      }
+    },
+    "limitations": [
+      "No fresh authenticated browser/mobile pass, load test, production exploit, schema migration or database contention/fault-injection was performed.",
+      "Financial concurrency outcomes are source-backed risks, not confirmed live incidents.",
+      "No credentials/.env content read; no compliance certification or accounting/tax advice.",
+      "Existing local chatbot code changes and user changes left untouched; this audit did not commit, push, deploy, alter infrastructure or packages.",
+      "Known notes were cross-checked; later code supersedes stale assertions, including payroll calculation support and claims that CN/DN race is closed."
+    ]
+  },
+  "strengths": [
+    {
+      "title": "Integrated domain workflows",
+      "observed": "Sales/purchase/manufacturing gates exist in services rather than UI only; FMS quantity conservation and template versioning are useful foundations.",
+      "evidence": "src/lib/fms/engine.ts:347-373; src/lib/pdi/pdi.ts:247-264",
+      "improve": "Preserve service-level gates; add contract/state-transition invariants and explicit command boundaries."
+    },
+    {
+      "title": "Tenant-aware repository and API revocation",
+      "observed": "Repository reads/updates/deletes require organization identity; API guard checks live account state/tokenVersion.",
+      "evidence": "src/db/repo.ts:57-67,105-128; src/lib/auth/guard.ts:41-48",
+      "improve": "Apply consistent live-session boundary to SSR, constrained FK relationships and negative cross-tenant tests."
+    },
+    {
+      "title": "Sensible inventory semantics",
+      "observed": "Physical stock and reservations are distinct; consumed reservations are subtracted to prevent double counting after dispatch.",
+      "evidence": "src/lib/inventory/ledger.ts:117-139; src/lib/orders/orders.ts:405",
+      "improve": "Centralize this rule across every write path and serialize the availability admission."
+    },
+    {
+      "title": "Real GL primitive",
+      "observed": "Journal lines are validated and header/lines commit atomically; some expenses already share an atomic business/journal batch.",
+      "evidence": "src/lib/accounts/ledger.ts:291-353; src/lib/accounts/expenses.ts:96-123",
+      "improve": "Durably couple every accounting event with atomic write or recoverable outbox; unique event IDs and reconciliation."
+    },
+    {
+      "title": "Useful reusable UI and initial data",
+      "observed": "Shared Base UI dialogs/table wrappers, detail buttons and server-provided Tasks/Inventory/Leads data reduce inconsistency and first-load waterfalls.",
+      "evidence": "src/components/ui/dialog.tsx:55-68; src/components/ui/table.tsx:25-30; src/app/tasks/page.tsx:27-50",
+      "improve": "Reuse primitives for drawer/focus, fix async state correctness, add bounded data pages and browser coverage."
+    },
+    {
+      "title": "Chatbot authority stays in application code",
+      "observed": "Tool access filtering and deterministic no-tool/all-empty answer controls are stronger than prompt-only rules. Local request context/settings optimization has 20 passing regression tests.",
+      "evidence": "src/lib/chatbot/orchestrator.ts:73-96,293-314; tests/chatbot-request-context.test.ts",
+      "improve": "Bound SQL history reads, isolate UI conversations, add provider deadlines and targeted real-provider contract monitoring."
+    },
+    {
+      "title": "CI/migration/tenant worker foundation",
+      "observed": "CI runs install/typecheck/lint/i18n/build/tests; real migrations and tenant isolation with bounded worker failures exist.",
+      "evidence": " .github/workflows/ci.yml:24-40; src/lib/platform/runner.ts:43-74",
+      "improve": "Add deterministic money/stock contention tests, isolated fixture targets, migration identity tests and readiness/restore evidence."
+    }
+  ],
+  "findings": [
+    {
+      "id": "SEC-01",
+      "priority": "P1",
+      "title": "API revocation does not protect every authenticated SSR page",
+      "evidence": "src/app/inventory/[sku]/page.tsx:84-92; src/lib/tenant.ts:88-93; src/lib/auth/guard.ts:41-48",
+      "verification": "Parent source-verified; no HTTP exploit attempted",
+      "problem": "Some protected pages verify the JWT and its old grants but not live user status/tokenVersion. An old unexpired cookie can still reach page data after API access is revoked.",
+      "fix": "Use one live-session resolver before both API and protected Server Component reads; preserve separate token-bound public-share access.",
+      "regression": "Deactivate/delete/downgrade/reset a user; old cookie must return no protected data through API or SSR routes."
+    },
+    {
+      "id": "SEC-02",
+      "priority": "P1",
+      "title": "Report share listing exposes organization-wide bearer links to personal-scope viewers",
+      "evidence": "src/app/api/reports/shares/route.ts:32-47,81-93; src/lib/reports.ts:253-269; src/app/share/[token]/page.tsx:110-114",
+      "verification": "Parent source-verified; no live token requested",
+      "problem": "Creation requires canSeeEveryone, but GET listing only checks report-module visibility. A personal-scope viewer can obtain an existing all-organization share token.",
+      "fix": "Apply organization-wide scope authorization to listing tokens, not only creation. Review revoke/list ownership consistently.",
+      "regression": "Create inward/leave shares as a manager; ordinary scoped users must not receive tokens."
+    },
+    {
+      "id": "SEC-03",
+      "priority": "P1",
+      "title": "FMS submitted fields can override server reference data",
+      "evidence": "src/lib/fms/engine.ts:330-336,385-407; src/lib/fms/actionRunner.ts:27-34; src/app/api/fms/steps/[runId]/complete/route.ts:6-10",
+      "verification": "Parent source-verified; requires reference-bound action template",
+      "problem": "Arbitrary client form keys overwrite trusted reference values in resolvedFields, including SKU/quantity when a ledger action binds to those fields.",
+      "fix": "Validate declared editable form fields, distinguish trusted reference bindings from user fields, and reject undeclared/reference-only keys.",
+      "regression": "Assigned user submits forged reference SKU/quantity; action must reject and write no ledger movement."
+    },
+    {
+      "id": "SEC-04",
+      "priority": "P2",
+      "title": "WhatsApp destination filtering misses private IPv6 and resolved destinations",
+      "evidence": "src/app/api/admin/settings/whatsapp/route.ts:43-54; src/lib/chatxflow.ts:28-53",
+      "verification": "Parent network-free probe confirmed IPv6 filter bypass; internal reachability unverified",
+      "problem": "The actual filter accepted HTTPS IPv4-mapped loopback and IPv6 link-local addresses. Hostname-only screening does not establish safe DNS/redirect destinations.",
+      "fix": "Prefer an approved provider-host policy; if custom hosts are needed, validate IPv4/IPv6 resolved connections and redirects with an egress-safe transport.",
+      "regression": "Reject mapped loopback, link-local, private DNS answers and unsafe redirects; use mock transport, never probe production internals."
+    },
+    {
+      "id": "SEC-05",
+      "priority": "P2",
+      "title": "Suspended/expired tenants can request Blob upload authorization",
+      "evidence": "src/app/api/blob/upload/route.ts:62-94; src/lib/auth/guard.ts:28-51",
+      "verification": "Parent source-verified; no token requested",
+      "problem": "Upload only checks live user session, not live tenant status/trial; quota enforcement is absent in inspected route.",
+      "fix": "Resolve allowed tenant before token generation; introduce explicit upload authorization/usage policy without changing provider plans.",
+      "regression": "Valid user in suspended/expired tenant must receive no upload token; active tenant workflow must still work."
+    },
+    {
+      "id": "DATA-01",
+      "priority": "P1",
+      "title": "Credit/debit-note spending is not serialized and commits separately from accounting",
+      "evidence": "src/lib/accounts/creditNotes.ts:150-160,442-482; src/lib/accounts/debitNotes.ts:149-159",
+      "verification": "Parent CN source-verified; DN specialist-verified; concurrency not reproduced",
+      "problem": "A guarded INSERT checks aggregate usage without serializing on a common note balance. Overlapping default-isolation statements can both admit spending. Usage then commits before its payment/journal batch. Earlier documentation calling the race closed is insufficient.",
+      "fix": "Serialize note spending inside one complete transaction/routine; lock parent before a subsequent balance read or atomically debit a maintained balance. Commit usage/payment/journal together; add durable operation identity.",
+      "regression": "Barrier-synchronize 60+60 against 100 across apply/refund/receive; inject journal failure; assert no overspend/orphan usage and safe retry."
+    },
+    {
+      "id": "DATA-02",
+      "priority": "P1",
+      "title": "Dispatch confirmation can duplicate effects or lose consumption increments",
+      "evidence": "src/lib/dispatch/dispatch.ts:453-503,556-607; src/db/schema/dispatch.ts:70-73",
+      "verification": "Parent source-verified; concurrency not executed",
+      "problem": "Shipment claim and stock sufficiency are pre-reads. No unique shipment-to-dispatch key is shown; numbering retries do not revalidate shipment. Consumed quantity is written as an absolute total from a stale snapshot.",
+      "fix": "Add tenant/shipment uniqueness, atomic claim and stock validation; increment consumed quantity under guards and serialize related SKU writes. Keep all effects atomic and idempotent.",
+      "regression": "Confirm the same shipment concurrently and separate shipments sharing a line; require one dispatch per shipment and exact stock/consumption totals."
+    },
+    {
+      "id": "DATA-03",
+      "priority": "P1",
+      "title": "Stock availability policy diverges and authoritative reads fail open",
+      "evidence": "src/lib/orders/orders.ts:382-409; src/lib/fms/actionRunner.ts:47-50; src/lib/inventory/plans.ts:251-268,673-683",
+      "verification": "Parent source-verified; competing writes not executed",
+      "problem": "Order reservations subtract consumed quantity correctly, but failures become empty reservation maps. FMS Out and some PPC checks omit order reservations. Multiple writers can also validate the same free stock.",
+      "fix": "Centralize write-side availability including all commitments, add back only the caller reservation, fail closed on authoritative-read failure, and serialize tenant/SKU mutations.",
+      "regression": "Reserve for Orders then attempt FMS/PPC/manual consumption; inject reservation query failure; synchronize competing claims."
+    },
+    {
+      "id": "DATA-04",
+      "priority": "P1",
+      "title": "FMS/PPC/receipt/PO lifecycle commands can partially commit and replay",
+      "evidence": "src/lib/fms/engine.ts:395-434; src/lib/inventory/plans.ts:630-643,693-738; src/lib/inventory/indents.ts:280-318; src/lib/purchase/orders.ts:357-386",
+      "verification": "Parent FMS source-verified; other paths specialist-reviewed; failure scenarios not injected",
+      "problem": "Stock actions precede final workflow state; plan materials and receipts are updated separately; PO header/lines/indent linkage are separate writes. Failure or retry can duplicate stock or strand workflow state.",
+      "fix": "Build narrow atomic domain commands, guarded state transitions and operation-level idempotency. Enforce indent ownership; emit external effects only after commit.",
+      "regression": "Fault-inject at every boundary and retry; concurrently complete/start/receive/issue; assert exactly-once movements and consistent successors."
+    },
+    {
+      "id": "DATA-05",
+      "priority": "P1",
+      "title": "Business success and GL success are not durably coupled",
+      "evidence": "src/lib/accounts/accounts.ts:391-407,457-467; src/lib/orders/orders.ts:920-957; src/db/schema/accounts.ts:130-152",
+      "verification": "Parent source-verified; outage/race scenarios not executed",
+      "problem": "Invoice issuance and payments can succeed while GL posting only logs failure. Concurrent issue can double-post. Payment journal source is order ID rather than unique payment ID.",
+      "fix": "Atomic document/payment plus journal where feasible; otherwise durable transactional outbox with immutable per-event IDs, idempotent consumers and reconciliation.",
+      "regression": "Concurrent issue, edit-versus-issue, repeated recovery and two genuine payments; require one journal per real event, no missing or duplicated accounting."
+    },
+    {
+      "id": "DATA-06",
+      "priority": "P1",
+      "title": "SKU identity is platform-wide rather than tenant-local",
+      "evidence": "src/db/schema/inventory.ts:22-29,50-78; CLAUDE.md:118",
+      "verification": "Parent source-verified; already documented",
+      "problem": "items.sku is the sole primary key; two organizations cannot use the same SKU. Other business references often have organization FKs but no composite tenant-owned relationship constraints.",
+      "fix": "Plan a reviewed migration to (org_id, sku) identity and compatible tenant-scoped FKs/checks. Inspect all usage and data before altering keys.",
+      "regression": "Same SKU in different tenants succeeds; cross-tenant/missing business references and invalid quantities are rejected."
+    },
+    {
+      "id": "DATA-07",
+      "priority": "P1",
+      "title": "Additional balance/allocation gates remain read-then-write",
+      "evidence": "src/lib/accounts/accounts.ts:277-315; src/lib/accounts/pettyCash.ts:185-218; src/lib/tms/tms.ts:420-471",
+      "verification": "Specialist source-reviewed; some gaps already documented; no runtime reproduction",
+      "problem": "Split-invoice remaining value, petty-cash spending and shipment allocations need contention-safe admission, not only a sequential check. Dispatch invoice lookup also needs explicit any-Issued semantics for split invoices.",
+      "fix": "Use serialized guarded balance/allocation transitions; make dispatch invoice gating a tenant/order/status-filtered EXISTS.",
+      "regression": "Competing invoices/cash expenses/shipments cannot jointly exceed caps; test Draft+Issued invoices in both insertion orders."
+    },
+    {
+      "id": "OPS-01",
+      "priority": "P1",
+      "title": "Leave activation and recurring-work creation do not compose safely",
+      "evidence": "src/lib/leave/reassignment.ts:25-71; src/app/api/cron/generate-recurring-tasks/route.ts:22-26; src/lib/recurringGenerator.ts:155-196",
+      "verification": "Parent reassignment/cron source-verified; interleavings not executed",
+      "problem": "Reassignment precedes audit. Already activated leave is skipped, so newly generated work can stay with absent original doer. Read-before-insert recurring dedupe lacks a durable cycle identity.",
+      "fix": "Atomically reassign with audit, resolve active leave ownership at task/FMS creation, and constrain recurring natural-cycle identity.",
+      "regression": "Create work during active leave; inject audit failure; run cron concurrently; revert without disturbing completed buddy work."
+    },
+    {
+      "id": "OPS-02",
+      "priority": "P1",
+      "title": "Zero-pay deductions can produce negative net payroll",
+      "evidence": "src/lib/payroll/statutory.ts:180-195; src/lib/payroll/payroll.ts:391-406,408-481",
+      "verification": "Parent executed actual pure calculation; no DB/live payroll used",
+      "problem": "With monthlySalary 20000, grossPay 0 and PF enabled, actual function returns employee PF 1800, yielding net -1800 in the caller calculation. PF/TDS calculation code exists despite stale notes. Generate/finalize also lack one serialized write boundary.",
+      "fix": "Define explicit earned-pay/deduction policy and validate zero/partial-pay cases; snapshot calculation inputs/version; serialize generation/finalization. Obtain domain review rather than blindly clamping totals.",
+      "regression": "Zero employed days, partial month, deduction flags and generate/finalize contention; finalized slips must remain immutable. No statutory-compliance conclusion is asserted."
+    },
+    {
+      "id": "OPS-03",
+      "priority": "P2",
+      "title": "Plan/user admission is inconsistent across create/reactivate/background paths",
+      "evidence": "src/lib/auth/users.ts:185-197,245-344; src/lib/platform/runner.ts:43-51; src/lib/tenant.ts:57-76",
+      "verification": "Parent reactivation source-verified; background findings specialist-reviewed",
+      "problem": "Active-user cap is checked on creation but not reactivation. Explicit cron tenant context can bypass trial-expiry resolution; whether generation should continue is a business-policy decision.",
+      "fix": "Enforce cap on every admission under an org-level serialized check; define expired-trial maintenance versus business-generation policy explicitly.",
+      "regression": "Reactivate at cap; two concurrent final-slot admissions; expired-trial interactive/background policy matrix."
+    },
+    {
+      "id": "PERF-01",
+      "priority": "P2",
+      "title": "Repeated tenant and settings reads persist outside repaired chatbot turn",
+      "evidence": "src/lib/tenant.ts:74-97; src/lib/settings.ts:13-25; src/lib/orders/settings.ts:54-67; src/components/app-shell.tsx:27-53",
+      "verification": "Source-reviewed; no new latency benchmark",
+      "problem": "Multiple helpers independently resolve tenant or load all settings. Parallel per-key calls still multiply query volume. The local chatbot fix already removes this on its message route.",
+      "fix": "Extend validated request-scoped tenant reuse and one settings snapshot per operation. Avoid global cross-request authorization caches; use correct server-component request scoping.",
+      "regression": "Instrument query counts by endpoint and verify immediate revocation/concurrent-tenant isolation; measure before/after instead of promising milliseconds."
+    },
+    {
+      "id": "PERF-02",
+      "priority": "P2",
+      "title": "Inventory repeatedly scans lifetime ledger and full snapshot for one SKU",
+      "evidence": "src/lib/inventory/service.ts:36-50,73-83; src/lib/inventory/ledger.ts:65-74,149-166",
+      "verification": "Parent source-verified; scaling impact inferred",
+      "problem": "Per-item ADC calculations scan full ledger; one-SKU detail builds the whole snapshot. Work grows with item count times history size.",
+      "fix": "Precompute ADC by SKU in one pass; push SKU/date/open-indent filters and aggregates into SQL; paginate movement history.",
+      "regression": "Scale item count/history independently and compare rows, CPU and timings while preserving reservation/ADC rounding semantics."
+    },
+    {
+      "id": "PERF-03",
+      "priority": "P2",
+      "title": "Aging has per-order reads; balance sheet repeats trial-balance work",
+      "evidence": "src/lib/accounts/accounts.ts:516-542; src/lib/accounts/ledger.ts:442-477,554-568",
+      "verification": "Specialist source-reviewed; no measurements",
+      "problem": "Aging sequentially fetches payment/order information; credit risk inherits this. Balance sheet derives P&L through a second trial-balance read.",
+      "fix": "Batch minimal payment/order projections; reuse the same trial-balance snapshot; consider SQL aggregates after equivalence tests.",
+      "regression": "Assert bounded query growth and identical aging buckets, split invoices, retained earnings and IST date boundaries."
+    },
+    {
+      "id": "PERF-04",
+      "priority": "P2",
+      "title": "Global search and reports load full collections for small results",
+      "evidence": "src/app/api/search/route.ts:57-130; src/components/command-palette.tsx:92-108; src/app/dashboard/analytics.tsx:211-288",
+      "verification": "Specialist source-reviewed; performance inferred",
+      "problem": "Search filters full allowed-module lists, sometimes with unused details; report date/ownership filtering often occurs after full reads; tables lack bounded pages.",
+      "fix": "Thin tenant-scoped SQL search projections/limits, filter pushdown, pagination and stale-response handling. Do not assume substring search gets indexed automatically.",
+      "regression": "Increasing historical data should not proportionally inflate search transfer; verify grants, query result limits and report-equivalence."
+    },
+    {
+      "id": "PERF-05",
+      "priority": "P2",
+      "title": "Chat prompt limit does not limit transcript database reads",
+      "evidence": "src/lib/chatbot/sessions.ts:85-92,132-134",
+      "verification": "Parent source-verified",
+      "problem": "recentSessionMessages loads all transcript rows then slices to 20. Database transfer grows for long conversations despite bounded Gemini prompt.",
+      "fix": "SQL descending stable ordering with LIMIT then reverse; paginate transcript and session UI independently.",
+      "regression": "Long transcript returns only bounded recent rows in correct order with tie handling and unchanged tenant/ownership checks."
+    },
+    {
+      "id": "PERF-06",
+      "priority": "P2",
+      "title": "External request deadlines and recipient concurrency are incomplete",
+      "evidence": "src/lib/reminders.ts:29-42,73-103; src/lib/chatxflow.ts:28-55; src/lib/chatbot/gemini.ts:138-147,213-222",
+      "verification": "Specialist source-reviewed; no provider load or outage simulation",
+      "problem": "Serial sends plus repeated sender settings scale tenant duration. Individual provider fetches have no explicit application deadline. Bounded retry count does not bound a hanging call.",
+      "fix": "Load sender config once, use bounded recipient workers and per-call/overall abort budgets. Preserve selective Gemini retries; avoid unsafe duplicate WhatsApp retries.",
+      "regression": "Mock hanging response headers/body, overload and failure; verify concurrency ceiling, deadline, accounting and duplicate protection."
+    },
+    {
+      "id": "UX-01",
+      "priority": "P2",
+      "title": "Board fetches can show stale tabs or errors as empty data",
+      "evidence": "src/app/orders/orders-board.tsx:54-69; src/app/accounts/accounts-board.tsx:45-60",
+      "verification": "Parent Orders source-verified; browser scenario not executed",
+      "problem": "Uncancelled requests share state and ignore response status. Late old-tab results can replace newer results; JSON 403/500 can become empty arrays.",
+      "fix": "Check res.ok; cancel and identify requests; set pending state at action; retain last good data with explicit retry; preserve drafts on transport errors.",
+      "regression": "Resolve A after B; JSON 403/500 and offline mutations must show correct data/errors without losing input."
+    },
+    {
+      "id": "UX-02",
+      "priority": "P2",
+      "title": "Chat replies/history are not isolated to originating conversation",
+      "evidence": "src/app/chat/chat-client.tsx:76-159,194-224",
+      "verification": "Parent source-verified; browser race not reproduced",
+      "problem": "Session switching remains possible during loading/sending. Late responses modify current transcript; rollback slice(0,-1) can remove another conversation message.",
+      "fix": "Track state/pending responses per session and optimistic ID; ignore stale responses or deliberately block switching during send.",
+      "regression": "Delay A send/history, switch to B/New Chat, resolve or reject A; B must remain unchanged."
+    },
+    {
+      "id": "UX-03",
+      "priority": "P2",
+      "title": "Hand-built modal drawer lacks modal focus behavior",
+      "evidence": "src/components/sidebar-shell.tsx:225-277; src/components/chat-widget.tsx:23-69",
+      "verification": "Parent drawer source-verified; keyboard/browser not freshly tested",
+      "problem": "aria-modal drawer lacks focus trap, initial/return focus and background inertness; independent Escape listeners can affect multiple overlays.",
+      "fix": "Use existing dialog primitive with drawer positioning; explicit scoped focus/Escape behavior for nonmodal chat.",
+      "regression": "Tab/Shift+Tab stay in drawer, Escape closes intended overlay, focus returns correctly; nested overlays are independent."
+    },
+    {
+      "id": "UX-04",
+      "priority": "P2",
+      "title": "Collapsed sidebar group toggles do not reveal destinations",
+      "evidence": "src/components/nav-links.tsx:161-185; src/components/sidebar-shell.tsx:89-98",
+      "verification": "Parent source-verified",
+      "problem": "Click toggles group but children only render when not collapsed; ARIA may claim expansion without visible panel.",
+      "fix": "Wire group activation to shell expansion or an accessible rail popover; synchronize visible panel and ARIA state.",
+      "regression": "Each collapsed group works by mouse and keyboard without separately finding the rail expand control."
+    },
+    {
+      "id": "UX-05",
+      "priority": "P2",
+      "title": "Several visible form labels lack programmatic control association",
+      "evidence": "src/app/orders/new-order-dialog.tsx:169-191; src/app/purchase/po-issue-board.tsx:318-341; src/components/ui/label.tsx:7-16",
+      "verification": "Specialist source-reviewed; accessibility tree not captured",
+      "problem": "Sibling labels without htmlFor/id or ARIA naming do not name controls, especially repeated quantity/rate fields.",
+      "fix": "Stable IDs, associated labels with line/item context, aria-describedby and aria-invalid for validation.",
+      "regression": "Inspect accessible names, label click focus and per-line error announcement."
+    },
+    {
+      "id": "QA-01",
+      "priority": "P1",
+      "title": "Financial/stock contention and recovery regressions are too sparse",
+      "evidence": "vitest.config.ts:14; .github/workflows/ci.yml:39-40; tests/credit-position-batching.test.ts:127",
+      "verification": "Collected suite/results verified earlier this same session; coverage source-reviewed",
+      "problem": "Passing tooling does not prove concurrency correctness. Money/stock paths lack broad automated contention/fault/replay tests; manual live scripts do not run through CI Vitest include. One existing credit-overdue test fails on original code too.",
+      "fix": "Prioritize domain/API invariant tests and a small browser business journey. Diagnose old test with deterministic backdating/persisted-term assertions, not changed expectations.",
+      "regression": "Concurrent CN/DN/invoice/dispatch/receipt, injected failure, replay and foreign-tenant IDs; assert balances/stock/GL invariant and no foreign writes."
+    },
+    {
+      "id": "QA-02",
+      "priority": "P2",
+      "title": "Disposable organization is not proof of isolated test database or cleanup",
+      "evidence": "tests/setup.ts:5; .github/workflows/ci.yml:15; tests/helpers/testOrg.ts:7-12; tests/runner-concurrency.test.ts:29-65",
+      "verification": "Parent CI/setup source-verified; fixture risks specialist-reviewed; actual DB secret target unknown",
+      "problem": "Generic DATABASE_URL has no test-only target guard; cleanup errors may be swallowed and setup failures can leak fixtures. Runner can enumerate unrelated active organizations.",
+      "fix": "Dedicated ephemeral test target, fail-fast target assertion, tracked setup cleanup and surfaced deletion failures; constrain runner fixtures.",
+      "regression": "Inject setup/delete failures and sentinel tenant; no leaks or unintended visits. Production database use was NOT established."
+    },
+    {
+      "id": "QA-03",
+      "priority": "P2",
+      "title": "Migration count equality is not identity or schema parity",
+      "evidence": "scripts/check-migration-sync.ts:54-98; .github/workflows/ci.yml:24-40; README.md:73",
+      "verification": "Parent source-verified; no live migration/schema check",
+      "problem": "The preflight compares counts, allowing equal-count different-content states. CI lacks fresh-install/upgrade migration exercise. Older notes contain contradictory migrator claims.",
+      "fix": "Compare ordered applied hashes/timestamps and snapshot lineage; isolated fresh-install and upgrade tests; one serialized migration owner.",
+      "regression": "Equal-count changed SQL/timestamp, pending migration and valid history fixtures; prove fresh install and upgrade independently."
+    },
+    {
+      "id": "QA-04",
+      "priority": "P2",
+      "title": "Configuration health is not database readiness or proven disaster recovery",
+      "evidence": "src/app/api/health/route.ts:17-29; README.md:77,95; .github/workflows/ci.yml:1-40",
+      "verification": "Parent health/CI source-verified; external provider controls unknown",
+      "problem": "Health always returns ok based on environment presence. Repo does not prove CI-gated deployment promotion or tested DB/Blob restore and compatible rollback.",
+      "fix": "Separate safe bounded readiness from liveness, schema-version signal, post-deploy smoke gate and recovery runbook/restore rehearsal. Do not change plans without permission.",
+      "regression": "Unreachable DB/schema mismatch returns appropriate readiness failure; demonstrate a restore in an isolated target, not production."
+    },
+    {
+      "id": "QA-05",
+      "priority": "P2",
+      "title": "Missing English translations do not fail the i18n gate",
+      "evidence": "scripts/i18n-check.mjs:35,64-76; src/lib/i18n.ts:16-18",
+      "verification": "Parent check returned 47 missing strings with exit 0; source-verified",
+      "problem": "Missing EN keys are reported but excluded from exit condition; additional unwrapped copy bypasses dictionary entirely.",
+      "fix": "Fill missing/wrapped copy and fail on untranslated keys or enforce explicit ratcheted baseline; update stale architecture documentation.",
+      "regression": "Unknown t() key exits nonzero; complete dictionaries pass; EN/HI dashboard/maintenance/navigation/confirmation remain intelligible."
+    },
+    {
+      "id": "DEP-01",
+      "priority": "P2",
+      "title": "Dependency advisory counts remain nonzero, mostly tooling chains",
+      "evidence": "package.json:31,48; npm audit --omit=dev --json; npm audit --json",
+      "verification": "Fresh npm audit on 2026-10-08; npm ls chain verified; no packages modified",
+      "problem": "Production-install classification: 7 high, 0 critical. Full tree: 9 high, 4 moderate, 0 critical. The seven high entries propagate the braces advisory through shadcn tooling, not seven proven remote runtime flaws. shadcn is declared production but no source import was found.",
+      "fix": "Evaluate removing unused CLI from production dependencies or placing tooling in devDependencies, safe patched resolution and aligned Next lint tooling. Do not blindly use force fix/downgrade; rerun all gates and classify runtime reachability.",
+      "regression": "Production dependency tree no longer includes unnecessary CLI chain; audit + lockfile install/typecheck/lint/build/tests confirm safe resolution."
+    }
+  ]
+}

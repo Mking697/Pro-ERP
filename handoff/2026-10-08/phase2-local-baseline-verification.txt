@@ -1,0 +1,15 @@
+Continuation verification while transaction-foundation agent completes:
+
+Disposable local PostgreSQL17.11 Docker backend verified by actual Neon Pool driver.
+All29 checked-in migrations successfully applied using installed Drizzle neon-serverless migrator to pro_erp_test ONLY.
+Loopback HTTP SQL bridge returns REAL local PostgreSQL results, not synthetic fixture responses. Verified actual installed Neon HTTP SDK query against it.
+
+Executed command:
+node node_modules/vitest/vitest.mjs run --config C:/Users/Admin/AppData/Local/hermes/cache/scratch/pro-erp-local-baseline.vitest.mjs
+Result:14 tracked test files PASS,49 tests PASS.
+This configuration replaces dotenv setup, overwrites test connection with disposable local target, and randomizes test JWT secret at runtime.
+
+Previously reported remote/generic-target credit-overdue failure did NOT reproduce in this local fresh-schema baseline. No credit test expectations or domain credit code changed; not claiming the old environment-specific failure was fixed. Revisit deterministic persisted terms/date boundaries in Third-stage QA.
+
+No production PostgreSQL/Neon writes, provider plans/region changes, commits or deploys performed.
+Local transport/process/cleanup handles recorded in isolated-postgres-backend.json.

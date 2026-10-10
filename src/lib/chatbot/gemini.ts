@@ -104,6 +104,7 @@ function isRetryableOverload(status: number, message: string): boolean {
 }
 
 const RETRY_DELAYS_MS = [500, 1500];
+const GEMINI_REQUEST_TIMEOUT_MS = 20_000;
 
 async function sleep(ms: number): Promise<void> {
   await new Promise((resolve) => setTimeout(resolve, ms));
@@ -134,17 +135,31 @@ async function doOneCall(
   }
 
   let res: Response;
+  let json: unknown;
+  const controller = new AbortController();
+  // Keep the deadline alive through BOTH headers and body consumption. Clearing it
+  // after fetch resolves would still allow an indefinitely stalled response body.
+  const deadline = setTimeout(() => controller.abort(), GEMINI_REQUEST_TIMEOUT_MS);
   try {
     res = await fetch(`${API_BASE}/${DEFAULT_MODEL}:generateContent?key=${encodeURIComponent(apiKey)}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
+      signal: controller.signal,
+    });
+    json = await res.json().catch((err: unknown) => {
+      if (controller.signal.aborted) throw err;
+      return null;
     });
   } catch (err) {
-    throw new GeminiCallError(err instanceof Error ? err.message : "Gemini request failed.");
+    throw new GeminiCallError(
+      controller.signal.aborted
+        ? `Gemini request timed out after ${GEMINI_REQUEST_TIMEOUT_MS}ms.`
+        : err instanceof Error ? err.message : "Gemini request failed."
+    );
+  } finally {
+    clearTimeout(deadline);
   }
-
-  const json = await res.json().catch(() => null);
   if (!res.ok) {
     const apiMessage = (json as { error?: { message?: string } } | null)?.error?.message ?? "";
     const error = new GeminiCallError(apiMessage || `Gemini HTTP ${res.status}`);

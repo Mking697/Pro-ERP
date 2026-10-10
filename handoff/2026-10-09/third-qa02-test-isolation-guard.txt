@@ -1,0 +1,148 @@
+# THIRD phase QA-02 — tests/setup.ts disposable-target guard, loud cleanup, runner scoping
+
+## Scope actually touched
+- `tests/setup.ts` (owned, modified)
+- `tests/helpers/testOrg.ts` (owned, modified — confirmed exists, current content traced
+  fresh before editing; line numbers in the original finding (7-12) matched current file)
+- `.github/workflows/ci.yml` (owned conditionally — genuine gap found: job-level `env`
+  had no var for the new guard's expected pattern, so added one)
+- New files (none of these existed before, none collide with any other item's files):
+  - `tests/helpers/databaseTargetGuard.ts` — pure guard function used by `tests/setup.ts`
+  - `tests/setup.guard.test.ts` + `tests/setup.guard.vitest.config.ts`
+  - `tests/helpers/testOrg.cleanup.test.ts` + `tests/helpers/testOrg.cleanup.vitest.config.ts`
+
+**Not touched, per explicit scope restriction:** `tests/local-isolated/**` (including
+`safety.cjs`) — read-only, verified untouched. `tests/runner-concurrency.test.ts` was
+read and traced (its current content, not the stale cited line numbers) but NOT edited —
+it is not in this item's owned-files list. See "Runner-concurrency scoping" below for how
+that requirement was satisfied without editing the restricted file.
+
+## 1. Fail-fast disposable-target guard (tests/setup.ts)
+
+**Problem confirmed by tracing actual files:** `tests/setup.ts` only ever called
+`config({ path: ".env.local" })` — zero validation of the resulting `DATABASE_URL`. Checked
+the actual `.env.local` in this workspace: `DATABASE_URL` points at a Neon database named
+plainly `neondb`, with nothing in the name/host marking it disposable. Every real-DB test
+in the default suite (`vitest.config.ts` → `setupFiles: ["./tests/setup.ts"]`, matching all
+of `tests/**/*.test.ts`) was running against that target with no verification it's a
+safe/disposable database — exactly the gap QA-02 flagged, distinct from
+`tests/local-isolated/safety.cjs`'s existing hard pin (untouched, still correct).
+
+**Fix:** extracted a pure, directly-testable guard:
+`assertDisposableDatabaseTarget(databaseUrl, expectedPattern)` in
+`tests/helpers/databaseTargetGuard.ts`, wired into `tests/setup.ts` right after
+`dotenv.config()`, checked against `process.env.TEST_DATABASE_URL_PATTERN`.
+- No pattern configured → throws (refuse-if-unset, never "trust it").
+- `DATABASE_URL` unset → throws.
+- Pattern is an invalid regex → throws.
+- `DATABASE_URL` doesn't match the configured pattern → throws.
+- Matches → passes silently.
+
+Added `TEST_DATABASE_URL_PATTERN: ${{ secrets.TEST_DATABASE_URL_PATTERN }}` to the
+job-level `env:` in `.github/workflows/ci.yml` (alongside the existing `DATABASE_URL`)
+so CI can declare its own safe expectation — this is a genuine new requirement, not a
+config fix left broken: whoever manages CI secrets must set `TEST_DATABASE_URL_PATTERN`
+or the `Test` step will now correctly refuse to run. Documented in a comment in the
+workflow file. This is intended: the guard is supposed to block running against an
+unverified target, and the currently-configured local `DATABASE_URL` (`neondb`, not
+obviously disposable) is exactly the kind of target it should block until someone
+explicitly declares a safe pattern.
+
+### RED → GREEN (tests/setup.guard.test.ts, DB-free, setupFiles: [])
+RED (before `databaseTargetGuard.ts` existed):
+```
+npx vitest run -c tests/setup.guard.vitest.config.ts
+→ Cannot find module './helpers/databaseTargetGuard' — 1 failed suite, 0 tests run
+```
+GREEN (after implementing the guard):
+```
+npx vitest run -c tests/setup.guard.vitest.config.ts
+→ Test Files  1 passed (1)
+   Tests  5 passed (5)
+```
+5 tests: unset pattern rejects, unset URL rejects, non-matching URL rejects, invalid-regex
+pattern rejects, matching URL passes silently.
+
+## 2. Loud setup/cleanup failures (tests/helpers/testOrg.ts)
+
+**Problem confirmed by tracing:** `makeTestOrg` itself already throws on failure (no
+swallow there). The actual leak path was structural: `runner-concurrency.test.ts` does
+`const orgs = await Promise.all([makeTestOrg(...), ...])` — if any one creation in the
+batch rejects, `Promise.all` discards references to the ones that *did* succeed before the
+`try { ... } finally { cleanup }` block is ever entered, so those already-created orgs
+become invisible orphans. Separately, its `finally` block's cleanup used
+`deleteOrganization(o.id).catch(() => {})` — a cleanup failure is silently swallowed.
+
+**Fix (within owned `tests/helpers/testOrg.ts`):** added two exported helpers using
+`Promise.allSettled` so partial failures are tracked rather than discarded:
+- `makeTestOrgs(labels)` — creates a batch, and if any creation fails, deletes every org
+  that *did* succeed before re-throwing an `AggregateError` with all failure reasons. No
+  silent partial-success leak.
+- `cleanupTestOrgs(orgs)` — deletes a batch and throws an `AggregateError` (naming the
+  orphaned org IDs) if any deletion fails, instead of swallowing it.
+- `filterOwnResults(results, ownOrgs)` — see scoping section below.
+
+Not wired into `tests/runner-concurrency.test.ts` itself (out of scope for this item —
+not an owned file); the primitives are implemented, tested, and ready for that file's
+owner to adopt.
+
+### RED → GREEN (tests/helpers/testOrg.cleanup.test.ts, DB-free — registry mocked via
+`vi.mock("@/lib/platform/registry")`, setupFiles: [])
+RED (before `makeTestOrgs`/`cleanupTestOrgs`/`filterOwnResults` existed):
+```
+npx vitest run -c tests/helpers/testOrg.cleanup.vitest.config.ts
+→ 5 failed: "makeTestOrgs is not a function", "cleanupTestOrgs is not a function",
+  "filterOwnResults is not a function"
+```
+GREEN (after implementing them):
+```
+npx vitest run -c tests/helpers/testOrg.cleanup.vitest.config.ts
+→ Test Files  1 passed (1)
+   Tests  5 passed (5)
+```
+5 tests:
+- injected 3rd-creation failure → rolls back the 2 that succeeded (asserted
+  `deleteOrganization` called with both their IDs) and throws an `AggregateError`
+  carrying the original "registry unavailable" error.
+- all creations succeed → returns all orgs, no deletes attempted.
+- injected delete failure → `cleanupTestOrgs` throws loudly (`AggregateError` naming the
+  orphaned org ID), not swallowed.
+- all deletes succeed → resolves without throwing.
+- sentinel foreign-tenant org ID in a results batch is never included by
+  `filterOwnResults` — only the test's own 2 fixture IDs come back.
+
+## 3. Runner-concurrency scoping
+
+Traced `tests/runner-concurrency.test.ts`'s actual current query (not the stale cited line
+numbers — file is now 104 lines, finding cited 29-65). It already does inline scoping:
+`results.filter((r) => expectedIds.has(r.orgId))` before every assertion in both `it`
+blocks — unrelated organizations already on the shared DB (visited because
+`forEachActiveOrganization` enumerates *all* active orgs by design) are excluded from
+assertions. That inline logic is exactly what `filterOwnResults` in `testOrg.ts` now
+formalizes and tests with a sentinel-foreign-ID case (see above). Since
+`tests/runner-concurrency.test.ts` is not an owned file for this item, it was not edited
+to call the new helper — the tested, reusable scoping primitive is available for whoever
+owns that file to adopt in place of the inline filter.
+
+## Full command/count summary
+| Command | Result |
+|---|---|
+| `npx vitest run -c tests/setup.guard.vitest.config.ts` (RED) | 1 failed suite, 0 tests |
+| `npx vitest run -c tests/setup.guard.vitest.config.ts` (GREEN) | 1 file, 5/5 passed |
+| `npx vitest run -c tests/helpers/testOrg.cleanup.vitest.config.ts` (RED) | 1 file, 5/5 failed |
+| `npx vitest run -c tests/helpers/testOrg.cleanup.vitest.config.ts` (GREEN) | 1 file, 5/5 passed |
+| `npx tsc --noEmit -p tsconfig.json` | only pre-existing unrelated errors in
+  `tests/payroll-generate-finalize-unit.test.ts` (not touched by this item); zero errors
+  in any file this item touched or created |
+
+## Confirmation: no other item's approved config was touched
+`git status --porcelain -- tests/ .github/workflows/ci.yml` shows, among tracked files,
+only `.github/workflows/ci.yml`, `tests/helpers/testOrg.ts`, and `tests/setup.ts` as
+modified by this item (plus an unrelated pre-existing dirty `tests/payroll-statutory.test.ts`
+from another session's work, not touched here). `tests/local-isolated/**` remains
+untracked/untouched — not opened for write, not diffed destructively, confirmed by listing
+only (no edits). All `*.real.vitest.config.ts` / `*.vitest.config.ts` files that reference
+`tests/local-isolated/setup.ts` as their `setupFiles` entry (the already-approved real-suite
+configs) were left byte-for-byte as read — no edits made to any of them.
+
+## No schema/migration change, no commit/push/deploy.

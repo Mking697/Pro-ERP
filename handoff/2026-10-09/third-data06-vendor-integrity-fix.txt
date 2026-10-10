@@ -1,0 +1,45 @@
+DATA-06 vendor/item application slice — 2026-10-09
+Status: local implementation and focused DB-free verification complete; parent rerun and independent review pending. NOT whole DATA-06/THIRD acceptance.
+
+Owned changes only:
+- src/lib/parties/vendorItems.ts
+- NEW tests/vendor-item-integrity.unit.test.ts
+- NEW tests/vendor-item-integrity.unit.vitest.config.ts
+- this handoff
+
+Changes:
+- listVendorItems joins items by BOTH orgId and SKU. With two tenants sharing the SKU, only the caller's name/UOM and one link row are returned.
+- upsertVendorItem requires tenant-owned vendor and item before either insertion or update. Missing and other-tenant-only references fail without a write, including stale existing links.
+- Tenant reference admission, existing-pair lookup and insert/update run in existing runInTenantTransaction. The actual transaction adapter is used by DB-free tests; nested same-org calls join the owner transaction and roll back with it.
+- leadTimeDays is nullable or a non-negative integer within PostgreSQL integer range (0..2147483647). unitPrice is nullable or a finite non-negative number, including fractional prices and zero. UI min=0 / lead step=1 and schema integer/numeric were inspected; no positive-only pricing rule or arbitrary monetary ceiling added. Omitted/null fields retain prior clearing semantics.
+
+Strict vertical RED -> GREEN evidence (real commands against actual working source; no source substitutions):
+1. Same-SKU tenant display test: RED returned two rows instead of one; minimal composite join -> GREEN 1.
+2. Unowned vendor admission: RED foreign/missing cases resolved with inserted links; tenant-qualified vendor existence -> GREEN 3.
+3. Unowned item admission: RED foreign/missing cases resolved with inserted links; tenant-qualified item existence -> GREEN 5.
+4. Invalid lead-time operands: RED seven cases accepted NaN, infinities, negative, fractional, integer overflow and runtime string; validation -> GREEN 12.
+5. Invalid price operands: RED five cases accepted NaN, infinities, negative and runtime string; validation -> GREEN 17.
+6. Transaction boundary: RED create/update performed reads/writes outside scope; wrapping authoritative admission/write -> GREEN 18.
+Supplementary characterization/edge regressions bring final total to 28, covering existing-link reference rejection, null/undefined/zero, same-org owner rollback, invalid update and valid integer boundary/fractional price. These supplementary tests did not require more production changes.
+
+Final exact named command (exit 0; 1 file, 28 passed, 0 skipped):
+node node_modules/vitest/vitest.mjs run --config tests/vendor-item-integrity.unit.vitest.config.ts --reporter verbose
+
+Focused ESLint (exit 0):
+node node_modules/eslint/bin/eslint.js src/lib/parties/vendorItems.ts tests/vendor-item-integrity.unit.test.ts tests/vendor-item-integrity.unit.vitest.config.ts
+
+Scoped git diff --check passed (Git emitted only existing Windows LF/CRLF policy warnings).
+Self-review: all reference predicates tenant-qualified, parameterized Drizzle equality predicates, validation precedes writes, no credentials/debug output/dynamic SQL added.
+
+Isolation:
+Dedicated config uses setupFiles:[] and only the named file. Persistence/transport and tenant resolution are mocked. Real domain, schema, Drizzle predicate structures, repo insert/update helpers and transaction-context adapter execute. No DB client/environment module is executed; no sockets or real DB. The persistence interpreter is not proof of PostgreSQL locking/concurrency behavior.
+No default npm test, real database, install, schema/migration/shared-primitive changes, production access, credential/.env reads, staging, commit, push, deploy, stash/reset/checkout/clean/tag.
+Pre-existing FIRST/SECOND/THIRD changes left untouched.
+
+Caller inspection / parent scope:
+- Only POST src/app/api/parties/vendors/[vendorId]/items/route.ts calls upsertVendorItem; it handles both create and refresh (update) through the same function. UI vendor-items-dialog.tsx also uses the same POST for add/refresh.
+- Route checks tenant-owned vendor before calling, but did not check tenant-owned item; domain now rechecks both authoritatively inside transaction.
+- Existing optionalNumber transform coerces invalid/nonfinite strings to null (silent clearing), and POST does not catch domain errors to return a structured 4xx. These route-level input/error-response behaviors were inspected but NOT modified or API-tested here because route ownership is excluded. Parent should explicitly decide and cover these before broader DATA-06 acceptance.
+- No Next API changes; no installed Next guide was needed for this slice.
+
+Remaining gates: parent exact named rerun, independent review of these settled four files, any caller/API response fixes under separately assigned ownership, parent-coordinated guarded real-driver/integration verification and overall DATA-06/THIRD coverage. No reviewer approval claimed.

@@ -1,7 +1,7 @@
 import type { InferSelectModel } from "drizzle-orm";
 import { and, eq } from "drizzle-orm";
 import { bom } from "@/db/schema";
-import { db } from "@/db/client";
+import { db, runInTenantTransaction } from "@/db/client";
 import { getTenantOrgId } from "@/lib/tenant";
 import { generateId } from "@/lib/id";
 import { numOr0, findItem, createItem } from "@/lib/inventory/items";
@@ -11,9 +11,9 @@ import { byNewest } from "@/lib/timestamp";
 export { suggestProductSku };
 
 /**
- * A component is an inventory item today. When Semi-FG arrives, a BOM line will be able
- * to point at another product instead — the column exists now because adding it later
- * would mean migrating every customer's data.
+ * Components currently use inventory SKU identity for both labels, including FG and
+ * Semi-FG items. "Product" is retained for a future nested-product BOM model; today's
+ * picker and production material snapshot do not resolve it to a BOM_ID.
  */
 export const COMPONENT_TYPES = ["Item", "Product"] as const;
 export type ComponentType = (typeof COMPONENT_TYPES)[number];
@@ -182,7 +182,7 @@ export async function createBom(input: CreateBomInput): Promise<Bom> {
     if (!line.componentSku) {
       throw new BomValidationError("Har line me ek item chunna zaroori hai.");
     }
-    if (!(line.qtyPerUnit > 0)) {
+    if (!Number.isFinite(line.qtyPerUnit) || !(line.qtyPerUnit > 0)) {
       throw new BomValidationError(
         `"${line.componentName}" ki quantity 0 se zyada honi chahiye.`
       );
@@ -204,108 +204,118 @@ export async function createBom(input: CreateBomInput): Promise<Bom> {
 
   const orgId = await getTenantOrgId();
 
-  // One read, reused for both the version lookup and the SKU collision check.
-  const boms = await listBoms();
-  const normalized = productName.toLowerCase();
-  const existing =
-    boms.find(
-      (b) => b.status === "Active" && b.productName.trim().toLowerCase() === normalized
-    ) ?? null;
-  const version = existing ? existing.version + 1 : 1;
-
-  // A new version keeps the product's existing SKU unless the user deliberately typed a
-  // different one. Letting v2 silently take a fresh SKU would split one product's history
-  // into two identities.
-  //
-  // Falling back to a suggested SKU means a product always has one however the BOM was
-  // created — the form fills the box in, but an import or an API call should not be able
-  // to leave a product with no identity for production and dispatch to refer to.
-  const productSku = (
-    input.productSku?.trim() ||
-    existing?.productSku ||
-    suggestProductSku(productName)
-  ).trim();
-
-  if (productSku) {
-    const clash = boms.find(
-      (b) =>
-        b.productSku.trim().toLowerCase() === productSku.toLowerCase() &&
-        b.productName.trim().toLowerCase() !== productName.toLowerCase()
-    );
-    if (clash) {
-      throw new BomValidationError(
-        `SKU "${productSku}" pehle se "${clash.productName}" ka hai. Har product ka SKU alag hona chahiye.`
-      );
+  return runInTenantTransaction(orgId, async () => {
+    // Production consumes every component SKU through the Items master, including
+    // FG/Semi-FG. Component_Type does not currently select a different identity store.
+    for (const line of input.lines) {
+      if (!(await findItem(line.componentSku))) {
+        throw new BomValidationError(`Component SKU "${line.componentSku}" Items master me nahi mila.`);
+      }
     }
-  }
 
-  const bomId = generateId("BOM");
-  const now = new Date();
+    // One read, reused for both the version lookup and the SKU collision check.
+    const boms = await listBoms();
+    const normalized = productName.toLowerCase();
+    const existing =
+      boms.find(
+        (b) => b.status === "Active" && b.productName.trim().toLowerCase() === normalized
+      ) ?? null;
+    const version = existing ? existing.version + 1 : 1;
 
-  const rows = input.lines.map((line, i) => ({
-    bomId,
-    orgId,
-    productName,
-    productSku,
-    version: String(version),
-    lineNo: String(i + 1),
-    componentSku: line.componentSku,
-    componentName: line.componentName,
-    componentType: line.componentType ?? "Item",
-    qtyPerUnit: String(line.qtyPerUnit),
-    uom: line.uom,
-    status: "Active" as const,
-    createdAt: now,
-    createdBy: input.createdBy,
-  }));
+    // A new version keeps the product's existing SKU unless the user deliberately typed a
+    // different one. Letting v2 silently take a fresh SKU would split one product's history
+    // into two identities.
+    //
+    // Falling back to a suggested SKU means a product always has one however the BOM was
+    // created — the form fills the box in, but an import or an API call should not be able
+    // to leave a product with no identity for production and dispatch to refer to.
+    const productSku = (
+      input.productSku?.trim() ||
+      existing?.productSku ||
+      suggestProductSku(productName)
+    ).trim();
 
-  // Every line in one insert — a BOM is written as a unit, and it keeps the request cost
-  // flat however many components a product has.
-  await db.insert(bom).values(rows);
+    if (productSku) {
+      const clash = boms.find(
+        (b) =>
+          b.productSku.trim().toLowerCase() === productSku.toLowerCase() &&
+          b.productName.trim().toLowerCase() !== productName.toLowerCase()
+      );
+      if (clash) {
+        throw new BomValidationError(
+          `SKU "${productSku}" pehle se "${clash.productName}" ka hai. Har product ka SKU alag hona chahiye.`
+        );
+      }
+    }
 
-  // Archive last: if this fails, two Active BOMs is visible and fixable, where archiving
-  // first and then failing to write would leave the product with no BOM at all.
-  if (existing) {
-    await setBomStatus(existing.bomId, "Archived");
-  }
+    const bomId = generateId("BOM");
+    const now = new Date();
 
-  // A product's BOM used to be the only place its SKU existed — nothing ever created a
-  // matching Items-master row, so completePlan()/an FMS Action's Stock Ledger Movement
-  // would fail with "Items master me nahi hai" the very first time anyone tried to record
-  // its FG stock, even though the product had clearly already been planned for. Auto-
-  // creating it here (once, only if missing) means a new product shows up in
-  // Inventory/Finished Goods — with Free/On Hand/ADC/ROP live like any other item — the
-  // moment its BOM exists, not only after someone remembers to add it by hand. Planning
-  // fields (Lead Time, Safety Factor, MOQ, Max Level) are deliberately left blank, same as
-  // a manually created item — the Admin fills those in from the item detail page or Bulk
-  // Setup whenever they're known. Best-effort: a BOM must not fail to save over this.
-  if (productSku && !(await findItem(productSku))) {
-    await createItem({
-      sku: productSku,
-      itemName: productName,
-      category: "FG",
-      uom: "PCS",
-      createdBy: input.createdBy,
-    }).catch(() => {});
-  }
-
-  return {
-    bomId,
-    productName,
-    productSku,
-    version,
-    status: "Active",
-    createdAt: now.toISOString(),
-    createdBy: input.createdBy,
-    lines: input.lines.map((line, i) => ({
-      lineNo: i + 1,
+    const rows = input.lines.map((line, i) => ({
+      bomId,
+      orgId,
+      productName,
+      productSku,
+      version: String(version),
+      lineNo: String(i + 1),
       componentSku: line.componentSku,
       componentName: line.componentName,
       componentType: line.componentType ?? "Item",
-      qtyPerUnit: line.qtyPerUnit,
+      qtyPerUnit: String(line.qtyPerUnit),
       uom: line.uom,
-    })),
-  };
+      status: "Active" as const,
+      createdAt: now,
+      createdBy: input.createdBy,
+    }));
+
+    // Every line in one insert — a BOM is written as a unit, and it keeps the request cost
+    // flat however many components a product has.
+    await db.insert(bom).values(rows);
+
+    // Archival and the new lines commit together; a failure preserves the prior BOM.
+    if (existing) {
+      await setBomStatus(existing.bomId, "Archived");
+    }
+
+    // A product's BOM used to be the only place its SKU existed — nothing ever created a
+    // matching Items-master row, so completePlan()/an FMS Action's Stock Ledger Movement
+    // would fail with "Items master me nahi hai" the very first time anyone tried to record
+    // its FG stock, even though the product had clearly already been planned for. Auto-
+    // creating it here (once, only if missing) means a new product shows up in
+    // Inventory/Finished Goods — with Free/On Hand/ADC/ROP live like any other item — the
+    // moment its BOM exists, not only after someone remembers to add it by hand. Planning
+    // fields (Lead Time, Safety Factor, MOQ, Max Level) are deliberately left blank, same as
+    // a manually created item — the Admin fills those in from the item detail page or Bulk
+    // Setup whenever they're known. This identity is required: failure rolls back the
+    // BOM and archival rather than saving a product that production cannot stock.
+    if (productSku && !(await findItem(productSku))) {
+      await createItem({
+        sku: productSku,
+        itemName: productName,
+        category: "FG",
+        uom: "PCS",
+        createdBy: input.createdBy,
+      });
+    }
+
+    return {
+      bomId,
+      productName,
+      productSku,
+      version,
+      status: "Active",
+      createdAt: now.toISOString(),
+      createdBy: input.createdBy,
+      lines: input.lines.map((line, i) => ({
+        lineNo: i + 1,
+        componentSku: line.componentSku,
+        componentName: line.componentName,
+        componentType: line.componentType ?? "Item",
+        qtyPerUnit: line.qtyPerUnit,
+        uom: line.uom,
+      })),
+    };
+  });
 }
 
 /** Sets the status on every row of one BOM — they all carry it. */

@@ -1,6 +1,5 @@
-import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
-import { verifySession, SESSION_COOKIE } from "@/lib/auth/session";
+import { getLiveSession } from "@/lib/auth/live-session";
 import AppShell from "@/components/app-shell";
 import PlanBoard from "./plan-board";
 import PageHeader from "@/components/page-header";
@@ -8,9 +7,7 @@ import { getT } from "@/lib/i18n/server";
 
 export default async function PpcPage() {
   const t = await getT();
-  const cookieStore = await cookies();
-  const token = cookieStore.get(SESSION_COOKIE)?.value;
-  const session = token ? await verifySession(token) : null;
+  const session = await getLiveSession();
 
   if (!session) redirect("/login");
   // Production-floor users hold INVENTORY_TXN and reach this page to start a run, even

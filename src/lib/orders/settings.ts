@@ -1,4 +1,4 @@
-import { getSetting, upsertSetting } from "@/lib/settings";
+import { getAllSettings, upsertSetting } from "@/lib/settings";
 import type { FmsTatUnit } from "@/lib/fms/templates";
 
 const DEFAULT_TAT_VALUE = 4;
@@ -37,6 +37,7 @@ function parseUnit(raw: string | null): FmsTatUnit {
 }
 
 export async function getOrderSetup(): Promise<OrderSetupConfig> {
+  const all = await getAllSettings();
   const [
     step1TatValue,
     step1TatUnit,
@@ -51,21 +52,21 @@ export async function getOrderSetup(): Promise<OrderSetupConfig> {
     step4TatUnit,
     step4Doer,
     creditHoldApprover,
-  ] = await Promise.all([
-    getSetting("ORDER_STEP1_TAT_VALUE"),
-    getSetting("ORDER_STEP1_TAT_UNIT"),
-    getSetting("ORDER_STEP1_DOER"),
-    getSetting("ORDER_STEP2_TAT_VALUE"),
-    getSetting("ORDER_STEP2_TAT_UNIT"),
-    getSetting("ORDER_STEP2_DOER"),
-    getSetting("ORDER_STEP3_TAT_VALUE"),
-    getSetting("ORDER_STEP3_TAT_UNIT"),
-    getSetting("ORDER_STEP3_DOER"),
-    getSetting("ORDER_STEP4_TAT_VALUE"),
-    getSetting("ORDER_STEP4_TAT_UNIT"),
-    getSetting("ORDER_STEP4_DOER"),
-    getSetting("ORDER_CREDIT_HOLD_APPROVER"),
-  ]);
+  ] = [
+    all["ORDER_STEP1_TAT_VALUE"] ?? null,
+    all["ORDER_STEP1_TAT_UNIT"] ?? null,
+    all["ORDER_STEP1_DOER"] ?? null,
+    all["ORDER_STEP2_TAT_VALUE"] ?? null,
+    all["ORDER_STEP2_TAT_UNIT"] ?? null,
+    all["ORDER_STEP2_DOER"] ?? null,
+    all["ORDER_STEP3_TAT_VALUE"] ?? null,
+    all["ORDER_STEP3_TAT_UNIT"] ?? null,
+    all["ORDER_STEP3_DOER"] ?? null,
+    all["ORDER_STEP4_TAT_VALUE"] ?? null,
+    all["ORDER_STEP4_TAT_UNIT"] ?? null,
+    all["ORDER_STEP4_DOER"] ?? null,
+    all["ORDER_CREDIT_HOLD_APPROVER"] ?? null,
+  ];
 
   return {
     step1TatValue: Number(step1TatValue) > 0 ? Number(step1TatValue) : DEFAULT_TAT_VALUE,

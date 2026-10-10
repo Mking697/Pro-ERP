@@ -1,7 +1,7 @@
 import type { InferSelectModel } from "drizzle-orm";
 import { and, eq, gte, lte } from "drizzle-orm";
 import { chartOfAccounts, journalEntries, journalLines } from "@/db/schema";
-import { db } from "@/db/client";
+import { db, runInTenantTransaction } from "@/db/client";
 import { insertRecord, listByOrg } from "@/db/repo";
 import { getTenantOrgId } from "@/lib/tenant";
 import { generateId } from "@/lib/id";
@@ -27,6 +27,9 @@ import { endOfIstDay, startOfIstDay } from "@/lib/timestamp";
  */
 
 export class LedgerError extends Error {}
+export class LedgerConflictError extends LedgerError {
+  readonly status = 409;
+}
 
 export type AccountType = "Asset" | "Liability" | "Equity" | "Income" | "Expense";
 
@@ -169,20 +172,26 @@ function isUniqueViolation(error: unknown, constraintName: string): boolean {
  * `chart_of_accounts_org_id_code_unique` constraint and is swallowed, not thrown).
  */
 export async function seedDefaultChartOfAccounts(orgId: string): Promise<void> {
+  return runInTenantTransaction(orgId, () => seedDefaultChartOfAccountsInTransaction(orgId));
+}
+
+async function seedDefaultChartOfAccountsInTransaction(orgId: string): Promise<void> {
   const existing = await db.select().from(chartOfAccounts).where(eq(chartOfAccounts.orgId, orgId));
   const existingCodes = new Set(existing.map((r) => r.code));
 
   for (const account of DEFAULT_ACCOUNTS) {
     if (existingCodes.has(account.code)) continue;
     try {
-      await insertRecord(chartOfAccounts, {
+      // A tolerated unique violation must roll back its savepoint, not poison
+      // the surrounding business transaction when a historical writer races us.
+      await db.batch([db.insert(chartOfAccounts).values({
         id: generateId("ACC"),
         orgId,
         code: account.code,
         name: account.name,
         type: account.type,
         isSystem: true,
-      });
+      })]);
     } catch (error) {
       if (!isUniqueViolation(error, "chart_of_accounts_org_id_code_unique")) throw error;
     }
@@ -225,6 +234,11 @@ export interface CreateAccountInput {
  * parameter with nothing to do would just be dead weight the caller has to pass anyway.
  */
 export async function createAccount(input: CreateAccountInput): Promise<ChartOfAccountRecord> {
+  const orgId = await getTenantOrgId();
+  return runInTenantTransaction(orgId, () => createAccountInTransaction(input));
+}
+
+async function createAccountInTransaction(input: CreateAccountInput): Promise<ChartOfAccountRecord> {
   const orgId = await getTenantOrgId();
   const code = input.code.trim();
   const name = input.name.trim();
@@ -289,6 +303,10 @@ export interface PostJournalEntryInput {
  * throws.
  */
 export async function postJournalEntry(input: PostJournalEntryInput): Promise<string> {
+  return runInTenantTransaction(input.orgId, () => postJournalEntryInTransaction(input));
+}
+
+async function postJournalEntryInTransaction(input: PostJournalEntryInput): Promise<string> {
   if (input.lines.length < 2) {
     throw new LedgerError("Journal entry me kam se kam 2 lines honi chahiye.");
   }
@@ -300,6 +318,9 @@ export async function postJournalEntry(input: PostJournalEntryInput): Promise<st
   const resolvedLines: { accountId: string; debit: number; credit: number }[] = [];
 
   for (const line of input.lines) {
+    if (!Number.isFinite(line.debit ?? 0) || !Number.isFinite(line.credit ?? 0)) {
+      throw new LedgerError("Journal amounts must be finite.");
+    }
     const debit = round2(line.debit ?? 0);
     const credit = round2(line.credit ?? 0);
     if (debit < 0 || credit < 0) {
@@ -326,6 +347,28 @@ export async function postJournalEntry(input: PostJournalEntryInput): Promise<st
     throw new LedgerError(
       `Journal entry balance nahi hai — total Debit ₹${totalDebit}, total Credit ₹${totalCredit}.`
     );
+  }
+
+  // Only nonempty source identities are replayable. Manual entries stay independent.
+  // All participating writers hold the same tenant lock; no amount-based dedupe.
+  if (input.sourceId) {
+    const existing = await db.select().from(journalEntries).where(and(
+      eq(journalEntries.orgId, input.orgId), eq(journalEntries.sourceType, input.sourceType),
+      eq(journalEntries.sourceId, input.sourceId)
+    ));
+    if (existing.length) {
+      const lines = await db.select().from(journalLines).where(and(
+        eq(journalLines.orgId, input.orgId), eq(journalLines.entryId, existing[0].id)
+      ));
+      const fingerprint = (values: { accountId: string; debit: number; credit: number }[]) =>
+        JSON.stringify(values.map((line) => [line.accountId, line.debit, line.credit]).sort());
+      if (existing.length !== 1 || fingerprint(resolvedLines) !== fingerprint(lines.map((line) => ({
+        accountId: line.accountId, debit: Number(line.debit), credit: Number(line.credit)
+      })))) {
+        throw new LedgerConflictError("Journal source already exists with different lines or ambiguous history.");
+      }
+      return existing[0].id;
+    }
   }
 
   const entryId = generateId("JE");
@@ -385,6 +428,14 @@ export interface CreateManualJournalEntryInput {
  * to point back to — the journal entry itself IS the whole record.
  */
 export async function createManualJournalEntry(
+  input: CreateManualJournalEntryInput,
+  createdBy: string
+): Promise<string> {
+  const orgId = await getTenantOrgId();
+  return runInTenantTransaction(orgId, () => createManualJournalEntryInTransaction(input, createdBy));
+}
+
+async function createManualJournalEntryInTransaction(
   input: CreateManualJournalEntryInput,
   createdBy: string
 ): Promise<string> {
@@ -508,9 +559,10 @@ export interface ProfitAndLoss {
 }
 
 /** Income accounts increase with Credit, Expense accounts increase with Debit — each
- * line's `amount` is that account's own natural-balance net for the range. */
-export async function getProfitAndLoss(range?: DateRange): Promise<ProfitAndLoss> {
-  const trialBalance = await getTrialBalance(range);
+ * line's `amount` is that account's own natural-balance net for the range. Pure function
+ * over an already-fetched trial balance so a caller that already has one (getBalanceSheet,
+ * PERF-03) can reuse it instead of paying for a second independent trial-balance read. */
+export function profitAndLossFromTrialBalance(trialBalance: TrialBalanceRow[]): ProfitAndLoss {
   const income = trialBalance
     .filter((r) => r.type === "Income")
     .map((r) => ({ code: r.code, name: r.name, amount: round2(r.credit - r.debit) }));
@@ -521,6 +573,11 @@ export async function getProfitAndLoss(range?: DateRange): Promise<ProfitAndLoss
   const totalIncome = round2(income.reduce((sum, r) => sum + r.amount, 0));
   const totalExpense = round2(expense.reduce((sum, r) => sum + r.amount, 0));
   return { income, expense, totalIncome, totalExpense, netProfit: round2(totalIncome - totalExpense) };
+}
+
+export async function getProfitAndLoss(range?: DateRange): Promise<ProfitAndLoss> {
+  const trialBalance = await getTrialBalance(range);
+  return profitAndLossFromTrialBalance(trialBalance);
 }
 
 export interface BalanceSheetLine {
@@ -565,7 +622,7 @@ export async function getBalanceSheet(asOf?: string): Promise<BalanceSheet> {
     .filter((r) => r.type === "Equity")
     .map((r) => ({ code: r.code, name: r.name, amount: round2(r.credit - r.debit) }));
 
-  const pnl = await getProfitAndLoss(range);
+  const pnl = profitAndLossFromTrialBalance(trialBalance);
   const equity: BalanceSheetLine[] = [
     ...equityAccounts,
     { code: "3900", name: "Retained Earnings (Current)", amount: pnl.netProfit },

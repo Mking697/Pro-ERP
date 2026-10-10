@@ -22,8 +22,14 @@ export const itemStatusEnum = pgEnum("item_status", ["Active", "Inactive"]);
 export const items = pgTable(
   "items",
   {
-  // SKU is the real primary key here — items has no separate generated id.
-  sku: text("sku").primaryKey(),
+  // SKU identity is tenant-local (DATA-06, 2026-10-09): the real primary key is the
+  // composite (org_id, sku) below, not sku alone — two different organizations may now
+  // use the same custom SKU string. items has no separate generated id. No schema file
+  // under src/db/schema/** declares a `references(() => items.sku)` foreign key (verified
+  // by search before this change) — every other table's own `sku` column is plain,
+  // unenforced text (see e.g. parties.ts's vendorItems doc comment), so this key change
+  // needs no compatible composite FK update anywhere in this directory.
+  sku: text("sku").notNull(),
   orgId: text("org_id")
     .notNull()
     .references(() => organizations.id),
@@ -44,7 +50,10 @@ export const items = pgTable(
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   createdBy: text("created_by").notNull().default(""),
   },
-  (table) => [index("items_org_id_idx").on(table.orgId)]
+  (table) => [
+    primaryKey({ columns: [table.orgId, table.sku] }),
+    index("items_org_id_idx").on(table.orgId),
+  ]
 );
 
 export const stockLedger = pgTable(

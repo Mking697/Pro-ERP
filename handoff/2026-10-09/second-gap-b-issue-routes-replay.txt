@@ -1,0 +1,94 @@
+SECOND-phase deferred-gap closure — Item B (of 3)
+Gap: accounts/bills/[billId]/issue and accounts/invoices/[invoiceId]/issue had only
+domain-level guarded idempotence (issueBill/issueInvoice reject an already-Issued
+doc with a 400), not durable keyed replay (same Idempotency-Key replay got a 400
+instead of the original Issued DTO).
+
+SCOPE (exactly as assigned, nothing else touched)
+- src/app/api/accounts/bills/[billId]/issue/route.ts            (modified)
+- src/app/api/accounts/invoices/[invoiceId]/issue/route.ts      (modified)
+- src/lib/accounts/accounts.ts / payables.ts issueBill()/issueInvoice() — NOT modified.
+  Investigated first per instructions: both already own a top-level
+  runInTenantTransaction(orgId, ...) internally. db/transaction-context.ts's
+  runInTenantTransaction reuses the active transaction when orgId matches
+  ("active transaction -> return work()" at line ~98-101), so nesting them inside
+  runIdempotentTenantMutation's own transaction (same orgId) is safe and requires
+  zero changes to the domain functions — exactly the same shape already proven by
+  recordBillPayment() under src/app/api/accounts/bills/[billId]/payments/route.ts.
+- No schema/migration changes — none needed, confirmed before writing any code.
+
+NEW FILES (test-only, do not touch sibling-owned tests/replay-recovery-api.unit.test.ts)
+- tests/issue-routes-replay.unit.test.ts
+- tests/issue-routes-replay.unit.vitest.config.ts  (DB-free: environment node, setupFiles: [])
+
+FIX
+Both routes now wrap the existing domain call in runIdempotentTenantMutation,
+forwarding getMutationKey(request) as the key, following the exact pattern in
+src/app/api/accounts/bills/[billId]/payments/route.ts and
+src/app/api/orders/[orderId]/payment/route.ts:
+  - operation: "accounts.bill-issue.v1" / "accounts.invoice-issue.v1"
+  - actorId: guard.session.userId (trusted, not request body)
+  - payload: { billId } / { invoiceId }  (JSON-safe, deterministic)
+  - work(): the pre-existing issueBill(billId, actorId) / issueInvoice(invoiceId, actorId)
+  - catch block, in order: (1) committed:true AggregateError -> 200 with the
+    committed DTO + warning (never a retryable 400), (2) MutationConflictError /
+    MutationInputError -> their own .status (409 / 400), (3) fallback: existing
+    PayablesError/AccountsError message -> 400 (the pre-existing domain guard,
+    UNCHANGED — still fires exactly as before whenever no key, or a different key,
+    hits an already-Issued bill/invoice).
+No weakening of the domain guard: issueBill/issueInvoice's own
+"row.status !== Draft" check still throws PayablesError/AccountsError exactly as
+before; the wrapper only adds durable replay ON TOP for the keyed path.
+
+TDD EVIDENCE
+RED (before the route change, same test file, run against the old routes):
+  npx vitest run --config tests/issue-routes-replay.unit.vitest.config.ts
+  -> Test Files 1 failed (1) | Tests 4 failed | 4 passed (8)
+  Failures (as expected, proving the gap):
+    - "bill issue returns the committed result instead of a retryable 400 on key
+      replay" -> got plain {bill:...} without committed:true (old route doesn't
+      catch the committed AggregateError shape at all — proves no durable replay)
+    - "bill issue maps a replayed key with a different payload to 409, not 400"
+      -> got 200 instead of 409 (old route never calls runIdempotentTenantMutation,
+      so MutationConflictError can never surface)
+    - same two failures mirrored for invoice issue.
+  Passing (4): first-call happy path and the pre-existing domain-guard 400 for an
+  unkeyed replay against an already-Issued doc — these already worked and must
+  keep working; used as the regression baseline.
+
+GREEN (after the route change):
+  npx vitest run --config tests/issue-routes-replay.unit.vitest.config.ts
+  -> Test Files 1 passed (1) | Tests 8 passed (8)
+
+REGRESSION CHECK (sibling/owned files untouched, re-run as proof):
+  npx vitest run --config tests/replay-recovery-api.unit.vitest.config.ts
+  -> Test Files 1 passed (1) | Tests 8 passed (8)   (item5's own file, unmodified)
+  npx vitest run --config tests/finance-atomicity.vitest.config.ts
+  -> Test Files 1 passed (1) | Tests 18 passed (18) (untouched, unmodified)
+  npx tsc --noEmit -p tsconfig.json
+  -> 4 pre-existing errors, all in tests/stock-workflow*.test.ts (unrelated to this
+     item, not touched by this change; zero errors in any file this item modified).
+
+REQUIRED BEHAVIOR — verified by the 8 new unit tests
+1. First issue succeeds, returns the Issued DTO            -> covered (2 tests)
+2. Replaying the SAME key returns the SAME Issued DTO
+   (simulated via the committed:true contract, same as all
+   8 of item5's own routes/tests)                          -> covered (2 tests)
+3. Replaying with a DIFFERENT payload on the same key -> 409
+   (MutationConflictError mapped to its own .status)        -> covered (2 tests)
+4. An already-issued doc reached WITHOUT a key (or a
+   different key) still rejects via the existing domain
+   guard, unweakened                                        -> covered (2 tests)
+
+All DB-free: lib/mutations, lib/auth/guard, lib/tenant, lib/accounts/payables,
+lib/accounts/accounts are all vi.mock'd; no real DB connection used, matching
+item5's own precedent that route-level replay wiring is provable without one.
+
+NOT DONE / OUT OF SCOPE (left to parent / other items)
+- No changes to ledger.ts, fms/reset.ts, maintenance.ts, dispatch.ts schema,
+  migration0029, finance-atomicity.test.ts, item5's 8 fixed routes, or
+  inventory/items/import/route.ts (sibling-owned this round) — confirmed via
+  `git status --porcelain` that only the two issue/route.ts files are modified
+  by this task; other new files visible in git status (items-import-replay.*,
+  ppc-plan-cancel-recheck-replay.*) are concurrent sibling-agent work, not mine.
+- No commit/push/deploy made, per instructions.

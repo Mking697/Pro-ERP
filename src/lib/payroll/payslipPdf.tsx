@@ -1,4 +1,5 @@
 import { Document, Image, Page, StyleSheet, Text, View, renderToBuffer } from "@react-pdf/renderer";
+import { buildDeductionShortfallNote } from "@/lib/payroll/shortfallNote";
 
 /**
  * The payslip PDF — same tooling and money-formatting convention as
@@ -104,11 +105,19 @@ export interface PayslipPdfInput {
   esiEmployee: number;
   tds: number;
   netPay: number;
+  /** OPS-02: how much of the computed employee-side PF/ESI/TDS could not actually be
+   * withheld this period (see src/lib/payroll/statutory.ts's capDeductionsToGrossPay doc
+   * comment). The pending schema/migration adds `payslips.deduction_shortfall` and
+   * `generatePayslipPdfs()` reads it from the persisted row. This wiring requires the
+   * separately approved migration application and deployment; it is not evidence that
+   * production PDFs already contain the field. */
+  deductionShortfall?: number;
 }
 
 function PayslipDocument({ input }: { input: PayslipPdfInput }) {
   const monthText = formatMonth(input.month);
   const hasDeductions = input.pfEmployee > 0 || input.esiEmployee > 0 || input.tds > 0;
+  const shortfallNote = buildDeductionShortfallNote(input.deductionShortfall ?? 0);
   return (
     <Document title={`Payslip ${monthText} - ${input.employeeName}`} author={input.companyName}>
       <Page size="A4" style={styles.page}>
@@ -171,6 +180,8 @@ function PayslipDocument({ input }: { input: PayslipPdfInput }) {
           <Text style={styles.totalLabel}>Net Pay</Text>
           <Text style={styles.totalValue}>{formatMoney(input.netPay)}</Text>
         </View>
+
+        {shortfallNote ? <Text style={styles.note}>{shortfallNote}</Text> : null}
 
         <Text style={styles.note}>
           {hasDeductions

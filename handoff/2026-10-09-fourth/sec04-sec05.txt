@@ -1,0 +1,34 @@
+SEC-04 / SEC-05 — 2026-10-09 local handoff
+
+Implemented:
+- src/lib/chatxflow.ts: exact approved provider origin https://chatxflow.online only; custom DNS hosts, subdomains, IP literals (including IPv4-mapped loopback and IPv6 link-local), credentials, alternate ports, paths, queries and fragments are rejected. Empty configuration uses the existing default. Legacy stored URLs are checked again before outbound fetch. fetch uses redirect: "error", so no redirect destination receives a replayed token/message.
+- src/app/api/admin/settings/whatsapp/route.ts: same shared provider policy at save time, canonical approved origin persisted, explicit custom-host refusal message. No user-controlled DNS destination is ever requested. Custom providers are deliberately unsupported rather than introducing a bespoke DNS/IPv6 transport; the approved provider's own DNS/TLS remain trusted.
+- src/app/api/blob/upload/route.ts: resolves tenantFromOrgId using the already-live user session before handleUpload. TenantResolutionError returns 403, matching module guards; unexpected registry outages fail closed. Existing tenant path, MIME, 100 MiB/file and no-overwrite policy remains unchanged.
+- src/lib/auth/guard.ts: no final change by this agent; existing shared-tree/staged work preserved. No new helper necessary: upload directly reuses the existing authoritative tenant resolver.
+
+Tests added:
+- tests/sec04-whatsapp-egress.test.ts (37 tests).
+- tests/sec05-blob-tenant.test.ts (14 tests).
+- tests/sec04-sec05.vitest.config.ts (setupFiles: [], DB-free; real tenant/status policy with mocked registry and mocked fetch/Blob boundaries).
+
+Vertical RED -> GREEN evidence for final implementation:
+1. Custom destination test RED: settings POST returned 200, expected 400. Added shared approved-origin policy and sender validation; GREEN 1/1.
+2. Unsafe redirect test RED: send returned ok:true, expected false. Added redirect:error; GREEN 2/2 after correcting test mock reset behavior.
+3. Suspended tenant test RED: upload returned 200, expected 403. Added authoritative live tenant resolution before Blob; GREEN suspended case.
+4. Canonical settings test RED: persisted HTTPS://CHATXFLOW.ONLINE:443/, expected https://chatxflow.online. Canonicalized persistence; GREEN.
+Final command: node node_modules/vitest/vitest.mjs run --config tests/sec04-sec05.vitest.config.ts --reporter=dot
+Actual result: exit 0, 2 test files, 51 tests passed. git diff --check scoped to owned files: exit 0 (CRLF warning only).
+
+Quality gates BLOCKED, not claimed clean:
+- Required npx tsc --noEmit -p tsconfig.json initially found no local tsc executable and npm automatically selected/fetched the unrelated tsc@2.0.4 package, which reports "This is not the tsc command you are looking for". No dependency manifest/lockfile changes were made by this agent; further attempts explicitly disabled installation.
+- npx --no-install tsc --noEmit -p tsconfig.json: exit 1, same wrong-package message.
+- npx --no-install eslint <owned changed files>: exit 1, eslint not recognized.
+- Final direct installed-tool attempts: node node_modules/typescript/bin/tsc ... and node node_modules/eslint/bin/eslint.js ... both exit 1, MODULE_NOT_FOUND. Earlier TypeScript launcher existed but lacked ../lib/tsc.js. Installed dependencies appear incomplete/changing in this shared checkout; parent must restore tooling and rerun these gates.
+- Relevant installed Next route guide was attempted but node_modules/next/dist/docs was absent. No Next-specific API behavior was introduced.
+
+NOT done:
+- No real Postgres, production provider, WhatsApp or Vercel Blob network verification; transports/registry mocked only.
+- No custom-provider connection pinning or DNS-range classifier: custom destinations are not allowed.
+- No aggregate storage usage/quota accounting or provider-plan changes. Existing explicit upload authorization and per-file limits are preserved; aggregate quota needs a separately approved policy/accounting design.
+- No commit, push, deployment, production migration, .env read, or npm install command. The initial npx auto-fetch incident above is explicitly disclosed.
+- No tracker edit: outside this agent's assigned ownership; parent should update acceptance status after type/lint gates and review.

@@ -1,8 +1,8 @@
 import type { InferSelectModel } from "drizzle-orm";
 import { and, desc, eq } from "drizzle-orm";
 import { maintenanceActivities, maintenanceRequests, fmsRuns } from "@/db/schema";
-import { db } from "@/db/client";
-import { findById, insertRecord, listByOrg, updateById } from "@/db/repo";
+import { db, runInTenantTransaction } from "@/db/client";
+import { findById, insertRecord, listByOrg } from "@/db/repo";
 import { getTenantOrgId } from "@/lib/tenant";
 import { generateId } from "@/lib/id";
 import { parseStamp } from "@/lib/timestamp";
@@ -123,6 +123,32 @@ async function logActivity(
   });
 }
 
+async function transitionRequest(
+  orgId: string,
+  existing: RequestRow,
+  fields: Partial<typeof maintenanceRequests.$inferInsert>
+): Promise<RequestRow> {
+  const [updated] = await db.update(maintenanceRequests).set(fields).where(and(
+    eq(maintenanceRequests.orgId, orgId), eq(maintenanceRequests.id, existing.id),
+    eq(maintenanceRequests.status, existing.status)
+  )).returning();
+  if (!updated) throw new MaintenanceError("Maintenance request changed — refresh before retrying.");
+  return updated;
+}
+
+// Exact prior-state predicates also fail closed against writers outside this lock.
+async function transitionRun(
+  orgId: string,
+  run: InferSelectModel<typeof fmsRuns>,
+  fields: Partial<typeof fmsRuns.$inferInsert>
+): Promise<void> {
+  const [updated] = await db.update(fmsRuns).set(fields).where(and(
+    eq(fmsRuns.orgId, orgId), eq(fmsRuns.id, run.id),
+    eq(fmsRuns.status, run.status), eq(fmsRuns.assignedTo, run.assignedTo)
+  )).returning({ id: fmsRuns.id });
+  if (!updated) throw new MaintenanceError("Production step changed — refresh before retrying.");
+}
+
 // ---------------------------------------------------------------------------
 // Reads
 // ---------------------------------------------------------------------------
@@ -190,43 +216,45 @@ export async function reportBreakdown(input: {
   description: string;
 }): Promise<MaintenanceRequestRecord> {
   const orgId = await getTenantOrgId();
-  const run = await findById(fmsRuns, orgId, input.runId);
-  if (!run) throw new MaintenanceError("Production Line ka step nahi mila.");
-  if (run.assignedTo !== input.reportedBy) {
-    throw new MaintenanceError("Aap sirf apne assigned step ke liye breakdown report kar sakte hain.");
-  }
-  if (run.status !== "Pending") {
-    throw new MaintenanceError("Yeh step abhi Pending nahi hai — breakdown report nahi ho sakta.");
-  }
-  if (await hasOpenBreakdown(input.runId)) {
-    throw new MaintenanceError("Is step ke liye pehle se ek breakdown open hai.");
-  }
+  return runInTenantTransaction(orgId, async () => {
+    const run = await findById(fmsRuns, orgId, input.runId);
+    if (!run) throw new MaintenanceError("Production Line ka step nahi mila.");
+    if (run.assignedTo !== input.reportedBy) {
+      throw new MaintenanceError("Aap sirf apne assigned step ke liye breakdown report kar sakte hain.");
+    }
+    if (run.status !== "Pending") {
+      throw new MaintenanceError("Yeh step abhi Pending nahi hai — breakdown report nahi ho sakta.");
+    }
+    if (await hasOpenBreakdown(input.runId)) {
+      throw new MaintenanceError("Is step ke liye pehle se ek breakdown open hai.");
+    }
 
-  const id = generateId("MNT");
-  const row = await insertRecord(maintenanceRequests, {
-    id,
-    orgId,
-    kind: "Breakdown",
-    productionLineRunId: input.runId,
-    productionLineTemplateName: run.templateName,
-    description: input.description.trim(),
-    status: "Open",
-    reportedBy: input.reportedBy,
-    reportedAt: new Date(),
-    pausedTatDeadline: run.tatDeadline,
+    const id = generateId("MNT");
+    const row = await insertRecord(maintenanceRequests, {
+      id,
+      orgId,
+      kind: "Breakdown",
+      productionLineRunId: input.runId,
+      productionLineTemplateName: run.templateName,
+      description: input.description.trim(),
+      status: "Open",
+      reportedBy: input.reportedBy,
+      reportedAt: new Date(),
+      pausedTatDeadline: run.tatDeadline,
+    });
+
+    await transitionRun(orgId, run, { status: "Paused" });
+
+    await logActivity(
+      orgId,
+      id,
+      "Reported",
+      `Breakdown report hua — "${run.stepName}" (${run.templateName}) pause ho gaya.`,
+      input.reportedBy
+    );
+
+    return rowToRequest(row);
   });
-
-  await updateById(fmsRuns, orgId, input.runId, { status: "Paused" });
-
-  await logActivity(
-    orgId,
-    id,
-    "Reported",
-    `Breakdown report hua — "${run.stepName}" (${run.templateName}) pause ho gaya.`,
-    input.reportedBy
-  );
-
-  return rowToRequest(row);
 }
 
 /** Maintenance picks up an unassigned request — optional, anyone holding the module
@@ -237,17 +265,18 @@ export async function assignMaintenanceRequest(
   actorId: string
 ): Promise<MaintenanceRequestRecord> {
   const orgId = await getTenantOrgId();
-  const existing = await findById(maintenanceRequests, orgId, requestId);
-  if (!existing) throw new MaintenanceError("Request nahi mili.");
-  if (existing.status !== "Open") {
-    throw new MaintenanceError("Yeh request ab Open nahi hai.");
-  }
+  return runInTenantTransaction(orgId, async () => {
+    const existing = await findById(maintenanceRequests, orgId, requestId);
+    if (!existing) throw new MaintenanceError("Request nahi mili.");
+    if (existing.status !== "Open") {
+      throw new MaintenanceError("Yeh request ab Open nahi hai.");
+    }
 
-  const updated = await updateById(maintenanceRequests, orgId, requestId, { assignedTo });
-  if (!updated) throw new MaintenanceError("Request update nahi ho payi.");
+    const updated = await transitionRequest(orgId, existing, { assignedTo });
 
-  await logActivity(orgId, requestId, "Assigned", `Assign hui.`, actorId);
-  return rowToRequest(updated);
+    await logActivity(orgId, requestId, "Assigned", `Assign hui.`, actorId);
+    return rowToRequest(updated);
+  });
 }
 
 /**
@@ -260,28 +289,29 @@ export async function markFixedByMaintenance(input: {
   remark?: string;
 }): Promise<MaintenanceRequestRecord> {
   const orgId = await getTenantOrgId();
-  const existing = await findById(maintenanceRequests, orgId, input.requestId);
-  if (!existing) throw new MaintenanceError("Request nahi mili.");
-  if (existing.status !== "Open") {
-    throw new MaintenanceError("Yeh request Open nahi hai.");
-  }
+  return runInTenantTransaction(orgId, async () => {
+    const existing = await findById(maintenanceRequests, orgId, input.requestId);
+    if (!existing) throw new MaintenanceError("Request nahi mili.");
+    if (existing.status !== "Open") {
+      throw new MaintenanceError("Yeh request Open nahi hai.");
+    }
 
-  const updated = await updateById(maintenanceRequests, orgId, input.requestId, {
-    status: "Fixed_By_Maintenance",
-    fixedBy: input.fixedBy,
-    fixedAt: new Date(),
-    fixedRemark: input.remark?.trim() ?? "",
+    const updated = await transitionRequest(orgId, existing, {
+      status: "Fixed_By_Maintenance",
+      fixedBy: input.fixedBy,
+      fixedAt: new Date(),
+      fixedRemark: input.remark?.trim() ?? "",
+    });
+
+    await logActivity(
+      orgId,
+      input.requestId,
+      "Fixed_By_Maintenance",
+      `Maintenance ne "kaam ho gaya" mark kiya — reporter ke confirm ka intezaar.`,
+      input.fixedBy
+    );
+    return rowToRequest(updated);
   });
-  if (!updated) throw new MaintenanceError("Request update nahi ho payi.");
-
-  await logActivity(
-    orgId,
-    input.requestId,
-    "Fixed_By_Maintenance",
-    `Maintenance ne "kaam ho gaya" mark kiya — reporter ke confirm ka intezaar.`,
-    input.fixedBy
-  );
-  return rowToRequest(updated);
 }
 
 /**
@@ -299,67 +329,70 @@ export async function confirmResolved(input: {
   remark?: string;
 }): Promise<MaintenanceRequestRecord> {
   const orgId = await getTenantOrgId();
-  const existing = await findById(maintenanceRequests, orgId, input.requestId);
-  if (!existing) throw new MaintenanceError("Request nahi mili.");
-  if (existing.status !== "Fixed_By_Maintenance") {
-    throw new MaintenanceError(
-      "Maintenance ne abhi 'kaam ho gaya' mark nahi kiya — confirm nahi kar sakte."
-    );
-  }
-  if (existing.reportedBy !== input.actorId) {
-    throw new MaintenanceError("Sirf jisne breakdown report kiya tha, wahi confirm kar sakta hai.");
-  }
-
-  const now = new Date();
-  const elapsedMs = Math.max(0, now.getTime() - existing.reportedAt.getTime());
-
-  if (existing.productionLineRunId) {
-    const run = await findById(fmsRuns, orgId, existing.productionLineRunId);
-    if (run && run.status === "Paused") {
-      const basis = existing.pausedTatDeadline ?? run.tatDeadline;
-      const newDeadline = basis ? new Date(basis.getTime() + elapsedMs) : null;
-      await updateById(fmsRuns, orgId, existing.productionLineRunId, {
-        status: "Pending",
-        ...(newDeadline ? { tatDeadline: newDeadline } : {}),
-      });
+  return runInTenantTransaction(orgId, async () => {
+    const existing = await findById(maintenanceRequests, orgId, input.requestId);
+    if (!existing) throw new MaintenanceError("Request nahi mili.");
+    if (existing.status !== "Fixed_By_Maintenance") {
+      throw new MaintenanceError(
+        "Maintenance ne abhi 'kaam ho gaya' mark nahi kiya — confirm nahi kar sakte."
+      );
     }
-  }
+    if (existing.reportedBy !== input.actorId) {
+      throw new MaintenanceError("Sirf jisne breakdown report kiya tha, wahi confirm kar sakta hai.");
+    }
 
-  // Reporting figure only — see maintenance_requests.workingMinutesLost's own comment.
-  let workingMinutesLost: number | null = null;
-  try {
+    const now = new Date();
+    const elapsedMs = Math.max(0, now.getTime() - existing.reportedAt.getTime());
+    let resumed = false;
+
     if (existing.productionLineRunId) {
       const run = await findById(fmsRuns, orgId, existing.productionLineRunId);
-      if (run?.assignedTo) {
-        const { computeWorkingMinutesBetween } = await import("@/lib/fms/calendar");
-        workingMinutesLost = await computeWorkingMinutesBetween(
-          run.assignedTo,
-          existing.reportedAt.getTime(),
-          now.getTime()
-        );
+      if (run && run.status === "Paused") {
+        const basis = existing.pausedTatDeadline ?? run.tatDeadline;
+        const newDeadline = basis ? new Date(basis.getTime() + elapsedMs) : null;
+        await transitionRun(orgId, run, {
+          status: "Pending",
+          ...(newDeadline ? { tatDeadline: newDeadline } : {}),
+        });
+        resumed = true;
       }
     }
-  } catch {
-    workingMinutesLost = null;
-  }
 
-  const updated = await updateById(maintenanceRequests, orgId, input.requestId, {
-    status: "Resolved",
-    confirmedBy: input.actorId,
-    confirmedAt: now,
-    confirmedRemark: input.remark?.trim() ?? "",
-    ...(workingMinutesLost !== null ? { workingMinutesLost: String(workingMinutesLost) } : {}),
+    // Reporting figure only — see maintenance_requests.workingMinutesLost's own comment.
+    let workingMinutesLost: number | null = null;
+    try {
+      if (existing.productionLineRunId) {
+        const run = await findById(fmsRuns, orgId, existing.productionLineRunId);
+        if (run?.assignedTo) {
+          const { computeWorkingMinutesBetween } = await import("@/lib/fms/calendar");
+          workingMinutesLost = await computeWorkingMinutesBetween(
+            run.assignedTo,
+            existing.reportedAt.getTime(),
+            now.getTime()
+          );
+        }
+      }
+    } catch {
+      workingMinutesLost = null;
+    }
+
+    const updated = await transitionRequest(orgId, existing, {
+      status: "Resolved",
+      confirmedBy: input.actorId,
+      confirmedAt: now,
+      confirmedRemark: input.remark?.trim() ?? "",
+      ...(workingMinutesLost !== null ? { workingMinutesLost: String(workingMinutesLost) } : {}),
+    });
+
+    await logActivity(
+      orgId,
+      input.requestId,
+      "Resolved",
+      resumed ? `Confirm hua — Production Line resume ho gayi.` : `Confirm hua — Production step state unchanged.`,
+      input.actorId
+    );
+    return rowToRequest(updated);
   });
-  if (!updated) throw new MaintenanceError("Request update nahi ho payi.");
-
-  await logActivity(
-    orgId,
-    input.requestId,
-    "Resolved",
-    `Confirm hua — Production Line resume ho gayi.`,
-    input.actorId
-  );
-  return rowToRequest(updated);
 }
 
 /** Reopens a request the reporter rejected — Maintenance's fix didn't actually hold.
@@ -370,30 +403,31 @@ export async function reopenRequest(input: {
   remark?: string;
 }): Promise<MaintenanceRequestRecord> {
   const orgId = await getTenantOrgId();
-  const existing = await findById(maintenanceRequests, orgId, input.requestId);
-  if (!existing) throw new MaintenanceError("Request nahi mili.");
-  if (existing.status !== "Fixed_By_Maintenance") {
-    throw new MaintenanceError("Yeh request abhi reopen nahi ho sakti.");
-  }
-  if (existing.reportedBy !== input.actorId) {
-    throw new MaintenanceError("Sirf jisne breakdown report kiya tha, wahi reopen kar sakta hai.");
-  }
+  return runInTenantTransaction(orgId, async () => {
+    const existing = await findById(maintenanceRequests, orgId, input.requestId);
+    if (!existing) throw new MaintenanceError("Request nahi mili.");
+    if (existing.status !== "Fixed_By_Maintenance") {
+      throw new MaintenanceError("Yeh request abhi reopen nahi ho sakti.");
+    }
+    if (existing.reportedBy !== input.actorId) {
+      throw new MaintenanceError("Sirf jisne breakdown report kiya tha, wahi reopen kar sakta hai.");
+    }
 
-  const updated = await updateById(maintenanceRequests, orgId, input.requestId, {
-    status: "Open",
-    fixedBy: "",
-    fixedAt: null,
+    const updated = await transitionRequest(orgId, existing, {
+      status: "Open",
+      fixedBy: "",
+      fixedAt: null,
+    });
+
+    await logActivity(
+      orgId,
+      input.requestId,
+      "Reopened",
+      `Reopen hui — fix abhi theek nahi tha.${input.remark ? ` ${input.remark.trim()}` : ""}`,
+      input.actorId
+    );
+    return rowToRequest(updated);
   });
-  if (!updated) throw new MaintenanceError("Request update nahi ho payi.");
-
-  await logActivity(
-    orgId,
-    input.requestId,
-    "Reopened",
-    `Reopen hui — fix abhi theek nahi tha.${input.remark ? ` ${input.remark.trim()}` : ""}`,
-    input.actorId
-  );
-  return rowToRequest(updated);
 }
 
 // ---------------------------------------------------------------------------
@@ -417,19 +451,21 @@ export async function createStandaloneRequest(input: {
     throw new MaintenanceError("Yeh kaam type Production Line se pause nahi hota — standalone hi ho sakta hai.");
   }
   const orgId = await getTenantOrgId();
-  const id = generateId("MNT");
-  const row = await insertRecord(maintenanceRequests, {
-    id,
-    orgId,
-    kind: input.kind,
-    description: input.description.trim(),
-    status: "Open",
-    reportedBy: input.reportedBy,
-    reportedAt: new Date(),
-  });
+  return runInTenantTransaction(orgId, async () => {
+    const id = generateId("MNT");
+    const row = await insertRecord(maintenanceRequests, {
+      id,
+      orgId,
+      kind: input.kind,
+      description: input.description.trim(),
+      status: "Open",
+      reportedBy: input.reportedBy,
+      reportedAt: new Date(),
+    });
 
-  await logActivity(orgId, id, "Reported", `"${input.kind}" ke liye request bani.`, input.reportedBy);
-  return rowToRequest(row);
+    await logActivity(orgId, id, "Reported", `"${input.kind}" ke liye request bani.`, input.reportedBy);
+    return rowToRequest(row);
+  });
 }
 
 /** For a standalone request, close it directly — no reporter confirmation needed since
@@ -440,51 +476,53 @@ export async function closeStandaloneRequest(input: {
   remark?: string;
 }): Promise<MaintenanceRequestRecord> {
   const orgId = await getTenantOrgId();
-  const existing = await findById(maintenanceRequests, orgId, input.requestId);
-  if (!existing) throw new MaintenanceError("Request nahi mili.");
-  if (existing.kind === "Breakdown") {
-    throw new MaintenanceError("Breakdown request confirmResolved() se hi band hoti hai.");
-  }
-  if (existing.status === "Resolved" || existing.status === "Cancelled") {
-    throw new MaintenanceError("Yeh request pehle se band hai.");
-  }
+  return runInTenantTransaction(orgId, async () => {
+    const existing = await findById(maintenanceRequests, orgId, input.requestId);
+    if (!existing) throw new MaintenanceError("Request nahi mili.");
+    if (existing.kind === "Breakdown") {
+      throw new MaintenanceError("Breakdown request confirmResolved() se hi band hoti hai.");
+    }
+    if (existing.status === "Resolved" || existing.status === "Cancelled") {
+      throw new MaintenanceError("Yeh request pehle se band hai.");
+    }
 
-  const updated = await updateById(maintenanceRequests, orgId, input.requestId, {
-    status: "Resolved",
-    fixedBy: input.actorId,
-    fixedAt: new Date(),
-    confirmedBy: input.actorId,
-    confirmedAt: new Date(),
-    confirmedRemark: input.remark?.trim() ?? "",
+    const updated = await transitionRequest(orgId, existing, {
+      status: "Resolved",
+      fixedBy: input.actorId,
+      fixedAt: new Date(),
+      confirmedBy: input.actorId,
+      confirmedAt: new Date(),
+      confirmedRemark: input.remark?.trim() ?? "",
+    });
+
+    await logActivity(orgId, input.requestId, "Resolved", `Kaam complete hua.`, input.actorId);
+    return rowToRequest(updated);
   });
-  if (!updated) throw new MaintenanceError("Request update nahi ho payi.");
-
-  await logActivity(orgId, input.requestId, "Resolved", `Kaam complete hua.`, input.actorId);
-  return rowToRequest(updated);
 }
 
 export async function cancelRequest(requestId: string, actorId: string): Promise<MaintenanceRequestRecord> {
   const orgId = await getTenantOrgId();
-  const existing = await findById(maintenanceRequests, orgId, requestId);
-  if (!existing) throw new MaintenanceError("Request nahi mili.");
-  if (existing.status === "Resolved" || existing.status === "Cancelled") {
-    throw new MaintenanceError("Yeh request pehle se band hai.");
-  }
-
-  // A cancelled Breakdown must resume the paused step — otherwise cancelling would
-  // leave a Production Line stuck Paused forever with nothing left to confirm it.
-  if (existing.kind === "Breakdown" && existing.productionLineRunId) {
-    const run = await findById(fmsRuns, orgId, existing.productionLineRunId);
-    if (run && run.status === "Paused") {
-      await updateById(fmsRuns, orgId, existing.productionLineRunId, { status: "Pending" });
+  return runInTenantTransaction(orgId, async () => {
+    const existing = await findById(maintenanceRequests, orgId, requestId);
+    if (!existing) throw new MaintenanceError("Request nahi mili.");
+    if (existing.status === "Resolved" || existing.status === "Cancelled") {
+      throw new MaintenanceError("Yeh request pehle se band hai.");
     }
-  }
 
-  const updated = await updateById(maintenanceRequests, orgId, requestId, { status: "Cancelled" });
-  if (!updated) throw new MaintenanceError("Request update nahi ho payi.");
+    // A cancelled Breakdown must resume the paused step — otherwise cancelling would
+    // leave a Production Line stuck Paused forever with nothing left to confirm it.
+    if (existing.kind === "Breakdown" && existing.productionLineRunId) {
+      const run = await findById(fmsRuns, orgId, existing.productionLineRunId);
+      if (run && run.status === "Paused") {
+        await transitionRun(orgId, run, { status: "Pending" });
+      }
+    }
 
-  await logActivity(orgId, requestId, "Cancelled", `Cancel hui.`, actorId);
-  return rowToRequest(updated);
+    const updated = await transitionRequest(orgId, existing, { status: "Cancelled" });
+
+    await logActivity(orgId, requestId, "Cancelled", `Cancel hui.`, actorId);
+    return rowToRequest(updated);
+  });
 }
 
 // Parsed the same lenient way engine.ts reads timestamps.

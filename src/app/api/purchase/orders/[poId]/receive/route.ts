@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { getMutationKey, MutationConflictError } from "@/lib/mutations";
 import { z } from "zod";
 import { requireModule } from "@/lib/auth/guard";
 import { receivePurchaseOrderLine, PurchaseOrderError } from "@/lib/purchase/orders";
@@ -33,10 +34,17 @@ export async function POST(
       parsed.data.indentId,
       parsed.data.quantity,
       guard.session.userId,
-      parsed.data.invoiceUrl
+      parsed.data.invoiceUrl,
+      getMutationKey(request)
     );
     return NextResponse.json({ order });
   } catch (err) {
+    if (err instanceof Error && "committed" in err && err.committed === true && "result" in err) {
+      return NextResponse.json({ order: err.result, committed: true, warning: err.message });
+    }
+    if (err instanceof MutationConflictError) {
+      return NextResponse.json({ error: err.message }, { status: 409 });
+    }
     const message =
       err instanceof PurchaseOrderError || err instanceof IndentReceiptError || err instanceof Error
         ? err.message

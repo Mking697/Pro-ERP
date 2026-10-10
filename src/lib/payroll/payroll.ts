@@ -1,5 +1,5 @@
 import { and, eq, inArray, type InferSelectModel } from "drizzle-orm";
-import { db } from "@/db/client";
+import { db, runInTenantTransaction } from "@/db/client";
 import { payrollRuns, payslips, salaryStructures } from "@/db/schema";
 import { findById, listByOrg, updateById } from "@/db/repo";
 import { getTenantOrgId } from "@/lib/tenant";
@@ -8,7 +8,7 @@ import { listUsers } from "@/lib/auth/users";
 import { getOrganization } from "@/lib/platform/registry";
 import { getAllSettings, getSetting } from "@/lib/settings";
 import { uploadAttachment } from "@/lib/storage";
-import { computeStatutoryDeductions, type StatutoryFlags } from "@/lib/payroll/statutory";
+import { capDeductionsToGrossPay, computeStatutoryDeductions, type StatutoryFlags } from "@/lib/payroll/statutory";
 
 /**
  * Payroll v1 — simple, explicitly NOT statutory-compliant (see src/db/schema/payroll.ts's
@@ -83,8 +83,20 @@ export interface PayslipRecord {
   esiEmployer: number;
   tds: number;
   netPay: number;
+  // Persisted 2026-10-09 (OPS-02 schema addition) — how much of the configured PF/ESI/TDS
+  // could not be withheld because grossPay was too small; see
+  // src/db/schema/payroll.ts's deductionShortfall column comment. Zero in the normal case,
+  // survives a reload now (previously only returned by generatePayrollRun() itself).
+  deductionShortfall: number;
   pdfUrl: string;
   createdAt: string;
+}
+
+/** @deprecated kept only so existing call sites that still name this type explicitly
+ * (generatePayrollRun()'s own return value) keep compiling — deductionShortfall now lives
+ * directly on PayslipRecord itself since it's persisted, so this adds nothing new. */
+export interface GeneratedPayslip extends PayslipRecord {
+  deductionShortfall: number;
 }
 
 export interface PayslipWithUser extends PayslipRecord {
@@ -143,6 +155,7 @@ function rowToPayslip(row: PayslipRow): PayslipRecord {
     esiEmployer: Number(row.esiEmployer),
     tds: Number(row.tds),
     netPay: Number(row.netPay),
+    deductionShortfall: Number(row.deductionShortfall),
     pdfUrl: row.pdfUrl,
     createdAt: row.createdAt.toISOString(),
   };
@@ -312,14 +325,23 @@ function computeDaysEmployed(params: {
  * calling this twice for the same still-Draft month replaces its payslips (same run,
  * same payslip rows keyed by (payrollRunId, userId)) rather than duplicating anything.
  * Refuses outright if the run for that month is already Finalized.
+ *
+ * OPS-02: the whole read-check-write sequence runs inside one runInTenantTransaction
+ * boundary (parameterized tenant advisory lock, same pattern src/db/client.ts's own
+ * callers already use elsewhere) — two concurrent generate calls for the same org
+ * (including one racing a finalize) are serialized rather than interleaving their reads
+ * and writes, so the Draft-run find-or-create and its payslip upserts can no longer lose
+ * a race against each other the way the old comment below (now only reachable in the
+ * cross-tenant-impossible edge case) used to describe.
  */
 export async function generatePayrollRun(
   month: string,
   generatedBy: string
-): Promise<{ run: PayrollRunRecord; payslips: PayslipRecord[] }> {
+): Promise<{ run: PayrollRunRecord; payslips: GeneratedPayslip[] }> {
   assertMonthFormat(month);
   const orgId = await getTenantOrgId();
 
+  return runInTenantTransaction(orgId, async () => {
   let runRow = await findRunByMonth(orgId, month);
   if (runRow && runRow.status === "Finalized") {
     throw new PayrollError(
@@ -338,7 +360,11 @@ export async function generatePayrollRun(
       throw new PayrollError("Payroll run create nahi ho paya. Dobara try karein.");
     }
     if (runRow.status === "Finalized") {
-      // Lost a race against a concurrent finalize between our insert attempt and re-read.
+      // Unreachable under the tenant advisory lock above (no concurrent writer can get in
+      // between this transaction's insert attempt and re-read) — kept as the one honest
+      // fallback for a monorepo/future caller that ever reaches this code outside that
+      // lock, rather than silently trusting a status this function didn't itself just
+      // establish.
       throw new PayrollError(
         `${month} ka payroll run pehle se Finalized hai — dobara generate nahi ho sakta.`
       );
@@ -379,6 +405,7 @@ export async function generatePayrollRun(
   }
 
   const runId = runRow.id;
+  const shortfallByPayslipId = new Map<string, number>();
   const resultRows = await Promise.all(
     Array.from(byUser.entries()).map(async ([userId, rows]) => {
       const user = allUsers.find((u) => u.User_ID === userId);
@@ -397,13 +424,29 @@ export async function generatePayrollRun(
         daysInMonth,
       });
       const grossPay = round2((monthlySalary * daysEmployed) / daysInMonth);
-      const { pfEmployee, pfEmployer, esiEmployee, esiEmployer, tds } =
-        computeStatutoryDeductions(monthlySalary, grossPay, statutoryFlags);
+      const requestedDeductions = computeStatutoryDeductions(monthlySalary, grossPay, statutoryFlags);
       // Deliberately computed on the full monthlySalary/grossPay, not reduced for
       // proration beyond what grossPay itself already reflects — matches how a real
       // payroll system computes PF/ESI/TDS off the (already prorated) gross actually paid
       // this month, not off the full-month figure a partial-month employee never received.
+      //
+      // OPS-02: a zero/partial-pay period can make the above request MORE than grossPay
+      // (e.g. monthlySalary=20000, grossPay=0, PF enabled -> flat ₹1800 PF would otherwise
+      // make netPay = 0 - 1800 = -1800). capDeductionsToGrossPay() is the explicit,
+      // documented policy fix — see its own doc comment in statutory.ts for the full
+      // reasoning — applied here, at the one place grossPay and the requested deductions
+      // are both known, before anything is persisted or reported.
+      const { pfEmployee, pfEmployer, esiEmployee, esiEmployer, tds, deductionShortfall } =
+        capDeductionsToGrossPay(requestedDeductions, grossPay);
       const netPay = round2(grossPay - pfEmployee - esiEmployee - tds);
+      if (deductionShortfall > 0) {
+        console.warn(
+          `[payroll] deduction shortfall for run ${runId} user ${userId}: requested ` +
+            `${round2(requestedDeductions.pfEmployee + requestedDeductions.esiEmployee + requestedDeductions.tds)}, ` +
+            `grossPay ${grossPay}, withheld ${round2(pfEmployee + esiEmployee + tds)}, ` +
+            `shortfall ${deductionShortfall} — recorded, not silently absorbed; see OPS-02 policy in statutory.ts.`
+        );
+      }
 
       const [row] = await db
         .insert(payslips)
@@ -422,6 +465,7 @@ export async function generatePayrollRun(
           esiEmployer: String(esiEmployer),
           tds: String(tds),
           netPay: String(netPay),
+          deductionShortfall: String(deductionShortfall),
         })
         .onConflictDoUpdate({
           target: [payslips.payrollRunId, payslips.userId],
@@ -436,9 +480,11 @@ export async function generatePayrollRun(
             esiEmployer: String(esiEmployer),
             tds: String(tds),
             netPay: String(netPay),
+            deductionShortfall: String(deductionShortfall),
           },
         })
         .returning();
+      shortfallByPayslipId.set(row.id, deductionShortfall);
       return row;
     })
   );
@@ -459,27 +505,47 @@ export async function generatePayrollRun(
 
   return {
     run: rowToRun(runRow),
-    payslips: currentPayslips.map(rowToPayslip),
+    payslips: currentPayslips.map((r) => ({
+      ...rowToPayslip(r),
+      deductionShortfall: shortfallByPayslipId.get(r.id) ?? 0,
+    })),
   };
+  });
 }
 
+/**
+ * Flips a Draft payroll_runs row to Finalized. OPS-02: the read-check-update sequence
+ * runs inside one runInTenantTransaction boundary (same tenant advisory lock as
+ * generatePayrollRun above) — two concurrent finalize calls for the same run (or a
+ * finalize racing a generate) can no longer both pass the "not already Finalized" check
+ * before either writes: the second caller's own read happens only after the first
+ * caller's write has fully committed (or rolled back), so it either sees the row already
+ * Finalized and rejects cleanly, or genuinely finalizes it — never both reprocessing the
+ * same run. PDF generation stays OUTSIDE this transaction (unchanged): it is a
+ * best-effort, non-transactional network/storage side effect that must never hold the
+ * advisory lock or block/rollback the status flip that already committed.
+ */
 export async function finalizePayrollRun(
   runId: string,
   finalizedBy: string
 ): Promise<PayrollRunRecord> {
   const orgId = await getTenantOrgId();
-  const run = await findById(payrollRuns, orgId, runId);
-  if (!run) throw new PayrollError("Payroll run nahi mila.");
-  if (run.status === "Finalized") {
-    throw new PayrollError("Ye payroll run pehle se Finalized hai.");
-  }
 
-  const updated = await updateById(payrollRuns, orgId, runId, {
-    status: "Finalized",
-    finalizedBy,
-    finalizedAt: new Date(),
+  const updated = await runInTenantTransaction(orgId, async () => {
+    const run = await findById(payrollRuns, orgId, runId);
+    if (!run) throw new PayrollError("Payroll run nahi mila.");
+    if (run.status === "Finalized") {
+      throw new PayrollError("Ye payroll run pehle se Finalized hai.");
+    }
+
+    const result = await updateById(payrollRuns, orgId, runId, {
+      status: "Finalized",
+      finalizedBy,
+      finalizedAt: new Date(),
+    });
+    if (!result) throw new PayrollError("Payroll run finalize nahi ho paya.");
+    return result;
   });
-  if (!updated) throw new PayrollError("Payroll run finalize nahi ho paya.");
 
   // Payslip PDFs are generated here (Finalized only, never on a Draft regenerate, so a
   // run edited several times mid-month never wastes an upload per edit) and are
@@ -525,6 +591,7 @@ async function generatePayslipPdfs(orgId: string, runId: string): Promise<void> 
         esiEmployee: Number(row.esiEmployee),
         tds: Number(row.tds),
         netPay: Number(row.netPay),
+        deductionShortfall: Number(row.deductionShortfall),
       });
 
       const { url } = await uploadAttachment({

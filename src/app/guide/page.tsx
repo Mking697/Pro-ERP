@@ -1,6 +1,5 @@
-import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
-import { verifySession, SESSION_COOKIE } from "@/lib/auth/session";
+import { getLiveSession } from "@/lib/auth/live-session";
 import { isPlatformAdmin } from "@/lib/platform/admin";
 import { guideFor } from "@/lib/guide";
 import { getLocale, getT } from "@/lib/i18n/server";
@@ -9,9 +8,7 @@ import PageHeader from "@/components/page-header";
 import GuideBrowser from "./guide-browser";
 
 export default async function GuidePage() {
-  const cookieStore = await cookies();
-  const token = cookieStore.get(SESSION_COOKIE)?.value;
-  const session = token ? await verifySession(token) : null;
+  const session = await getLiveSession();
 
   if (!session) redirect("/login");
 

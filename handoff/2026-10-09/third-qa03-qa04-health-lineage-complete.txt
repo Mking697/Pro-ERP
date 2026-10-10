@@ -1,0 +1,201 @@
+QA-03/QA-04 — Health readiness + migration-lineage follow-up — COMPLETE
+==========================================================================
+Finishes the interrupted follow-up left by `sa-2-84bd4752`/`deleg_c1d48ffb`. Read
+current source first (git diff/status) before touching anything; built on the
+existing `src/lib/expected-migration-lineage.ts`, the existing `diagnoseMigrationLineage`
+in `scripts/check-migration-sync.ts`, and the existing readiness-shaped route rather
+than restarting from scratch.
+
+SCOPE OWNED
+- src/app/api/health/route.ts (rewritten GET handler + checkDatabaseReadiness)
+- src/lib/expected-migration-lineage.ts (comment only — pointed at this handoff file)
+- README.md (one sentence, Deploy section, cancellation behavior corrected)
+- tests/health-readiness.unit.test.ts (rewritten to the new transport boundary)
+- tests/health-readiness.unit.vitest.config.ts (unchanged, still DB-free setupFiles:[])
+- No change needed to scripts/check-migration-sync.ts or tests/check-migration-sync.test.ts
+  or tests/migration-import-side-effects.unit.test.ts — verified already correct (see below).
+
+WHAT WAS ALREADY DONE AND VERIFIED CORRECT (not rebuilt)
+----------------------------------------------------------------------------
+1) Missing/stale/divergent lineage ARE three distinct, non-collapsed failure modes.
+   Confirmed in src/app/api/health/route.ts's checkDatabaseReadiness():
+     appliedCount === 0            -> "SCHEMA_MISSING"
+     divergent (hash/timestamp mismatch at any overlapping index, or an extra
+       trailing row past the expected length) -> "SCHEMA_DIVERGENT"
+     appliedCount < expectedMigrationLineage.length (but prefix matches) -> "SCHEMA_STALE"
+   Each is its own ReadinessError union member, asserted independently by dedicated
+   tests (see below) — not a single generic "not ready" string.
+2) scripts/check-migration-sync.ts's diagnoseMigrationLineage() already correctly
+   distinguishes ahead/behind/drift/in-sync by ordered hash+timestamp comparison
+   (ported from tests/local-isolated/migrate.cjs's proven real-DB assertion) — read
+   in full, 5/5 tests in tests/check-migration-sync.test.ts pass unchanged, no edit
+   needed to this file.
+3) scripts/check-migration-sync.ts's `import { config } from "dotenv"` call is
+   inside main(), and main() only runs `if (isMain)` — guarded by comparing
+   `fileURLToPath(import.meta.url)` against `resolve(process.argv[1])`. Importing
+   the module (as the test file and this route's neighbors do) never calls
+   `config()` or touches the DB. tests/migration-import-side-effects.unit.test.ts
+   mocks `dotenv` and `../src/db/client` (throwing if evaluated) and asserts neither
+   fires on import — passes, 1/1. This is the ONE "entrypoint-only" dotenv import
+   explicitly allowed by the task (a CLI script's own `isMain` guard), not an
+   import-time side effect.
+4) src/lib/expected-migration-lineage.ts has zero runtime imports (no fs, no dotenv,
+   no db) — confirmed by reading the file; it's a static const array bundled by Next.
+
+WHAT WAS ACTUALLY BROKEN AND FIXED THIS SESSION
+----------------------------------------------------------------------------
+Promise.race timeout was NOT real query cancellation (the exact gap named in the
+task). The prior route's checkDatabaseReadiness() went through the shared drizzle
+`db` client from `@/db/client` (drizzle-orm/neon-http). Read
+node_modules/drizzle-orm/neon-http/session.js's NeonHttpPreparedQuery.execute(): it
+hardcodes its own `{ arrayMode, fullResults }` (or `{...,authToken}`) options object
+on every call and has NO parameter for a signal/options passthrough from the caller.
+db.execute() (drizzle-orm/pg-core/db.js) has no args for request-level options either.
+So the previous Promise.race could only ever abandon *waiting* on the promise — the
+HTTP request to Neon's data-proxy kept running server-side regardless of the route's
+own timeout firing.
+
+FIX: checkDatabaseReadiness() now imports `neon` from `@neondatabase/serverless`
+directly (bypassing the shared drizzle `db` client for this one diagnostic probe
+only — domain code elsewhere is untouched) and calls `sql.query(text, params,
+{ fetchOptions: { signal } })`. Read node_modules/@neondatabase/serverless/index.js's
+query-function implementation: `fetchOptions` IS spread directly onto the real
+`fetch(url, { method: "POST", ..., ...fetchOptions })` call — `signal` there aborts
+the actual outgoing HTTP request, not merely a local await. An `AbortController`
+is created per probe; the existing setTimeout now calls `controller.abort()` in
+addition to rejecting the race, so the real fetch is actually cancelled at the
+network layer when the deadline fires.
+
+HONEST LIMITATION (not oversold): this cancels the HTTP round-trip between this
+process and Neon's HTTP data-proxy. It cannot force a query that has already been
+handed off from the proxy to the underlying Postgres backend to stop executing
+there — no client-side HTTP abort can do that; true statement-level cancellation
+would need a separate `pg_cancel_backend`/`pg_terminate_backend` call keyed to the
+exact backend PID, which neon-http's stateless HTTP protocol does not expose a PID
+for per-request. This is documented in the route's own JSDoc and in README.md's
+Deploy section, not glossed over. It is a genuine improvement (the wasted in-flight
+HTTP request is actually torn down and its connection freed) but not "the database
+stops running the query" — that claim is NOT made anywhere.
+
+STRICT TDD — RED THEN GREEN
+----------------------------------------------------------------------------
+Rewrote tests/health-readiness.unit.test.ts to mock the new transport boundary
+(`vi.mock("@neondatabase/serverless", ...)` returning `{ query: h.query }`) instead
+of the old `@/db/client` mock, since the route no longer imports that module for
+this check.
+
+RED (ran this rewritten test file against the UNMODIFIED route.ts, which still
+read through `@/db/client`):
+  Command: node node_modules/vitest/vitest.mjs run --config tests/health-readiness.unit.vitest.config.ts
+  Result:  Test Files 1 failed | 2 passed (3) / Tests 12 failed | 14 passed (26)
+  Representative failures (new boundary never hit by the old implementation):
+    - "aborts the in-flight fetch via a real AbortSignal on timeout..."
+        AssertionError: expected undefined to be an instance of AbortSignal
+    - "clears the readiness timer after query success" -> expected 503 to be 200
+    - "bounds migration query rows..." -> expected 503 to be 200
+    - "does not echo untrusted migration row content..." -> DATABASE_UNAVAILABLE
+      instead of SCHEMA_DIVERGENT
+    - "bounds a hung probe at 2500ms..." -> settled became true before 2500ms
+      (this one was a test-timing artifact unrelated to the route bug, fixed below)
+
+GREEN (after rewriting src/app/api/health/route.ts to use `neon()` + AbortController):
+  Same command.
+  One intermediate failure: "bounds a hung probe..." still failed because
+  `vi.waitFor` + fake timers interact fine on their own but the microtask from the
+  dynamic-less, now-synchronous `neon()` import meant the assertion ran before the
+  mock recorded the call under advanceTimersByTimeAsync(0); fixed by replacing
+  `vi.waitFor(...)` with an explicit `await vi.advanceTimersByTimeAsync(0)` then a
+  direct assertion — a test-file fix, not a route bug.
+  Final result: Test Files 3 passed (3) / Tests 26 passed (26)
+
+TEST COVERAGE (26 cases across 3 files, all GREEN)
+- tests/health-readiness.unit.test.ts (20 cases):
+  - absent DATABASE_URL -> 503, DATABASE_NOT_CONFIGURED, neon() never constructed.
+  - reachable DB, zero applied rows -> 503, SCHEMA_MISSING.
+  - reachable DB, matching-but-shorter prefix -> 503, SCHEMA_STALE.
+  - 5 divergence variants (earlier-hash, timestamp, order, extra-row,
+    non-prefix-shorter) -> 503, SCHEMA_DIVERGENT, each independently asserted.
+  - raw driver error containing a connection string + secret token -> 503,
+    DATABASE_UNAVAILABLE, and the full JSON response body does NOT contain the
+    secret/connection-string substrings (regex-asserted).
+  - success and failure paths both clear the readiness timer (vi.getTimerCount()===0).
+  - hung probe bounded at exactly 2500ms -> DATABASE_TIMEOUT, latencyMs===2500.
+  - NEW: hung probe's AbortSignal is captured from the actual `fetchOptions.signal`
+    passed to the mocked `neon().query()` call, asserted NOT aborted while pending,
+    then asserted ABORTED after the 2500ms deadline fires — this is the test that
+    proves real cancellation is wired to the real driver call, not merely a
+    Promise.race side effect.
+  - wrapped PostgreSQL codes 42P01/3F000 (missing relation/schema) classify as
+    SCHEMA_MISSING without leaking the wrapped diagnostic message/token.
+  - an attacker-controlled-looking migration-row hash is never echoed into the
+    public response body even when it causes SCHEMA_DIVERGENT.
+  - a probe that times out does not let the schema-lineage query start afterwards
+    (only 1 query call total).
+  - exact SQL text/param-count assertions on the migration query (ORDER BY ...
+    LIMIT $1, params=[length+1]).
+  - a probe that resolves during an active timeout window does not let a second
+    query call start after the deadline already fired.
+- tests/check-migration-sync.test.ts (5 cases, unchanged, re-verified): in-sync,
+  behind, ahead, and the two original "THE GAP" drift cases (edited-hash,
+  reordered-timestamp) proving count-equality alone can't hide drift.
+- tests/migration-import-side-effects.unit.test.ts (1 case, unchanged, re-verified):
+  importing diagnoseMigrationLineage does not call dotenv.config() or evaluate
+  the DB client module.
+
+VERIFICATION COMMANDS + OUTPUT (exact, this session)
+----------------------------------------------------------------------------
+  node node_modules/vitest/vitest.mjs run --config tests/health-readiness.unit.vitest.config.ts
+    -> Test Files  3 passed (3)
+       Tests  26 passed (26)
+
+  npx eslint src/app/api/health/route.ts src/lib/expected-migration-lineage.ts \
+    scripts/check-migration-sync.ts tests/health-readiness.unit.test.ts \
+    tests/health-readiness.unit.vitest.config.ts tests/check-migration-sync.test.ts \
+    tests/migration-import-side-effects.unit.test.ts
+    -> clean, zero errors/warnings
+
+  node node_modules/typescript/bin/tsc --noEmit
+    -> whole-tree run; only pre-existing unrelated errors in
+       src/app/payroll/payroll-admin-console.tsx (a different, already-broken
+       file belonging to OPS-02, not touched by or related to this item — not
+       introduced by this change, confirmed by filtering that file name out and
+       getting zero remaining errors). Zero errors in any file this item touched.
+
+FILES CHANGED
+----------------------------------------------------------------------------
+- src/app/api/health/route.ts — checkDatabaseReadiness now calls
+  @neondatabase/serverless's `neon()` directly with an AbortController wired into
+  `fetchOptions.signal`, instead of going through `@/db/client`. Readiness
+  classification logic (SCHEMA_MISSING/STALE/DIVERGENT/DATABASE_UNAVAILABLE/
+  DATABASE_TIMEOUT/DATABASE_NOT_CONFIGURED) is otherwise unchanged from the prior
+  session's work — it was already correct and already three distinct codes.
+- src/lib/expected-migration-lineage.ts — comment only, points at this file
+  instead of a stale filename from the prior interrupted session.
+- README.md — one Deploy-section sentence corrected: previously said "a timeout
+  does not cancel an in-flight driver query" (true then, now false); replaced with
+  an accurate description of the AbortSignal-based cancellation and its real limit
+  (can't reach past Neon's HTTP proxy into Postgres itself).
+- tests/health-readiness.unit.test.ts — rewritten to mock the new transport
+  boundary (`@neondatabase/serverless`'s `neon()`) instead of `@/db/client`, plus
+  one new test asserting the AbortSignal is real and actually fires.
+- tests/health-readiness.unit.vitest.config.ts — unchanged (still setupFiles: [],
+  still includes the same three DB-free test files).
+
+NOT CHANGED (verified already correct, no edit needed)
+----------------------------------------------------------------------------
+- scripts/check-migration-sync.ts
+- tests/check-migration-sync.test.ts
+- tests/migration-import-side-effects.unit.test.ts
+
+NOT CLAIMED / HONEST LIMITS
+----------------------------------------------------------------------------
+- Real query cancellation is achieved at the HTTP-fetch layer (the in-flight
+  request to Neon's data-proxy is genuinely aborted, its connection freed), NOT at
+  the Postgres-backend layer — a query that has already reached the actual
+  database backend keeps running there; no HTTP client can force-terminate it
+  without a separate `pg_cancel_backend` call this transport doesn't expose a PID
+  for. This is stated in the route's own JSDoc and in README.md, not hidden.
+- Disaster-recovery/backup-restore rehearsal remains out of scope, unchanged from
+  the prior session's explicit non-claim.
+- No commit/push/migration/dependency install performed. No .env/secrets read.
+  No default `npm test` run — only the scoped vitest config above.

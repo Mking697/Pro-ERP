@@ -1,12 +1,12 @@
 import type { InferSelectModel } from "drizzle-orm";
 import { and, eq, inArray, sql } from "drizzle-orm";
-import { creditNotes, creditNoteUsages, customers, invoices, journalEntries, journalLines, orderPayments } from "@/db/schema";
-import { db } from "@/db/client";
+import { creditNotes, creditNoteUsages, customers, invoices, journalEntries, journalLines } from "@/db/schema";
+import { db, runInTenantTransaction } from "@/db/client";
 import { findById, listByOrg } from "@/db/repo";
 import { getTenantOrgId } from "@/lib/tenant";
 import { generateId } from "@/lib/id";
 import { round2 } from "@/lib/leads/quotationMath";
-import { getOrder } from "@/lib/orders/orders";
+import { getOrder, recordPayment } from "@/lib/orders/orders";
 import { SYSTEM_ACCOUNT_CODES, listChartOfAccounts } from "@/lib/accounts/ledger";
 
 /**
@@ -224,13 +224,18 @@ export interface CreateCreditNoteInput {
  * `Dr Sales Revenue (amount - gstAmount) / Dr GST Payable (gstAmount, only if > 0) /
  * Cr Customer Credit Balance (amount)`.
  */
-export async function createCreditNote(
+export async function createCreditNote(input: CreateCreditNoteInput, createdBy: string): Promise<CreditNoteRecord> {
+  const orgId = await getTenantOrgId();
+  return runInTenantTransaction(orgId, () => createCreditNoteInTransaction(input, createdBy));
+}
+
+async function createCreditNoteInTransaction(
   input: CreateCreditNoteInput,
   createdBy: string
 ): Promise<CreditNoteRecord> {
   const orgId = await getTenantOrgId();
   const amount = round2(input.amount);
-  if (!(amount > 0)) throw new CreditNoteError("Amount 0 se zyada hona chahiye.");
+  if (!Number.isFinite(amount) || !(amount > 0)) throw new CreditNoteError("Amount 0 se zyada hona chahiye.");
 
   const invoiceRow = await findById(invoices, orgId, input.invoiceId);
   if (!invoiceRow) throw new CreditNoteError("Invoice nahi mili.");
@@ -408,13 +413,18 @@ export interface ApplyCreditNoteInput {
  * payment with zero changes needed there: it only ever sums order_payments.amount, blind to
  * mode.
  */
-export async function applyCreditNoteToOrder(
+export async function applyCreditNoteToOrder(input: ApplyCreditNoteInput, createdBy: string): Promise<CreditNoteRecord> {
+  const orgId = await getTenantOrgId();
+  return runInTenantTransaction(orgId, () => applyCreditNoteToOrderInTransaction(input, createdBy));
+}
+
+async function applyCreditNoteToOrderInTransaction(
   input: ApplyCreditNoteInput,
   createdBy: string
 ): Promise<CreditNoteRecord> {
   const orgId = await getTenantOrgId();
   const amount = round2(input.amount);
-  if (!(amount > 0)) throw new CreditNoteError("Amount 0 se zyada hona chahiye.");
+  if (!Number.isFinite(amount) || !(amount > 0)) throw new CreditNoteError("Amount 0 se zyada hona chahiye.");
 
   const noteRow = await findById(creditNotes, orgId, input.creditNoteId);
   if (!noteRow) throw new CreditNoteError("Credit Note nahi mila.");
@@ -428,16 +438,7 @@ export async function applyCreditNoteToOrder(
     throw new CreditNoteError("Cancelled order par Credit Note apply nahi ho sakta.");
   }
 
-  const accounts = await listChartOfAccounts();
-  const customerCreditBalance = accounts.find((a) => a.code === SYSTEM_ACCOUNT_CODES.CUSTOMER_CREDIT_BALANCE);
-  const accountsReceivable = accounts.find((a) => a.code === SYSTEM_ACCOUNT_CODES.ACCOUNTS_RECEIVABLE);
-  if (!customerCreditBalance || !accountsReceivable) {
-    throw new CreditNoteError("Chart of Accounts me zaroori system accounts nahi mile.");
-  }
-
   const usageId = generateId("CNU");
-  const journalEntryId = generateId("JE");
-  const entryDate = new Date();
 
   const inserted = await insertCreditNoteUsageIfBalanceAllows(
     orgId,
@@ -453,33 +454,9 @@ export async function applyCreditNoteToOrder(
     throw new CreditNoteError(`Is Credit Note ka sirf ₹${remaining} balance bacha hai.`);
   }
 
-  const paymentInsert = db.insert(orderPayments).values({
-    id: generateId("OPY"),
-    orgId,
-    orderId: input.orderId,
-    amount: String(amount),
-    mode: "Credit_Note",
-    reference: noteRow.creditNoteNo,
-    receivedAt: entryDate,
-    recordedBy: createdBy,
-  });
-
-  const journalEntryInsert = db.insert(journalEntries).values({
-    id: journalEntryId,
-    orgId,
-    entryDate,
-    description: `Credit Note ${noteRow.creditNoteNo} applied — Order ${input.orderId}`,
-    sourceType: "CreditNoteUsage",
-    sourceId: usageId,
-    createdBy,
-  });
-
-  const journalLinesInsert = db.insert(journalLines).values([
-    { entryId: journalEntryId, orgId, lineNo: 1, accountId: customerCreditBalance.id, debit: String(amount), credit: "0" },
-    { entryId: journalEntryId, orgId, lineNo: 2, accountId: accountsReceivable.id, debit: "0", credit: String(amount) },
-  ]);
-
-  await db.batch([paymentInsert, journalEntryInsert, journalLinesInsert]);
+  // Orders owns the immutable payment event, activity and single GL posting.
+  // Three arguments join this transaction; never invoke a keyed root wrapper here.
+  await recordPayment(input.orderId, { amount, mode: "Credit_Note", reference: noteRow.creditNoteNo }, createdBy);
 
   const updatedNote = await findById(creditNotes, orgId, noteRow.id);
   if (!updatedNote) throw new CreditNoteError("Apply ho gaya lekin Credit Note load nahi ho paya.");
@@ -499,13 +476,18 @@ export interface RefundCreditNoteInput {
 
 /** Posts `Dr Customer Credit Balance / Cr Cash-Bank` — the note's value is paid back to the
  * customer in real cash instead of being applied to a future order. */
-export async function refundCreditNote(
+export async function refundCreditNote(input: RefundCreditNoteInput, createdBy: string): Promise<CreditNoteRecord> {
+  const orgId = await getTenantOrgId();
+  return runInTenantTransaction(orgId, () => refundCreditNoteInTransaction(input, createdBy));
+}
+
+async function refundCreditNoteInTransaction(
   input: RefundCreditNoteInput,
   createdBy: string
 ): Promise<CreditNoteRecord> {
   const orgId = await getTenantOrgId();
   const amount = round2(input.amount);
-  if (!(amount > 0)) throw new CreditNoteError("Amount 0 se zyada hona chahiye.");
+  if (!Number.isFinite(amount) || !(amount > 0)) throw new CreditNoteError("Amount 0 se zyada hona chahiye.");
 
   const noteRow = await findById(creditNotes, orgId, input.creditNoteId);
   if (!noteRow) throw new CreditNoteError("Credit Note nahi mila.");

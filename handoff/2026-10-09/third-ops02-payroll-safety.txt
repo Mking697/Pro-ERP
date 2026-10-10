@@ -1,0 +1,134 @@
+# THIRD phase OPS-02 — Zero-pay deduction arithmetic + generate/finalize serialization
+
+Status: DONE, DB-free TDD verified, ready for parent review. No commit/push made.
+
+## Scope (files touched)
+- `src/lib/payroll/statutory.ts` — added `capDeductionsToGrossPay()` (+ `CappedStatutoryDeductions`).
+- `src/lib/payroll/payroll.ts` — wired the cap into `generatePayrollRun()`, wrapped
+  `generatePayrollRun()` and `finalizePayrollRun()`'s read-check-write sequences in
+  `runInTenantTransaction`, added `GeneratedPayslip` (generate-only, non-persisted
+  `deductionShortfall` field).
+- Tests added (new files, no existing test files' logic changed):
+  - `tests/payroll-statutory.test.ts` — appended `capDeductionsToGrossPay` unit tests
+    (existing tests in this file untouched, just extended the import).
+  - `tests/payroll-generate-finalize-unit.test.ts` — new DB-free unit test, mocks
+    `@/db/client` with the same in-memory-SQL-fake pattern as
+    `tests/fms-maintenance.unit.test.ts` (including the serializing-queue
+    `runInTenantTransaction` mock).
+  - `tests/payroll-ops02-unit.vitest.config.ts` — new per-file vitest config
+    (`setupFiles: []`) so these two DB-free files can run without
+    `TEST_DATABASE_URL_PATTERN`/live DB, matching the project's existing
+    `tests/*-unit.vitest.config.ts` convention.
+- Did NOT touch any payroll API route (`src/app/api/payroll/**`) — checked
+  `src/app/api/payroll/runs/route.ts` and the finalize route; both just
+  JSON-serialize whatever `generatePayrollRun`/`finalizePayrollRun` return, so the
+  added `deductionShortfall` field flows through automatically with zero route changes
+  needed. No schema/migration change made (`deductionShortfall` is NOT a DB column —
+  see policy note below).
+
+## Policy decision applied (explicit, documented, overridable — not a statutory ruling)
+
+Problem reproduced exactly as given: `monthlySalary=20000`, `grossPay=0`, PF enabled →
+old code: flat PF employee deduction 1800, `netPay = 0 - 1800 = -1800`.
+
+Chosen default, documented in `statutory.ts`'s new `capDeductionsToGrossPay()` doc
+comment:
+
+- Employee-side deductions (PF + ESI + TDS) are scaled by the **same proportion**
+  (`grossPay / totalRequestedDeductions`) rather than paying one deduction in full at
+  another's expense, and rather than zeroing everything out across the board. A fixed
+  PF → ESI → TDS order is used only as a rounding-safety valve (each capped by whatever
+  of `grossPay` the previous ones left unclaimed), so the sum withheld never exceeds
+  `grossPay` by even a rounding cent.
+- Employer-side contributions (`pfEmployer`/`esiEmployer`) are left untouched — they are
+  the org's own cost, not money withheld from the employee, so there's nothing to cap.
+- Whatever couldn't be withheld is returned as `deductionShortfall` (non-persisted,
+  attached only to `generatePayrollRun()`'s in-memory return as `GeneratedPayslip`) and
+  logged server-side via `console.warn` (`[payroll] deduction shortfall for run ... user
+  ...: requested X, grossPay Y, withheld Z, shortfall S`) — so it's visible immediately
+  to the generator/reviewer and in server logs, never silently absorbed into a negative
+  or a fictional number.
+- Deliberately does NOT carry the shortfall forward to a future period automatically —
+  flagged in the doc comment as a genuine payroll/compliance policy choice for a human
+  to make.
+- No schema/migration change: `deductionShortfall` is NOT a `payslips` table column.
+  Persisting it durably (so e.g. `getPayrollRun()`/a past Finalized run's own view could
+  show it again later) would need one — flagging this per the task's own instruction
+  ("report first before adding") rather than silently adding a migration. If the parent
+  wants it durable, that's a one-line schema addition (`payslips.deduction_shortfall`)
+  plus a migration — did not do this.
+
+## Serialized write boundary
+
+`generatePayrollRun()` and `finalizePayrollRun()` each now wrap their entire
+read-check-write sequence in one `runInTenantTransaction(orgId, ...)` call (same
+tenant-advisory-lock pattern already used by `src/lib/maintenance/maintenance.ts`,
+`src/lib/dispatch/dispatch.ts`, etc. — see `src/db/client.ts`). PDF generation in
+`finalizePayrollRun()` stays OUTSIDE the transaction (unchanged, deliberately —
+best-effort network/storage side effect, must not hold the lock or roll back the
+already-committed status flip).
+
+Net effect: two concurrent `finalize` calls for the same run can no longer both pass
+the "not already Finalized" check before either writes — the loser's read now happens
+only after the winner's write has committed, so it cleanly rejects
+(`"Ye payroll run pehle se Finalized hai."`) instead of reprocessing
+(double PDF generation, clobbered `finalizedBy`). Two concurrent `generate` calls for
+the same month are serialized onto the same Draft run rather than racing its
+find-or-create/upsert logic.
+
+## RED → GREEN evidence
+
+Command (DB-free, no live DB needed):
+```
+npx vitest run --config tests/payroll-ops02-unit.vitest.config.ts --reporter=verbose
+```
+
+RED (before the `payroll.ts` fix, statutory.ts's `capDeductionsToGrossPay` already
+added) — 4 failing, reproducing the exact finding plus the double-finalize bug:
+```
+× never produces a negative net pay when grossPay is zero and PF is enabled
+  → expected 1800 to be +0   (pfEmployee not capped — the exact finding)
+× caps deductions proportionally (not silently) for a partial-pay period
+  → expected -519.36 to be greater than or equal to 0   (negative net pay)
+× applies zero deductions and full net pay when no statutory flag is enabled
+  → expected undefined to be +0   (deductionShortfall field didn't exist yet)
+× concurrent finalize calls for the same run cannot both succeed
+  → expected length 1 but got 2   (both finalize calls succeeded — double-processed)
+```
+
+GREEN (after the fix):
+```
+Test Files  2 passed (2)
+     Tests  23 passed (23)
+```
+All 23 tests pass: 17 pure-function tests in `tests/payroll-statutory.test.ts`
+(13 pre-existing + 4 new `capDeductionsToGrossPay` tests) and 6 new DB-free
+integration-style unit tests in `tests/payroll-generate-finalize-unit.test.ts`:
+  1. zero grossPay + PF enabled → pfEmployee capped to 0, netPay=0, deductionShortfall=1800
+     (the exact finding, now fixed).
+  2. partial-pay (2/31 days employed) + PF+ESI enabled → both deductions shrink
+     proportionally (neither zeroed to let the other through), netPay >= 0,
+     deductionShortfall > 0.
+  3. no statutory flag enabled → unchanged v1 behavior (netPay = grossPay,
+     deductionShortfall = 0).
+  4. second finalize on an already-finalized run rejects cleanly, `finalizedBy`
+     untouched by the rejected attempt.
+  5. two concurrent finalize calls on the same run: exactly one succeeds, one rejects;
+     the row ends up owned by whichever one actually committed (no silent overwrite).
+  6. two concurrent generate calls for the same month: same run (not duplicated),
+     exactly one payslip for the one seeded user (not duplicated).
+
+Also ran `npx tsc --noEmit -p tsconfig.json` — zero errors in
+`src/lib/payroll/statutory.ts`, `src/lib/payroll/payroll.ts`, or either payroll API
+route; only pre-existing unrelated errors elsewhere in the repo (not payroll-related,
+not touched by this change).
+
+## Not done / explicitly out of scope
+- No statutory-compliance claim — this is an arithmetic/policy-safety fix only, per
+  the task's own framing (CLAUDE.md Module23 / statutory.ts's own header already say
+  this module isn't legally authoritative).
+- No DB schema/migration change (see "No schema/migration change" note above —
+  `deductionShortfall` is computed/reported, not persisted).
+- Did not touch `src/lib/payroll/payslipPdf.tsx`, `src/lib/storage.ts`, or any other
+  payroll API route — out of this item's owned-files scope.
+- No commit/push/deploy made.

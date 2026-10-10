@@ -1,3 +1,6 @@
+import { getMutationKey, runIdempotentTenantMutation, MutationConflictError, MutationInputError } from "@/lib/mutations";
+import { getTenantOrgId } from "@/lib/tenant";
+import { LedgerConflictError } from "@/lib/accounts/ledger";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { requireModule } from "@/lib/auth/guard";
@@ -33,7 +36,11 @@ export async function POST(request: Request) {
   }
 
   try {
-    const entryId = await createManualJournalEntry(
+    const entryId = await runIdempotentTenantMutation(await getTenantOrgId(), {
+      operation: "accounts.manual-journal.create.v1", actorId: guard.session.userId, key: getMutationKey(request),
+      // Hash the validated string date; convert to a domain Date only inside work.
+      payload: JSON.parse(JSON.stringify(parsed.data)),
+    }, () => createManualJournalEntry(
       {
         description: parsed.data.description,
         // A bare "YYYY-MM-DD" from the date picker must go through the same IST-day-aware
@@ -44,9 +51,15 @@ export async function POST(request: Request) {
         lines: parsed.data.lines,
       },
       guard.session.userId
-    );
+    ));
     return NextResponse.json({ id: entryId });
   } catch (err) {
+    if (err instanceof Error && "committed" in err && err.committed === true && "result" in err) {
+      return NextResponse.json({ id: err.result, committed: true, warning: err.message });
+    }
+    if (err instanceof MutationConflictError || err instanceof MutationInputError || err instanceof LedgerConflictError) {
+      return NextResponse.json({ error: err.message }, { status: err.status });
+    }
     const message = err instanceof LedgerError || err instanceof Error ? err.message : "Journal entry nahi ban paya.";
     return NextResponse.json({ error: message }, { status: 400 });
   }

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { getMutationKey, MutationConflictError } from "@/lib/mutations";
 import { z } from "zod";
 import { requireModule } from "@/lib/auth/guard";
 import { submitQualityCheck } from "@/lib/inward";
@@ -37,9 +38,15 @@ export async function POST(
       entryId,
       verifiedBy: guard.session.userId,
       ...parsed.data,
-    });
+    }, getMutationKey(request));
     return NextResponse.json({ entry });
   } catch (err) {
+    if (err instanceof Error && "committed" in err && err.committed === true && "result" in err) {
+      return NextResponse.json({ entry: err.result, committed: true, warning: err.message });
+    }
+    if (err instanceof MutationConflictError) {
+      return NextResponse.json({ error: err.message }, { status: 409 });
+    }
     const message = err instanceof Error ? err.message : "Quality check save nahi ho paya.";
     return NextResponse.json({ error: message }, { status: 400 });
   }

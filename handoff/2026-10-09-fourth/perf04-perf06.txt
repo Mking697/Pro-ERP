@@ -1,0 +1,37 @@
+PERF-04 / PERF-06 — PARTIAL, NOT ACCEPTED AS COMPLETE
+2026-10-09, D:/Pro-ERP
+
+Implemented and DB-free verified:
+- src/lib/chatbot/gemini.ts: real AbortController 20-second deadline remains active through BOTH response headers and response.json() body consumption; the timer is cleared in finally.
+- Body aborts are not swallowed by the existing malformed-JSON fallback.
+- Existing selective-overload retry predicate and delays remain unchanged. Timeout is not silently added as a retryable overload; 429 quota responses still fail immediately.
+- No provider network traffic: all fetches are mocked.
+
+Strict RED -> GREEN evidence for the final retained implementation:
+- node node_modules/vitest/vitest.mjs run --config tests/perf04-perf06.unit.vitest.config.ts --reporter=dot
+- Before the final Gemini change: 2 failed (missing abort signal for hanging headers and body), 1 passed (503 retry / 429 immediate failure).
+- After change, rerun twice: 3 passed, exit 0. Final run at 23:44:32, duration 8.68s.
+- New files: tests/perf06-gemini-deadline.unit.test.ts; tests/perf04-perf06.unit.vitest.config.ts (setupFiles: [], mocked settings, fake timers, mocked fetch).
+
+NOT COMPLETE:
+- PERF-04 search SQL pushdown, stable pagination, command-palette stale-response/page handling, and analytics report pushdown/aggregation remain unimplemented.
+- PERF-06 reminders batch-config loading / worker pool remain unimplemented.
+- Early unverified edits to search, command palette, analytics and reminders were removed. Original pre-task contents matched HEAD; restoration used read-only git show + exact file patches, NOT checkout/reset/stash/clean. Only Gemini source changes are retained.
+- Early Gemini draft also removed before the recorded RED phase; final code was written only after the two intended failures were observed.
+
+Blocking local tooling:
+- npx tsc --noEmit -p tsconfig.json printed 'This is not the tsc command you are looking for' instead of running the project's compiler. A pipeline initially obscured this status; this is NOT a typecheck pass.
+- Direct node node_modules/typescript/bin/tsc failed with missing ../lib/tsc.js. An alternate lib/_tsc.js --version initially worked, but the file later also became unavailable.
+- Scoped npx --no-install eslint could not load node_modules/eslint/config; later eslint was not recognized at all. This is NOT a lint pass.
+- Vitest temporarily disappeared, then became executable; the retained Gemini tests genuinely ran and passed as above.
+- Search test exploration could not import drizzle-orm/pg-core. That exploratory file was removed rather than committing an unexecuted/failing-import suite.
+- node_modules/next/dist/docs unavailable, so relevant installed Next documentation could not be read. No Next route/component changes retained.
+- No dependency installation, DB, .env read, migration, live WhatsApp/Gemini API request, commit or push intentionally performed.
+
+Required continuation / cross-agent contract:
+- Do NOT implement reminders with a separate unrestricted fetch: that bypasses SEC-04's egress-safe transport in src/lib/chatxflow.ts (owned by another agent, untouched here).
+- Coordinate an exported batch sender/config API and an AbortSignal-aware safeFetchJson transport with the SEC-04 owner. Its current socket timeout is not a complete header+body wall-clock deadline; reminders must actually cancel underlying I/O, not merely Promise.race and abandon it.
+- Once local dependencies are restored/verified, RED -> GREEN search SQL projection/filter/limit/grant/pagination tests and reminder worker-count/deadline/accounting tests, then tsc + scoped eslint.
+- Analytics must not be 'fixed' by slicing loaded historical rows: use SQL range/ownership predicates and correct aggregates for charts, bounded pages for detail tables. Silent truncation of chart inputs would produce false totals.
+
+Do not close PERF-04 or PERF-06 in the tracker based on this handoff. Parent acceptance, typecheck/lint, and the remaining implementation are pending.

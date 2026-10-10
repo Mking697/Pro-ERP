@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { getMutationKey, MutationConflictError } from "@/lib/mutations";
 import { z } from "zod";
 import { requireModule } from "@/lib/auth/guard";
 import {
@@ -66,9 +67,17 @@ export async function POST(request: Request) {
       gstPercent: parsed.data.gstPercent,
       termsAndConditions: parsed.data.termsAndConditions,
       note: parsed.data.note,
-    });
+    }, getMutationKey(request));
     return NextResponse.json({ order });
   } catch (err) {
+    if (err instanceof Error && "committed" in err && err.committed === true && "result" in err) {
+      // Issue succeeded. Expose its stable DTO; callers must repair the document,
+      // not blindly repeat a stock/indent claim with a new request identity.
+      return NextResponse.json({ order: err.result, committed: true, warning: err.message });
+    }
+    if (err instanceof MutationConflictError) {
+      return NextResponse.json({ error: err.message }, { status: 409 });
+    }
     const message =
       err instanceof PurchaseOrderError || err instanceof Error
         ? err.message

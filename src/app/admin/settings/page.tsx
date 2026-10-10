@@ -1,3 +1,5 @@
+import { redirect } from "next/navigation";
+import { getLiveSession } from "@/lib/auth/live-session";
 import PlanStatusCard from "./plan-status-card";
 import LogoForm from "./logo-form";
 import WhatsAppForm from "./whatsapp-form";
@@ -15,6 +17,9 @@ import PayrollComplianceForm from "./payroll-compliance-form";
 import { getT } from "@/lib/i18n/server";
 
 export default async function AdminSettingsPage() {
+  const session = await getLiveSession();
+  if (!session) redirect("/login");
+  if (session.role !== "Admin") redirect("/dashboard");
   const t = await getT();
   return (
     <div className="space-y-6">

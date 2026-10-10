@@ -1,7 +1,7 @@
 import type { InferSelectModel } from "drizzle-orm";
 import { and, eq, inArray } from "drizzle-orm";
 import { items, vendorItems, vendors } from "@/db/schema";
-import { db } from "@/db/client";
+import { db, runInTenantTransaction } from "@/db/client";
 import { insertRecord, updateById, deleteById } from "@/db/repo";
 import { getTenantOrgId } from "@/lib/tenant";
 import { generateId } from "@/lib/id";
@@ -58,7 +58,7 @@ export async function listVendorItems(vendorId: string): Promise<VendorItemRecor
   const rows = await db
     .select({ link: vendorItems, itemName: items.itemName, uom: items.uom })
     .from(vendorItems)
-    .leftJoin(items, eq(vendorItems.sku, items.sku))
+    .leftJoin(items, and(eq(vendorItems.orgId, items.orgId), eq(vendorItems.sku, items.sku)))
     .where(and(eq(vendorItems.orgId, orgId), eq(vendorItems.vendorId, vendorId)));
   return rows.map((r) => rowToRecord(r.link, r.itemName ?? "", r.uom ?? ""));
 }
@@ -172,6 +172,14 @@ export async function listVendorsForSkus(
   return result;
 }
 
+/** Only intentional pre-write admission failures may be returned as client errors. */
+export class VendorItemAdmissionError extends Error {
+  constructor(message: string, readonly status: 400 | 404) {
+    super(message);
+    this.name = "VendorItemAdmissionError";
+  }
+}
+
 export interface UpsertVendorItemInput {
   vendorId: string;
   sku: string;
@@ -186,39 +194,57 @@ export interface UpsertVendorItemInput {
  * existing pair is the normal way a price gets refreshed, not an edge case to reject.
  */
 export async function upsertVendorItem(input: UpsertVendorItemInput): Promise<VendorItemRecord> {
+  if (input.leadTimeDays != null &&
+      (!Number.isInteger(input.leadTimeDays) || input.leadTimeDays < 0 || input.leadTimeDays > 2147483647)) {
+    throw new VendorItemAdmissionError("Lead time must be a non-negative integer within the database integer range.", 400);
+  }
+  if (input.unitPrice != null && (!Number.isFinite(input.unitPrice) || input.unitPrice < 0)) {
+    throw new VendorItemAdmissionError("Unit price must be a finite non-negative number.", 400);
+  }
   const orgId = await getTenantOrgId();
 
-  const [existing] = await db
-    .select()
-    .from(vendorItems)
-    .where(
-      and(
-        eq(vendorItems.orgId, orgId),
-        eq(vendorItems.vendorId, input.vendorId),
-        eq(vendorItems.sku, input.sku)
-      )
-    )
-    .limit(1);
+  // Admission and write share the tenant lock; same-org callers join their scope.
+  return runInTenantTransaction(orgId, async () => {
+    const [vendor] = await db.select().from(vendors)
+      .where(and(eq(vendors.orgId, orgId), eq(vendors.id, input.vendorId))).limit(1);
+    if (!vendor) throw new VendorItemAdmissionError("Vendor nahi mila.", 404);
 
-  if (existing) {
-    const updated = await updateById(vendorItems, orgId, existing.id, {
+    const [item] = await db.select().from(items)
+      .where(and(eq(items.orgId, orgId), eq(items.sku, input.sku))).limit(1);
+    if (!item) throw new VendorItemAdmissionError("Item nahi mila.", 404);
+
+    const [existing] = await db
+      .select()
+      .from(vendorItems)
+      .where(
+        and(
+          eq(vendorItems.orgId, orgId),
+          eq(vendorItems.vendorId, input.vendorId),
+          eq(vendorItems.sku, input.sku)
+        )
+      )
+      .limit(1);
+
+    if (existing) {
+      const updated = await updateById(vendorItems, orgId, existing.id, {
+        leadTimeDays: input.leadTimeDays ?? null,
+        unitPrice: numericCol(input.unitPrice),
+      });
+      if (!updated) throw new Error("Vendor-Item link nahi mila.");
+      return rowToRecord(updated);
+    }
+
+    const row = await insertRecord(vendorItems, {
+      id: generateId("VIT"),
+      orgId,
+      vendorId: input.vendorId,
+      sku: input.sku,
       leadTimeDays: input.leadTimeDays ?? null,
       unitPrice: numericCol(input.unitPrice),
+      createdBy: input.createdBy,
     });
-    if (!updated) throw new Error("Vendor-Item link nahi mila.");
-    return rowToRecord(updated);
-  }
-
-  const row = await insertRecord(vendorItems, {
-    id: generateId("VIT"),
-    orgId,
-    vendorId: input.vendorId,
-    sku: input.sku,
-    leadTimeDays: input.leadTimeDays ?? null,
-    unitPrice: numericCol(input.unitPrice),
-    createdBy: input.createdBy,
+    return rowToRecord(row);
   });
-  return rowToRecord(row);
 }
 
 export async function deleteVendorItem(vendorItemId: string): Promise<boolean> {

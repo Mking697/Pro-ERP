@@ -55,6 +55,11 @@ export default function NewOrderDialog({ onCreated }: { onCreated: (order: Order
   // a Direct order used to charge no GST at all (see CLAUDE.md's Accounts section).
   const [gstPercent, setGstPercent] = useState("18");
   const [saving, setSaving] = useState(false);
+  // Tracks whether a submit was attempted so each line's own Qty field can announce its
+  // own validation error (aria-invalid + aria-describedby) instead of only a generic toast —
+  // a screen-reader user hitting Tab through five line items otherwise hears "Quantity" five
+  // times with no indication of which one, if any, actually failed.
+  const [submitAttempted, setSubmitAttempted] = useState(false);
 
   function reset() {
     setMode("existing");
@@ -65,6 +70,7 @@ export default function NewOrderDialog({ onCreated }: { onCreated: (order: Order
     setPoAttachmentUrl("");
     setTransportArrangedBy("Self");
     setGstPercent("18");
+    setSubmitAttempted(false);
   }
 
   // No freight concept on a Direct order (unlike a quotation's own computeTotals() call in
@@ -76,6 +82,7 @@ export default function NewOrderDialog({ onCreated }: { onCreated: (order: Order
   );
 
   async function handleSubmit() {
+    setSubmitAttempted(true);
     if (mode === "existing" && !selectedId) {
       toast.error(t("Ek Customer chunein."));
       return;
@@ -118,6 +125,12 @@ export default function NewOrderDialog({ onCreated }: { onCreated: (order: Order
       setOpen(false);
       reset();
       onCreated(data.order);
+    } catch {
+      toast.error(
+        t(
+          "Save nahi ho paya — network ya server error ho sakta hai. Status confirm kiye bina dobara submit na karein."
+        )
+      );
     } finally {
       setSaving(false);
     }
@@ -157,7 +170,20 @@ export default function NewOrderDialog({ onCreated }: { onCreated: (order: Order
 
           <div className="space-y-3">
             <p className="text-sm font-medium">{t("Items")}</p>
-            {lines.map((line, idx) => (
+            {lines.map((line, idx) => {
+              // Every line gets its own stable id (the line's own React key, not the array
+              // index — index shifts when an earlier line is removed, which would silently
+              // re-point an existing aria-describedby/htmlFor pair at the wrong row).
+              const qtyId = `order-line-qty-${line.key}`;
+              const rateId = `order-line-rate-${line.key}`;
+              const qtyErrorId = `order-line-qty-error-${line.key}`;
+              const qtyInvalid = submitAttempted && Boolean(line.item) && !(Number(line.qty) > 0);
+              // Screen-reader-only per-row context so every line's Qty/Rate accessible name is
+              // distinguishable (plain item name or "Line N" when no item is picked yet) — built
+              // as a plain JS value here, not a JSX template-literal child, so the i18n copy
+              // checker doesn't mistake this dynamic composition for new hardcoded UI text.
+              const lineContext = line.item ? line.item.name : `${t("Line")} ${idx + 1}`;
+              return (
               <div key={line.key} className="grid gap-2 rounded-lg border p-3 sm:grid-cols-[2fr_1fr_1fr_auto] sm:items-end">
                 <ItemPicker
                   label={t("Item")}
@@ -167,20 +193,33 @@ export default function NewOrderDialog({ onCreated }: { onCreated: (order: Order
                   }
                 />
                 <div className="space-y-2">
-                  <Label>Qty</Label>
+                  <Label htmlFor={qtyId}>
+                    Qty <span className="sr-only">— {lineContext}</span>
+                  </Label>
                   <Input
+                    id={qtyId}
                     type="number"
                     step="any"
                     min="0"
                     value={line.qty}
+                    aria-invalid={qtyInvalid || undefined}
+                    aria-describedby={qtyInvalid ? qtyErrorId : undefined}
                     onChange={(e) =>
                       setLines((ls) => ls.map((l) => (l.key === line.key ? { ...l, qty: e.target.value } : l)))
                     }
                   />
+                  {qtyInvalid && (
+                    <p id={qtyErrorId} className="text-xs text-destructive">
+                      {t("Quantity 0 se zyada honi chahiye.")}
+                    </p>
+                  )}
                 </div>
                 <div className="space-y-2">
-                  <Label>Rate</Label>
+                  <Label htmlFor={rateId}>
+                    Rate <span className="sr-only">— {lineContext}</span>
+                  </Label>
                   <Input
+                    id={rateId}
                     type="number"
                     step="any"
                     min="0"
@@ -216,15 +255,17 @@ export default function NewOrderDialog({ onCreated }: { onCreated: (order: Order
                   </div>
                 )}
               </div>
-            ))}
+              );
+            })}
           </div>
 
           <Separator />
 
           <div className="grid gap-3 sm:grid-cols-2">
             <div className="space-y-2">
-              <Label>{t("GST %")}</Label>
+              <Label htmlFor="order-gst-percent">{t("GST %")}</Label>
               <Input
+                id="order-gst-percent"
                 type="number"
                 step="any"
                 min="0"
@@ -254,12 +295,12 @@ export default function NewOrderDialog({ onCreated }: { onCreated: (order: Order
 
           <div className="grid gap-3 sm:grid-cols-2">
             <div className="space-y-2">
-              <Label>{t("Transport Arrangement")}</Label>
+              <Label htmlFor="order-transport-arrangement">{t("Transport Arrangement")}</Label>
               <Select
                 value={transportArrangedBy}
                 onValueChange={(v) => v && setTransportArrangedBy(v as "Self" | "Party")}
               >
-                <SelectTrigger className="w-full">
+                <SelectTrigger id="order-transport-arrangement" className="w-full">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>

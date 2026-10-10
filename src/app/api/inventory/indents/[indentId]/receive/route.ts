@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { getMutationKey, MutationConflictError } from "@/lib/mutations";
 import { z } from "zod";
 import { requireModule } from "@/lib/auth/guard";
 import { receiveIndent, IndentReceiptError } from "@/lib/inventory/indents";
@@ -31,10 +32,17 @@ export async function POST(
       indentId,
       parsed.data.quantity,
       guard.session.userId,
-      parsed.data.location
+      parsed.data.location,
+      getMutationKey(request)
     );
     return NextResponse.json({ indent });
   } catch (err) {
+    if (err instanceof Error && "committed" in err && err.committed === true && "result" in err) {
+      return NextResponse.json({ indent: err.result, committed: true, warning: err.message });
+    }
+    if (err instanceof MutationConflictError) {
+      return NextResponse.json({ error: err.message }, { status: 409 });
+    }
     if (err instanceof IndentReceiptError) {
       return NextResponse.json({ error: err.message }, { status: 409 });
     }

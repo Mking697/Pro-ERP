@@ -87,6 +87,12 @@ export default function CreateInvoiceDialog({
       toast.success(t("Invoice (Draft) ban gayi."));
       onOpenChange(false);
       onCreated(data.invoice);
+    } catch {
+      toast.error(
+        t(
+          "Save nahi ho paya — network ya server error ho sakta hai. Status confirm kiye bina dobara submit na karein."
+        )
+      );
     } finally {
       setSaving(false);
     }

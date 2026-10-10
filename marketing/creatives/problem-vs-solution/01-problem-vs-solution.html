@@ -1,0 +1,71 @@
+<!--
+Headline: Spreadsheets & WhatsApp vs. One Connected System
+Supporting copy: Before: status chased over calls and chat, stock numbers guessed, accounting reconciled by hand. After: Pro ERP — Lead to Cash, live stock, real accounting, FMS workflows, all in one login.
+CTA: Make the switch → pro-erp-chi.vercel.app
+Visual concept: 1200x1200 square split screen — left half muted/red-tinted 'Before' with chaotic bullet list, right half navy/blue 'After' with Pro ERP screenshot and clean bullet list, center divider with VS marker.
+Aspect ratio: 1200x1200
+Recommended screenshot: 02-dashboard.png
+Final text: Before: spreadsheets, WhatsApp chaos, status chased by phone, stock numbers nobody fully trusts. After: Pro ERP — one connected system from Lead to Cash, live stock math, real accounting, no-code workflows. Make the switch → pro-erp-chi.vercel.app
+-->
+<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Problem vs Solution - Pro ERP</title>
+<style>
+
+*{margin:0;padding:0;box-sizing:border-box;}
+html,body{background:#05070d;}
+
+.card{width:1200px;height:1200px;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;color:#fff;position:relative;display:flex;}
+.before{width:50%;background:linear-gradient(160deg,#241416,#1a1012);padding:70px 48px 70px 64px;
+  display:flex;flex-direction:column;}
+.after{width:50%;background:linear-gradient(135deg,#0a0f1e 0%,#111a2e 55%,#162238 100%);padding:70px 64px 70px 48px;display:flex;flex-direction:column;}
+.label{font-size:15px;font-weight:800;letter-spacing:2px;text-transform:uppercase;}
+.before .label{color:#ff8a80;}
+.after .label{color:#7dd3fc;}
+.title{font-size:38px;font-weight:900;margin-top:14px;line-height:1.15;}
+ul{list-style:none;margin-top:30px;display:flex;flex-direction:column;gap:18px;}
+li{font-size:17px;line-height:1.5;padding-left:28px;position:relative;}
+.before li{color:#e8c9c6;}
+.before li::before{content:"\2715";position:absolute;left:0;color:#ff8a80;font-weight:800;}
+.after li{color:#cdd6ec;}
+.after li::before{content:"\2713";position:absolute;left:0;color:#7dd3fc;font-weight:800;}
+.imgwrap{margin-top:28px;}
+.imgwrap img{width:100%;border-radius:10px;border:1px solid #243150;box-shadow:0 16px 46px rgba(0,0,0,0.5);}
+.vs{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:76px;height:76px;
+  border-radius:50%;background:#05070d;border:3px solid #7dd3fc;display:flex;align-items:center;
+  justify-content:center;font-weight:900;font-size:20px;color:#fff;z-index:5;}
+.footer{margin-top:auto;display:flex;justify-content:flex-end;}
+
+.wordmark{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;font-weight:800;font-size:20px;letter-spacing:0.5px;color:#fff;}
+.wordmark span{color:#7dd3fc;}
+
+</style></head>
+<body>
+<div class="card">
+  <div class="before">
+    <div class="label">Before</div>
+    <div class="title">Spreadsheets &amp; WhatsApp Chaos</div>
+    <ul>
+      <li>Status chased by phone call and chat</li>
+      <li>Stock numbers nobody fully trusts</li>
+      <li>Accounting reconciled by hand, after the fact</li>
+      <li>Every new process means another spreadsheet</li>
+      <li>No single record of a lead becoming cash</li>
+    </ul>
+  </div>
+  <div class="after">
+    <div class="label">After</div>
+    <div class="title">One Connected System: Pro ERP</div>
+    <ul>
+      <li>Lead → Quotation → Order → Dispatch → Invoice, one record</li>
+      <li>Free stock calculated live, always current</li>
+      <li>Real double-entry accounting, auto-posted</li>
+      <li>No-code FMS workflows for any process</li>
+      <li>WhatsApp notifications without opening the app</li>
+    </ul>
+    <div class="imgwrap"><img src="../../screenshots/02-dashboard.png" alt="Pro ERP dashboard"></div>
+    <div class="footer"><div class="wordmark">Pro<span>ERP</span></div></div>
+  </div>
+  <div class="vs">VS</div>
+</div>
+</body></html>

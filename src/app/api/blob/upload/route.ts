@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { handleUpload, type HandleUploadBody } from "@vercel/blob/client";
 import { requireSession } from "@/lib/auth/guard";
+import { tenantFromOrgId, TenantResolutionError } from "@/lib/tenant";
 
 /**
  * Authorizes a direct browser-to-Blob upload (see src/components/file-upload-field.tsx) —
@@ -63,7 +64,18 @@ export async function POST(request: Request) {
   const guard = await requireSession();
   if (!guard.ok) return guard.response;
 
-  const pathnamePattern = pathnamePatternFor(guard.session.orgId);
+  // Resolve from the validated session, never client input or ambient cron context.
+  // Match module guards' live organization/trial policy before Blob can issue a token.
+  let tenant;
+  try {
+    tenant = await tenantFromOrgId(guard.session.orgId);
+  } catch (error) {
+    if (error instanceof TenantResolutionError) {
+      return NextResponse.json({ error: error.message }, { status: 403 });
+    }
+    throw error; // Registry outages fail closed, not as an authorization success.
+  }
+  const pathnamePattern = pathnamePatternFor(tenant.orgId);
 
   try {
     const body = (await request.json()) as HandleUploadBody;

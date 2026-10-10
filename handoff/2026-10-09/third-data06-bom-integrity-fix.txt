@@ -1,0 +1,86 @@
+THIRD / DATA-06 BOM component admission — 2026-10-09
+Status: IMPLEMENTED + focused DB-free verification; STOPPED FOR PARENT REVIEW.
+Full DATA-06 remains INCOMPLETE. This is not independent approval, parent acceptance,
+real-driver acceptance, a migration verification, or deployment evidence.
+
+Owned changes:
+- src/lib/inventory/bom.ts
+- tests/bom-component-integrity.unit.test.ts (new)
+- tests/bom-component-integrity.unit.vitest.config.ts (new; setupFiles: [])
+- tests/bom-component-integrity.unit.tsconfig.json (new; scoped, no emit/incremental)
+- handoff/2026-10-09/third-data06-bom-integrity-fix.txt (this file)
+No edits to src/app/api/bom/route.ts: its existing BomValidationError branch already
+maps component admission errors to HTTP 400. No Next route changes were needed.
+No edits to items/repo/transaction primitives, indents, ledger, schema or migrations.
+Existing dirty FIRST/SECOND/THIRD work was not reverted or rewritten.
+
+Behavior:
+- createBom requires every componentSku to resolve via tenant-scoped findItem BEFORE
+  any write. A missing or foreign-only SKU throws BomValidationError.
+- Finite positive numeric quantities are required; fractional positive values remain
+  valid. Existing duplicate rejection, version/SKU continuity and field snapshots stay.
+- Existing runInTenantTransaction owns component reads, BOM version/collision reads,
+  flat BOM header/line insert, prior-BOM archival, product-item lookup/auto-create.
+  It joins the same tenant's enclosing transaction through the existing adapter.
+- Product-item auto-create is now required, not swallowed best-effort: failure rejects
+  and rolls back new BOM rows/archival. Existing product items are left unchanged.
+- Composite (org_id, sku) compatibility uses existing findItem/createItem paths; shared
+  SKU strings across tenants do not grant ownership or suppress tenant-local creation.
+
+Component identity trace (no invented BOM-ID mapping or category restriction):
+- src/db/schema/inventory.ts: componentSku is text; componentType stores Item/Product.
+- Original bom.ts contract describes inventory components today and Product/nested
+  products as future work; now clarified without changing the enum.
+- src/app/bom/bom-form.tsx:108-111 emits picked inventory SKU/name/UOM, omits type
+  (Item default); src/components/item-picker.tsx consumes /api/inventory/lookup.
+- src/app/api/inventory/lookup/route.ts:16-25 returns all active item categories;
+  there is no FG/Semi-FG exclusion.
+- src/lib/inventory/plans.ts:253-258 snapshots every componentSku as material SKU,
+  without branching on componentType. No current source caller resolves Product to
+  BOM_ID or a separate product entity.
+Both enum labels therefore admit tenant-owned INVENTORY identities today, including
+Raw Material, Consumable, Semi-FG and FG. A BOM-only identity cannot replace a missing
+inventory SKU. No active-status/category policy or recursive-BOM requirement was added.
+
+Executed strict vertical TDD (production edits followed expected behavioral RED):
+1. Missing Item component: RED 1 failed, promise resolved instead of rejecting;
+   tenant-scoped admission added; GREEN 1 passed.
+2. Owned creation transaction: RED 1 failed / 1 passed, transaction count 0 vs 1;
+   existing tenant transaction wrapped required work; GREEN 2 passed.
+3. Product-item insertion failure: RED 1 failed / 2 passed, swallowed failure resolved;
+   removed catch; GREEN 3 passed, prior rows unchanged after rollback.
+4. Finite positive operands: RED 2 failed / 7 passed (Infinity and numeric string
+   resolved); added Number.isFinite; GREEN 9 passed.
+Then added characterization/regression gates for existing supported types/categories,
+foreign/missing second line, shared-SKU tenants, version archival, multi-line numbering,
+existing item preservation, BOM insert/archive failures, nested owner rollback, duplicate
+rejection. These supplementary existing-behavior tests passed without production edits.
+
+Final executed verification (all exit 0):
+- node node_modules/vitest/vitest.mjs run --config tests/bom-component-integrity.unit.vitest.config.ts --reporter verbose
+  Vitest 5.0.3: 1 file passed; exactly 28 named tests passed, 0 failed.
+- node node_modules/eslint/bin/eslint.js src/lib/inventory/bom.ts tests/bom-component-integrity.unit.test.ts tests/bom-component-integrity.unit.vitest.config.ts
+  No diagnostics.
+- node node_modules/typescript/bin/tsc --project tests/bom-component-integrity.unit.tsconfig.json --noEmit
+  No diagnostics. Scoped entrypoints plus their transitive dependencies, NOT full-project tsc.
+- git diff --check -- src/lib/inventory/bom.ts
+  No whitespace errors. Git emitted only the repository's LF->CRLF conversion warning.
+- Reviewed git diff --ignore-all-space for the owned domain/route: substantive changes
+  are finite guard, tenant-scoped admission, transaction wrapper, required product-item
+  creation and explanatory comments; route has no diff.
+
+Test safety and limitations:
+- Only tenant resolution and persistence transport are mocked. Real BOM/items domain,
+  schema, Drizzle predicates, repo helpers and tenant transaction adapter are exercised.
+- Failure assertions compare entire mocked persisted row state, not only calls/events.
+- No default npm test, setup.ts, credentials/.env reads, database calls, installs,
+  commits, refs/tags, pushes, deployment or production writes occurred.
+- No real PostgreSQL driver/concurrency/FK/commit readback was run in this authorized
+  DB-free slice. Mock rollback is not proof of real-driver durability.
+
+Parent review gate:
+- Inspect final owned diff/new files and independently rerun exact focused commands.
+- Confirm current Product/inventory identity semantics and required auto-create behavior.
+- Coordinate any authorized disposable real-driver acceptance separately.
+- Keep the broader DATA-06 writer inventory/migration acceptance open; this slice does
+  not close DATA-06. No next-slice implementation is active from this worker.

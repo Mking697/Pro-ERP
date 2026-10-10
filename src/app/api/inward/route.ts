@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { getMutationKey, MutationConflictError } from "@/lib/mutations";
 import { z } from "zod";
 import { requireAnyModule, requireModule } from "@/lib/auth/guard";
 import { listInwardEntries, createInwardEntry } from "@/lib/inward";
@@ -43,9 +44,15 @@ export async function POST(request: Request) {
     const entry = await createInwardEntry({
       ...parsed.data,
       createdBy: guard.session.userId,
-    });
+    }, getMutationKey(request));
     return NextResponse.json({ entry });
   } catch (err) {
+    if (err instanceof Error && "committed" in err && err.committed === true && "result" in err) {
+      return NextResponse.json({ entry: err.result, committed: true, warning: err.message });
+    }
+    if (err instanceof MutationConflictError) {
+      return NextResponse.json({ error: err.message }, { status: 409 });
+    }
     const message = err instanceof Error ? err.message : "Entry create nahi ho payi.";
     return NextResponse.json({ error: message }, { status: 400 });
   }

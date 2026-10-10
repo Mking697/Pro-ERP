@@ -7,7 +7,9 @@ import {
   InsufficientStockError,
   DIRECTIONS,
 } from "@/lib/inventory/ledger";
-import { freeStockFor } from "@/lib/inventory/service";
+import { getMutationKey, runIdempotentTenantMutation, MutationConflictError } from "@/lib/mutations";
+import { getTenantOrgId } from "@/lib/tenant";
+import { InsufficientAvailableStockError } from "@/lib/inventory/availability";
 
 const bodySchema = z.object({
   sku: z.string().trim().min(1, "SKU zaroori hai."),
@@ -41,24 +43,24 @@ export async function POST(request: Request) {
   }
 
   try {
-    const movement = await recordMovement(
-      {
-        sku,
-        direction,
-        quantity,
-        uom: item.UOM,
-        source: "Manual",
-        location: location || item.Location,
-        issuedTo,
-        remark,
-        userId: guard.session.userId,
-      },
-      direction === "Out" ? await freeStockFor(sku) : undefined
-    );
+    const orgId = await getTenantOrgId();
+    const movement = await runIdempotentTenantMutation(orgId, {
+      operation: "inventory.movement.manual.v1", actorId: guard.session.userId,
+      key: getMutationKey(request), payload: { sku, direction, quantity, location, issuedTo, remark },
+    }, async () => ({ ...await recordMovement({
+      sku, direction, quantity, uom: item.UOM, source: "Manual",
+      location: location || item.Location, issuedTo, remark, userId: guard.session.userId,
+    }) }));
 
     return NextResponse.json({ movement });
   } catch (err) {
-    if (err instanceof InsufficientStockError) {
+    if (err instanceof Error && "committed" in err && err.committed === true && "result" in err) {
+      return NextResponse.json({ movement: err.result, committed: true, warning: err.message });
+    }
+    if (err instanceof MutationConflictError) {
+      return NextResponse.json({ error: err.message }, { status: 409 });
+    }
+    if (err instanceof InsufficientStockError || err instanceof InsufficientAvailableStockError) {
       return NextResponse.json({ error: err.message }, { status: 409 });
     }
     const message = err instanceof Error ? err.message : "Entry save nahi ho payi.";

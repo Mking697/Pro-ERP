@@ -1,5 +1,5 @@
 import type { InferSelectModel } from "drizzle-orm";
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import {
   dispatchActivities,
   dispatches,
@@ -10,18 +10,19 @@ import {
   tmsShipments,
   transportVendors,
 } from "@/db/schema";
-import { db } from "@/db/client";
+import { db, runInTenantTransaction } from "@/db/client";
 import { findById, insertRecord, listByOrg, updateById } from "@/db/repo";
 import { getTenantOrgId } from "@/lib/tenant";
 import { generateId } from "@/lib/id";
 import { getOrder, type OrderRecord } from "@/lib/orders/orders";
 import { getUserById } from "@/lib/auth/users";
 import { findItem } from "@/lib/inventory/items";
-import { listLedger, onHandBySku } from "@/lib/inventory/ledger";
+import { assertStockAvailableMany } from "@/lib/inventory/availability";
 import { round3 } from "@/lib/inventory/allocation";
 import { computeTatDeadline } from "@/lib/fms/calendar";
 import type { FmsTatUnit } from "@/lib/fms/templates";
-import { emitFmsEvent } from "@/lib/fms/engine";
+import { startFmsInstance } from "@/lib/fms/engine";
+import { listFmsTemplates } from "@/lib/fms/templates";
 import type { ModuleAccessKey } from "@/lib/moduleAccess";
 
 /**
@@ -175,7 +176,7 @@ async function isInvoiceIssued(orgId: string, orderId: string): Promise<boolean>
   const rows = await db
     .select({ status: invoices.status })
     .from(invoices)
-    .where(and(eq(invoices.orgId, orgId), eq(invoices.orderId, orderId)))
+    .where(and(eq(invoices.orgId, orgId), eq(invoices.orderId, orderId), eq(invoices.status, "Issued")))
     .limit(1);
   return rows[0]?.status === "Issued";
 }
@@ -427,21 +428,13 @@ export interface ConfirmDispatchInput {
  * Issues a Gate Pass, writes the real `stock_ledger` "Out" for exactly what this shipment
  * carries, sets `order_items.consumedQty` for each line shipped, links the shipment to this
  * dispatch, and assigns someone to track it with a TAT computed off their own working-hours
- * calendar. See src/db/schema/dispatch.ts's own header comment for the two-step design and
- * CLAUDE.md's own note on why an FMS-style Ledger Movement Action is never best-effort — the
- * same reasoning applies here: this whole action must fail and leave nothing half-done if
- * the ledger write can't happen, so every read/validation runs first and the actual writes
- * (ledger + consumedQty + the dispatch row itself + the tms_shipments link + activity log)
- * all ride one `db.batch()` call (this driver's only real atomicity primitive — see
- * src/db/client.ts) rather than several separate awaited inserts that could leave a partial
- * result behind if a later one throws.
+ * calendar. All authoritative reads and writes share the tenant transaction/lock.
+ * Ledger rows, guarded exact-line consumption, the shipment claim and activities commit
+ * together. Number collisions roll back a savepoint before retrying admission.
  *
- * The insufficient-stock check compares against real on-hand, not Free stock — this
- * quantity was already reserved (order_items.reservedQty) and is already excluded from every
- * OTHER order's own Free-stock view via orderReservedBySku(); checking against Free here
- * would double-subtract this order's own reservation and refuse a shipment that is actually
- * fine. Checking on-hand is a pure physical sanity check ("shouldn't normally happen since it
- * was already reserved, but must still be handled correctly" per this build's own brief).
+ * Central stock admission excludes this order's own outstanding reservation, avoiding
+ * double subtraction while still protecting other orders' and PPC plans' commitments.
+ * Each consumed increment is additionally capped by its exact line's reservation and qty.
  */
 export async function confirmDispatch(
   shipmentId: string,
@@ -450,8 +443,17 @@ export async function confirmDispatch(
 ): Promise<DispatchRecord> {
   const orgId = await getTenantOrgId();
 
+  return runInTenantTransaction(orgId, async () => {
+  const existing = await db.select().from(dispatches).where(and(eq(dispatches.orgId, orgId), eq(dispatches.shipmentId, shipmentId)));
+  if (existing.length > 1) throw new DispatchError("Duplicate shipment dispatch history requires reconciliation.");
   const shipmentRow: TmsShipmentRow | null = await findById(tmsShipments, orgId, shipmentId);
   if (!shipmentRow) throw new DispatchError("Shipment nahi mila.");
+  if (existing[0]) {
+    if (shipmentRow.dispatchId !== existing[0].id || shipmentRow.orderId !== existing[0].orderId) {
+      throw new DispatchError("Shipment dispatch links require reconciliation.");
+    }
+    return rowToDispatch(existing[0]);
+  }
   if (shipmentRow.status !== "At_Loading_Dock") {
     throw new DispatchError(
       `Ye shipment "${shipmentRow.status}" hai — Dispatch sirf At_Loading_Dock shipment ke liye chalta hai.`
@@ -485,22 +487,11 @@ export async function confirmDispatch(
   if (!(tatValue > 0)) throw new DispatchError("TAT value 0 se zyada honi chahiye.");
   if (!TAT_UNITS.includes(input.tatUnit)) throw new DispatchError("TAT unit galat hai.");
 
-  // Insufficiency check against real on-hand — see this function's own header comment.
-  const ledger = await listLedger();
-  const onHand = onHandBySku(ledger);
-  const used = new Map<string, number>();
-  for (const row of itemRows) {
-    const qty = Number(row.qty) || 0;
-    if (!(qty > 0)) continue;
-    const already = used.get(row.sku) ?? 0;
-    const have = round3((onHand.get(row.sku) ?? 0) - already);
-    if (qty > have) {
-      throw new DispatchError(
-        `SKU "${row.sku}" ke liye on-hand stock kam hai — sirf ${have} ${row.uom} hai, is shipment me ${qty} ${row.uom} chahiye.`
-      );
-    }
-    used.set(row.sku, round3(already + qty));
-  }
+  const requests = itemRows.map(row => ({ sku: row.sku, quantity: Number(row.qty) }));
+  // Central admission validates finite positive 3dp quantities and aggregates SKU demand.
+  // Only this order's own unconsumed holds are excluded; all other holds remain protected.
+  await assertStockAvailableMany(requests, { excludeOrderId: order.id });
+  if (order.status !== "Ready_For_PDI") throw new DispatchError("Order is not dispatchable.");
 
   // Item master lookup (per distinct SKU) for the ledger row's Location — best-effort field,
   // never blocks the write (an item without a Location just gets a blank one, same as any
@@ -521,6 +512,12 @@ export async function confirmDispatch(
   for (let attempt = 0; attempt < 5; attempt += 1) {
     gatePassNo = await allocateGatePassNumber(orgId);
 
+    try {
+    await db.transaction(async () => {
+    // Retry scope must revalidate admission and construct its builders here.
+    await assertStockAvailableMany(requests, { excludeOrderId: order.id });
+    const freshShipment = await findById(tmsShipments, orgId, shipmentId);
+    if (!freshShipment || freshShipment.dispatchId || freshShipment.status !== "At_Loading_Dock" || !await isInvoiceIssued(orgId, order.id)) throw new DispatchError("Shipment admission changed.");
     const dispatchInsert = db.insert(dispatches).values({
       id: dispatchId,
       orgId,
@@ -553,26 +550,30 @@ export async function confirmDispatch(
       }))
     );
 
-    const orderItemUpdates = itemRows.map((row) => {
-      const currentLine = order.items.find((l) => l.lineNo === row.lineNo);
-      const currentConsumed = currentLine?.consumedQty ?? 0;
-      const newConsumed = round3(currentConsumed + (Number(row.qty) || 0));
-      return db
-        .update(orderItems)
-        .set({ consumedQty: String(newConsumed) })
-        .where(
-          and(
-            eq(orderItems.orgId, orgId),
-            eq(orderItems.orderId, order.id),
-            eq(orderItems.lineNo, row.lineNo)
-          )
-        );
-    });
+    for (const row of itemRows) {
+      const quantity = Number(row.qty);
+      const updated = await db.update(orderItems)
+        .set({ consumedQty: sql`${orderItems.consumedQty} + ${quantity}` })
+        .where(and(
+          eq(orderItems.orgId, orgId), eq(orderItems.orderId, order.id),
+          eq(orderItems.lineNo, row.lineNo), eq(orderItems.sku, row.sku), eq(orderItems.uom, row.uom),
+          sql`${orderItems.consumedQty} >= 0`,
+          sql`${orderItems.reservedQty} < 'Infinity'::numeric`,
+          sql`${orderItems.qty} < 'Infinity'::numeric`,
+          sql`${orderItems.consumedQty} + ${quantity} <= ${orderItems.reservedQty}`,
+          sql`${orderItems.consumedQty} + ${quantity} <= ${orderItems.qty}`,
+        )).returning({ lineNo: orderItems.lineNo });
+      if (updated.length !== 1) throw new DispatchError("Shipment exceeds its exact order line reservation or line identity is invalid.");
+    }
 
-    const shipmentUpdate = db
-      .update(tmsShipments)
+    const claimed = await db.update(tmsShipments)
       .set({ dispatchId })
-      .where(and(eq(tmsShipments.orgId, orgId), eq(tmsShipments.id, shipmentId)));
+      .where(and(
+        eq(tmsShipments.orgId, orgId), eq(tmsShipments.id, shipmentId),
+        eq(tmsShipments.orderId, order.id), eq(tmsShipments.status, "At_Loading_Dock"),
+        eq(tmsShipments.dispatchId, ""),
+      )).returning({ id: tmsShipments.id });
+    if (claimed.length !== 1) throw new DispatchError("Shipment claim failed.");
 
     const activityInsert = db.insert(dispatchActivities).values([
       {
@@ -593,15 +594,13 @@ export async function confirmDispatch(
       },
     ]);
 
-    try {
       await db.batch([
         dispatchInsert,
         ledgerInsert,
-        shipmentUpdate,
         activityInsert,
-        ...orderItemUpdates,
       ]);
       committed = await findById(dispatches, orgId, dispatchId);
+    });
       break;
     } catch (error) {
       if (isUniqueViolation(error, GATE_PASS_CONSTRAINT)) continue;
@@ -614,6 +613,7 @@ export async function confirmDispatch(
   }
 
   return rowToDispatch(committed);
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -642,6 +642,7 @@ export async function markDispatched(
   actor: DispatchActor
 ): Promise<DispatchRecord> {
   const orgId = await getTenantOrgId();
+  return runInTenantTransaction(orgId, async () => {
   const row = await findById(dispatches, orgId, dispatchId);
   if (!row) throw new DispatchError("Dispatch nahi mila.");
   if (row.status !== "In_Transit") {
@@ -671,23 +672,22 @@ export async function markDispatched(
     actor.userId
   );
 
-  // Best-effort, optional — mirrors emitFmsEvent's own chaining convention and TMS's own
-  // ORDER_FULLY_SHIPPED follow-up (confirmLoadingDock()). Nothing downstream picks this up
-  // today — this is genuinely the end of the whole 5-leg Sales chain — but the event is
-  // still worth emitting for future notification/reporting use, same as CLAUDE.md notes.
-  try {
-    const fullyDispatched = await isOrderFullyDispatched(row.orderId);
-    if (fullyDispatched) {
-      await logActivity(orgId, row.orderId, "Note", "Order ab poora Dispatch ho chuka hai.", "SYSTEM");
-      await emitFmsEvent("ORDER_FULLY_DISPATCHED", `ORDERS:${row.orderId}`);
+  // Configured successor DB work is required: join this transaction, never use the
+  // best-effort event dispatcher or defer DB creation to nondurable afterTenantCommit.
+  const fullyDispatched = await isOrderFullyDispatched(row.orderId);
+  if (fullyDispatched) {
+    await logActivity(orgId, row.orderId, "Note", "Order ab poora Dispatch ho chuka hai.", "SYSTEM");
+    for (const step of await listFmsTemplates()) {
+      if (Number(step.Step_No) === 1 && step.Trigger_Event === "ORDER_FULLY_DISPATCHED" && step.Status === "Active") {
+        await startFmsInstance({ templateId: step.Template_ID, contextRef: `ORDERS:${row.orderId}`, startedBy: "SYSTEM" });
+      }
     }
-  } catch (error) {
-    console.error(`[dispatch] fully-dispatched follow-up failed for order ${row.orderId}:`, error);
   }
 
   const updated = await findById(dispatches, orgId, dispatchId);
   if (!updated) throw new DispatchError("Update ho gaya lekin dispatch load nahi ho paya.");
   return rowToDispatch(updated);
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -716,6 +716,7 @@ export async function markDelivered(
   actor: DispatchActor
 ): Promise<DispatchRecord> {
   const orgId = await getTenantOrgId();
+  return runInTenantTransaction(orgId, async () => {
   const row = await findById(dispatches, orgId, dispatchId);
   if (!row) throw new DispatchError("Dispatch nahi mila.");
   if (row.status !== "Dispatched") {
@@ -749,19 +750,18 @@ export async function markDelivered(
     actor.userId
   );
 
-  // Best-effort, optional — same convention as markDispatched()'s own fully-dispatched
-  // follow-up above.
-  try {
-    const fullyDelivered = await isOrderFullyDelivered(row.orderId);
-    if (fullyDelivered) {
-      await logActivity(orgId, row.orderId, "Note", "Order ab poora Deliver ho chuka hai.", "SYSTEM");
-      await emitFmsEvent("ORDER_FULLY_DELIVERED", `ORDERS:${row.orderId}`);
+  const fullyDelivered = await isOrderFullyDelivered(row.orderId);
+  if (fullyDelivered) {
+    await logActivity(orgId, row.orderId, "Note", "Order ab poora Deliver ho chuka hai.", "SYSTEM");
+    for (const step of await listFmsTemplates()) {
+      if (Number(step.Step_No) === 1 && step.Trigger_Event === "ORDER_FULLY_DELIVERED" && step.Status === "Active") {
+        await startFmsInstance({ templateId: step.Template_ID, contextRef: `ORDERS:${row.orderId}`, startedBy: "SYSTEM" });
+      }
     }
-  } catch (error) {
-    console.error(`[dispatch] fully-delivered follow-up failed for order ${row.orderId}:`, error);
   }
 
   const updated = await findById(dispatches, orgId, dispatchId);
   if (!updated) throw new DispatchError("Update ho gaya lekin dispatch load nahi ho paya.");
   return rowToDispatch(updated);
+  });
 }

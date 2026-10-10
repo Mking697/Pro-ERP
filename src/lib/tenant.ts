@@ -1,6 +1,8 @@
 import { AsyncLocalStorage } from "node:async_hooks";
+import { cache } from "react";
 import { cookies } from "next/headers";
-import { verifySession, SESSION_COOKIE } from "@/lib/auth/session";
+import { SESSION_COOKIE } from "@/lib/auth/session";
+import { getLiveSessionFromToken } from "@/lib/auth/live-session";
 import { getOrganization, type Organization } from "@/lib/platform/registry";
 import { isTrialExpired } from "@/lib/platform/planLimits";
 
@@ -14,9 +16,17 @@ export interface TenantContext {
  * cron jobs walk every organization and run the same work once per tenant.
  */
 const tenantStore = new AsyncLocalStorage<TenantContext>();
+const operationCache = new AsyncLocalStorage<Map<string, unknown>>();
+const renderCache = cache(() => new Map<string, unknown>());
+
+/** Mutable memoization state lives only inside an explicit operation or RSC request.
+ * Outside RSC, React cache is a no-op: route handlers never acquire global state. */
+export function getTenantRequestCache(): Map<string, unknown> {
+  return operationCache.getStore() ?? renderCache();
+}
 
 export function runWithTenant<T>(ctx: TenantContext, fn: () => Promise<T>): Promise<T> {
-  return tenantStore.run(ctx, fn);
+  return tenantStore.run(ctx, () => operationCache.run(new Map(), fn));
 }
 
 /**
@@ -74,7 +84,12 @@ export async function tenantFromOrgId(orgId: string): Promise<TenantContext> {
 export async function getTenant(): Promise<TenantContext> {
   const explicit = tenantStore.getStore();
   if (explicit) return explicit;
+  return resolveRequestTenant();
+}
 
+// React cache is scoped to a Server Component render, NOT a global auth TTL.
+// Route handlers/background work must establish an explicit runWithTenant scope.
+const resolveRequestTenant = cache(async (): Promise<TenantContext> => {
   let token: string | undefined;
   try {
     const cookieStore = await cookies();
@@ -85,13 +100,15 @@ export async function getTenant(): Promise<TenantContext> {
     );
   }
 
-  const session = token ? await verifySession(token) : null;
+  // Explicit share/cron contexts above use their own authorization. Implicit cookie
+  // contexts must reject revoked users before even resolving the organization.
+  const session = await getLiveSessionFromToken(token);
   if (!session) {
     throw new TenantResolutionError("Tenant context missing: koi valid session nahi hai.");
   }
 
   return tenantFromOrgId(session.orgId);
-}
+});
 
 export async function getTenantOrgId(): Promise<string> {
   return (await getTenant()).orgId;

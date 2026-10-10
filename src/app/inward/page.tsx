@@ -1,6 +1,5 @@
-import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
-import { verifySession, SESSION_COOKIE } from "@/lib/auth/session";
+import { getLiveSession } from "@/lib/auth/live-session";
 import AppShell from "@/components/app-shell";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import InwardBoard from "./inward-board";
@@ -11,9 +10,7 @@ import { getIqcDeviationApprover } from "@/lib/inward";
 
 export default async function InwardPage() {
   const t = await getT();
-  const cookieStore = await cookies();
-  const token = cookieStore.get(SESSION_COOKIE)?.value;
-  const session = token ? await verifySession(token) : null;
+  const session = await getLiveSession();
 
   if (!session) redirect("/login");
 

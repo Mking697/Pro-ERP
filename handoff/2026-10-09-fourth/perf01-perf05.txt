@@ -1,0 +1,28 @@
+PERF-01 / PERF-05 — BLOCKED, not implemented or accepted
+2026-10-09, D:/Pro-ERP
+
+Read CLAUDE.md Mandatory portability/safety and FOURTH instructions, current source and chatbot route/orchestrator reference, and tracker/findings descriptions. Restricted work to owned paths. No env reads, installs, DB connections, migrations, commits, pushes, or destructive Git commands.
+
+Files created:
+- tests/perf01-perf05.unit.vitest.config.ts: node environment, setupFiles: [], only PERF-specific test files.
+- tests/perf01-perf05.sessions.test.ts: DB-client/repo/tenant mocks; REAL Drizzle expressions + PgDialect validate tenant/session predicate and created_at DESC. Assertions require SQL limit(20), chronological returned rows, preserved input ordering, custom limit(3).
+
+Production files: no retained changes. Initial untested tenant experiment was explicitly removed before proceeding with TDD. git diff -- src/lib/tenant.ts returned no unstaged diff, preserving its pre-existing staged changes. No changes to settings/order-settings/AppShell/sessions/message-route/orchestrator.
+
+RED/GREEN evidence:
+- BLOCKED before legitimate RED assertion execution. `node node_modules/vitest/vitest.mjs run --config tests/perf01-perf05.unit.vitest.config.ts --reporter=dot` failed MODULE_NOT_FOUND for Vitest entrypoint.
+- Found pre-existing renamed directory node_modules/.vitest-eMqRn6Qv/vitest.mjs; running that alternative failed ERR_MODULE_NOT_FOUND for vite. No dependency repair attempted (out of scope/no install allowed).
+- require.resolve('typescript') and require.resolve('eslint') failed MODULE_NOT_FOUND too.
+- `npx --no-install tsc --noEmit -p tsconfig.json` reached an unrelated cached npx 'tsc' package displaying 'This is not the tsc command you are looking for'; NOT a project typecheck pass.
+- `npx --no-install eslint tests/perf01-perf05.sessions.test.ts tests/perf01-perf05.unit.vitest.config.ts` reached cached ESLint 10.12.0 and failed resolving project's node_modules/eslint/config; NOT a lint pass.
+- Tests passed: none claimed. No GREEN proof.
+
+Next:
+1. Session driver must restore/finish the shared node_modules state (many normal installed paths absent, renamed package directories present) without this agent independently installing or moving dependencies.
+2. Run the sessions regression to capture legitimate RED, then implement recentSessionMessages as org+session filtered ORDER BY createdAt DESC LIMIT caller limit, map/reverse bounded rows. Decide/test invalid limit behavior explicitly if adding validation; default is 20.
+3. PERF-01: use React cache for implicit server-render tenant dedupe (explicit runWithTenant remains precedence). Never auto-bind an implicit context with AsyncLocalStorage.enterWith: no established lifecycle boundary, possible sibling/request-context contamination. React cache is render-scoped; ordinary route handlers need explicit runWithTenant, not assumed React memoization.
+4. Read one getAllSettings snapshot in getOrderSetup instead of 13 getSetting reads. Scope pending settings reuse to explicit runWithTenant or React-render request, never global TTL. Preserve mutation read-after-write / transaction visibility (avoid sharing an HTTP snapshot with a transaction; invalidate after successful upsert).
+5. AppShell should reuse validated getTenant().org rather than independent getOrganization; run nav helpers under that tenant and remove existing global tenantCached navigation TTL in favor of request-only scope. Include concurrent tenants, next-request revocation, in-flight dedupe, settings writes/transaction boundaries, nav freshness tests.
+6. Focused DB-free tests, current-tree tsc, scoped eslint and parent independent review required before marking either finding complete. Real PostgreSQL query plans/latency are deliberately not measured; no disposable DB available.
+
+Tracker untouched: outside delegated file ownership; parent should record blocked status, not completion.

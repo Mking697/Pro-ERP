@@ -61,6 +61,7 @@ export default function ReorderBoard({ canRaise }: { canRaise: boolean }) {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [version, setVersion] = useState(0);
+  const [retryBlocked, setRetryBlocked] = useState(false);
 
   useEffect(() => {
     fetch("/api/inventory/reorder")
@@ -85,6 +86,7 @@ export default function ReorderBoard({ canRaise }: { canRaise: boolean }) {
   );
 
   async function raise() {
+    if (retryBlocked || saving) return;
     setSaving(true);
     try {
       const res = await fetch("/api/inventory/indents", {
@@ -102,24 +104,78 @@ export default function ReorderBoard({ canRaise }: { canRaise: boolean }) {
         }),
       });
       const data = await res.json().catch(() => null);
-
-      if (!res.ok) {
-        toast.error(t(data?.error ?? "Indent nahi ban paye."));
+      // HTTP status describes the batch, not each item: even HTTP 500 can
+      // acknowledge committed siblings. Reconcile those before showing failures.
+      const requested = new Set(chosen.map((row) => row.sku));
+      const receiptsValid = Array.isArray(data?.indents) && data.indents.every(
+        (indent: { SKU?: unknown; Indent_ID?: unknown }) =>
+          typeof indent?.SKU === "string" && requested.has(indent.SKU) &&
+          typeof indent.Indent_ID === "string" && indent.Indent_ID.trim().length > 0
+      );
+      const failuresValid = Array.isArray(data?.failed) && data.failed.every(
+        (failure: { sku?: unknown; error?: unknown }) =>
+          typeof failure?.sku === "string" && requested.has(failure.sku) &&
+          typeof failure.error === "string"
+      );
+      const unknownList: { sku?: unknown; error?: unknown }[] = Array.isArray(data?.unknown) ? data.unknown : [];
+      const unknownValid = !("unknown" in (data ?? {})) || (Array.isArray(data?.unknown) && unknownList.every(
+        (entry) => typeof entry?.sku === "string" && requested.has(entry.sku as string) &&
+          typeof entry.error === "string"
+      ));
+      const saved = new Set<string>(receiptsValid
+        ? data.indents.map((indent: { SKU: string }) => indent.SKU) : []);
+      const failed = new Set<string>(failuresValid
+        ? data.failed.map((failure: { sku: string }) => failure.sku) : []);
+      const unknownOutcome = new Set<string>(unknownValid
+        ? unknownList.map((entry) => entry.sku as string) : []);
+      const resultValid = receiptsValid && failuresValid && unknownValid &&
+        data.created === data.indents.length && saved.size === data.created &&
+        new Set(data.indents.map((indent: { Indent_ID: string }) => indent.Indent_ID)).size === saved.size &&
+        failed.size === data.failed.length &&
+        [...failed].every((sku) => !saved.has(sku) && !unknownOutcome.has(sku)) &&
+        [...unknownOutcome].every((sku) => !saved.has(sku)) &&
+        saved.size + failed.size + unknownOutcome.size === requested.size;
+      if (!resultValid) {
+        setRetryBlocked(true);
+        setVersion((v) => v + 1);
+        toast.error(t("Indent result confirm nahi hua. Indents list check karein; bina verify kiye dobara submit na karein."));
         return;
       }
-
-      toast.success(`${data.created} indent ban gaye.`);
-      if (data.failed?.length) {
+      if (saved.size > 0) {
+        setSelected((current) => Object.fromEntries(
+          Object.entries(current).filter(([sku]) => !saved.has(sku))
+        ));
+        setQtyDraft((current) => Object.fromEntries(
+          Object.entries(current).filter(([sku]) => !saved.has(sku))
+        ));
+        setVersion((v) => v + 1);
+        toast.success(`${saved.size} indent ban gaye.`);
+        if (data?.committed === true || Array.isArray(data?.warnings) && data.warnings.length > 0) {
+          // Never render arbitrary server cleanup/error text.
+          toast.warning(t("Saved indents confirmed hain; server issue hua. Saved items dobara submit na karein."));
+        }
+      }
+      if (unknownOutcome.size > 0) {
+        // Genuinely unknown: may or may not have been written. Keep selected, do not
+        // let a retry run — resubmitting could silently duplicate an already-written
+        // indent. The person must verify manually via the Indents list.
+        setRetryBlocked(true);
+        toast.warning(
+          t(`${unknownOutcome.size} item ka result confirm nahi hua: ${[...unknownOutcome].join(", ")}. Indents list check karein; bina verify kiye dobara submit na karein.`)
+        );
+      }
+      if (data?.failed?.length) {
         toast.error(
           `${data.failed.length} nahi bane: ${data.failed.map((f: { sku: string }) => f.sku).join(", ")}`
         );
+      } else if (!res.ok && unknownOutcome.size === 0) {
+        toast.error(t("Indent nahi ban paye."));
       }
-
-      setSelected({});
-      setQtyDraft({});
-      setVersion((v) => v + 1);
     } catch {
-      toast.error(t("Indent nahi ban paye."));
+      // A transport failure gives no evidence of rollback; replay can duplicate.
+      setRetryBlocked(true);
+      setVersion((v) => v + 1);
+      toast.error(t("Indent result confirm nahi hua. Indents list check karein; bina verify kiye dobara submit na karein."));
     } finally {
       setSaving(false);
     }
@@ -133,6 +189,14 @@ export default function ReorderBoard({ canRaise }: { canRaise: boolean }) {
 
   return (
     <div className="space-y-4">
+      {retryBlocked && (
+        <p role="alert" className="rounded-lg border p-3 text-sm">
+          {t("Indent result confirm nahi hua. Bina verify kiye dobara submit na karein.")}{" "}
+          <Link href="/inventory/indents" className="underline">
+            {t("Indents list check karein")}
+          </Link>
+        </p>
+      )}
       {notSetUp > 0 && (
         <p className="rounded-lg border bg-muted/40 p-3 text-sm text-muted-foreground">
           <strong className="text-foreground">{notSetUp}</strong> item is list me hain hi
@@ -160,7 +224,7 @@ export default function ReorderBoard({ canRaise }: { canRaise: boolean }) {
               <Button
                 className="ml-auto"
                 onClick={raise}
-                disabled={saving || chosen.length === 0}
+                disabled={saving || retryBlocked || chosen.length === 0}
               >
                 {saving ? "Ban rahe hain..." : `Indent banayein (${chosen.length})`}
               </Button>

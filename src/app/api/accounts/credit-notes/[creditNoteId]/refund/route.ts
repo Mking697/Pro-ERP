@@ -1,3 +1,6 @@
+import { getMutationKey, runIdempotentTenantMutation, MutationConflictError, MutationInputError } from "@/lib/mutations";
+import { getTenantOrgId } from "@/lib/tenant";
+import { LedgerConflictError } from "@/lib/accounts/ledger";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { requireModule } from "@/lib/auth/guard";
@@ -22,12 +25,19 @@ export async function POST(request: Request, { params }: { params: Promise<{ cre
   }
 
   try {
-    const creditNote = await refundCreditNote(
+    const creditNote = await runIdempotentTenantMutation(await getTenantOrgId(), {
+      operation: "accounts.credit-notes.creditNoteId.refund.v1", actorId: guard.session.userId, key: getMutationKey(request),
+      // Parsed JSON input; omit absent optional fields, never hash a Date/domain row.
+      payload: JSON.parse(JSON.stringify({ creditNoteId, ...parsed.data })),
+    }, async () => ({ ...await refundCreditNote(
       { creditNoteId, amount: parsed.data.amount },
       guard.session.userId
-    );
+    ) }));
     return NextResponse.json({ creditNote });
   } catch (err) {
+    if (err instanceof MutationConflictError || err instanceof MutationInputError || err instanceof LedgerConflictError) {
+      return NextResponse.json({ error: err.message }, { status: err.status });
+    }
     const message =
       err instanceof CreditNoteError || err instanceof Error ? err.message : "Refund nahi ho paya.";
     return NextResponse.json({ error: message }, { status: 400 });

@@ -11,8 +11,12 @@ jobs:
     # DATABASE_URL is a required env var for this app (src/db/client.ts throws at import
     # time without it) — the build step imports route modules that pull it in transitively,
     # not just the DB-backed tests, so it's set at job level rather than per-step.
+    # TEST_DATABASE_TARGET is an explicitly approved disposable host/port/database
+    # identity, e.g. postgresql://ci-disposable.example:5432/qa_ci (no credentials).
+    # Regex approval is deliberately unsupported; missing declaration refuses tests.
     env:
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      TEST_DATABASE_TARGET: ${{ vars.TEST_DATABASE_TARGET }}
     steps:
       - uses: actions/checkout@v4
 

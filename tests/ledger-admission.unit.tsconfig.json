@@ -1,0 +1,11 @@
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": { "incremental": false },
+  "include": [
+    "../next-env.d.ts",
+    "../src/lib/inventory/ledger.ts",
+    "ledger-admission.unit.test.ts",
+    "ledger-admission.unit.vitest.config.ts"
+  ],
+  "exclude": ["../node_modules"]
+}

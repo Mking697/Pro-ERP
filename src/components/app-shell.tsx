@@ -1,4 +1,4 @@
-import { getOrganization } from "@/lib/platform/registry";
+import { getTenant, runWithTenant } from "@/lib/tenant";
 import type { SessionPayload } from "@/lib/auth/session";
 import type { NavEntry, NavItem } from "@/components/nav-links";
 import SidebarShell from "@/components/sidebar-shell";
@@ -6,7 +6,7 @@ import { isPlatformAdmin } from "@/lib/platform/admin";
 import { getSetting } from "@/lib/settings";
 import { listNavFmsTemplates } from "@/lib/fms/templates";
 import { listUsedFmsTemplateIds } from "@/lib/inventory/plans";
-import { tenantCached } from "@/lib/cache";
+
 
 /**
  * The frame every signed-in page sits inside.
@@ -24,33 +24,19 @@ export default async function AppShell({
   session: SessionPayload;
   children: React.ReactNode;
 }) {
-  const org = await getOrganization(session.orgId);
-  // Settings are cached per org, so this costs nothing after the first page view.
-  const logoUrl = await getSetting("ORG_LOGO_URL").catch(() => null);
-
+  const tenant = await getTenant();
+  if (tenant.orgId !== session.orgId) throw new Error("Tenant/session mismatch");
+  const org = tenant.org;
   const isFmsAdmin = session.access.includes("FMS_ADMIN");
-  // One extra nav item per Active FMS template this user is entitled to open as its own
-  // Flow Board — every Active template for an FMS_ADMIN, or only the ones whose static
-  // step design assigns this user otherwise (see listNavFmsTemplates). Cached per org
-  // (shared across every admin, since they all see the same set) because this runs on
-  // every single page load; a broken/unconnected FMS sheet must never break navigation
-  // for the rest of the app, same reasoning as the ORG_LOGO_URL read just above.
-  const navFmsTemplates = await tenantCached(
-    session.orgId,
-    `nav-fms-templates:${isFmsAdmin ? "admin" : session.userId}`,
-    60_000,
-    () => listNavFmsTemplates(session.userId, isFmsAdmin)
-  ).catch(() => []);
-
-  // A "PMS" Line's own default trigger is "MANUAL" (see api/ppc/production-lines/route.ts),
-  // so Trigger_Event alone can't tell a PPC-connected Line apart from every other FMS flow
-  // — actually being chosen by a production plan can. Same caching reasoning as above.
-  const usedFmsTemplateIds = await tenantCached(
-    session.orgId,
-    "nav-used-fms-template-ids",
-    60_000,
-    () => listUsedFmsTemplateIds()
-  ).catch(() => new Set<string>());
+  // Navigation must reflect current grants/templates, not a process-global TTL.
+  // All helpers reuse the already-validated tenant inside this explicit boundary.
+  const [logoUrl, navFmsTemplates, usedFmsTemplateIds] = await runWithTenant(tenant, () =>
+    Promise.all([
+      getSetting("ORG_LOGO_URL").catch(() => null),
+      listNavFmsTemplates(session.userId, isFmsAdmin).catch(() => []),
+      listUsedFmsTemplateIds().catch(() => new Set<string>()),
+    ])
+  );
 
   const pmsFmsTemplates = navFmsTemplates.filter(
     (tpl) => tpl.triggerEvent === "PRODUCTION_STARTED" || usedFmsTemplateIds.has(tpl.templateId)

@@ -230,9 +230,9 @@ export default function PoIssueBoard() {
   return (
     <div className="space-y-4">
       <div className="space-y-2">
-        <Label>{t("Vendor chunein")}</Label>
+        <Label htmlFor="po-vendor">{t("Vendor chunein")}</Label>
         <Select value={vendorId || undefined} onValueChange={(v) => v && handleVendorChange(v)}>
-          <SelectTrigger className="w-full sm:w-80">
+          <SelectTrigger id="po-vendor" className="w-full sm:w-80">
             <SelectValue placeholder={t("Vendor select karein")} />
           </SelectTrigger>
           <SelectContent>
@@ -271,7 +271,15 @@ export default function PoIssueBoard() {
                     </TableCell>
                   </TableRow>
                 )}
-                {eligible.map((r) => (
+                {eligible.map((r) => {
+                  // Stable per-row id from the indent's own identity (never the array
+                  // index — filtering/sorting `eligible` must not silently repoint an
+                  // existing aria-describedby at a different row's error).
+                  const priceId = `po-new-price-${r.candidate.indentId}`;
+                  const priceErrorId = `po-new-price-error-${r.candidate.indentId}`;
+                  const priceValue = priceDraft[r.candidate.indentId] ?? "";
+                  const priceInvalid = priceValue !== "" && !(Number(priceValue) >= 0);
+                  return (
                   <TableRow key={r.candidate.indentId}>
                     <TableCell>
                       <Checkbox
@@ -297,27 +305,37 @@ export default function PoIssueBoard() {
                     </TableCell>
                     <TableCell className="text-right">
                       <Input
+                        id={priceId}
                         type="number"
                         step="any"
                         min="0"
-                        value={priceDraft[r.candidate.indentId] ?? ""}
+                        value={priceValue}
                         onChange={(e) =>
                           setPriceDraft((d) => ({ ...d, [r.candidate.indentId]: e.target.value }))
                         }
                         className="h-8 w-28 text-right tabular-nums"
                         aria-label={`${r.candidate.itemName} — new price`}
+                        aria-invalid={priceInvalid || undefined}
+                        aria-describedby={priceInvalid ? priceErrorId : undefined}
                       />
+                      {priceInvalid && (
+                        <p id={priceErrorId} className="sr-only" role="alert">
+                          {`${r.candidate.itemName} ka new price 0 se kam nahi ho sakta.`}
+                        </p>
+                      )}
                     </TableCell>
                   </TableRow>
-                ))}
+                  );
+                })}
               </TableBody>
             </Table>
           </div>
 
           <div className="grid gap-3 sm:grid-cols-2">
             <div className="space-y-2">
-              <Label>{t("GST %")}</Label>
+              <Label htmlFor="po-gst-percent">{t("GST %")}</Label>
               <Input
+                id="po-gst-percent"
                 type="number"
                 step="any"
                 min="0"
@@ -329,12 +347,13 @@ export default function PoIssueBoard() {
             </div>
           </div>
           <div className="space-y-2">
-            <Label>{t("Note")}</Label>
-            <Textarea rows={2} value={note} onChange={(e) => setNote(e.target.value)} />
+            <Label htmlFor="po-note">{t("Note")}</Label>
+            <Textarea id="po-note" rows={2} value={note} onChange={(e) => setNote(e.target.value)} />
           </div>
           <div className="space-y-2">
-            <Label>{t("Terms & Conditions")}</Label>
+            <Label htmlFor="po-terms">{t("Terms & Conditions")}</Label>
             <Textarea
+              id="po-terms"
               rows={5}
               value={termsAndConditions}
               onChange={(e) => setTermsAndConditions(e.target.value)}

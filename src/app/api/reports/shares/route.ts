@@ -20,12 +20,17 @@ import { canSeeEveryone, canSeeReport, getReport } from "@/lib/reports";
  * whole team's scores or the production plan — the exact things `requireModule()` refuses
  * them everywhere else.
  *
- * A share can only be created for a report the creator could see, so testing the caller's
- * own grants against each link's report is the same test, applied on the way back out.
+ * Public links render organization-wide data, so listing requires the same everyone-scope
+ * privilege as creation, in addition to each report's module grants. Owning a link or
+ * being allowed to revoke it does not entitle a mine-only reader to its credential.
  */
 export async function GET(request: Request) {
   const guard = await requireSession();
   if (!guard.ok) return guard.response;
+
+  // Match the listing's existing filtered/empty response contract without fetching tokens
+  // the caller cannot read. Revocation of a known, owned token remains a separate right.
+  if (!canSeeEveryone(guard.session)) return NextResponse.json({ shares: [] });
 
   const wanted = new URL(request.url).searchParams.get("report");
 

@@ -1,7 +1,7 @@
 import type { InferSelectModel } from "drizzle-orm";
-import { and, eq, gte, lte } from "drizzle-orm";
-import { bills, customers, invoices, pdiInspections, tmsShipments, vendors } from "@/db/schema";
-import { db } from "@/db/client";
+import { and, desc, eq, gte, inArray, lte } from "drizzle-orm";
+import { bills, customers, invoices, orderPayments, orders, pdiInspections, tmsShipments, vendors } from "@/db/schema";
+import { db, runInTenantTransaction } from "@/db/client";
 import { findById, insertRecord, listByOrg, updateById } from "@/db/repo";
 import { getTenantOrgId } from "@/lib/tenant";
 import { generateId } from "@/lib/id";
@@ -260,6 +260,11 @@ export interface CreateInvoiceInput {
  */
 export async function createInvoice(input: CreateInvoiceInput, createdBy: string): Promise<InvoiceRecord> {
   const orgId = await getTenantOrgId();
+  return runInTenantTransaction(orgId, () => createInvoiceInTransaction(input, createdBy));
+}
+
+async function createInvoiceInTransaction(input: CreateInvoiceInput, createdBy: string): Promise<InvoiceRecord> {
+  const orgId = await getTenantOrgId();
   const order = await getOrder(input.orderId);
   if (!order) throw new AccountsError("Order nahi mila.");
 
@@ -343,6 +348,11 @@ export interface UpdateInvoiceInput {
  * business document, once issued, isn't silently rewritten). */
 export async function updateInvoice(invoiceId: string, input: UpdateInvoiceInput): Promise<InvoiceRecord> {
   const orgId = await getTenantOrgId();
+  return runInTenantTransaction(orgId, () => updateInvoiceInTransaction(invoiceId, input));
+}
+
+async function updateInvoiceInTransaction(invoiceId: string, input: UpdateInvoiceInput): Promise<InvoiceRecord> {
+  const orgId = await getTenantOrgId();
   const row = await findById(invoices, orgId, invoiceId);
   if (!row) throw new AccountsError("Invoice nahi mili.");
   if (row.status !== "Draft") {
@@ -387,6 +397,11 @@ export async function updateInvoice(invoiceId: string, input: UpdateInvoiceInput
 // ---------------------------------------------------------------------------
 
 export async function issueInvoice(invoiceId: string, actorId: string): Promise<InvoiceRecord> {
+  const orgId = await getTenantOrgId();
+  return runInTenantTransaction(orgId, () => issueInvoiceInTransaction(invoiceId, actorId));
+}
+
+async function issueInvoiceInTransaction(invoiceId: string, actorId: string): Promise<InvoiceRecord> {
   const orgId = await getTenantOrgId();
   const row = await findById(invoices, orgId, invoiceId);
   if (!row) throw new AccountsError("Invoice nahi mili.");
@@ -435,7 +450,6 @@ export async function issueInvoice(invoiceId: string, actorId: string): Promise<
         : 0;
   }
   if (finalValue > 0) {
-    try {
       // Pre-GST invoices (gstAmount 0 — every invoice created before this GST-tracking
       // change defaults here) keep exactly the original 2-line posting. Otherwise split the
       // GST portion into its own liability line instead of folding it into Sales Revenue,
@@ -462,9 +476,6 @@ export async function issueInvoice(invoiceId: string, actorId: string): Promise<
         createdBy: actorId,
         lines,
       });
-    } catch (error) {
-      console.error(`[accounts] postJournalEntry failed for invoice ${invoiceId}:`, error);
-    }
   }
 
   return rowToInvoice(updated);
@@ -527,20 +538,47 @@ export async function getReceivablesAging(): Promise<AgingSummary> {
     byOrder.set(row.orderId, arr);
   }
 
-  const rows: AgingRow[] = [];
   const bucketTotals: Record<AgingBucket, number> = { "0-30": 0, "31-60": 0, "61-90": 0, "90+": 0 };
+  const orderIds = Array.from(byOrder.keys());
+  if (orderIds.length === 0) {
+    return { rows: [], bucketTotals, grandTotal: 0 };
+  }
+
+  // One minimal-projection query for every candidate order's own customer/party snapshot
+  // (PERF-03), instead of a sequential getOrder() — which also loads every order_items
+  // row — once per order in the loop below.
+  const orderInfoRows = await db
+    .select({ id: orders.id, customerId: orders.customerId, partyName: orders.partyName })
+    .from(orders)
+    .where(and(eq(orders.orgId, orgId), inArray(orders.id, orderIds)));
+  const orderInfoById = new Map(orderInfoRows.map((r) => [r.id, r]));
+
+  // Batch just the payment operands, but keep the original JS addition followed by
+  // round2. SQL numeric SUM can move historical sub-paisa totals across a rounding
+  // boundary (e.g. 0.004 + 0.051), so it is not behavior-equivalent here.
+  const paymentRows = await db
+    .select({ orderId: orderPayments.orderId, amount: orderPayments.amount })
+    .from(orderPayments)
+    .where(and(eq(orderPayments.orgId, orgId), inArray(orderPayments.orderId, orderIds)))
+    // Preserve each order's listOrderPayments() summation order.
+    .orderBy(desc(orderPayments.receivedAt));
+  const receivedByOrder = new Map<string, number>();
+  for (const payment of paymentRows) {
+    receivedByOrder.set(payment.orderId, (receivedByOrder.get(payment.orderId) ?? 0) + (Number(payment.amount) || 0));
+  }
+
+  const rows: AgingRow[] = [];
   let grandTotal = 0;
   const now = Date.now();
 
   for (const [orderId, orderInvoices] of byOrder) {
     const totalInvoiced = round2(orderInvoices.reduce((sum, r) => sum + (Number(r.finalValue) || 0), 0));
-    const payments = await listOrderPayments(orderId);
-    const totalReceived = round2(payments.reduce((sum, p) => sum + p.amount, 0));
+    const totalReceived = round2(receivedByOrder.get(orderId) ?? 0);
     const outstanding = round2(totalInvoiced - totalReceived);
     if (outstanding <= EPSILON) continue; // fully paid — not a receivable anymore
 
-    const order = await getOrder(orderId);
-    if (!order) continue;
+    const orderInfo = orderInfoById.get(orderId);
+    if (!orderInfo) continue;
 
     const earliestIssuedAt = orderInvoices.reduce<Date | null>((earliest, r) => {
       if (!r.issuedAt) return earliest;
@@ -552,8 +590,8 @@ export async function getReceivablesAging(): Promise<AgingSummary> {
 
     rows.push({
       orderId,
-      customerId: order.customerId || null,
-      partyName: order.partyName,
+      customerId: orderInfo.customerId || null,
+      partyName: orderInfo.partyName,
       earliestInvoiceDate: earliest.toISOString(),
       daysOutstanding,
       bucket,

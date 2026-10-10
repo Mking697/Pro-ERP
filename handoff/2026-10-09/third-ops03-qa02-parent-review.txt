@@ -1,0 +1,188 @@
+Parent independent review — OPS-03 (stale updateUser race + admission consistency) and QA-02
+(test-isolation runner) — 2026-10-09
+
+Scope: rerun existing tests, inspect actual diff/source, verify claims independently.
+No npm test, no real DB, no commit/push, no dependency installs, no schema/config edits.
+
+=====================================================================================
+OPS-03 — stale updateUser() race + create/reactivate admission consistency
+=====================================================================================
+
+VERDICT: VERIFIED-CORRECT (DB-free layer). Real-driver disposable-Postgres tests remain
+UNEXECUTED by this review too (no DB access in this session) — this is the one honest gap,
+already flagged by the subagent's own handoff, not newly discovered.
+
+Diff actually present (confirmed via git diff --stat against HEAD d796730):
+  src/lib/auth/users.ts       | 319 +++++++++++++++++++++------------------
+  src/lib/platform/runner.ts  |  20 ++-
+(both tracked-modified, not just claimed in handoff text.)
+
+Source inspection (src/lib/auth/users.ts, read in full):
+- updateUser() now wraps the ENTIRE read-decide-write sequence in
+  runInTenantTransaction(orgId, async () => { const found = await getUserRow(...); ... }).
+  getUserRow() — the authoritative read — executes AFTER the tenant advisory lock is
+  acquired, not before. This is the actual fix for the claimed race (a stale copied Active
+  row read before a concurrent deactivate+replacement-create committed): with the lock held
+  for the full decide-then-write span, a second updateUser()/createUser() for the same org
+  cannot observe pre-commit state from the first.
+- assertActiveUserCapAvailable(orgId, plan) is called from INSIDE the same transaction in
+  both createUser()'s insert path and updateUser()'s isReactivation branch — same shared
+  helper, same lock scope, so create vs create / create vs reactivate / reactivate vs
+  reactivate for one org genuinely serialize (keyed by orgId via runInTenantTransaction).
+  Cap check only runs on genuine Inactive->Active transitions (isReactivation), matching
+  the claim that profile-only edits, already-Active no-ops, and unlimited plans aren't
+  gated. Confirmed by code reading, not just comment claims.
+- Omitted-status contract: `...(patch.status !== undefined ? { status: newStatus } : {})`
+  in the update .set() — status is never copied from a stale snapshot into a department-only
+  patch. Confirmed present at line ~339.
+- Last-admin guard: FOR UPDATE row lock inside the EXISTS subquery (anotherActiveAdminExists,
+  lines 321-328) is unchanged/preserved and runs inside the same tenant-locked transaction —
+  this is a real row lock, not cosmetic, and is independent of (additive to) the org-level
+  advisory lock.
+- Platform index update (updateIndexedUserStatus) remains POST-transaction (line 389-391) —
+  exactly as the handoff discloses as a known-open item, not hidden.
+
+Tests actually rerun by this review (not trusted from handoff text):
+  node node_modules/vitest/vitest.mjs run --config tests/user-update-race.unit.vitest.config.ts --reporter verbose
+    -> 1 file, 11/11 passed (matches handoff's claimed 11/11)
+  node node_modules/vitest/vitest.mjs run --config tests/user-admission-unit.vitest.config.ts --reporter verbose
+    -> 1 file, 3/3 passed (matches handoff's claimed 3/3)
+  node node_modules/vitest/vitest.mjs run --config tests/sec01.vitest.config.ts --reporter verbose
+    -> 5 files, 301/301 passed (matches handoff's claimed 301/301; confirms no SEC-01
+       live-session regression from this change)
+  node node_modules/vitest/vitest.mjs run --config tests/background-trial-admission-unit.vitest.config.ts
+    -> FAILS as a bare command (src/db/client.ts throws "Missing DATABASE_URL" at IMPORT
+       time, transitively via live-session.ts -> tenant.ts, even though this config has
+       setupFiles: [] and the test itself mocks @/lib/platform/registry only). Re-ran with
+       a syntactically-valid but inert DATABASE_URL set only in that one command's env
+       (DATABASE_URL="postgres://user:pass@localhost:5432/dummy", never connected to,
+       no real credentials used) -> 1/1 passed. This is a minor DX/portability wrinkle in
+       the test's import graph (tenant.ts unconditionally pulls in the DB client module
+       even for a test that only needs tenantFromOrgId()'s policy logic), not a logic bug —
+       noting it rather than fixing it, since it's outside this task's two owned files and
+       the test genuinely passes once an inert env var unblocks the import.
+  node node_modules/typescript/bin/tsc --noEmit -p tests/user-update-race.unit.tsconfig.json
+    -> clean, 0 diagnostics
+  node node_modules/eslint/bin/eslint.js src/lib/auth/users.ts tests/user-update-race.unit.test.ts tests/user-update-race.unit.vitest.config.ts
+    -> clean, 0 diagnostics
+
+Independent assessment of race-closure correctness: the unit test's own mock
+(tests/user-update-race.unit.test.ts, h.runInTenantTransaction) implements a real per-org
+FIFO queue + locked-set, and the "does not restore stale Active status after deactivation
+and replacement admission" test (and the final-seat contention test) genuinely exercise
+interleaved concurrent calls through that queue, not a trivially-passing stub. Combined
+with the source-level confirmation that getUserRow() sits inside the lock, the fix is
+structurally sound for the race as described. This is strong DB-free evidence but, as the
+subagent's own handoff states, does NOT by itself prove real PostgreSQL pg_advisory_xact_lock
+transport/contention — tests/user-admission-cap.real.vitest.config.ts and
+tests/last-admin-guard.real.vitest.config.ts remain unexecuted by any party in this
+continuation (no disposable Postgres target available in this session).
+
+No real bug found in this item. No code changed.
+
+Remaining concern for the real session driver before closing OPS-03:
+  1. Run tests/user-admission-cap.real.vitest.config.ts and
+     tests/last-admin-guard.real.vitest.config.ts against an actual disposable Postgres
+     target (via tests/local-isolated, never default npm test / .env.local) to get genuine
+     lock-transport proof, not just the mocked-queue proof above.
+  2. The post-transaction platform-index update ordering (updateIndexedUserStatus called
+     after commit) is unchanged — still an open design question per the handoff, not a bug
+     this review is closing.
+
+=====================================================================================
+QA-02 — test-isolation runner (TEST_DATABASE_TARGET identity + loud fixture cleanup)
+=====================================================================================
+
+VERDICT: VERIFIED-CORRECT (DB-free layer, CI wiring, and source). Real-driver rerun of
+tests/runner-concurrency.real.vitest.config.ts against the disposable harness remains
+UNEXECUTED (no DB/credentials available in this session) — same honest gap the subagent's
+own handoff already flagged.
+
+Diff actually present (confirmed via git diff --stat against HEAD d796730):
+  .github/workflows/ci.yml         |   4 +
+  tests/helpers/testOrg.ts         |  69 ++++++++-
+  tests/runner-concurrency.test.ts |  42 +++---
+  tests/setup.ts                   |   9 +-
+(tests/helpers/databaseTargetGuard.ts is new/untracked, confirmed present on disk.)
+
+Source inspection:
+- tests/helpers/databaseTargetGuard.ts: assertDisposableDatabaseTarget(databaseUrl,
+  approvedTarget) now REQUIRES TEST_DATABASE_TARGET to be a real parseable postgres:// URL
+  (new URL(...), protocol check, single-segment pathname) carrying ONLY host+port+database —
+  rejects if it has username/password/search/hash. It then parses DATABASE_URL the same way
+  and compares hostname + normalized port (default 5432) + pathname for EXACT identity.
+  This genuinely replaces a "whole-URL regex" approach with structural identity comparison —
+  confirmed by reading the function itself, not inferring from the handoff's prose. Also
+  independently confirmed: explicit port is REQUIRED on DATABASE_URL (line 40-42, rejects
+  missing port to avoid PGPORT inheritance), and only a fixed allowlist of non-routing query
+  options is accepted (sslmode/channel_binding/application_name/connect_timeout) — a driver
+  that treats host/port/dbname query params as routing overrides cannot bypass the identity
+  check via query string.
+- tests/setup.ts: now ONLY calls assertDisposableDatabaseTarget(process.env.DATABASE_URL,
+  process.env.TEST_DATABASE_TARGET) — no dotenv import, no .env.local read. Confirmed by
+  reading the full (6-line) file; the described "no dotenv fallback" claim is true.
+- .github/workflows/ci.yml: job-level env now has
+  `TEST_DATABASE_TARGET: ${{ vars.TEST_DATABASE_TARGET }}` alongside the existing
+  `DATABASE_URL: ${{ secrets.DATABASE_URL }}` — confirmed present, and it is a repository
+  VARIABLE (not a regex secret), matching the claim that CI now declares a credential-free
+  identity rather than trusting an unscoped pattern.
+- tests/helpers/testOrg.ts: makeTestOrgs() uses Promise.allSettled, rolls back every
+  already-created org via cleanupTestOrgs() before re-throwing an AggregateError carrying
+  both the original creation failure(s) AND any rollback failure(s) — confirmed by reading
+  the function; partial-success is not silently discarded. cleanupTestOrgs() throws a loud
+  AggregateError naming orphaned org IDs instead of a swallowed .catch(() => {}). This is a
+  real, non-cosmetic behavior change from the described bug (Promise.all discarding
+  already-succeeded fixtures on partial failure).
+- tests/runner-concurrency.test.ts: now imports makeTestOrgs/cleanupTestOrgs from the
+  helper, spies on registry.listOrganizations to return ONLY the test's own fixtures (scoped
+  BEFORE forEachActiveOrganization runs any callback, not filtered after the fact), and
+  restores the spy + calls cleanupTestOrgs in a finally block in both test cases. This
+  matches the followup's claim of enumeration-before-callbacks scoping.
+
+Tests actually rerun by this review:
+  node node_modules/vitest/vitest.mjs run --config tests/qa02-isolation.unit.vitest.config.ts --reporter verbose
+    -> 4 files, 40/40 passed (matches handoff's claimed 40 tests)
+  node node_modules/vitest/vitest.mjs run --config tests/setup.guard.vitest.config.ts --reporter verbose
+    -> 1 file, 6/6 passed
+  node node_modules/vitest/vitest.mjs run --config tests/helpers/testOrg.cleanup.vitest.config.ts --reporter verbose
+    -> 1 file, 6/6 passed
+  node node_modules/typescript/bin/tsc --project tests/qa02-isolation.tsconfig.json --noEmit
+    -> clean, 0 diagnostics
+No eslint diagnostics surfaced on the same file set re-run during the OPS-03 pass (shared
+runner.ts/users.ts targets); not separately re-run for the QA-02-specific file list in this
+pass since tsc + the 40/40 DB-free suite already cover correctness, and no edits were made.
+
+Independent assessment: the identity-comparison approach (parsed-URL field equality,
+explicit-port requirement, query-option allowlist) is structurally a real replacement for an
+"unsafe whole-URL regex," not a cosmetic rename — confirmed by reading the comparison logic
+itself and by the dedicated adversarial test cases (password-only database-name spoof,
+routing-option override via query string, implicit-port inheritance) all passing. The
+runner-fixture scoping (enumeration mocked to the test's own orgs before any callback runs)
+is likewise a genuine mechanism change from "filter results afterward," confirmed in both
+tests/runner-concurrency.test.ts and the DB-free wrapper tests/runner-fixture-isolation.unit.test.ts.
+
+No real bug found in this item. No code changed.
+
+Remaining concern for the real session driver before closing QA-02:
+  1. tests/runner-concurrency.real.vitest.config.ts (the real-Postgres counterpart) has not
+     been run by anyone in this continuation — only the DB-free mocked-registry version has
+     real evidence. Must be run against the approved disposable local harness before this
+     item is fully closed, per the subagent's own stated gap.
+  2. TEST_DATABASE_TARGET as an actual CI repository variable must still be provisioned by
+     whoever owns CI secrets/vars — the code correctly refuses to run without it; this is an
+     infra/ops action item, not a code gap.
+  3. tests/setup.ts's removal of dotenv fallback means ANY currently-green real-DB test in
+     this repo that relied on implicit .env.local loading will now fail closed if
+     TEST_DATABASE_TARGET/DATABASE_URL aren't both explicitly supplied by whoever runs it —
+     intentional per design, but worth the driver double-checking no other real-suite runner
+     script assumed the old dotenv behavior.
+
+=====================================================================================
+Summary
+=====================================================================================
+OPS-03: VERIFIED-CORRECT (DB-free). Real-driver (pg_advisory_xact_lock transport) proof
+  still outstanding — not executable in this session (no disposable Postgres access).
+QA-02:  VERIFIED-CORRECT (DB-free + CI wiring + source). Real-driver runner-concurrency
+  rerun against the disposable harness still outstanding — same reason.
+Neither item required a code fix in this review pass. Both are ready for the real session
+driver's disposable-Postgres pass as the final remaining acceptance gate.

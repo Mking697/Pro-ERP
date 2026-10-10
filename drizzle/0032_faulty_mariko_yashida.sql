@@ -1,0 +1,3 @@
+ALTER TABLE "tasks" ADD COLUMN "natural_cycle_start_date" date;--> statement-breakpoint
+ALTER TABLE "payslips" ADD COLUMN "deduction_shortfall" numeric DEFAULT '0' NOT NULL;--> statement-breakpoint
+CREATE UNIQUE INDEX "tasks_org_id_recurring_id_natural_cycle_unique" ON "tasks" USING btree ("org_id","recurring_id","natural_cycle_start_date") WHERE "tasks"."recurring_id" <> '' and "tasks"."natural_cycle_start_date" is not null;

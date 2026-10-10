@@ -1,7 +1,8 @@
 import type { InferSelectModel } from "drizzle-orm";
 import { and, eq, inArray } from "drizzle-orm";
 import { inwardIqcFms, failureLog, imsInward } from "@/db/schema";
-import { db } from "@/db/client";
+import { db, runInTenantTransaction } from "@/db/client";
+import { runIdempotentTenantMutation } from "@/lib/mutations";
 import { findById, insertRecord, listByOrg, updateById } from "@/db/repo";
 import { getTenantOrgId } from "@/lib/tenant";
 import { generateId } from "@/lib/id";
@@ -237,7 +238,17 @@ interface CreateInwardInput {
   createdBy: string;
 }
 
-export async function createInwardEntry(input: CreateInwardInput): Promise<InwardRecord> {
+export async function createInwardEntry(input: CreateInwardInput, key?: string): Promise<InwardRecord> {
+  const orgId = await getTenantOrgId();
+  const work = async () => ({ ...await createInwardEntryInTransaction(input) });
+  if (key === undefined) return runInTenantTransaction(orgId, work);
+  return runIdempotentTenantMutation(orgId, {
+    operation: "inward.create.v1", actorId: input.createdBy, key,
+    payload: { partyName: input.partyName, invoiceNo: input.invoiceNo, inwardType: input.inwardType, attachmentUrl: input.attachmentUrl, remark: input.remark, vendorId: input.vendorId ?? "", sku: input.sku ?? "", itemName: input.itemName ?? "" },
+  }, work);
+}
+
+async function createInwardEntryInTransaction(input: CreateInwardInput): Promise<InwardRecord> {
   const orgId = await getTenantOrgId();
 
   // How long IQC has to verify this entry — an Admin-configured company default (Settings),
@@ -276,14 +287,8 @@ export async function createInwardEntry(input: CreateInwardInput): Promise<Inwar
   });
   const record = rowToRecord(row);
 
-  // Best-effort: lets an org-defined FMS template react to a new inward entry without
-  // touching this module's own IQC flow at all. Mirrors the IQC stock-In write below — a
-  // chaining failure must never undo or block the entry that has already saved.
-  try {
-    await emitFmsEvent("INWARD_ENTRY_CREATED", `${CONTEXT_REF_PREFIX}:${record.Entry_ID}`);
-  } catch (error) {
-    console.error(`[inward] FMS event emit failed for ${record.Entry_ID}:`, error);
-  }
+  // Required successor rows share this transaction; only external notifications defer.
+  await emitFmsEvent("INWARD_ENTRY_CREATED", `${CONTEXT_REF_PREFIX}:${record.Entry_ID}`);
 
   return record;
 }
@@ -297,7 +302,21 @@ interface QualityCheckInput {
   failReason: string;
 }
 
-export async function submitQualityCheck(input: QualityCheckInput): Promise<InwardRecord> {
+export async function submitQualityCheck(input: QualityCheckInput, key?: string): Promise<InwardRecord> {
+  const orgId = await getTenantOrgId();
+  const work = async () => ({ ...await submitQualityCheckInTransaction(input) });
+  if (key === undefined) return runInTenantTransaction(orgId, work);
+  return runIdempotentTenantMutation(orgId, {
+    operation: "inward.iqc.verify.v1", actorId: input.verifiedBy, key,
+    payload: { entryId: input.entryId, verifyChecked: input.verifyChecked, passQty: input.passQty, failQty: input.failQty, failReason: input.failReason },
+  }, work);
+}
+
+async function submitQualityCheckInTransaction(input: QualityCheckInput): Promise<InwardRecord> {
+  if (!Number.isFinite(input.passQty) || input.passQty < 0 || !Number.isFinite(input.failQty) || input.failQty < 0) {
+    throw new Error("IQC quantities finite aur nonnegative honi chahiye.");
+  }
+  if (input.failQty > 0 && !input.failReason.trim()) throw new Error("Fail Reason zaroori hai.");
   const orgId = await getTenantOrgId();
   const found = await findById(inwardIqcFms, orgId, input.entryId);
   if (!found) {
@@ -353,34 +372,21 @@ export async function submitQualityCheck(input: QualityCheckInput): Promise<Inwa
       verifiedBy: input.verifiedBy,
     });
 
-    // A passed quantity is stock that has physically arrived, so it enters the ledger
-    // here rather than waiting for someone to key the same numbers a second time.
-    //
-    // Only when the entry names an item — an inward recorded without a SKU has nothing
-    // to add to. Best-effort: a stock write must never undo a completed quality check,
-    // which is already saved above.
+    // A named SKU must reach stock in the same commit as its IQC outcome.
     if (record.SKU) {
-      try {
-        const item = await findItem(record.SKU);
-        if (item) {
-          await recordMovement({
-            sku: record.SKU,
-            direction: "In",
-            quantity: input.passQty,
-            uom: item.UOM,
-            source: "IQC",
-            referenceId: record.Entry_ID,
-            location: item.Location,
-            remark: `IQC pass — ${record.Party_Name} / ${record.Invoice_No}`,
-            userId: input.verifiedBy,
-          });
-        }
-      } catch (error) {
-        console.error(
-          `[inward] IQC stock In failed for ${record.Entry_ID} / ${record.SKU}:`,
-          error
-        );
-      }
+      const item = await findItem(record.SKU);
+      if (!item) throw new Error(`SKU "${record.SKU}" Items master me nahi hai.`);
+      await recordMovement({
+        sku: record.SKU,
+        direction: "In",
+        quantity: input.passQty,
+        uom: item.UOM,
+        source: "IQC",
+        referenceId: record.Entry_ID,
+        location: item.Location,
+        remark: `IQC pass — ${record.Party_Name} / ${record.Invoice_No}`,
+        userId: input.verifiedBy,
+      });
     }
   }
 

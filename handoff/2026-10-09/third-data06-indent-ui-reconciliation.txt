@@ -1,0 +1,43 @@
+Indent caller partial-commit reconciliation — 2026-10-09
+Status: implemented and subagent-verified; STOPPED for parent verification and independent review. Not DATA06 approval; no Phase4 work.
+
+Root cause / contract trace
+- POST /api/inventory/indents processes siblings sequentially. Successful DTOs and confirmed-cleanup results are appended to indents; infrastructure failure makes the batch HTTP500 even if those siblings committed.
+- Current route returns {created, indents, failed, committed?, warnings?}; receipt SKU is uppercase SKU and identifier is Indent_ID.
+- Previous reorder-board raised an error and returned on !res.ok before reconciling receipts; selected successes remained in the next POST, duplicating creates without a replay key.
+- Current typed admission failures mixed with successes return HTTP200; partial400 coverage is defensive compatibility, not a claim that today's route emits partial400.
+
+Change
+- Validate batch receipts against the submitted SKUs, identifiers, count, failed entries, uniqueness, disjoint outcomes and complete coverage.
+- Consume valid acknowledged success DTOs regardless of HTTP status. Remove only those SKU selections and quantity drafts using functional state updates; retain failed SKU selections/drafts. Increment the existing refresh version.
+- Surface actual saved count, failed SKU count/list, and fixed sanitized confirmed-commit/server-warning wording. Do not display arbitrary server error/warning details.
+- Malformed, incomplete or transport-unknown outcomes never fabricate success or rollback. Keep selections, request refresh, block resubmission, and show a persistent warning with an Indents-list link. This conservative block lasts for the mounted board; verify Indents manually before navigating back/reloading. No automatic replay/retry or idempotency mechanism was added.
+- No API/domain changes.
+
+Owned files
+- Modified src/app/inventory/reorder/reorder-board.tsx
+- Added tests/indent-ui-reconciliation.unit.test.ts
+- Added tests/indent-ui-reconciliation.unit.vitest.config.ts
+- Added tests/indent-ui-reconciliation.unit.tsconfig.json
+- Added this handoff file
+
+TDD execution evidence
+1. Mixed500 behavioral RED: actual caller kept {A:true,B:true}, expected {B:true}; then GREEN after caller fix, including second POST payload [B] rather than [A,B].
+2. Confirmed cleanup warning RED: no warning call; then GREEN after sanitized warning handling.
+3. Unknown/malformed RED: blind retry remained enabled / malformed receipts were consumed; then GREEN after validation and blocked retry.
+4. Network RED: retry remained enabled; then GREEN with no fabricated success, persistent alert/list link, and handler guard preventing another POST.
+5. Warning wording refined through RED/GREEN so committed=true for a mixed infrastructure batch does not falsely claim cleanup specifically.
+- Supplemental normal200, partial200/400, all-failure400/500 and additional malformed contract regressions are GREEN; these were added after the core behavioral fix, not presented as individually test-first changes.
+
+Final executed checks (all exit 0)
+node node_modules/vitest/vitest.mjs run --config tests/indent-ui-reconciliation.unit.vitest.config.ts --reporter verbose
+  => 17 named cases passed, one file. setupFiles:[], node environment, DB-free.
+node node_modules/eslint/bin/eslint.js src/app/inventory/reorder/reorder-board.tsx tests/indent-ui-reconciliation.unit.test.ts tests/indent-ui-reconciliation.unit.vitest.config.ts
+node node_modules/typescript/bin/tsc -p tests/indent-ui-reconciliation.unit.tsconfig.json --pretty false
+git diff --check -- src/app/inventory/reorder/reorder-board.tsx
+
+Limits / parent gate
+- jsdom, happy-dom, @testing-library/react and react-test-renderer are absent; nothing installed.
+- Tests transpile and execute the actual board TSX module and its real raise handler with a small node VM hook/element harness, mocked fetch/notifications, and rerendered actual caller. They assert real next-request body, selections/drafts, refresh-version increment, disabled button, persistent warning/list link, and handler retry guard.
+- Not a browser/React-renderer integration test: harness does not exercise React scheduling, DOM events, useEffect execution, or GET refresh completion. Refresh dependency wiring is the existing [version,t] effect; tests verify version increments, not server readback. No DB or live request executed.
+- Parent should rerun exact dedicated checks, inspect source/diff and new files, then obtain independent review. No default npm test, full build, production/secret/env reads, installs, git mutations, commit, deploy, or other-agent file edits performed.

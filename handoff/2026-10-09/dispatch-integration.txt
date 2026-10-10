@@ -1,0 +1,30 @@
+Dispatch/TMS continuation — 2026-10-09
+
+Status: implementation continuation verified DB-free; parent-owned real PostgreSQL execution, coordinated migration and independent review remain acceptance gates. No production application, deployment or commit.
+
+Preserved the existing partial integration (did not recreate passing features): tenant-lock-before-domain-read scopes; ANY matching tenant/order Issued invoice gate; central stock admission excluding only the owning order; guarded exact tenant/order/line/SKU/UOM consumed increments capped by reservation and order quantity; guarded shipment forward-pointer claim; savepoint-contained numbering retries; atomic lifecycle/activity/required FMS successor work.
+
+Changes made in this continuation:
+- src/lib/tms/tms.ts: reject allocation for non-Ready_For_PDI orders even when old Passed PDI exists. Validate accumulated historical allocations against each exact order line; spare same-SKU capacity cannot mask an overallocated line. Historical quantities are precision/finite-validated again at exact-line admission.
+- src/lib/dispatch/dispatch.ts: replay requires existing dispatch and shipment forward-pointer/order agreement. Conflicting history fails closed for reconciliation, without writing another stock effect. Updated obsolete transaction/on-hand documentation.
+- tests/dispatch-unit.test.ts: added vertical behavioral regression slices for exact-line over-allocation, Cancelled/Stock_Check allocation, and conflicting replay pointer.
+- tests/dispatch-domain.test.ts: added corresponding committed-state PostgreSQL regressions for parent serial execution.
+- This handoff. Schema and APIs were inspected but not edited by this continuation.
+
+Actual execution evidence:
+- Initial DB-free baseline: node node_modules/vitest/vitest.mjs run --config tests/dispatch-unit.vitest.config.ts -> 28 passed.
+- RED historical-overallocation test -> expected rejection failed because planShipment resolved and allocated another same-SKU line. GREEN full suite -> 29 passed.
+- RED non-dispatchable order slice -> Cancelled and Stock_Check both incorrectly resolved. GREEN full suite -> 31 passed.
+- RED conflicting replay pointer -> confirmation incorrectly resolved old dispatch. GREEN full suite -> 32 passed.
+- node node_modules/typescript/bin/tsc --noEmit --incremental false -> exit 0, no diagnostics (also rerun after adding real regressions).
+- Target eslint for dispatch.ts, tms.ts, schema/dispatch.ts, dispatch-unit.test.ts, dispatch-domain.test.ts -> exit 0, no diagnostics (also rerun after real-test additions).
+- Scoped git diff --check -> exit 0; only Git LF/CRLF notices.
+- No DB-writing test suite executed by this delegate: parent owns serial disposable-target verification. No .env/credential files read; no dependency installs, primitive/other-domain/migration changes.
+
+Parent actions / unresolved coverage:
+1. Execute tests/dispatch-domain.vitest.config.ts using explicit guarded local setup; additional real tests are type/lint-checked, NOT yet claimed passing. Extend/verify actual lifecycle activity/successor failure rollback as needed; existing DB-free tests cover those transitions but do not establish real-driver committed-state rollback.
+2. Schema mismatch is still deliberate pending coordination: src/db/schema/dispatch.ts declares unconditional unique(org_id, shipment_id), but tests/local-isolated/migrate.cjs creates a PARTIAL unique index WHERE shipment_id <> ''. Thus existing local fixtures are not evidence for the unconditional production constraint. Align chosen schema and local upgrade verification before migration acceptance. Preflight all duplicates for unconditional uniqueness; preflight nonblank duplicates for partial uniqueness. Do not auto-delete/rewrite historical dispatch/ledger/consumption data.
+3. Old TMS rows used per-truck ordinal line_no rather than exact order line identity. New admission fails closed on mismatched history; production reconciliation policy and preflight should account for SKU/UOM/line identity, cumulative exact-line caps, and dispatch forward-pointer agreement. No automatic historical repairs performed.
+4. No new durable key semantics for planShipment: equal requests with no request identity remain genuine allocations, bounded by remaining capacity. confirmDispatch uses shipment identity for stable effect replay. Lifecycle repeat transitions reject rather than repeat activities/successors.
+5. Relevant confirm/planning APIs retain existing catch-all 400 behavior; committed:true cleanup-error response handling is a cross-domain/API acceptance concern for parent review, not claimed fixed here. No API behavior was changed.
+6. Parent independent review and full-current-tree gates remain required. No FIRST/shared primitive behavior modified.

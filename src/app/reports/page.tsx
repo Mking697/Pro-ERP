@@ -1,6 +1,5 @@
-import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
-import { verifySession, SESSION_COOKIE } from "@/lib/auth/session";
+import { getLiveSession } from "@/lib/auth/live-session";
 import EmptyState from "@/components/empty-state";
 import { reportsFor } from "@/lib/reports";
 import { getT } from "@/lib/i18n/server";
@@ -12,9 +11,7 @@ import { BarChart3 } from "lucide-react";
  * `/reports/[report]`, which reuses this same layout and only replaces this placeholder.
  */
 export default async function ReportsPage() {
-  const cookieStore = await cookies();
-  const token = cookieStore.get(SESSION_COOKIE)?.value;
-  const session = token ? await verifySession(token) : null;
+  const session = await getLiveSession();
 
   if (!session) redirect("/login");
 

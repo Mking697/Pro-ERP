@@ -1,0 +1,23 @@
+{
+  "src/components/command-palette.tsx": [
+    "Next",
+    "Next search page",
+    "Page",
+    "Previous",
+    "Previous search page",
+    "Search failed. Please retry."
+  ],
+  "src/app/dashboard/analytics.tsx": [
+    "Full score:",
+    "Next page",
+    "Page",
+    "Penalty",
+    "Previous page",
+    "Recent evaluated details only: up to 20 tasks and 20 FMS steps. Use Excel export for the complete breakdown.",
+    "Result",
+    "Task / Step",
+    "evaluated",
+    "penalty",
+    "up to 25 users; charts include the full team."
+  ]
+}

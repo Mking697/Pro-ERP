@@ -1,4 +1,6 @@
 import { failureLog, inwardIqcFms } from "@/db/schema";
+import { runInTenantTransaction, afterTenantCommit } from "@/db/client";
+import { runIdempotentTenantMutation } from "@/lib/mutations";
 import { findById, updateById } from "@/db/repo";
 import { getTenantOrgId } from "@/lib/tenant";
 import { findItem } from "@/lib/inventory/items";
@@ -30,10 +32,19 @@ import { sendWhatsAppMessage } from "@/lib/chatxflow";
 
 export class DeviationError extends Error {}
 
-/** Best-effort Task + WhatsApp to the configured Deviation Approver — mirrors
- * src/lib/orders/orders.ts's notifyShortage() fan-out shape exactly, simplified to one
- * recipient (there is only ever one approver, not a list of grant holders). Never throws;
- * a missing setting, a missing phone, or a failed send is logged and swallowed. */
+async function runDeviationMutation(
+  orgId: string, operation: string, actorId: string, key: string | undefined,
+  payload: { failureLogId: string; role?: string }, work: () => Promise<void>
+): Promise<void> {
+  if (key === undefined) { await runInTenantTransaction(orgId, work); return; }
+  await runIdempotentTenantMutation(orgId, { operation, actorId, key, payload }, async () => {
+    await work();
+    return null;
+  });
+}
+
+/** Approval task is required DB work inside the request transaction. WhatsApp is
+ * best-effort and runs only after confirmed commit. */
 async function notifyDeviationApprover(
   orgId: string,
   failureLogId: string,
@@ -49,42 +60,38 @@ async function notifyDeviationApprover(
 
   const approver = await getUserById(approverId);
   if (!approver) {
-    console.error(`[deviation] configured Deviation Approver ${approverId} not found — skipping notify for ${failureLogId}`);
-    return;
+    throw new DeviationError("Configured Deviation Approver nahi mila — settings update karein.");
   }
 
   const message = `Namaste ${approver.Full_Name}, ek IQC fail quantity "Under Deviation" accept karne ke liye request hui hai — ${partyName} / ${invoiceNo}, Qty ${failQty}. Approve/Reject karne ke liye Inward > Failure Log kholein.`;
 
-  try {
-    await createTask({
-      title: `IQC Deviation approval — ${partyName}`,
-      description: message,
-      assignedTo: approver.User_ID,
-      assignedBy: "SYSTEM",
-      priority: "High",
-      dueDate: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
-      attachmentUrl: "",
-      remark: "",
-    });
-  } catch (error) {
-    console.error(`[deviation] approval task creation failed for ${failureLogId}:`, error);
-  }
+  await createTask({
+    title: `IQC Deviation approval — ${partyName}`,
+    description: message,
+    assignedTo: approver.User_ID,
+    assignedBy: "SYSTEM",
+    priority: "High",
+    dueDate: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+    attachmentUrl: "",
+    remark: "",
+  });
 
-  try {
-    const result = await sendWhatsAppMessage(approver.Phone_Number, message);
-    if (!result.ok) {
-      console.error(`[deviation] approval WhatsApp send failed for ${failureLogId}: ${result.error}`);
+  await afterTenantCommit(async () => {
+    try {
+      const result = await sendWhatsAppMessage(approver.Phone_Number, message);
+      if (!result.ok) console.error(`[deviation] approval WhatsApp send failed for ${failureLogId}: ${result.error}`);
+    } catch (error) {
+      console.error(`[deviation] approval WhatsApp send threw for ${failureLogId}:`, error);
     }
-  } catch (error) {
-    console.error(`[deviation] approval WhatsApp send threw for ${failureLogId}:`, error);
-  }
+  });
 }
 
 /** Step 1 — an IQC_CHECK holder marks a failed quantity as wanted under deviation. Does NOT
  * move stock; only the subsequent approveUnderDeviation() does that. Best-effort notifies
  * the configured approver. */
-export async function requestUnderDeviation(failureLogId: string, actorId: string): Promise<void> {
+export async function requestUnderDeviation(failureLogId: string, actorId: string, key?: string): Promise<void> {
   const orgId = await getTenantOrgId();
+  const work = async () => {
 
   const failureRow = await findById(failureLog, orgId, failureLogId);
   if (!failureRow) throw new DeviationError("Failure Log entry nahi mila.");
@@ -101,11 +108,9 @@ export async function requestUnderDeviation(failureLogId: string, actorId: strin
   });
   if (!updated) throw new DeviationError("Request save nahi ho payi.");
 
-  try {
-    await notifyDeviationApprover(orgId, failureLogId, failureRow.partyName, failureRow.invoiceNo, failureRow.failQty);
-  } catch (error) {
-    console.error(`[deviation] notifyDeviationApprover failed for ${failureLogId}:`, error);
-  }
+  await notifyDeviationApprover(orgId, failureLogId, failureRow.partyName, failureRow.invoiceNo, failureRow.failQty);
+  };
+  await runDeviationMutation(orgId, "inward.deviation.request.v1", actorId, key, { failureLogId }, work);
 }
 
 /** Step 2a — the configured Deviation Approver (or an Admin) approves a Requested entry.
@@ -114,7 +119,15 @@ export async function requestUnderDeviation(failureLogId: string, actorId: strin
  * must throw and leave the entry in "Requested", not silently no-op. */
 export async function approveUnderDeviation(
   failureLogId: string,
-  actor: { userId: string; role: string }
+  actor: { userId: string; role: string },
+  key?: string
+): Promise<void> {
+  const orgId = await getTenantOrgId();
+  await runDeviationMutation(orgId, "inward.deviation.approve.v1", actor.userId, key, { failureLogId, role: actor.role }, () => approveUnderDeviationInTransaction(failureLogId, actor));
+}
+
+async function approveUnderDeviationInTransaction(
+  failureLogId: string, actor: { userId: string; role: string }
 ): Promise<void> {
   const orgId = await getTenantOrgId();
 
@@ -143,8 +156,8 @@ export async function approveUnderDeviation(
   const item = await findItem(sku);
   if (!item) throw new DeviationError(`SKU "${sku}" Items master me nahi hai.`);
 
-  const failQty = Number(failureRow.failQty) || 0;
-  if (!(failQty > 0)) throw new DeviationError("Is entry ki Fail Qty 0 hai — stock me kuch add nahi karna.");
+  const failQty = Number(failureRow.failQty);
+  if (!Number.isFinite(failQty) || !(failQty > 0)) throw new DeviationError("Is entry ki Fail Qty 0 hai — stock me kuch add nahi karna.");
 
   await recordMovement({
     sku,
@@ -171,9 +184,11 @@ export async function approveUnderDeviation(
  * separate audit trail — failure_log has none today, don't add one for just this. */
 export async function rejectUnderDeviation(
   failureLogId: string,
-  actor: { userId: string; role: string }
+  actor: { userId: string; role: string },
+  key?: string
 ): Promise<void> {
   const orgId = await getTenantOrgId();
+  const work = async () => {
 
   const failureRow = await findById(failureLog, orgId, failureLogId);
   if (!failureRow) throw new DeviationError("Failure Log entry nahi mila.");
@@ -195,4 +210,6 @@ export async function rejectUnderDeviation(
     deviationRequestedBy: "",
   });
   if (!updated) throw new DeviationError("Reject nahi ho paya.");
+  };
+  await runDeviationMutation(orgId, "inward.deviation.reject.v1", actor.userId, key, { failureLogId, role: actor.role }, work);
 }

@@ -1,0 +1,36 @@
+DATA-06 vendor-items API admission boundary — implementation checkpoint, NOT acceptance
+
+Owned changes:
+- src/app/api/parties/vendors/[vendorId]/items/route.ts
+- src/lib/parties/vendorItems.ts (export VendorItemAdmissionError; only four existing admission throws changed to typed errors)
+- tests/vendor-item-api.unit.test.ts
+- tests/vendor-item-api.unit.vitest.config.ts
+- this handoff
+
+POST rejects malformed numeric strings, nonfinite/negative prices, negative/fractional/out-of-int32-range lead times with 400 before upsertVendorItem is called. Accepts valid numeric strings, zero, omitted/empty/null operands; retains SKU trimming and actor identity. Existing client vendor-items-dialog.tsx sends number-input state as strings or omitted fields.
+Domain checks, tenant-qualified item join, transaction scope, and existing 28 domain tests are preserved. Intentional domain admission errors map to 400 (operands) or 404 (missing/foreign tenant references) by instanceof only. Ordinary infrastructure failures, matching-message errors, and typed-looking impostors propagate; no blanket 400 catch. Confirmed committed:true errors with results return item + committed:true + warning once without retry. GET and DELETE, schema, migrations untouched by this task.
+
+Vertical RED -> GREEN evidence (each production change followed its failing test):
+1. Malformed text in both numeric fields: 2 failed (200 instead of 400), then 2 passed after finite numeric pipe.
+2. Numeric bounds slice: 8 failed / 5 passed, then 13 passed after route operand bounds. Nonfinite string regressions were already passing from slice 1.
+3. Optional compatibility: explicit null failed (400 instead of 200); omitted/empty passed, then all 16 passed after nullish acceptance.
+4. Typed domain/API slice: 6 failed because actual domain errors were plain Error, then 22 passed after typed export/throws and route catch.
+5. Confirmed commit slice: 1 failed / 22 passed because cleanup error escaped, then 23 passed after confirmed-commit response.
+Supplemental unchanged-behavior regressions added afterward: valid strings/zero/max, infrastructure propagation, vendor preflight, guard short-circuit. Final route suite 34 passed.
+
+Executed verification on final code:
+- node node_modules/vitest/vitest.mjs run --config tests/vendor-item-api.unit.vitest.config.ts --reporter verbose
+  Exact suite: tests/vendor-item-api.unit.test.ts — 34 passed, 1 file passed.
+- node node_modules/vitest/vitest.mjs run --config tests/vendor-item-integrity.unit.vitest.config.ts --reporter verbose
+  Exact suite: tests/vendor-item-integrity.unit.test.ts — 28 passed, 1 file passed.
+- Scoped ESLint for route, domain, new test/config: no diagnostics.
+- node node_modules/typescript/bin/tsc --noEmit --incremental false: exit 0, no diagnostics.
+- Scoped git diff --check: exit 0; only repository LF->CRLF advisory warnings.
+Both unit configs use environment node and setupFiles: []; no default npm test, DB, secrets/env, install, production, commit/push/deploy or destructive git commands used.
+Read installed node_modules/next/dist/docs/01-app/01-getting-started/15-route-handlers.md and neighboring error/confirmed-commit conventions before code.
+
+Test boundaries:
+Route handler and real domain admission error creation are exercised; auth, tenant, persistence transport and route upsert boundary are mocked. Missing/foreign route tests model empty tenant-qualified lookup results; the preserved 28-test domain suite independently exercises real Drizzle predicates against tenant fixtures. These are DB-free checks, not migration/real-driver acceptance.
+
+Remaining parent-owned gates:
+Parent rerun/source verification, independent review, local migration and real-driver acceptance. DATA-06 is NOT accepted by this handoff. Stop here for parent verification.

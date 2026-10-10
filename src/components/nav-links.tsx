@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useState } from "react";
+import { useId, useState } from "react";
 import {
   BarChart3,
   BookOpen,
@@ -119,15 +119,19 @@ const ACTIVE_BAR = (
 export default function NavLinks({
   items,
   collapsed = false,
+  onExpand,
   onNavigate,
 }: {
   items: NavEntry[];
   /** Icon-rail mode (desktop only) — never true inside the mobile drawer. */
   collapsed?: boolean;
+  /** Expand the desktop rail before revealing an activated group's destinations. */
+  onExpand?: () => void;
   /** Called after a link is clicked — the mobile drawer uses this to close itself. */
   onNavigate?: () => void;
 }) {
   const pathname = usePathname();
+  const navId = useId();
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({});
 
   function isGroupOpen(entry: NavGroup): boolean {
@@ -138,31 +142,28 @@ export default function NavLinks({
   }
 
   function toggleGroup(label: string, currentlyOpen: boolean) {
-    setOpenGroups((prev) => ({ ...prev, [label]: !currentlyOpen }));
+    if (collapsed) onExpand?.();
+    setOpenGroups((prev) => ({ ...prev, [label]: collapsed || !currentlyOpen }));
   }
 
   return (
     <nav aria-label="Main" className="flex flex-col gap-0.5">
-      {items.map((entry) => {
+      {items.map((entry, index) => {
         if (isGroup(entry)) {
           const GroupIcon = entry.icon ? ICONS[entry.icon] : null;
           const groupActive = entry.items.some((child) => isActive(pathname, child.href));
-          const open = isGroupOpen(entry);
-          const panelId = `nav-group-${entry.label.replace(/\s+/g, "-").toLowerCase()}`;
+          const open = !collapsed && isGroupOpen(entry);
+          const panelId = `${navId}-group-${index}`;
 
-          // Collapsed rail: a group can't show its children with no room for labels, so
-          // its own icon is just a link-like affordance that snaps the sidebar back open
-          // (handled by the parent via onNavigate-style callback would be overreach here —
-          // simplest correct behaviour is: clicking it also opens the group, and the
-          // parent shell separately decides collapsed width from its own persisted state,
-          // so this button only ever needs to flip `open`).
+          // Rail activation expands the shell and opens this group; ARIA follows visibility.
           return (
             <div key={entry.label}>
               <button
                 type="button"
                 onClick={() => toggleGroup(entry.label, open)}
+                aria-label={entry.label}
                 aria-expanded={open}
-                aria-controls={panelId}
+                aria-controls={open ? panelId : undefined}
                 title={collapsed ? entry.label : undefined}
                 className={cn(ROW_CLASSES, groupActive && "font-semibold text-foreground", collapsed && "justify-center px-0")}
               >
@@ -219,6 +220,7 @@ export default function NavLinks({
             href={entry.href}
             aria-current={active ? "page" : undefined}
             onClick={onNavigate}
+            aria-label={entry.label}
             title={collapsed ? entry.label : undefined}
             className={cn(
               ROW_CLASSES,

@@ -1,5 +1,6 @@
-import { config } from "dotenv";
+import { assertDisposableDatabaseTarget } from "./helpers/databaseTargetGuard";
 
-// Same convention as scripts/*-live-test.ts — DATABASE_URL and friends come from
-// .env.local locally, or from the environment directly in CI.
-config({ path: ".env.local" });
+// No dotenv fallback: DB-backed tests require explicit externally supplied approval.
+// TEST_DATABASE_TARGET is a credential-free PostgreSQL URL naming the disposable
+// host, optional port (defaults to 5432), and database. Legacy regexes are not trusted.
+assertDisposableDatabaseTarget(process.env.DATABASE_URL, process.env.TEST_DATABASE_TARGET);

@@ -1,17 +1,37 @@
 import { eq } from "drizzle-orm";
-import { db } from "@/db/client";
+import { db, isInTenantTransaction } from "@/db/client";
 import { settings } from "@/db/schema";
-import { getTenantOrgId } from "@/lib/tenant";
+import { getTenantOrgId, getTenantRequestCache } from "@/lib/tenant";
 
 /**
- * Reads the current organization's key-value Settings (connected sheet URLs, ChatXFlow
- * API token, IQC TAT defaults, etc.) — now a real `(org_id, key)`-indexed Postgres table
- * instead of a Sheets tab behind a 30s TTL cache. A real indexed read replaces the cache:
- * a warm serverless instance serving many tenants no longer risks handing one org's
- * settings to the next, and a write takes effect immediately instead of after up to 30s.
+ * Reads the current organization's key-value settings using a request/operation-only
+ * snapshot. Concurrent keys share one pending SQL read, never a global TTL. Explicit
+ * tenant scopes and Server Component renders own independent snapshots; ordinary route
+ * handlers need runWithTenant to opt in. Writes invalidate the snapshot immediately,
+ * and transaction reads bypass it to preserve transaction visibility.
  */
 export async function getAllSettings(): Promise<Record<string, string>> {
   const orgId = await getTenantOrgId();
+  const scope = getTenantRequestCache();
+  const key = `settings:${orgId}`;
+  if (isInTenantTransaction()) {
+    // READ COMMITTED and savepoint rollback require fresh transaction-visible reads.
+    // Never retain a transaction snapshot after commit/rollback either.
+    scope.delete(key);
+    return readSettings(orgId);
+  }
+  let pending = scope.get(key) as Promise<Record<string, string>> | undefined;
+  if (!pending) {
+    pending = readSettings(orgId);
+    scope.set(key, pending);
+    // Failed reads must not poison retries in the same operation.
+    void pending.catch(() => { if (scope.get(key) === pending) scope.delete(key); });
+  }
+  // Callers cannot mutate the shared snapshot.
+  return { ...await pending };
+}
+
+async function readSettings(orgId: string): Promise<Record<string, string>> {
   const rows = await db.select().from(settings).where(eq(settings.orgId, orgId));
   const map: Record<string, string> = {};
   for (const row of rows) {
@@ -35,4 +55,5 @@ export async function upsertSetting(key: string, value: string): Promise<void> {
       target: [settings.orgId, settings.key],
       set: { value },
     });
+  getTenantRequestCache().delete(`settings:${orgId}`);
 }

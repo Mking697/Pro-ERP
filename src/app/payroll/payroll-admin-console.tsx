@@ -39,7 +39,7 @@ import {
 } from "@/components/ui/table";
 import { TableSkeleton } from "@/components/loading-states";
 import EmptyState from "@/components/empty-state";
-import { FileText, Users } from "lucide-react";
+import { FileText, Users, AlertTriangle } from "lucide-react";
 import { useT } from "@/components/preferences-provider";
 
 interface UserSalaryInfo {
@@ -74,6 +74,21 @@ interface RunPayslip {
   tds: number;
   netPay: number;
   pdfUrl: string;
+  /** Persisted amount of computed PF/ESI/TDS that could not be withheld this period.
+   * Optional only for compatibility with older API responses that omit the field. */
+  deductionShortfall?: number;
+}
+
+function resolveDeductionShortfall(
+  payslip: Pick<RunPayslip, "userId" | "deductionShortfall">,
+  shortfallByUserId: Record<string, number>,
+): number {
+  // Only an omitted/undefined field may use the compatibility Generate cache.
+  // A present invalid value must not resurrect a stale shortfall warning.
+  const value = payslip.deductionShortfall === undefined
+    ? shortfallByUserId[payslip.userId]
+    : payslip.deductionShortfall;
+  return typeof value === "number" && Number.isFinite(value) && value > 0 ? value : 0;
 }
 
 function formatMoney(amount: number): string {
@@ -235,7 +250,15 @@ function SalaryStructuresCard() {
   );
 }
 
-function RunPayslipsDialog({ run }: { run: PayrollRun }) {
+/** Shows persisted payslip shortfalls after reload. Generate state is a compatibility
+ * fallback only when an older API response omits deductionShortfall. */
+function RunPayslipsDialog({
+  run,
+  shortfallByUserId,
+}: {
+  run: PayrollRun;
+  shortfallByUserId: Record<string, number>;
+}) {
   const t = useT();
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -249,6 +272,8 @@ function RunPayslipsDialog({ run }: { run: PayrollRun }) {
       .catch(() => toast.error(t("Payslips load nahi ho paye.")))
       .finally(() => setLoading(false));
   }, [open, run.id, t]);
+
+  const anyShortfall = payslips.some((p) => resolveDeductionShortfall(p, shortfallByUserId) > 0);
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -264,8 +289,18 @@ function RunPayslipsDialog({ run }: { run: PayrollRun }) {
               : t("Ye run abhi Draft hai — dobara Generate karne par ye payslips replace ho jaayenge.")}
           </DialogDescription>
         </DialogHeader>
+        {anyShortfall && (
+          <div className="flex items-start gap-2 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-200">
+            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+            <span>
+              {t(
+                "Kuch employees ke liye computed PF/ESI/TDS unki is period ki gross pay se zyada tha — jo withhold nahi ho paya, wo neeche 'Shortfall' column me dikh raha hai. Ye statutory filing nahi hai — apne accountant/CA se confirm karein ki ye recover kaise hoga."
+              )}
+            </span>
+          </div>
+        )}
         {loading ? (
-          <TableSkeleton columns={6} />
+          <TableSkeleton columns={7} />
         ) : payslips.length === 0 ? (
           <EmptyState icon={<FileText />} title={t("Is run me koi payslip nahi hai.")} />
         ) : (
@@ -276,40 +311,51 @@ function RunPayslipsDialog({ run }: { run: PayrollRun }) {
                 <TableHead>{t("Days Employed")}</TableHead>
                 <TableHead>{t("Gross Pay")}</TableHead>
                 <TableHead>{t("Deductions")}</TableHead>
+                <TableHead>{t("Shortfall")}</TableHead>
                 <TableHead>{t("Net Pay")}</TableHead>
                 <TableHead>{t("PDF")}</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {payslips.map((p) => (
-                <TableRow key={p.id}>
-                  <TableCell className="font-medium">{p.userFullName}</TableCell>
-                  <TableCell>
-                    {p.daysEmployed} / {p.daysInMonth}
-                  </TableCell>
-                  <TableCell>{formatMoney(p.grossPay)}</TableCell>
-                  <TableCell>
-                    {p.pfEmployee + p.esiEmployee + p.tds > 0
-                      ? formatMoney(p.pfEmployee + p.esiEmployee + p.tds)
-                      : "—"}
-                  </TableCell>
-                  <TableCell>{formatMoney(p.netPay)}</TableCell>
-                  <TableCell>
-                    {p.pdfUrl ? (
-                      <a
-                        href={p.pdfUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-sm text-primary underline"
-                      >
-                        {t("Download")}
-                      </a>
-                    ) : (
-                      <span className="text-sm text-muted-foreground">{t("Nahi bana")}</span>
-                    )}
-                  </TableCell>
-                </TableRow>
-              ))}
+              {payslips.map((p) => {
+                const shortfall = resolveDeductionShortfall(p, shortfallByUserId);
+                return (
+                  <TableRow key={p.id}>
+                    <TableCell className="font-medium">{p.userFullName}</TableCell>
+                    <TableCell>
+                      {p.daysEmployed} / {p.daysInMonth}
+                    </TableCell>
+                    <TableCell>{formatMoney(p.grossPay)}</TableCell>
+                    <TableCell>
+                      {p.pfEmployee + p.esiEmployee + p.tds > 0
+                        ? formatMoney(p.pfEmployee + p.esiEmployee + p.tds)
+                        : "—"}
+                    </TableCell>
+                    <TableCell>
+                      {shortfall > 0 ? (
+                        <Badge variant="destructive">{formatMoney(shortfall)}</Badge>
+                      ) : (
+                        <span className="text-sm text-muted-foreground">—</span>
+                      )}
+                    </TableCell>
+                    <TableCell>{formatMoney(p.netPay)}</TableCell>
+                    <TableCell>
+                      {p.pdfUrl ? (
+                        <a
+                          href={p.pdfUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-sm text-primary underline"
+                        >
+                          {t("Download")}
+                        </a>
+                      ) : (
+                        <span className="text-sm text-muted-foreground">{t("Nahi bana")}</span>
+                      )}
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
             </TableBody>
           </Table>
         )}
@@ -326,6 +372,9 @@ function PayrollRunsCard() {
   const [generating, setGenerating] = useState(false);
   const [finalizingId, setFinalizingId] = useState<string | null>(null);
   const [version, setVersion] = useState(0);
+  // runId -> userId -> deductionShortfall from Generate, retained for older API responses.
+  // This cache resets on reload; persisted GET payslip values are authoritative.
+  const [shortfallsByRun, setShortfallsByRun] = useState<Record<string, Record<string, number>>>({});
 
   useEffect(() => {
     fetch("/api/payroll/runs")
@@ -358,7 +407,31 @@ function PayrollRunsCard() {
         toast.error(t(data?.error ?? "Payroll run generate nahi ho paya."));
         return;
       }
-      toast.success(t("Payroll run generate ho gaya."));
+      // Retain Generate shortfalls for compatibility when a GET response omits the field;
+      // the dialog always prefers its loaded payslip's persisted value, including zero.
+      const runId: string | undefined = data?.run?.id;
+      const payslips: { userId: string; deductionShortfall?: number }[] = data?.payslips ?? [];
+      if (runId) {
+        const byUser: Record<string, number> = {};
+        for (const p of payslips) {
+          if (typeof p.deductionShortfall === "number" && Number.isFinite(p.deductionShortfall) && p.deductionShortfall > 0) {
+            byUser[p.userId] = p.deductionShortfall;
+          }
+        }
+        setShortfallsByRun((prev) => ({ ...prev, [runId]: byUser }));
+        const shortfallCount = Object.keys(byUser).length;
+        if (shortfallCount > 0) {
+          toast.warning(
+            t(
+              `${shortfallCount} employee(s) ke liye deduction shortfall hua — kam gross pay ke karan PF/ESI/TDS poora withhold nahi ho paya. "Payslips dekhein" me "Shortfall" column check karein.`
+            )
+          );
+        } else {
+          toast.success(t("Payroll run generate ho gaya."));
+        }
+      } else {
+        toast.success(t("Payroll run generate ho gaya."));
+      }
       setVersion((v) => v + 1);
     } finally {
       setGenerating(false);
@@ -436,7 +509,7 @@ function PayrollRunsCard() {
                   </TableCell>
                   <TableCell>{new Date(run.generatedAt).toLocaleString("en-IN")}</TableCell>
                   <TableCell className="flex justify-end gap-2">
-                    <RunPayslipsDialog run={run} />
+                    <RunPayslipsDialog run={run} shortfallByUserId={shortfallsByRun[run.id] ?? {}} />
                     {run.status === "Draft" && (
                       <Button
                         size="sm"

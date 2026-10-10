@@ -1,0 +1,50 @@
+PERF-02 / PERF-03 resumed — 2026-10-10, D:/Pro-ERP
+
+Outcome
+- Current interrupted implementation was read against git diff and tracker detailed acceptance, not accepted from prior prose.
+- PERF-03 DB-free implementation/equivalence gate verified: aging uses 3 queries for 1 and 100 orders, minimal order/payment projections, original receivedAt-desc JS payment fold; balance sheet reads journal lines once and derives retained earnings from that same trial balance.
+- PERF-02 scoped library work verified: one ADC operand fold by SKU, SQL tenant/direction/window filters; single-item detail reads only its item and tenant/SKU-scoped ledger operands/history; movement query has newest timestamp/id ordering, SQL limit/offset, default 100/max 500. Stock uses complete own-SKU operands, never a movement page.
+- Do NOT mark whole PERF-02 tracker fully complete yet: open-indent SQL pushdown and HTTP/UI page navigation remain outside assigned file ownership (details below).
+
+Critical actual bug found/fixed with RED -> GREEN
+- Interrupted fetchAdcBySku/fetchAdcForSku used PostgreSQL numeric SUM but old adcFromLedger adds JS numbers. With operands 0.1 and 0.2, SQL result '0.3' produces ADC 0.01, while old JS produces 0.010000000000000002. Both new tests failed exactly this way before source edit, then passed.
+- Replaced SQL numeric SUM with minimal SQL-filtered quantity operands, one JS fold. This is intentional, not a missed aggregate optimization; preserves unrounded ADC and ROP/threshold semantics. Null/no rows remains null; an actual zero Out movement remains zero. on-hand retains old per-step round3, not numeric SUM.
+- Fixed reported TypeScript TS2769 at reports test line 48 by capturing optional q.projection in a stable const and narrowing it before the callback. No non-null cast to silence this error.
+
+Safe source-overlay differential proof
+- tests/perf02-perf03.unit.vitest.config.ts has a read-only Vite loader: git show pinned d79673041258ea324cff032d4aef23750200d43a files into virtual TypeScript modules. Only baseline report/read functions run; never baseline writers; no tracked files restored/reverted/stashed. Companion baseline inventory ledger import redirected only within baseline service.
+- Actual baseline and current snapshot outputs deep-equal for independently varied fixtures (10 items/100 movements, 200/100, 10/5000), including ADC .1/.2 and sub-milli quantities, manual zero, reservation subtraction, status/ROP/missing fields.
+- Detail stock deep-equals baseline independent of page size; history tenant/SKU predicates verified; stable tied-timestamp id order and adjacent pages verified; stock uses complete historical fold.
+- Aging/credit-risk deep-equal baseline with all age edges 0/30/31/60/61/90/91, split invoices and sub-paisa payments, tenant isolation, missing/paid orders, null dates and excluded Draft invoices.
+- P&L/balance sheet deep-equal baseline, inclusive IST start/end edges plus outside-edge exclusions, equity/liabilities, retained earnings, tenant isolation. Current balance sheet journal read count 1 vs baseline 2. Baseline aging makes N payment + N order domain calls versus current 3 direct queries (mocked domain boundary is not a measured live SQL-query count).
+
+Measured DB-free observations, latest run (not production latency or a stable benchmark)
+- 10 items/100 movements: old 3.323ms/current 1.092ms; CPU user/system old 0/0us, current 0/0us.
+- 200/100: old 6.626ms/current 3.871ms; CPU old 16000/0us, current 0/0us.
+- 10/5000: old 26.362ms/current 26.705ms; CPU old 0/0us, current 15000/0us.
+- Timing assertion intentionally absent: Windows CPU granularity, JIT and mocked transport dominate these small observations. No history-only timing win claimed. Snapshot has 2 old vs 3 current item/ledger reads because filtered ADC operands are an extra read, but CPU ADC traversal becomes O(history+items), not O(items*history). Reservation maps mocked in this counting harness. Detail has constant 4 item/ledger queries; reservation readers retain their prior independent costs.
+
+Verification commands/results (local entrypoints, no installs/default test/DB/provider calls)
+- node node_modules/vitest/vitest.mjs run --config tests/perf02-perf03.unit.vitest.config.ts --disableConsoleIntercept: 36/36 pass.
+- ledger-admission.unit.vitest.config.ts: 14/14 pass (real transaction adapter + transport interpreter).
+- finance-unit.vitest.config.ts: 44/44 pass.
+- receipt-domain.unit.vitest.config.ts: 59/59 pass.
+- orders-unit.vitest.config.ts: 60/60 pass.
+- stock-workflow-unit.vitest.config.ts: 25 pass / 13 fail. Failures trace to existing FMS active-assignee resolution importing leaves against this older suite's @/db/schema mock without a leaves export; downstream HTTP cases report 400 for that same missing mock. Did NOT change foreign-owned tests or weaken FMS behavior to force green. Parent must extend that fixture or assign its owner; rerun full 38 tests afterward.
+- All configs executed inspected with setupFiles: [] beforehand.
+- node node_modules/eslint/bin/eslint.js src/lib/inventory/service.ts src/lib/inventory/ledger.ts src/lib/accounts/accounts.ts src/lib/accounts/ledger.ts tests/perf02*: exit 0, no output/errors.
+- node node_modules/typescript/bin/tsc --noEmit --incremental false -p tsconfig.json: exit 0 (latest shared tree at check time).
+- git diff --check scoped to four owned source files/tests/perf02*: exit 0.
+
+Files
+- Modified this continuation: src/lib/inventory/ledger.ts (ADC numeric-equivalence fix, comments); src/lib/inventory/service.ts (comment accuracy); tests/perf02-inventory-adc.unit.test.ts; tests/perf02-perf03-reports.unit.test.ts; tests/perf02-perf03.unit.vitest.config.ts.
+- Created tests/perf02-baseline.d.ts and this handoff.
+- src/lib/accounts/accounts.ts and src/lib/accounts/ledger.ts interrupted edits retained/reviewed/tested, no extra production changes this continuation.
+- Existing ledger admission/transaction/availability/idempotency writer changes were not touched. No schema/tooling/lockfiles/other agents' files changed.
+
+Concrete remaining acceptance/integration gates
+1. Full stock-workflow suite's stale leave mock must be repaired by its owner/parent (13 failures above); no evidence this is caused by owned report functions.
+2. PERF-02 tracker asks open-indent SQL filters: src/lib/inventory/indents.ts inTransitBySku still listByOrg + JS OPEN_STATUSES filter. This file is outside assigned ownership. Reservation maps (PPC/Orders) also remain org-wide. Need owner-authorized thin SKU/open-status reads and equivalent rounding tests; avoid duplicating authoritative reservation math in service.ts.
+3. Library history pagination works/defaults to 100, but current src/app/api/inventory/items/[sku]/route.ts and src/app/inventory/[sku]/page.tsx still call getItemDetail(sku) without passing a page. Thus HTTP/UI show first 100 only and cannot request later pages yet. Parent must delegate/wire validated limit/offset (or cursor) and page navigation before claiming user-facing pagination complete; chatbot also calls the default first page.
+4. Real disposable PostgreSQL query plans/row transfer/CPU/timing and consistent read-order effects remain unverified. Existing unordered ledger folds have order-sensitive float/round3 semantics; no new deterministic fold order imposed, and mock equivalence does not prove identical backend scan order.
+5. Parent owns tracker/status update and final aggregate build/lint/independent review. No production migration, commit/push/deploy or live DB access performed.

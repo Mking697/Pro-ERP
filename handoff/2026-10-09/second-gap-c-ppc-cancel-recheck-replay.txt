@@ -1,0 +1,125 @@
+# Second-phase gap C — PPC plan cancel/recheck durable replay
+
+## Scope
+Closed the deferred gap: `PATCH /api/ppc/plans/[planId]` cancel/recheck branches
+called `cancelPlan(planId)` / `reallocatePlan(planId)` with no idempotency key —
+no durable replay protection on retry. Wired both to the same
+`getMutationKey` + `runIdempotentTenantMutation` + committed-result-200 pattern
+already used by this route's start/complete branches.
+
+## Files changed
+- `src/app/api/ppc/plans/[planId]/route.ts` — cancel/recheck branches now call
+  `cancelPlan(planId, guard.session.email, getMutationKey(request))` /
+  `reallocatePlan(planId, guard.session.email, getMutationKey(request))`.
+- `src/lib/inventory/plans.ts` — `cancelPlan`/`reallocatePlan` gained
+  `(planId, actorId?, key?)` signatures. When `key !== undefined` they delegate
+  to `runIdempotentTenantMutation` (operations `ppc.plan.cancel.v1` /
+  `ppc.plan.recheck.v1`), calling themselves recursively without the key to do
+  the real work inside that wrapper's own transaction — exactly mirroring
+  `completePlan`'s existing pattern. `actorId` is validated (`PlanError` if
+  missing) only on the keyed path; the no-key path is untouched, so every
+  existing caller (e.g. `tests/stock-workflow.real.test.ts`'s
+  `reallocatePlan(id)`) keeps compiling and behaving identically.
+  Confirmed via code read: both functions already ran inside
+  `runInTenantTransaction` internally before this change — this was **purely
+  route-level keyed-replay wiring**, no transaction redesign, matching the
+  task's hypothesis.
+- New files (both DB-free, `setupFiles: []`, mirroring
+  `tests/replay-recovery-api.unit.test.ts`'s pattern without editing it):
+  - `tests/ppc-plan-cancel-recheck-replay.unit.test.ts`
+  - `tests/ppc-plan-cancel-recheck-replay.unit.vitest.config.ts`
+
+## TDD evidence
+RED (before the route/plans.ts edit, run via
+`npx vitest run --config tests/ppc-plan-cancel-recheck-replay.unit.vitest.config.ts`):
+```
+Tests  2 failed | 2 passed (4)
+× cancel action threads the actor and idempotency key into cancelPlan
+× recheck action threads the actor and idempotency key into reallocatePlan
+```
+(the other 2 — committed-result passthrough — passed immediately because that
+generic catch-block behavior pre-existed from item5 and didn't need touching
+for cancel/recheck once wired; they stayed green through GREEN.)
+
+GREEN (after the edit, same command):
+```
+Test Files  1 passed (1)
+Tests  4 passed (4)
+```
+4 tests total: cancel-threads-key, recheck-threads-key, cancel-replay-returns-committed-200,
+recheck-replay-returns-committed-200.
+
+## Blocking finding for parent review — found mid-task, not fixed, not in scope
+While editing, `src/app/api/ppc/plans/[planId]/route.ts` was read a second time
+(immediately before re-applying a follow-up patch) and no longer contained the
+start/complete `getMutationKey` + `runIdempotentTenantMutation` + committed-result
+wiring the task said was "already fixed" by item4/item5 — it had reverted to
+the file's committed `HEAD` (`d796730`) content (verified: `git show HEAD:<path>`
+matches the reverted content exactly; `git status`/`git diff HEAD --stat` showed
+the file as *unmodified* at that point, i.e. genuinely back to committed state,
+not a read glitch). `src/lib/inventory/plans.ts` was unaffected — my edits to it
+were intact throughout.
+
+I did not invent a replacement: I had the pre-revert content verbatim from my
+first read of the file this session and restored it exactly, then layered the
+cancel/recheck fix on top (confirmed consistent with `plans.ts`'s current
+`startProduction`, which already does the FMS-Line-start step internally
+inside its own transaction — so the pre-revert route.ts, which has no inline
+FMS-start call, is the version actually consistent with today's `plans.ts`;
+the reverted-to-HEAD version's inline `startFmsInstance` call would have
+double-fired it).
+
+Separately, `npx tsc --noEmit` on this file's dependency graph currently
+fails:
+- `src/lib/inventory/plans.ts(4,14): error TS2305: Module "@/db/client" has no
+  exported member 'runInTenantTransaction'.`
+- `src/lib/inventory/plans.ts(704,7): error TS2554: Expected 1-2 arguments, but
+  got 3.` (a pre-existing `recordMovement(...)` call inside `startProduction`,
+  untouched by this task, that passes a 3rd argument `ledger.ts`'s committed
+  `recordMovement` doesn't accept.)
+
+Verified both are pre-existing and **not caused by this task's edit**:
+- `src/db/client.ts` and `src/lib/inventory/ledger.ts` both show zero `git
+  diff` from `HEAD` — they are exactly the committed d796730 versions, which
+  predate `runInTenantTransaction`/`isInTenantTransaction` and the 3-arg
+  `recordMovement` overload that `plans.ts` (dirty, pre-existing, not part of
+  this task's diff at those lines) already assumes.
+  `src/lib/mutations.ts` is untracked (`??`), i.e. was never committed either.
+- This means the committed baseline these two explicitly off-limits files
+  (`ledger.ts`, and `db/client.ts` which wasn't named but is obviously shared
+  core infra) sit at cannot actually support the dirty-tree `plans.ts`/
+  `mutations.ts` code that item1/4/5 are described as having already built on
+  top of it. Either that infra work never landed in this checkout, or it was
+  lost the same way the route file's wiring was. I did not touch
+  `db/client.ts` or `ledger.ts` — out of scope and explicitly preserved per
+  the handoff doc.
+
+**This blocks real runtime/typecheck correctness for the whole PPC
+plans surface (not just cancel/recheck) and needs orchestrator attention**:
+someone with visibility into the other items' uncommitted work should confirm
+whether `db/client.ts`'s `runInTenantTransaction`/`isInTenantTransaction`
+exports and `ledger.ts`'s 3-arg `recordMovement` overload still exist anywhere
+(another workspace copy, a stash, a sibling agent's in-progress edit) and
+restore them — I have no visibility into what they should contain and won't
+guess/invent core transaction infra.
+
+## Test commands + counts
+```
+npx vitest run --config tests/ppc-plan-cancel-recheck-replay.unit.vitest.config.ts
+  → Test Files  1 passed (1) / Tests  4 passed (4)
+
+npx vitest run --config tests/replay-recovery-api.unit.vitest.config.ts
+  → (sibling-owned file; not edited) currently failing — same root cause as
+    above (unmocked `@/lib/inventory/service` → `indents.ts` → `db/client.ts`
+    env-var throw, and a movements-route committed-result assertion that
+    expects behavior not present in the committed route). Confirmed via
+    `git diff HEAD --stat` that none of the files behind that failure were
+    touched by this task.
+```
+
+## Not done (explicitly out of scope, flagging only)
+- Did not touch `ledger.ts`, `db/client.ts`, `fms/reset.ts`, `maintenance.ts`,
+  `dispatch.ts`, migration0029, `finance-atomicity.test.ts`, item5's routes,
+  `inventory/items/import/route.ts`, or accounts bill/invoice routes.
+- Did not edit `tests/replay-recovery-api.unit.test.ts` (sibling-owned).
+- No schema/migration change was needed or made.

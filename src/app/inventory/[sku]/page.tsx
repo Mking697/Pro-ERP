@@ -1,7 +1,6 @@
-import { cookies } from "next/headers";
 import { notFound, redirect } from "next/navigation";
 import Link from "next/link";
-import { verifySession, SESSION_COOKIE } from "@/lib/auth/session";
+import { getLiveSession } from "@/lib/auth/live-session";
 import AppShell from "@/components/app-shell";
 import { getItemDetail } from "@/lib/inventory/service";
 import { Badge } from "@/components/ui/badge";
@@ -81,9 +80,7 @@ export default async function ItemDetailPage({
   params: Promise<{ sku: string }>;
 }) {
   const t = await getT();
-  const cookieStore = await cookies();
-  const token = cookieStore.get(SESSION_COOKIE)?.value;
-  const session = token ? await verifySession(token) : null;
+  const session = await getLiveSession();
 
   if (!session) redirect("/login");
   if (!session.access.includes("INVENTORY_VIEW")) redirect("/dashboard");

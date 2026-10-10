@@ -1,0 +1,141 @@
+QA-04 — Health readiness vs. liveness (src/app/api/health/route.ts)
+=====================================================================
+
+SCOPE OWNED
+- src/app/api/health/route.ts (full rewrite of the readiness logic)
+- README.md: one sentence in the "Deploy" section describing /api/health,
+  updated for accuracy (no other section touched)
+- New test files: tests/health-readiness.unit.test.ts,
+  tests/health-readiness.unit.vitest.config.ts
+
+PROBLEM (confirmed by reading the actual prior file)
+Prior src/app/api/health/route.ts always returned HTTP 200 / status:"ok" and
+derived `configured.database` purely from `Boolean(process.env.DATABASE_URL)`
+— i.e. it reported "ready" based on an env var being SET, never on the
+database actually being reachable. That conflates process liveness (the
+Next.js handler is running) with readiness (the DB answers queries right now,
+on the expected schema).
+
+FIX
+- Added `checkDatabaseReadiness()`: a bounded (2500ms) real connectivity
+  check using the SAME client the app already uses, `db` from
+  `@/db/client` (no second pool/config) — `select 1`, then a schema-version
+  signal read from `drizzle.__drizzle_migrations` (same table/columns
+  `scripts/check-migration-sync.ts` and `tests/local-isolated/migrate.cjs`
+  already read): `SELECT hash, created_at FROM drizzle.__drizzle_migrations
+  ORDER BY created_at DESC LIMIT 1`.
+- `Promise.race` against a timeout promise bounds the whole check; a timeout
+  or a thrown error both resolve to `{ reachable: false, error }`.
+- GET response now has:
+  - `status: "ok"` — liveness, unconditional (the handler ran)
+  - `ready: boolean` — readiness, true only if the DB check succeeded
+  - `database: { reachable, latencyMs, schemaVersion | error }`
+  - `configured.database` — unchanged meaning: env var presence only
+  - HTTP status is 200 when ready, 503 when not ready (DB unreachable,
+    timed out, or DATABASE_URL absent)
+- Liveness fields (`status`, `commit`, `branch`, `configured`) are reported
+  regardless of DB readiness, so the two concerns stay genuinely separate
+  in the one payload, as required.
+
+EXPLICITLY OUT OF SCOPE / NOT CLAIMED SOLVED
+Disaster-recovery / backup-restore rehearsal is NOT attempted or proven by
+this change. Doing so would require provider-level actions (actually
+triggering and restoring a Neon/Postgres backup) this task has no access to
+— simulating that as fake evidence would be worse than not doing it. This
+remains a separate, larger, infrastructure-access-requiring follow-up item.
+The route's JSDoc and the README sentence both say this explicitly so it
+isn't later mistaken for "solved."
+
+STRICT TDD — RED THEN GREEN (exact evidence)
+
+1) Wrote tests/health-readiness.unit.test.ts + matching vitest config FIRST,
+   against the UNMODIFIED route.ts (env-presence-only logic). DB-free:
+   `vi.mock("@/db/client", () => ({ db: { execute: h.execute } }))` — no real
+   database touched by this test.
+
+   Command:
+     node node_modules/vitest/vitest.mjs run \
+       --config tests/health-readiness.unit.vitest.config.ts
+
+   RED result (captured verbatim, before any route.ts edit):
+     Test Files  1 failed (1)
+     Tests  4 failed (4)
+     - "reports not-ready (non-200) when the database query fails..."
+         AssertionError: expected 200 not to be 200
+     - "reports not-ready when the database query exceeds the bounded timeout"
+         AssertionError: expected 200 not to be 200
+     - "reports ready with a schema-version signal when the database is
+        actually reachable"
+         AssertionError: expected undefined to be true (body.ready missing)
+     - "reports not-ready without querying when DATABASE_URL itself is absent"
+         AssertionError: expected 200 not to be 200
+   This is the real bug stated in the finding: health reported 200/ok purely
+   from env-var presence even when the mocked DB call fails/times out.
+
+2) Applied the minimal fix to src/app/api/health/route.ts (described above).
+
+3) Same command, GREEN result:
+     Test Files  1 passed (1)
+     Tests  4 passed (4)
+   (One intermediate failure during GREEN: the "reachable" test's mock used
+   `String(sqlQuery)` to branch between the two queries, which didn't match
+   drizzle's SQL object stringification — fixed by switching the mock to
+   `mockResolvedValueOnce` chained by call order, matching the route's own
+   call sequence. Not a route bug; a test-mock bug, fixed in the test file.)
+
+4) Full re-run after the test fix, final GREEN, same command:
+     Test Files  1 passed (1)
+     Tests  4 passed (4)
+     Duration ~4.9s
+
+TEST COVERAGE (4 cases, all passing GREEN)
+- DB query rejects -> ready:false, database.reachable:false, HTTP != 200,
+  liveness (status:"ok", configured.database:true) still reported.
+- DB query never resolves -> bounded timeout fires, ready:false, HTTP != 200.
+- DB query succeeds -> ready:true, HTTP 200, schemaVersion populated with the
+  real hash/appliedAtMs read from the (mocked) __drizzle_migrations row.
+- DATABASE_URL absent -> ready:false, HTTP != 200, and the DB client is never
+  even called (h.execute not called) — no wasted query when clearly
+  unconfigured.
+
+OPTIONAL REAL-DB SANITY CHECK (not required, run once, then removed)
+Per the task's offer, ran a throwaway real-DB check against the already-
+running guarded local disposable PostgreSQL (tests/local-isolated harness,
+bridge already up — confirmed via `curl http://127.0.0.1:55008/health` ->
+{"database":"pro_erp_test","username":"pro_erp_test"}):
+  PRO_ERP_LOCAL_TESTS=1 \
+  PRO_ERP_LOCAL_CREDENTIALS=C:/Users/Admin/AppData/Local/hermes/cache/scratch/pro-erp-local-20261009.credentials.json \
+  node node_modules/vitest/vitest.mjs run --config tests/local-isolated/health-readiness-real.vitest.config.ts
+First attempt hit a transient WS/Pool connection timeout from the harness
+(infra flake, unrelated to the route code); retry passed cleanly:
+  Test Files  1 passed (1)
+  Tests  1 passed (1)
+confirming against a genuinely reachable real database: HTTP 200, ready:true,
+database.reachable:true, and a real schema-version hash/timestamp pair came
+back from drizzle.__drizzle_migrations. These two throwaway files
+(tests/local-isolated/health-readiness-real.test.ts and its vitest config)
+were deleted after this one-off confirmation — not part of the committed
+deliverable, since they weren't required and that harness is shared infra
+this task doesn't own long-term. No database state was altered (read-only
+select 1 + a SELECT against __drizzle_migrations).
+
+OTHER CHECKS RUN (scoped to changed files)
+- ESLint on src/app/api/health/route.ts, tests/health-readiness.unit.test.ts,
+  tests/health-readiness.unit.vitest.config.ts: clean, no warnings.
+- `node node_modules/typescript/bin/tsc --noEmit --incremental false`:
+  one pre-existing, unrelated error reported
+  (tests/check-migration-sync.test.ts(2,10): TS2305 missing export
+  'diagnoseMigrationLineage' from scripts/check-migration-sync) — not in a
+  file this task touched or owns; left as-is for its own owner to address.
+
+FILES CHANGED
+- src/app/api/health/route.ts (rewritten GET handler + checkDatabaseReadiness)
+- README.md (one sentence, Deploy section, /api/health description only)
+- tests/health-readiness.unit.test.ts (new)
+- tests/health-readiness.unit.vitest.config.ts (new)
+
+NOT DONE / EXPLICITLY NOT CLAIMED
+- Disaster-recovery / backup-restore proof: NOT attempted, NOT claimed
+  solved. Remains open, needs provider-level infrastructure access.
+- No schema/migration changes made.
+- No commit/push/deploy performed (per task boundary) — working tree only.

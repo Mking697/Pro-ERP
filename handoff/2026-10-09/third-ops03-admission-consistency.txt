@@ -1,0 +1,169 @@
+OPS-03: Plan/user admission consistency (create vs reactivate; background/cron trial-expiry)
+Parent-delegated subagent report — 2026-10-09
+
+SCOPE OWNED
+  src/lib/auth/users.ts
+  src/lib/platform/runner.ts
+  src/lib/tenant.ts (read-only — no changes needed; its existing tenantFromOrgId() is
+    the policy being mirrored, see part B)
+  No additional files required beyond the above. No schema/migration change.
+
+=====================================================================
+PART A — active-user cap: create vs reactivate consistency + concurrency
+=====================================================================
+
+PROBLEM (confirmed by reading the code first)
+  createUser() (src/lib/auth/users.ts) already enforced the plan's maxActiveUsers cap
+  (src/lib/platform/planLimits.ts) by counting Active rows before inserting. updateUser()
+  had NO equivalent check on the Inactive -> Active (reactivate) transition — an org
+  already at its cap could reactivate a disabled user and exceed it. Additionally,
+  createUser()'s own pre-existing cap check was a plain "select count, then insert" with
+  no locking at all — itself racy under two concurrent creates, despite the task's framing
+  implying create already used a serialized check.
+
+FIX
+  Added `assertActiveUserCapAvailable(orgId, plan)` — the one shared helper both paths
+  call. Both createUser()'s insert and updateUser()'s reactivate-path update now run
+  inside `runInTenantTransaction(orgId, ...)` (src/db/client.ts / transaction-context.ts),
+  the pg_advisory_xact_lock-backed primitive this codebase already uses elsewhere for
+  "org-level serialized decision" problems (e.g. dispatch.ts's retry-scoped admission).
+  The lock is keyed by orgId, so create vs create, create vs reactivate, and reactivate vs
+  reactivate for the SAME org all serialize against each other; different orgs never
+  contend. updateUser() only takes this path when the transition is actually
+  Inactive -> Active (`isReactivation`); every other status/role/module-access change is
+  unaffected, unwrapped, exactly as before. The pre-existing last-Active-Admin atomic
+  guard (FOR UPDATE subquery folded into the UPDATE's WHERE) is untouched and still runs
+  inside performUpdate() exactly as before.
+
+TDD evidence (vertical slices, each watched RED before GREEN)
+  tests/user-admission-unit.test.ts (DB-free; mocked @/db/client with an in-memory store +
+  a per-org FIFO queue standing in for the real advisory lock — proves OUR code re-reads
+  the committed count after acquiring the lock, not the lock primitive itself, which has
+  its own existing real/mock coverage in tests/atomic-tenant-transactions.*):
+    config: tests/user-admission-unit.vitest.config.ts (setupFiles: [])
+    command: node node_modules/vitest/vitest.mjs run --config tests/user-admission-unit.vitest.config.ts
+    RED (pre-fix): 2/3 failed — "rejects reactivating..." failed because reactivate threw
+      nothing (promise resolved instead of rejecting); "allows exactly one of two
+      concurrent..." failed (0 fulfilled instead of 1) — both for the expected reason
+      (reactivate had zero cap awareness).
+    GREEN (post-fix): 3/3 passed.
+      - "rejects reactivating a disabled user when the org is already at its active-user cap"
+      - "allows exactly one of two concurrent reactivations racing for the last available slot"
+      - "regression: still rejects user creation when the org is already at its active-user cap"
+
+  tests/user-admission-cap.real.test.ts (real disposable Postgres — genuine
+  pg_advisory_xact_lock proof, not just the mocked queue above; mirrors the existing
+  tests/last-admin-guard.test.ts real-driver-race precedent for this exact class of claim):
+    config: tests/user-admission-cap.real.vitest.config.ts
+    command (bridge already running this session, health-checked at 127.0.0.1:55008):
+      PRO_ERP_LOCAL_TESTS=1 PRO_ERP_LOCAL_CREDENTIALS="C:/Users/Admin/AppData/Local/hermes/cache/scratch/pro-erp-local-20261009.credentials.json" \
+        node node_modules/vitest/vitest.mjs run --config tests/user-admission-cap.real.vitest.config.ts
+    Result: 2/2 passed (29.6s) —
+      - "rejects reactivating a disabled user when the org's Growth-plan cap (20) is already full"
+      - "allows exactly one of two concurrent reactivations racing for the organization's
+        last available Growth-plan seat" (19 Active + 2 Inactive candidates reactivated via
+        Promise.allSettled; asserted exactly 1 fulfilled/1 rejected and final Active count
+        == 20, never 21)
+
+  Regression runs against the real DB (unchanged behavior, confirms no breakage):
+    tests/last-admin-guard.real.vitest.config.ts (new config; test file pre-existing,
+      had no dedicated config before) — 5/5 passed, 12.5s. Confirms updateUser()'s
+      last-Active-Admin WHERE-clause guard and its own real concurrency race test still
+      hold with the reactivate-path change added alongside it.
+    `tsc --noEmit -p tsconfig.json` — 0 errors project-wide.
+
+=====================================================================
+PART B — background/cron tenant context trial-expiry policy
+=====================================================================
+
+PROBLEM (confirmed by reading tenant.ts and runner.ts first)
+  Interactive requests resolve tenant context via getTenant() -> tenantFromOrgId(), which
+  throws TenantResolutionError (digest TRIAL_EXPIRED) for an org whose 14-day Trial has
+  lapsed — hard-blocking every read. forEachActiveOrganization() (src/lib/platform/
+  runner.ts), used by every cron/background job, built its TenantContext directly from
+  listOrganizations()'s raw row, filtering only `status === "Active"`. Trial expiry is
+  independent of `status` (an expired-trial org is still "Active" status-wise), so cron
+  kept generating new business records (e.g. recurring task occurrences) for an org whose
+  own interactive users were already locked out.
+
+POLICY DECISION APPLIED (documented, conservative, overridable default — per the finding's
+explicit instruction, this is a stated choice, not a silent guess)
+  Background/cron generation for a trial-expired org is now skipped entirely for that
+  org's run. Implementation: runOne() now resolves tenant context via the SAME
+  tenantFromOrgId() the interactive path already uses, instead of re-deriving it from the
+  raw org row. This mirrors existing behavior rather than inventing a new independent rule
+  (per the task's explicit instruction to read tenant.ts's real interactive handling and
+  reuse it, not invent one). A trial-expired org's tenantFromOrgId() throws exactly like
+  it does for an interactive request; the existing per-org try/catch in runOne() turns
+  that into the same `{ ok: false, error }` shape every other org-specific cron failure
+  already uses — it never aborts any other tenant's run.
+  ALTERNATIVE FLAGGED (not implemented, remains valid): continue generating for a
+  trial-expired org but mark the result/records read-only instead of skipping outright.
+  If the business prefers that, src/lib/platform/runner.ts's runOne() is the one place to
+  change — swap the tenantFromOrgId() call for a lighter check that still runs fn() but
+  passes a read-only flag through ctx.
+
+TDD evidence
+  tests/background-trial-admission-unit.test.ts (DB-free; mocks only
+  @/lib/platform/registry's listOrganizations/getOrganization — @/lib/tenant and its real
+  tenantFromOrgId()/isTrialExpired() logic run unmocked, which is the actual behavior
+  under test):
+    config: tests/background-trial-admission-unit.vitest.config.ts (setupFiles: [])
+    command: node node_modules/vitest/vitest.mjs run --config tests/background-trial-admission-unit.vitest.config.ts
+    RED (pre-fix): 1/1 failed — expired?.ok was true (job fn ran for the trial-expired
+      org) instead of false — the exact bug.
+    GREEN (post-fix): 1/1 passed — expired org's result is ok:false with error matching
+      "trial khatm ho gaya hai" (tenant.ts's own message) and fn was never called for it;
+      the active org's run is unaffected (ok:true, fn called, result returned).
+
+  Regression run against the real DB (confirms runner.ts's tenant-isolation and per-org
+  failure-isolation guarantees, pre-existing tests/runner-concurrency.test.ts, still hold):
+    tests/runner-concurrency.real.vitest.config.ts (new config; test file pre-existing,
+      had no dedicated config before) — 2/2 passed, 5.0s.
+
+=====================================================================
+FILES CHANGED
+=====================================================================
+  src/lib/auth/users.ts     — assertActiveUserCapAvailable() helper; createUser() and
+                              updateUser()'s reactivate path both wrapped in
+                              runInTenantTransaction(orgId, ...).
+  src/lib/platform/runner.ts — runOne() resolves via tenantFromOrgId(org.id) instead of
+                              building TenantContext from the raw listOrganizations() row.
+  src/lib/tenant.ts          — unchanged (read for its existing policy; nothing to fix).
+
+NEW TEST FILES
+  tests/user-admission-unit.test.ts + .vitest.config.ts           (DB-free)
+  tests/background-trial-admission-unit.test.ts + .vitest.config.ts (DB-free)
+  tests/user-admission-cap.real.test.ts + .vitest.config.ts        (real Postgres)
+  tests/last-admin-guard.real.vitest.config.ts   (config only; pre-existing real test
+    file had none — added so this regression guard is actually runnable)
+  tests/runner-concurrency.real.vitest.config.ts (config only; same reason)
+
+ALL TEST COMMANDS RUN THIS SESSION (final state, all green)
+  node node_modules/vitest/vitest.mjs run --config tests/user-admission-unit.vitest.config.ts
+    -> 3 passed
+  node node_modules/vitest/vitest.mjs run --config tests/background-trial-admission-unit.vitest.config.ts
+    -> 1 passed
+  PRO_ERP_LOCAL_TESTS=1 PRO_ERP_LOCAL_CREDENTIALS=.../pro-erp-local-20261009.credentials.json \
+    node node_modules/vitest/vitest.mjs run --config tests/last-admin-guard.real.vitest.config.ts
+    -> 5 passed
+  PRO_ERP_LOCAL_TESTS=1 PRO_ERP_LOCAL_CREDENTIALS=.../pro-erp-local-20261009.credentials.json \
+    node node_modules/vitest/vitest.mjs run --config tests/runner-concurrency.real.vitest.config.ts
+    -> 2 passed
+  PRO_ERP_LOCAL_TESTS=1 PRO_ERP_LOCAL_CREDENTIALS=.../pro-erp-local-20261009.credentials.json \
+    node node_modules/vitest/vitest.mjs run --config tests/user-admission-cap.real.vitest.config.ts
+    -> 2 passed
+  node node_modules/typescript/bin/tsc --noEmit -p tsconfig.json
+    -> 0 errors (whole project)
+  Total new/executed test count this task: 3 + 1 + 2(real, new) = 6 new tests, all RED-
+  then-GREEN-verified; plus 5 + 2 = 7 pre-existing real-DB regression tests re-run and
+  confirmed still green.
+
+NOT DONE / OUT OF SCOPE
+  - No commit/push. No migration — none needed (no schema change).
+  - Did not touch any other OPS/QA/SEC item's files.
+  - The disposable local Postgres bridge (tests/local-isolated) was already running this
+    session (health-checked at 127.0.0.1:55008, credentials file already present at
+    C:/Users/Admin/AppData/Local/hermes/cache/scratch/pro-erp-local-20261009.credentials.json)
+    — reused as-is, not started or stopped by this task. Cleanup of that shared resource is
+    left to whichever task originally started it, per tests/local-isolated/README.md.

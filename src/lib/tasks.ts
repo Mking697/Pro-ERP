@@ -31,6 +31,9 @@ export interface TaskRecord {
   Delay_Count: string;
   Priority: string;
   Recurring_ID: string;
+  /** '' for one-off tasks or unknown legacy cycles (stored as NULL); never inferred
+   * from the generation due date. */
+  Natural_Cycle_Start_Date: string;
 }
 
 const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
@@ -84,6 +87,7 @@ function rowToRecord(row: TaskRow): TaskRecord {
     Delay_Count: String(row.delayCount),
     Priority: row.priority,
     Recurring_ID: row.recurringId,
+    Natural_Cycle_Start_Date: row.naturalCycleStartDate ?? "",
   };
 }
 
@@ -138,6 +142,10 @@ interface CreateRecurringOccurrenceInput {
   assignedBy: string;
   frequency: string;
   dueDate: string;
+  /** The logical cycle's own natural day (findMostRecentScheduledDay()'s own return value
+   * for a carried-forward non-Daily cycle, or the generation day itself for Daily) — see
+   * tasks.naturalCycleStartDate's own column comment in src/db/schema/tasks.ts. */
+  naturalCycleStartDate: string;
 }
 
 /** Appends one dated occurrence of a recurring task — called only by the daily generator. */
@@ -163,6 +171,7 @@ export async function createRecurringOccurrence(
     onTimeCount: 0,
     delayCount: 0,
     recurringId: input.recurringId,
+    naturalCycleStartDate: input.naturalCycleStartDate,
   });
   return rowToRecord(row);
 }

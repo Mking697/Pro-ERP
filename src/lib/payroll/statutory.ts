@@ -194,3 +194,74 @@ export function computeStatutoryDeductions(
     tds: tds?.monthlyTds ?? 0,
   };
 }
+
+export interface CappedStatutoryDeductions extends StatutoryDeductions {
+  /** Total employee-side deduction amount (PF+ESI+TDS) that could not actually be
+   * withheld this period because doing so would have exceeded the employee's actual
+   * grossPay — see capDeductionsToGrossPay's own doc comment for the full policy. Zero
+   * in the normal case (grossPay comfortably covers whatever was computed). */
+  deductionShortfall: number;
+}
+
+/**
+ * OPS-02 POLICY DECISION — explicit, documented, and deliberately overridable; this is an
+ * arithmetic/policy-safety fix, NOT a statutory ruling (see this file's header: nothing
+ * here is legally authoritative). computeStatutoryDeductions() above computes PF/ESI/TDS
+ * off `monthlySalary`/the period's `grossPay` as if a full/normal amount was actually
+ * earned. For a zero or partial-pay period (no attendance yet this month, a same-month
+ * join+exit, unpaid leave once that exists) that can produce deductions bigger than what
+ * was actually earned — e.g. monthlySalary=20000, grossPay=0, PF enabled still computes a
+ * flat ₹1800 employee PF contribution, which would make netPay = 0 - 1800 = -1800 if
+ * applied without this cap.
+ *
+ * Chosen default: scale every employee-side deduction by the SAME proportion
+ * (`grossPay / totalRequestedDeductions`) rather than paying one deduction in full at
+ * another's expense or zeroing everything out — no single deduction (say PF) is singled
+ * out to absorb the whole shortfall while another (say TDS) is paid in full from a
+ * partial paycheck. Each deduction is additionally hard-capped by whatever of grossPay the
+ * previous ones in a fixed PF -> ESI -> TDS order left unclaimed, purely as a
+ * rounding-safety valve, so the sum withheld can never exceed grossPay by even a cent.
+ * Employer-side contributions (pfEmployer/esiEmployer) are left untouched: they're the
+ * organization's own cost, not money withheld from the employee, so there is nothing to
+ * cap there.
+ *
+ * Whatever could NOT be withheld is reported back as `deductionShortfall` rather than
+ * vanishing into a negative netPay or a silent full write-off — a payslip must show what
+ * was ACTUALLY withheld this period, and the org must be able to see (and separately
+ * decide how to handle — carry forward, write off, recover another way) whatever PF/ESI/
+ * TDS liability this period fell short of. This module deliberately does NOT carry the
+ * shortfall forward to a future period's deduction automatically — that is a genuine
+ * payroll/compliance policy choice for a human to make, not one this calculation layer
+ * should assume silently.
+ */
+export function capDeductionsToGrossPay(
+  deductions: StatutoryDeductions,
+  grossPay: number
+): CappedStatutoryDeductions {
+  const safeGrossPay = Math.max(0, grossPay);
+  const totalRequested = round2(deductions.pfEmployee + deductions.esiEmployee + deductions.tds);
+
+  if (totalRequested <= 0 || totalRequested <= safeGrossPay) {
+    return { ...deductions, deductionShortfall: 0 };
+  }
+
+  const scale = safeGrossPay / totalRequested;
+  let remaining = safeGrossPay;
+  const takeProportional = (requested: number): number => {
+    const taken = Math.min(round2(requested * scale), remaining);
+    remaining = round2(remaining - taken);
+    return taken;
+  };
+  const pfEmployee = takeProportional(deductions.pfEmployee);
+  const esiEmployee = takeProportional(deductions.esiEmployee);
+  const tds = takeProportional(deductions.tds);
+  const cappedTotal = round2(pfEmployee + esiEmployee + tds);
+
+  return {
+    ...deductions,
+    pfEmployee,
+    esiEmployee,
+    tds,
+    deductionShortfall: round2(totalRequested - cappedTotal),
+  };
+}

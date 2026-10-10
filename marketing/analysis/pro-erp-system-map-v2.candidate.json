@@ -1,0 +1,636 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Pro ERP — One Connected System",
+    "output": "pro-erp-system-map-v2.html",
+    "quality_profile": "showcase",
+    "visual_preset": "signal-flow",
+    "animation": "trace",
+    "legend": {
+      "mode": "auto",
+      "entries": {
+        "frontend": {
+          "label": "Operational Screens"
+        },
+        "backend": {
+          "label": "Processing & Money Flows"
+        },
+        "database": {
+          "label": "System of Record"
+        },
+        "cloud": {
+          "label": "Platform Infrastructure"
+        },
+        "security": {
+          "label": "Access Control"
+        },
+        "messagebus": {
+          "label": "Event-Driven Engine (FMS)"
+        }
+      }
+    }
+  },
+  "components": [
+    {
+      "id": "platform",
+      "type": "cloud",
+      "label": "Platform",
+      "sublabel": "Every org, usage metrics, error log",
+      "pos": [
+        40,
+        40
+      ],
+      "size": [
+        160,
+        64
+      ],
+      "tag": "multi-tenant"
+    },
+    {
+      "id": "admin",
+      "type": "security",
+      "label": "Admin",
+      "sublabel": "Per-user module-access grants",
+      "pos": [
+        320,
+        40
+      ],
+      "size": [
+        160,
+        64
+      ]
+    },
+    {
+      "id": "reports",
+      "type": "backend",
+      "label": "Reports & Sharing",
+      "sublabel": "Cross-module exports + Cmd-K search",
+      "pos": [
+        520,
+        40
+      ],
+      "size": [
+        190,
+        64
+      ]
+    },
+    {
+      "id": "tasks",
+      "type": "frontend",
+      "label": "Tasks",
+      "sublabel": "Delegated tasks, MIS scored",
+      "pos": [
+        40,
+        160
+      ],
+      "size": [
+        180,
+        64
+      ]
+    },
+    {
+      "id": "leave",
+      "type": "frontend",
+      "label": "Leave",
+      "sublabel": "Buddy approval reassigns Tasks",
+      "pos": [
+        330,
+        160
+      ],
+      "size": [
+        200,
+        64
+      ]
+    },
+    {
+      "id": "payroll",
+      "type": "backend",
+      "label": "Payroll",
+      "sublabel": "Join-date proration (v1)",
+      "pos": [
+        570,
+        160
+      ],
+      "size": [
+        170,
+        64
+      ]
+    },
+    {
+      "id": "lead",
+      "type": "frontend",
+      "label": "Lead",
+      "sublabel": "Qualify -> Negotiation -> Quotation",
+      "pos": [
+        40,
+        320
+      ],
+      "size": [
+        260,
+        76
+      ]
+    },
+    {
+      "id": "order",
+      "type": "frontend",
+      "label": "Order",
+      "sublabel": "Credit gate + live Free-stock reservation",
+      "pos": [
+        40,
+        480
+      ],
+      "size": [
+        260,
+        76
+      ]
+    },
+    {
+      "id": "pdi",
+      "type": "frontend",
+      "label": "PDI",
+      "sublabel": "Pass/Fail inspection before dispatch",
+      "pos": [
+        40,
+        640
+      ],
+      "size": [
+        260,
+        76
+      ]
+    },
+    {
+      "id": "tms",
+      "type": "frontend",
+      "label": "TMS",
+      "sublabel": "Self or Party-arranged transport",
+      "pos": [
+        40,
+        800
+      ],
+      "size": [
+        260,
+        76
+      ]
+    },
+    {
+      "id": "dispatch",
+      "type": "frontend",
+      "label": "Dispatch",
+      "sublabel": "Gate Pass + the one real stock-ledger Out",
+      "pos": [
+        40,
+        960
+      ],
+      "size": [
+        260,
+        76
+      ]
+    },
+    {
+      "id": "inward",
+      "type": "frontend",
+      "label": "Inward & IQC",
+      "sublabel": "Inward entry + quality check, TAT-aware",
+      "pos": [
+        400,
+        320
+      ],
+      "size": [
+        190,
+        76
+      ]
+    },
+    {
+      "id": "debit_notes",
+      "type": "backend",
+      "label": "Debit Notes",
+      "sublabel": "Vendor-side adjustments, IQC failures",
+      "pos": [
+        680,
+        320
+      ],
+      "size": [
+        200,
+        76
+      ]
+    },
+    {
+      "id": "inventory",
+      "type": "database",
+      "label": "Inventory & BOM",
+      "sublabel": "Free = On-Hand minus Committed minus Reserved",
+      "pos": [
+        400,
+        460
+      ],
+      "size": [
+        220,
+        76
+      ]
+    },
+    {
+      "id": "ppc",
+      "type": "frontend",
+      "label": "PPC",
+      "sublabel": "BOM-driven production plans",
+      "pos": [
+        740,
+        460
+      ],
+      "size": [
+        180,
+        76
+      ]
+    },
+    {
+      "id": "fms",
+      "type": "messagebus",
+      "label": "FMS Engine",
+      "sublabel": "No-code: forms, TAT calendar, stock actions, branching",
+      "pos": [
+        400,
+        600
+      ],
+      "size": [
+        440,
+        110
+      ],
+      "tag": "no-code"
+    },
+    {
+      "id": "parties",
+      "type": "database",
+      "label": "Parties",
+      "sublabel": "Vendor & customer master, bulk import",
+      "pos": [
+        400,
+        780
+      ],
+      "size": [
+        200,
+        76
+      ]
+    },
+    {
+      "id": "purchase",
+      "type": "frontend",
+      "label": "Purchase",
+      "sublabel": "Indent -> PO -> Follow Up -> Received",
+      "pos": [
+        710,
+        780
+      ],
+      "size": [
+        200,
+        76
+      ]
+    },
+    {
+      "id": "other_payments",
+      "type": "backend",
+      "label": "Other Payments",
+      "sublabel": "Additional payments outside Dispatch",
+      "pos": [
+        400,
+        920
+      ],
+      "size": [
+        210,
+        76
+      ]
+    },
+    {
+      "id": "petty_cash",
+      "type": "backend",
+      "label": "Petty Cash",
+      "sublabel": "Small cash disbursements",
+      "pos": [
+        650,
+        920
+      ],
+      "size": [
+        190,
+        76
+      ]
+    },
+    {
+      "id": "credit_notes",
+      "type": "backend",
+      "label": "Credit Notes",
+      "sublabel": "Customer-side adjustments",
+      "pos": [
+        400,
+        1050
+      ],
+      "size": [
+        200,
+        76
+      ]
+    },
+    {
+      "id": "receivables",
+      "type": "backend",
+      "label": "Receivables",
+      "sublabel": "Invoices, multi-invoice-per-order splitting",
+      "pos": [
+        640,
+        1050
+      ],
+      "size": [
+        210,
+        76
+      ]
+    },
+    {
+      "id": "payables",
+      "type": "backend",
+      "label": "Payables",
+      "sublabel": "Bills, Input Tax Credit on GST",
+      "pos": [
+        400,
+        1180
+      ],
+      "size": [
+        200,
+        76
+      ]
+    },
+    {
+      "id": "ledger",
+      "type": "database",
+      "label": "Ledger",
+      "sublabel": "Real double-entry GL: Trial Balance, P&L, Balance Sheet",
+      "pos": [
+        400,
+        1320
+      ],
+      "size": [
+        440,
+        92
+      ],
+      "tag": "GL"
+    },
+    {
+      "id": "aging",
+      "type": "backend",
+      "label": "Aging",
+      "sublabel": "Receivables aging buckets",
+      "pos": [
+        400,
+        1460
+      ],
+      "size": [
+        190,
+        76
+      ]
+    },
+    {
+      "id": "gst_report",
+      "type": "backend",
+      "label": "GST Report",
+      "sublabel": "GSTR-shaped export for manual filing",
+      "pos": [
+        640,
+        1460
+      ],
+      "size": [
+        210,
+        76
+      ]
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "region",
+      "label": "PLATFORM",
+      "wraps": [
+        "platform",
+        "admin",
+        "reports"
+      ],
+      "pad": 18
+    },
+    {
+      "kind": "region",
+      "label": "PEOPLE OPS",
+      "wraps": [
+        "tasks",
+        "leave",
+        "payroll"
+      ],
+      "pad": 18
+    },
+    {
+      "kind": "region",
+      "label": "SALES CHAIN",
+      "wraps": [
+        "lead",
+        "order",
+        "pdi",
+        "tms",
+        "dispatch"
+      ],
+      "pad": 20
+    },
+    {
+      "kind": "region",
+      "label": "PRODUCTION CHAIN",
+      "wraps": [
+        "inward",
+        "inventory",
+        "ppc",
+        "fms"
+      ],
+      "pad": 20
+    },
+    {
+      "kind": "region",
+      "label": "PURCHASE & MASTERS",
+      "wraps": [
+        "parties",
+        "purchase"
+      ],
+      "pad": 18
+    },
+    {
+      "kind": "region",
+      "label": "MONEY / ACCOUNTS",
+      "wraps": [
+        "other_payments",
+        "petty_cash",
+        "credit_notes",
+        "debit_notes",
+        "receivables",
+        "payables",
+        "ledger",
+        "aging",
+        "gst_report"
+      ],
+      "pad": 22
+    }
+  ],
+  "connections": [
+    {
+      "id": "lead-order",
+      "from": "lead",
+      "to": "order",
+      "label": "LEAD_ORDER_CONFIRMED",
+      "variant": "emphasis",
+      "fromSide": "bottom",
+      "toSide": "top"
+    },
+    {
+      "id": "order-pdi",
+      "from": "order",
+      "to": "pdi",
+      "label": "ORDER_READY_FOR_PDI",
+      "variant": "emphasis",
+      "fromSide": "bottom",
+      "toSide": "top"
+    },
+    {
+      "id": "pdi-tms",
+      "from": "pdi",
+      "to": "tms",
+      "label": "ORDER_PDI_PASSED",
+      "variant": "emphasis",
+      "fromSide": "bottom",
+      "toSide": "top"
+    },
+    {
+      "id": "tms-dispatch",
+      "from": "tms",
+      "to": "dispatch",
+      "label": "ORDER_FULLY_SHIPPED",
+      "variant": "emphasis",
+      "fromSide": "bottom",
+      "toSide": "top"
+    },
+    {
+      "id": "dispatch-receivables",
+      "from": "dispatch",
+      "to": "receivables",
+      "label": "Invoice, GST as liability"
+    },
+    {
+      "id": "inward-debitnotes",
+      "from": "inward",
+      "to": "debit_notes",
+      "label": "IQC failure"
+    },
+    {
+      "id": "inventory-ppc",
+      "from": "inventory",
+      "to": "ppc",
+      "label": "reserves material"
+    },
+    {
+      "id": "inward-fms",
+      "from": "inward",
+      "to": "fms",
+      "label": "INWARD_ENTRY_CREATED",
+      "variant": "dashed"
+    },
+    {
+      "id": "ppc-fms",
+      "from": "ppc",
+      "to": "fms",
+      "label": "Production Line flow",
+      "variant": "dashed"
+    },
+    {
+      "id": "parties-purchase",
+      "from": "parties",
+      "to": "purchase",
+      "label": "vendor-first PO"
+    },
+    {
+      "id": "purchase-fms",
+      "from": "purchase",
+      "to": "fms",
+      "label": "INDENT_APPROVED",
+      "variant": "dashed",
+      "fromSide": "top",
+      "toSide": "bottom"
+    },
+    {
+      "id": "purchase-payables",
+      "from": "purchase",
+      "to": "payables",
+      "label": "Bill, Input Tax Credit"
+    },
+    {
+      "id": "receivables-ledger",
+      "from": "receivables",
+      "to": "ledger",
+      "label": "posts journal entry"
+    },
+    {
+      "id": "payables-ledger",
+      "from": "payables",
+      "to": "ledger",
+      "label": "posts journal entry"
+    },
+    {
+      "id": "ledger-aging",
+      "from": "ledger",
+      "to": "aging"
+    },
+    {
+      "id": "ledger-gst",
+      "from": "ledger",
+      "to": "gst_report",
+      "label": "GST liability + ITC"
+    },
+    {
+      "id": "leave-tasks",
+      "from": "leave",
+      "to": "tasks",
+      "label": "reassigns Tasks"
+    },
+    {
+      "id": "admin-platform",
+      "from": "admin",
+      "to": "platform"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "The Sales Chain",
+      "items": [
+        "Lead -> Order -> PDI -> TMS -> Dispatch is one connected path, not five separate screens",
+        "Named events hand off every leg: LEAD_ORDER_CONFIRMED -> ORDER_READY_FOR_PDI -> ORDER_PDI_PASSED -> ORDER_FULLY_SHIPPED",
+        "Dispatch is the single point that writes a real stock-ledger Out; everything upstream only reserves"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Real Double-Entry Accounting",
+      "items": [
+        "Receivables and Payables both post real journal entries into one GL Ledger",
+        "GST is tracked as a liability, not folded into revenue; Payables carries Input Tax Credit",
+        "Aging and the GSTR-shaped report are both read off the same Ledger, not separate spreadsheets"
+      ]
+    },
+    {
+      "dot": "violet",
+      "title": "FMS — No-Code Workflow Engine",
+      "items": [
+        "An Admin builds any multi-step process as data: forms, lookups, a working-hours TAT calendar, branching, stock actions",
+        "Listens for real business events from Inward (INWARD_ENTRY_CREATED), Production Line flows, and Purchase (INDENT_APPROVED)",
+        "The single most defensible, demo-able differentiator in the product"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "One Platform, Every Org Isolated",
+      "items": [
+        "Multi-tenant: every table carries org_id, each signup is a fully isolated organization",
+        "Admin grants gate access module-by-module, down to individual users",
+        "Leave approvals auto-reassign a person's open Tasks to a named Buddy, with full audit trail"
+      ]
+    }
+  ]
+}

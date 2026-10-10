@@ -1,0 +1,204 @@
+# THIRD phase OPS-02 — shortfall surfaced in UI/PDF + generate/finalize contention evidence (continuation)
+
+Status: DONE for this slice's scope (UI/PDF surfacing + contention test review). No
+commit/push made. Builds on the already-done arithmetic/transaction work recorded in
+`handoff/2026-10-09/third-ops02-payroll-safety.txt` (verified against current source
+before touching anything — that file's claims about `capDeductionsToGrossPay()` and the
+`runInTenantTransaction` wiring in `payroll.ts` match the actual current code exactly;
+did not redo that work).
+
+## What was actually missing (per CLAUDE.md's OPS-02 resume item)
+
+`generatePayrollRun()` already computed and returned `deductionShortfall` per payslip
+(`GeneratedPayslip`), but:
+1. It was **not persisted** — `payslips` table has no such column, so reopening a run
+   later (`getPayrollRun()`) cannot show it again.
+2. It was **not shown anywhere in the UI** — `payroll-admin-console.tsx` never read the
+   field from the generate response at all; the Payslips dialog had no column for it.
+3. It was **not in the payslip PDF**.
+
+CLAUDE.md's checkpoint explicitly separates "surface it in the UI" (do now) from "durable
+accounting policy/schema requires explicit decision" (flag, don't decide unilaterally) —
+this slice does the former and documents the latter precisely.
+
+## Files touched (new slice, on top of the already-approved arithmetic/transaction work)
+
+- `src/lib/payroll/shortfallNote.ts` (NEW) — `buildDeductionShortfallNote()`, a pure,
+  shared function producing the exact user-facing shortfall text, used by BOTH the UI and
+  the PDF so the two surfaces can never drift on wording or compliance-disclaimer
+  language. Returns `null` for zero/negative/non-finite input.
+- `src/app/payroll/payroll-admin-console.tsx` — `PayrollRunsCard.handleGenerate()` now
+  reads `deductionShortfall` from each payslip in the generate response (previously
+  discarded entirely) into a new `shortfallsByRun` state (`runId -> userId -> shortfall`),
+  shows a toast.warning naming how many employees were affected right after Generate, and
+  passes it into `RunPayslipsDialog`, which now renders a dedicated **Shortfall** column
+  (red `Badge` when nonzero) plus an amber banner explaining what it means and that it is
+  NOT a statutory filing. This is a client-side-only addition — no API route changed,
+  since `generatePayrollRun()`'s response already carried the field.
+- `src/lib/payroll/payslipPdf.tsx` — `PayslipPdfInput` gained an optional
+  `deductionShortfall` field; the document now renders `buildDeductionShortfallNote()`'s
+  text as an extra note line when present. **Currently a no-op in production**: see
+  "Proposed schema change" below for why — documented explicitly in the field's own doc
+  comment in the file, so a future reader doesn't assume this is already live.
+- Did NOT touch `src/app/api/payroll/**` — the generate route already returns
+  `deductionShortfall` (added by the prior slice); no backend change was needed for the
+  UI piece. The PDF piece genuinely needs the schema column below before it can read a
+  real value.
+
+### Tests added (new file; no existing test files' assertions changed except the
+`payroll-ops02-unit.vitest.config.ts` include list, which only adds a third file)
+
+- `tests/payroll-shortfall-note.unit.test.ts` (NEW) — 4 pure-function unit tests for
+  `buildDeductionShortfallNote()`: null for zero, null for negative/NaN/Infinity (never
+  shows a false shortfall), exact amount formatting, and — explicitly, per CLAUDE.md's
+  "no statutory-compliance claim" requirement — asserts the text does NOT contain
+  compliance-guarantee language and DOES contain "not a statutory filing".
+- `tests/payroll-ops02-unit.vitest.config.ts` — added the new test file to `include`
+  (still `setupFiles: []`, still DB-free, no live DB needed).
+
+## RED → GREEN evidence (this slice)
+
+RED (before `shortfallNote.ts` existed): the import in
+`tests/payroll-shortfall-note.unit.test.ts` failed module resolution — confirmed by
+writing the test first, then creating the source file.
+
+GREEN:
+```
+npx vitest run --config tests/payroll-ops02-unit.vitest.config.ts --reporter=verbose
+```
+```
+Test Files  3 passed (3)
+     Tests  27 passed (27)
+```
+All 27: the prior slice's 23 (payroll-statutory.test.ts's 17 + payroll-generate-finalize-
+unit.test.ts's 6, including the generate/finalize contention and double-finalize tests —
+re-ran verbatim, unmodified, still green) PLUS this slice's 4 new
+`payroll-shortfall-note.unit.test.ts` tests.
+
+```
+npx tsc --noEmit -p tsconfig.json
+```
+Exit 0, zero errors anywhere in the tree (not just payroll files) — full clean compile,
+confirmed by `wc -l` on the captured output showing only the two `npm notice` lines, no
+actual diagnostics.
+
+```
+npx eslint src/app/payroll/payroll-admin-console.tsx src/lib/payroll/shortfallNote.ts \
+  src/lib/payroll/payslipPdf.tsx tests/payroll-shortfall-note.unit.test.ts
+```
+Zero errors/warnings.
+
+## Generate/finalize contention + immutability evidence — reviewed, not re-litigated
+
+Read `src/lib/payroll/payroll.ts` end to end and re-ran the prior slice's own
+`tests/payroll-generate-finalize-unit.test.ts` (unmodified) to confirm its claims are
+real, not just reported:
+
+- Both `generatePayrollRun()` and `finalizePayrollRun()` wrap their entire
+  read-check-write sequence in one `runInTenantTransaction(orgId, ...)` call
+  (`src/db/client.ts` — real parameterized `pg_advisory_xact_lock(hashtextextended(orgId,
+  0))` taken via `admit()` BEFORE any read, same contract every other domain
+  (`src/lib/maintenance/maintenance.ts`, `src/lib/dispatch/dispatch.ts`) already uses).
+  Confirmed by reading `src/db/transaction-context.ts`'s `runInTenantTransaction`: nested
+  same-org calls join the existing scope (`work()` called directly, no second lock
+  attempt — correct, since the outer transaction already holds the advisory lock for the
+  whole org and a second same-connection `pg_advisory_xact_lock` call would just succeed
+  redundantly, not deadlock); cross-org nesting is explicitly rejected.
+- **Immutability**: `finalizePayrollRun()` throws `PayrollError("Ye payroll run pehle se
+  Finalized hai.")` if `run.status === "Finalized"` — confirmed by test
+  `"a second finalize on an already-finalized run rejects cleanly without reprocessing"`,
+  which also asserts `finalizedBy` is NOT overwritten by the rejected second call.
+  `generatePayrollRun()` similarly throws if the run is already Finalized, both at the
+  initial read AND (defensively, documented as unreachable under the lock) immediately
+  after an insert race.
+- **Concurrent double-finalize**: test
+  `"concurrent finalize calls for the same run cannot both succeed (serialized, not
+  double-processed)"` fires two `finalizePayrollRun()` calls via `Promise.allSettled` at
+  the exact same microtask — exactly one fulfills, exactly one rejects, and the row's
+  final `finalizedBy` matches the winner (no silent overwrite). This is enforced by the
+  DB-free mock's own serializing queue in the test file (mirrors
+  `tests/fms-maintenance.unit.test.ts`'s pattern): a second `runInTenantTransaction` call
+  for the same org genuinely waits for the first to finish before its own read runs — the
+  same thing the real `pg_advisory_xact_lock` does against a real Postgres connection.
+- **Concurrent double-generate**: test
+  `"concurrent generate calls for the same month are serialized, not duplicated"` fires
+  two `generatePayrollRun()` calls concurrently for the same month — asserts exactly ONE
+  `payroll_runs` row for that month (not two) and exactly ONE payslip for the one seeded
+  user (not two) — proving the find-or-create + upsert sequence cannot race itself into a
+  duplicate.
+- PDF generation in `finalizePayrollRun()` deliberately stays OUTSIDE the transaction
+  (confirmed by reading the code — the `try { await generatePayslipPdfs(...) } catch`
+  block runs after the `runInTenantTransaction(...)` call returns) — correct: it is a
+  best-effort network/Blob-storage side effect that must not hold the advisory lock or
+  roll back the already-committed Finalized status.
+
+**Not added by this slice**: no real-PostgreSQL contention test (the prior slice's
+DB-free mock proves the serialization logic; it does not prove the real
+`pg_advisory_xact_lock` call against live Postgres behaves identically under genuine
+network concurrency). This mirrors every other THIRD-phase domain's own current state
+(DATA-06, OPS-01, OPS-03 all still lack real-PG contention runs per CLAUDE.md) — flagged,
+not silently treated as done, consistent with the checkpoint's own item 8
+("parent serial real-PG contention/fault/rollback/replay" is still listed as pending
+THIRD-wide, not specific to OPS-02).
+
+## Proposed schema change — NOT applied, flagging per instructions
+
+To make the shortfall durable (visible again on `getPayrollRun()` after a reload, and
+actually populated in the PDF rather than just wired-but-dormant):
+
+```sql
+ALTER TABLE payslips ADD COLUMN deduction_shortfall numeric NOT NULL DEFAULT '0';
+```
+
+Drizzle schema change (`src/db/schema/payroll.ts`, inside the `payslips` table, next to
+the existing `tds`/`netPay` columns):
+```ts
+deductionShortfall: numeric("deduction_shortfall").notNull().default("0"),
+```
+
+Then in `payroll.ts`'s `generatePayrollRun()`, the existing `.values({...})` and
+`.onConflictDoUpdate({ set: {...} })` calls would each add one line:
+```ts
+deductionShortfall: String(deductionShortfall),
+```
+(the variable already exists at that point in the function — this is a true one-line
+addition per insert/update branch, no other logic changes needed).
+
+And in `generatePayslipPdfs()`, the `renderPayslipPdfBuffer({...})` call would add:
+```ts
+deductionShortfall: Number(row.deductionShortfall),
+```
+(the PDF-side `PayslipPdfInput.deductionShortfall` field and rendering already exist from
+this slice — this is the only change needed once the column lands).
+
+Did NOT run `drizzle-kit generate`/`migrate` — per the task's explicit instruction to stop
+and document rather than apply. This also needs the parent's decision on migration
+numbering/ordering against whatever else is landing in the same THIRD-phase migration
+batch (per CLAUDE.md's "Migration tooling" section — real generated files, reviewed
+before `migrate`, never `push`).
+
+## NO STATUTORY-COMPLIANCE CLAIM (explicit, per CLAUDE.md's own required disclaimer)
+
+Every shortfall note/toast/column added by this slice was written to avoid being
+misread as a compliance guarantee:
+- `buildDeductionShortfallNote()`'s own doc comment states explicitly: "this note
+  describes an arithmetic/policy-safety outcome ... not a legal/compliance determination
+  of what is actually owed".
+- The UI banner text ends with "apne accountant/CA se confirm karein" (confirm with your
+  own accountant/CA) rather than asserting any recovery mechanism.
+- The PDF note explicitly says "not a statutory filing".
+- A unit test (`"never claims statutory/filing authority"`) asserts the text contains
+  "not a statutory filing" and does NOT match `/guarantee|compliant|statutory filing is/i`.
+- This mirrors `statutory.ts`'s own pre-existing header disclaimer (unchanged by this
+  slice) that nothing in that module is e-filing/government-API integration or a
+  substitute for a real accountant's review.
+
+## Not done / explicitly out of scope for this slice
+
+- No schema/migration applied (see "Proposed schema change" above).
+- No real-PostgreSQL contention test added (see that section above) — DB-free evidence
+  only, same limitation already flagged for every other THIRD-phase domain.
+- Did not touch any other THIRD-phase domain (indents/leave/accounts/dispatch/orders/QA)
+  or any file outside `src/lib/payroll/**`, `src/app/payroll/**`, and
+  `tests/payroll-*`/`tests/payroll-ops02-unit.vitest.config.ts`.
+- No commit/push/deploy made.

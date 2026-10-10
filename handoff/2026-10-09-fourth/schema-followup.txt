@@ -1,0 +1,59 @@
+THIRD pending schema compatibility follow-up — 2026-10-10
+
+Outcome: pending 0032 legacy collision blocker fixed locally; NOT migrated/applied/deployed. No DB, dotenv/secret, provider, install, destructive Git, commit or push calls. Only task-owned files changed. Shared journal and earlier migrations were not edited.
+
+Policy:
+- tasks.natural_cycle_start_date is nullable PostgreSQL date, no default/backfill. Existing recurring rows and one-off tasks remain NULL. Multiple historical occurrences of a rule no longer acquire the same empty unique key.
+- Natural unique index is (org_id, recurring_id, natural_cycle_start_date) WHERE recurring_id <> '' AND natural_cycle_start_date IS NOT NULL. Existing 0031 due-date guard remains unchanged.
+- A generated new occurrence still persists the generator's actual natural day (Daily: today; non-Daily: findMostRecentScheduledDay return), never its carried-forward due_date.
+- Task DTO maps NULL to its existing string sentinel ''. listTasks does not manufacture identities from legacy due dates. Known natural dates are authoritative in non-Daily read-before-insert checks. Unknown legacy rows ONLY retain the original conservative due_date >= naturalDay skip heuristic. This heuristic is not a proven historical identity and never writes/backfills one; unknown historical cross-day duplicates remain unresolved.
+
+Generation/proof:
+- Read drizzle.config.ts: it imports dotenv, reads .env.local and requires DATABASE_URL, so it was NOT executed.
+- Used local drizzle-kit/api generateDrizzleJson on the owned task/payroll schema modules, replacing ONLY public.tasks/public.payslips in the pending 0032 snapshot; then generateMigration(0031, pending0032) produced exactly the three SQL statements in drizzle/0032_faulty_mariko_yashida.sql.
+- Preserved snapshot id 25a4dbc1-fcb7-4efc-8ba3-1f9ee4589e3e and prevId 90171c25-c771-45d4-8fc7-b99807be94e7. No new journal entry needed; existing journal tail 0032_faulty_mariko_yashida is verified.
+- Automated DB-free test compares full tasks and payslips serialized schema tables against the snapshot, regenerates and compares exact SQL, checks 0031 linkage/journal tag, and asserts every other snapshot table is unchanged from 0031. This is local generated-artifact proof, NOT DB application proof or whole-current-schema generation across other agents' files.
+
+Payroll findings:
+- Existing src/db/schema/payroll.ts + src/lib/payroll/payroll.ts already persist numeric-string deductionShortfall in INSERT and conflict UPDATE, map it back to number via rowToPayslip for getPayrollRun/listPayslipsForUser, and read stored value into generatePayslipPdfs. Their functional code was retained (payroll.ts temporary sensitivity mutations were fully restored).
+- Added DB-free durable roundtrip tests: reload independent of mutated Generate response/current settings; regeneration updates persisted 1800 to 0; finalize passes stored 1800 to mocked PDF renderer after settings change.
+- Fixed inaccurate production-live PDF comment: pending schema/app wiring is not evidence of applied/deployed production PDFs.
+- IMPORTANT OUT-OF-SCOPE UI WIRING STILL NEEDED: src/app/payroll/payroll-admin-console.tsx (read-only here) still computes anyShortfall from shortfallByUserId (around line 272), and per-row shortfall from shortfallByUserId[p.userId] ?? 0 (around line 317). The map resets on reload; persisted GET payslip.deductionShortfall is ignored despite existing API/domain DTO. Parent/UI owner must prefer p.deductionShortfall ?? shortfallByUserId[p.userId] ?? 0 for both banner and column; use ??, not ||, so a durable zero overrides stale nonzero map. Update obsolete ephemeral-only comments too. Do not call payroll reload UI acceptance complete until wired and tested. No UI file changed here.
+
+RED evidence:
+- Compatibility tests first failed: actual column text vs expected date and missing IS NOT NULL index predicate.
+- Persistence tests first failed: legacy/one-off DTO returned NULL instead of ''.
+- Generator tests first failed: known natural identity ignored and prior known cycle's later due_date incorrectly suppressed the next cycle.
+- Existing catch-path regression sensitivity probe disabled natural-key collision recognition temporarily: carried-forward Tuesday/Wednesday stale-read retry test failed with wrapped 23505 as intended; restored and GREEN.
+- Existing payroll code sensitivity probes: remove INSERT shortfall => all three durable tests failed; restore, remove conflict UPDATE => regeneration test failed (1800 remained instead of 0); restored and GREEN. These are regression sensitivity checks for already implemented persistence, not claims of new payroll functional bugs.
+
+Final exact DB-free checks (local entrypoints, setupFiles: []):
+1. node node_modules/vitest/vitest.mjs run --config tests/recurring-generator-cycle-buddy-unit.vitest.config.ts — 11 passed.
+2. node node_modules/vitest/vitest.mjs run --config tests/recurring-schema-followup.unit.vitest.config.ts — 6 passed (3 schema-generation/index tests + 3 actual task insert/read paths behind mocked repo).
+3. node node_modules/vitest/vitest.mjs run --config tests/payroll-ops02-unit.vitest.config.ts — 30 passed (existing statutory/shortfall tests plus 9 generate/finalize tests, including 3 added durable tests).
+4. node node_modules/typescript/bin/tsc --noEmit --incremental false -p tsconfig.json — exit 0. One initial added-test index-name optional-type error corrected before final rerun.
+5. node node_modules/eslint/bin/eslint.js src/db/schema/tasks.ts src/lib/tasks.ts src/lib/recurringGenerator.ts src/lib/payroll/payslipPdf.tsx tests/recurring-generator-cycle-buddy-unit.test.ts tests/recurring-schema-compatibility.unit.test.ts tests/recurring-task-persistence.unit.test.ts tests/recurring-schema-followup.unit.vitest.config.ts tests/payroll-generate-finalize-unit.test.ts — exit 0.
+6. Scoped git diff --check — exit 0; only Git's LF/CRLF notices.
+No FMS tests, default npm test, build or live DB verification run.
+
+Files changed this follow-up:
+src/db/schema/tasks.ts
+src/lib/tasks.ts
+src/lib/recurringGenerator.ts
+src/lib/payroll/payslipPdf.tsx
+drizzle/0032_faulty_mariko_yashida.sql
+drizzle/meta/0032_snapshot.json
+tests/recurring-generator-cycle-buddy-unit.test.ts
+tests/payroll-generate-finalize-unit.test.ts
+New:
+tests/recurring-schema-compatibility.unit.test.ts
+tests/recurring-task-persistence.unit.test.ts
+tests/recurring-schema-followup.unit.vitest.config.ts
+handoff/2026-10-09-fourth/schema-followup.txt
+
+Migration risks / remaining gates:
+- Apply is separately unauthorized; no real PostgreSQL SQL/index/transaction/concurrency/locking evidence exists from this follow-up. Tests simulate collision and persistence using in-memory transport, not actual Postgres.
+- Before any later apply, verify target migration lineage and that original 0032 has NOT already applied anywhere. If it has, don't rewrite applied migration history: plan a separate corrective migration. Current local rewrite relies on the user-described pending/unapplied status, not a live-DB check.
+- CREATE UNIQUE INDEX is non-concurrent and can block writes while building; plan deployment/apply coordination. App selects these new columns and needs schema application before compatible code deployment. Nullable identity fixes legacy population collision but does not retroactively deduplicate/recover historical logical cycles.
+- Legacy payroll shortfall DEFAULT 0 does not reconstruct unrecorded past shortfalls; finalized historical payroll must not be silently regenerated.
+- Parent owns full-tree final gates/independent review and payroll UI durable reload wiring. Tooling was usable; first attempted esbuild-register helper was absent, replaced by installed esbuild transform+require hook for DB-free generation. No dependencies installed.

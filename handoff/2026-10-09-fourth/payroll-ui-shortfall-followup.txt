@@ -1,0 +1,30 @@
+Payroll admin durable deductionShortfall follow-up — 2026-10-10
+
+Outcome: reload UI blocker fixed and DB-free verified. No schema/domain/API/i18n/other UI changes. No install, secrets/dotenv, DB, migration, production write, destructive Git, commit or push.
+
+Read: CLAUDE.md latest checkpoint, AGENTS.md supplied context, installed Next server/client-components guide, handoff/2026-10-09-fourth/schema-followup.txt, actual PayslipRecord and UI type/load/banner/column, existing DB-free payroll config.
+
+Change:
+- src/app/payroll/payroll-admin-console.tsx: local resolveDeductionShortfall is shared by loaded-payslip banner and each Shortfall column. The GET-loaded durable field is authoritative, including zero. Only omitted/undefined fields use the per-run Generate compatibility cache.
+- Finite positive numeric values render warnings/money; zero, negatives, NaN, infinities, present null/non-number values render no warning/shortfall. Present invalid values never revive stale cache values. Generate cache/toast admission now also rejects nonfinite values.
+- Banner considers only loaded payslip rows, not unrelated cache entries. Obsolete not-persisted/ephemeral-only comments corrected. Existing UX and all i18n text retained.
+- tests/payroll-ui-durable-shortfall.unit.test.mjs: 18 dedicated DB-free tests execute actual dialog JSX logic with loaded API rows and actual Generate handler, using TypeScript compilation + VM with inert effects/UI primitives; no React DOM/browser/API/DB access. No production helper file or dependencies added.
+
+TDD evidence:
+1. Original reload regression first failed: loaded deductionShortfall=1800 + empty Generate map produced warning=false and no shortfall badge instead of warning=true and Rs. 1,800.00. Minimal shared resolver + persisted-row wiring made it pass.
+2. Added invalid-value checks first produced 5 failures (Infinity, null fallback, numeric-string cases); finite/type normalization and absent-only fallback made all 17 then-current tests pass.
+3. Generate nonfinite admission regression first failed with one false warning; finite guard made it pass.
+4. Initial CJS test lint rejected require imports; converted only this new test to ESM .mjs and reran successfully.
+
+Final exact verification (D:/Pro-ERP, local entrypoints):
+- node --test tests/payroll-ui-durable-shortfall.unit.test.mjs — exit 0; 18 tests passed, 0 failed/skipped.
+- node node_modules/vitest/vitest.mjs run --config tests/payroll-ops02-unit.vitest.config.ts — exit 0; 3 files, 30 tests passed; inspected config uses setupFiles: [].
+- node node_modules/eslint/bin/eslint.js src/app/payroll/payroll-admin-console.tsx tests/payroll-ui-durable-shortfall.unit.test.mjs — exit 0, no errors/warnings.
+- git diff --check -- src/app/payroll/payroll-admin-console.tsx tests/payroll-ui-durable-shortfall.unit.test.mjs — exit 0; Git LF/CRLF notice only. New untracked test was validated by real execution and eslint.
+
+Owned files:
+Modified: src/app/payroll/payroll-admin-console.tsx
+Created: tests/payroll-ui-durable-shortfall.unit.test.mjs
+Created: handoff/2026-10-09-fourth/payroll-ui-shortfall-followup.txt
+
+Limits: DB-free UI logic/render regression proof, not live browser reload/E2E or production/schema application proof. Default npm test, whole-tree tsc/lint/build/i18n gates and live DB were not run by this UI subagent. Parent owns final current-tree gates and independent review; pending migration/deployment constraints in schema-followup.txt still apply. Historical shortfalls defaulted to zero are not reconstructed or silently regenerated.

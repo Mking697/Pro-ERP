@@ -1,0 +1,222 @@
+DATA-06 — SKU identity: platform-wide → tenant-local (org_id, sku)
+====================================================================
+Status: schema + migration designed, generated, and locally tested (rollback-scoped,
+real disposable PostgreSQL). Stopped for parent review before any further action.
+No production/deploy/commit/push/installs/application-code change were performed.
+
+## Scope actually owned
+- src/db/schema/inventory.ts (the items table's primary key)
+- A NEW migration: drizzle/0030_fine_dexter_bennett.sql + drizzle/meta/0030_snapshot.json
+  + drizzle/meta/_journal.json entry (idx 30)
+- A NEW test: tests/local-isolated/migrate-0030-rollback-scoped.cjs
+No other schema file, domain file, or application code was touched.
+
+## FK fan-out: verified EMPTY before touching anything
+Searched src/db/schema/** for `references(() => items.sku)` and for any import of
+`items` from `./inventory` in another schema file: zero matches, in both directions.
+No table in src/db/schema/** declares a real foreign key to items.sku — every other
+table's own `sku` column (stock_ledger, indents, bom.productSku/componentSku,
+order_items, purchase_order_lines, vendor_items, plan_materials, tms_shipment_items,
+inward_iqc_fms) is plain, unenforced `text()`, already documented as deliberate in
+several of those files' own comments (e.g. parties.ts's vendorItems doc comment).
+Conclusion: changing items' primary key needs **no compatible composite FK update
+anywhere in src/db/schema/**** — there was nothing to update. This is the key finding
+that kept this item schema-only.
+
+## Schema diff (src/db/schema/inventory.ts)
+```diff
+-  // SKU is the real primary key here — items has no separate generated id.
+-  sku: text("sku").primaryKey(),
++  // SKU identity is tenant-local ... composite (org_id, sku) ...
++  sku: text("sku").notNull(),
+   orgId: text("org_id").notNull().references(() => organizations.id),
+   ...
+   createdBy: text("created_by").notNull().default(""),
+   },
+-  (table) => [index("items_org_id_idx").on(table.orgId)]
++  (table) => [
++    primaryKey({ columns: [table.orgId, table.sku] }),
++    index("items_org_id_idx").on(table.orgId),
++  ]
+```
+
+## How migration 0030 was generated (no production/dotenv touched)
+Exact safe pattern from handoff/2026-10-09/second-schema-migration.txt's "How migration
+0029 was generated": a scratch-only drizzle-kit config (`pro-erp-generate-only-data06.
+drizzle.config.ts`, kept outside version control under G:/Pro-ERP temporarily, deleted
+immediately after use) with only `{ schema: "./src/db/schema/index.ts", out: "./drizzle",
+dialect: "postgresql" }` — no dbCredentials, no dotenv import. Invoked directly:
+`node node_modules/drizzle-kit/bin.cjs generate --config=pro-erp-generate-only-data06.drizzle.config.ts`
+(no npx, no network, no installs, cwd=G:/Pro-ERP). drizzle-kit never opens a database
+connection for `generate` — it only diffs the TypeScript schema against the local
+drizzle/meta/*_snapshot.json chain. Output: `drizzle/0030_fine_dexter_bennett.sql`,
+`drizzle/meta/0030_snapshot.json`, and a new `_journal.json` entry (idx 30), all written
+by drizzle-kit itself, not hand-edited except the SQL file's preflight block below.
+
+drizzle-kit's own generated SQL hit its documented "can't auto-detect primary key
+constraint name" limitation and left a placeholder comment + commented-out DROP
+CONSTRAINT. Confirmed the real constraint name by reading drizzle/0000_mute_white_tiger.sql
+(items was created with an inline `"sku" text PRIMARY KEY NOT NULL` column constraint,
+which Postgres auto-names `items_pkey`) and independently confirmed live against the
+disposable DB (`information_schema.key_column_usage` query, see Testing below) — both
+agree: `items_pkey`. Replaced the placeholder with the real
+`ALTER TABLE "items" DROP CONSTRAINT "items_pkey";` by hand, exactly as migration 0029's
+own precedent (a drizzle-kit limitation filled in by hand, not drizzle-kit output).
+
+## Migration SQL (drizzle/0030_fine_dexter_bennett.sql, final)
+```sql
+-- DATA-06 preflight (DO-block, mirrors migration 0029's own pattern): aborts the whole
+-- migration transaction before any DDL if duplicates/NULLs would violate the new key.
+-- Mathematically defensive-only: the OLD constraint (sku alone, platform-wide unique)
+-- is strictly stricter than the NEW one (org_id, sku), so no row satisfying the old
+-- constraint can violate the new one. Included anyway per CLAUDE.md's "even an
+-- unreviewed migrate run fails closed rather than silently corrupting the invariant."
+DO $$
+DECLARE
+  dup record;
+  nullorg record;
+BEGIN
+  SELECT org_id, sku, count(*) AS n INTO dup
+  FROM items GROUP BY org_id, sku HAVING count(*) > 1 LIMIT 1;
+  IF dup.n IS NOT NULL THEN
+    RAISE EXCEPTION 'Migration 0030 preflight failed: duplicate (org_id, sku) rows exist
+      in items (org_id=%, sku=%, count=%). Reconcile duplicate item masters/stock
+      ledger/BOM/indent references by hand before retrying; never auto-delete history.',
+      dup.org_id, dup.sku, dup.n;
+  END IF;
+  SELECT sku INTO nullorg FROM items WHERE org_id IS NULL LIMIT 1;
+  IF nullorg.sku IS NOT NULL THEN
+    RAISE EXCEPTION 'Migration 0030 preflight failed: items row with sku=% has a NULL
+      org_id; the new composite (org_id, sku) primary key cannot include a NULL
+      column. Reconcile before retrying.', nullorg.sku;
+  END IF;
+END
+$$;
+--> statement-breakpoint
+ALTER TABLE "items" DROP CONSTRAINT "items_pkey";--> statement-breakpoint
+ALTER TABLE "items" ADD CONSTRAINT "items_org_id_sku_pk" PRIMARY KEY("org_id","sku");
+```
+This is the entire migration — exactly one DROP CONSTRAINT and one ADD CONSTRAINT, no
+column/type changes, no data rewrite, no other table touched.
+
+## Local disposable-DB testing — what actually ran
+Target re-verified before touching anything: `pro_erp_test`/`pro_erp_test` on the
+task-owned disposable container (`pro-erp-regression-pg`/`pro-erp-regression-ws`,
+already running 7h, not started/stopped by this task). Real baseline state confirmed
+first: **30 migrations already applied for real** (0029 had been committed for real by
+this point in the shared tree — not by this task), `items_pkey` still on `sku` alone.
+
+New file `tests/local-isolated/migrate-0030-rollback-scoped.cjs` — single manually-
+driven transaction (BEGIN ... final ROLLBACK, never COMMIT), SAVEPOINT/ROLLBACK TO
+SAVEPOINT around each sub-scenario exactly like migrate-0029-rollback-scoped.cjs:
+
+1. Confirms exactly 30 migrations applied and `items_pkey (sku)` as the live starting
+   point.
+2. **duplicatePreflightAbortsBeforeDDL** — since a real (org_id,sku) duplicate cannot
+   exist under the still-live OLD constraint, this sub-scenario drops `items_pkey`
+   inside its OWN savepoint (simulating a hypothetical already-corrupted state),
+   inserts a synthetic same-org/same-sku duplicate, runs the actual checked-in 0030 SQL
+   (read from disk) — confirms it throws exactly the preflight's own duplicate
+   exception before any DDL, then ROLLBACK TO SAVEPOINT restores `items_pkey` and
+   removes the fixture. **PASS**.
+3. **upgradeWithExistingMixedTenantSkuData** — inserts genuine pre-existing-shaped data
+   (two different orgs, two different SKUs — the only shape possible pre-migration),
+   runs the real 0030 SQL end-to-end, records the migration row (replicating
+   `migrate()`'s own bookkeeping). Confirms the new `items_org_id_sku_pk (org_id,sku)`
+   constraint is installed and the pre-existing rows survive untouched. **PASS**.
+4. **sameSkuDifferentTenantsSucceeds** — the actual DATA-06 regression: inserts
+   `SKU-SHARED` for two different orgs post-upgrade; both insert successfully. **PASS**.
+5. **sameTenantDuplicateStillRejected** — same org + same `SKU-SHARED` again is
+   rejected with `duplicate key value violates unique constraint "items_org_id_sku_pk"`.
+   **PASS**.
+6. **missingOrgReferenceStillRejected** — a NULL `org_id` is still rejected (NOT NULL
+   unchanged by this migration). **PASS**.
+7. Final `ROLLBACK` of the whole transaction.
+
+Executed command and result (local disposable target,
+`PRO_ERP_LOCAL_TESTS=1 PRO_ERP_LOCAL_CREDENTIALS=<scratch path>`, no dotenv):
+```
+node tests/local-isolated/migrate-0030-rollback-scoped.cjs
+=> {"target":{"database":"pro_erp_test","username":"pro_erp_test"},
+    "duplicatePreflightAbortsBeforeDDL":"PASS",
+    "upgradeWithExistingMixedTenantSkuData":"PASS",
+    "sameSkuDifferentTenantsSucceeds":"PASS",
+    "sameTenantDuplicateStillRejected":"PASS",
+    "missingOrgReferenceStillRejected":"PASS"}
+```
+Re-inspected the real `public` schema immediately after: still exactly 30 migrations
+applied, `items_pkey (sku)` unchanged, zero `ORG-M0030-*`/`SKU-*` test fixture rows left
+behind — confirmed zero side effects on the shared disposable database.
+
+A genuine from-empty "fresh install of all 31" was not attempted for the same
+documented reason as migration 0029 (every CREATE TYPE/FK in drizzle/*.sql hardcodes
+literal `"public".name`, and `tests/local-isolated/safety.cjs` correctly refuses any
+target but the real, already-populated `pro_erp_test` database) — the rollback-scoped
+real-schema test above is the established substitute, same as 0029's own precedent.
+
+## Application-code fan-out found — reported, NOT fixed (out of this item's scope)
+**`src/lib/parties/vendorItems.ts:61`**:
+```ts
+.leftJoin(items, eq(vendorItems.sku, items.sku))
+```
+This join matches ANY `items` row with the same `sku`, regardless of org — it does not
+also constrain `items.orgId = vendorItems.orgId` (the surrounding `.where()` only scopes
+`vendorItems.orgId`/`vendorItems.vendorId`, not the joined `items` side). Under the OLD
+platform-wide-unique-sku schema this was harmless (at most one `items` row could ever
+match a given sku, period). **Once this migration is applied and two different orgs
+hold the same SKU, this join can return another organization's item name/UOM
+(`listVendorsForSku`'s underlying query) instead of — or in addition to — the calling
+org's own item.** This is a genuine cross-tenant data leak introduced by the schema
+change, needs `and(eq(vendorItems.sku, items.sku), eq(vendorItems.orgId, items.orgId))`,
+and is domain logic, not schema — out of this item's remit per the task's own
+instruction to stop and report rather than silently expand scope. Recommend a dedicated
+follow-up item (or folding into whichever item eventually applies migration 0030 for
+real) before this migration is applied to any database with real multi-tenant SKU
+overlap.
+
+No other `items`/`sku` join site was found anywhere outside schema files that omits an
+org_id-scoped predicate — `src/lib/inventory/items.ts`'s own three sku queries (find/
+update) already filter on `and(eq(items.orgId, orgId), eq(items.sku, sku))`, and
+`repo.ts`'s generic `findById` cannot even be called against `items` (it requires a
+single `id` column; `items`'s own doc comment already excludes it, unaffected by this
+change either way).
+
+## Outstanding / for parent review
+1. **Migration 0030 is NOT applied to the real local disposable database** — correctly
+   so, per this task's explicit boundary (rollback-scoped testing only, never mutate
+   the shared disposable DB's real migration history). `items_pkey (sku)` is still the
+   live constraint there. Applying it for real (via `tests/local-isolated/migrate.cjs`,
+   which would need its asserted migration count bumped from 30 to 31 first) is a
+   decision for whoever drives the next session, same as migration 0029's own
+   Outstanding note left that decision to the parent.
+2. **`src/lib/parties/vendorItems.ts:61`'s missing org-scoped join predicate** (above)
+   is a required follow-up before this migration is safe to apply anywhere real
+   multi-org SKU collisions might occur. This item deliberately does not fix it.
+3. **Production preflight is still manual and unrun** — correctly so. Before applying
+   migration 0030 to production: run the exact duplicate/orphan preflight queries in
+   this document's "Migration SQL" section by hand first (they will both return zero
+   rows today, since the current production schema still enforces platform-wide-unique
+   sku — but run them anyway, as the operational-safety step, not just trust the math).
+   Migration 0030 also re-runs both checks itself, server-side, as its own first
+   statement.
+4. **Rollback guidance if migration 0030 needs to be reverted after a real apply**:
+   `ALTER TABLE items DROP CONSTRAINT items_org_id_sku_pk; ALTER TABLE items ADD
+   CONSTRAINT items_pkey PRIMARY KEY (sku);` — but only safe if no cross-tenant SKU
+   collision was created in the meantime (if two orgs picked the same SKU while this
+   migration was live, reverting would hit a real duplicate-key violation, same risk
+   class as any widen-then-narrow key change); then delete its row from
+   `drizzle.__drizzle_migrations` (match by hash). Nothing else this migration touches
+   needs reverting — it changes exactly one constraint on one table.
+
+## Boundaries respected
+Only src/db/schema/inventory.ts, drizzle/0030_*.sql + its snapshot/journal entry, and
+tests/local-isolated/migrate-0030-rollback-scoped.cjs (new file) were created/modified.
+No other schema/domain/application file touched — vendorItems.ts's gap is reported, not
+fixed. No `npm install`, no network npm/npx registry calls (invoked
+`node node_modules/drizzle-kit/bin.cjs` directly). No production `.env`/`DATABASE_URL`
+read or connected to. No `git commit`/`push`/`git stash`/`git reset`/`git clean`. No
+destructive action taken against the live disposable database outside an explicitly
+rolled-back transaction (verified zero side effects after). Task-owned Docker
+containers (`pro-erp-regression-pg`, `pro-erp-regression-ws`) were left running exactly
+as found — not started or stopped by this item. The scratch drizzle-kit config used to
+generate the migration was deleted immediately after use.

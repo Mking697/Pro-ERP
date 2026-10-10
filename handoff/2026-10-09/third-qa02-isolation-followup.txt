@@ -1,0 +1,75 @@
+QA-02 isolation follow-up — 2026-10-09
+Status: implemented and DB-free verified by subagent; STOPPED for parent verification.
+
+Changes
+- tests/helpers/databaseTargetGuard.ts now parses PostgreSQL URLs and compares approved
+  host + port + database identity. TEST_DATABASE_TARGET is a credential-free PostgreSQL
+  URL, not a regex. Missing/regex-only approval refuses execution. Credentials, query and
+  fragment text cannot authorize a different identity. Only known non-routing query
+  options are accepted (sslmode, channel_binding, application_name, connect_timeout).
+  DATABASE_URL must include an explicit port: the installed driver can inherit PGPORT
+  otherwise. Declaration port may be omitted, meaning 5432. No URL/secrets echoed in errors.
+- tests/setup.ts no longer reads .env.local or falls back to dotenv; externally supplied
+  DATABASE_URL + TEST_DATABASE_TARGET are required. CI wiring now uses repository variable
+  vars.TEST_DATABASE_TARGET. Operator must provision/approve the actual disposable target;
+  identity matching does not itself prove a database is disposable.
+- tests/runner-concurrency.test.ts uses makeTestOrgs/cleanupTestOrgs and spies on registry
+  listOrganizations to enumerate ONLY its own fixtures BEFORE callbacks. No result-only
+  filtering, no swallowed deletion errors. Spy restored in finally. Real runner,
+  tenantFromOrgId/getOrganization and tenant AsyncLocalStorage remain unchanged.
+- makeTestOrgs retains BOTH creation and rollback errors in AggregateError.
+- New DB-free wrapper imports the exact runner test file with fake registry persistence,
+  while forwarding runWithTenant through its REAL implementation and observing callbacks.
+  Unrelated active sentinel callback never runs; fixtures cleaned and enumeration restored.
+
+Actual TDD evidence (executed before each corresponding fix)
+1. Password-only database-name spoof: 1 failed, 5 skipped (old whole-URL regex accepted it).
+   Interim parsed-identity regression run: 6 passed.
+2. Explicit identity contract: 5 failed, 16 passed (21 total): missing declaration message,
+   unrestricted/legacy regex acceptance, and approved loopback/CI target rejection.
+   After exact-identity fix: 21 passed. Invalid URL/protocol and missing URL cases were
+   included before that fix but already passed the interim implementation; not claimed RED.
+3. Partial creation + rollback failure: 1 failed, 5 passed; setup cause was discarded.
+   After cause preservation: 6 passed.
+4. Exact runner-test wrapper sentinel: 2 failed (both real runner callbacks reached the
+   unrelated active tenant before enumeration scoping). Then both passed.
+5. Routing query override: 4 failed, 21 skipped; query host/port/database/dbname were accepted.
+   Fixed with non-routing option allowlist.
+6. Implicit port: 1 failed, 25 skipped; could inherit connection defaults. Explicit actual
+   port requirement added; happy-path examples now explicitly specify port 5432.
+
+Final executed commands (all exit 0)
+- node node_modules/vitest/vitest.mjs run --config tests/qa02-isolation.unit.vitest.config.ts --reporter verbose
+  Result: 4 files, 40 tests passed. setupFiles: []; only guard/helper/unit wrapper files.
+- node node_modules/eslint/bin/eslint.js tests/helpers/databaseTargetGuard.ts tests/helpers/testOrg.ts tests/helpers/testOrg.cleanup.test.ts tests/setup.ts tests/setup.guard.test.ts tests/database-target-identity.test.ts tests/runner-concurrency.test.ts tests/runner-fixture-isolation.unit.test.ts tests/qa02-isolation.unit.vitest.config.ts
+- node node_modules/typescript/bin/tsc --project tests/qa02-isolation.tsconfig.json --noEmit
+  Scoped roots include changed tests/helpers and their real imported dependency graph.
+- git diff --check -- tests/helpers tests/setup.ts tests/setup.guard.test.ts tests/runner-concurrency.test.ts .github/workflows/ci.yml
+  No whitespace errors; Git emitted only existing LF-to-CRLF advisory warnings.
+
+Files changed/added by this follow-up
+- tests/helpers/databaseTargetGuard.ts
+- tests/helpers/testOrg.ts
+- tests/helpers/testOrg.cleanup.test.ts
+- tests/setup.ts
+- tests/setup.guard.test.ts (migrated previous regex assertions to identity declarations)
+- tests/runner-concurrency.test.ts
+- tests/database-target-identity.test.ts (new)
+- tests/runner-fixture-isolation.unit.test.ts (new)
+- tests/qa02-isolation.unit.vitest.config.ts (new, DB-free setupFiles: [])
+- tests/qa02-isolation.tsconfig.json (new, scoped/no incremental build output)
+- .github/workflows/ci.yml
+- this handoff
+Existing guard/cleanup test configs were reviewed and left unchanged.
+
+Parent gates / not performed
+- Parent must independently inspect/rerun the DB-free command and scoped checks above.
+- Parent must rerun tests/runner-concurrency.real.vitest.config.ts only through the approved
+  disposable local harness and verify real fixture cleanup/tenant behavior. This subagent
+  did NOT execute the real runner config or run the runner against a generic DATABASE_URL.
+- Configure approved credential-free TEST_DATABASE_TARGET repository variable for CI;
+  actual DATABASE_URL secret must specify a port and match that exact identity. CI itself
+  was not run, and no external secrets/variables were changed or read.
+- No .env/secrets/environment-value reads, installs, production access, production runner
+  changes, edits to tests/local-isolated/** or approved real configs, destructive Git,
+  commits, pushes, deployments, or database writes.

@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Search, Loader2, Building2, Handshake, Package, ShoppingCart, UserRoundSearch } from "lucide-react";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
+import { useT } from "@/components/preferences-provider";
 import type { SearchResult } from "@/app/api/search/route";
 
 const KIND_ICON: Record<SearchResult["kind"], typeof Search> = {
@@ -43,25 +44,46 @@ const KIND_ACCENT: Record<SearchResult["kind"], string> = {
  * primitives already here rather than add a second UI library for one feature.
  */
 export default function CommandPalette({ iconOnly = false }: { iconOnly?: boolean }) {
+  const t = useT();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<SearchResult[]>([]);
   const [loading, setLoading] = useState(false);
   const [activeIndex, setActiveIndex] = useState(0);
+  const [page, setPage] = useState(0);
+  const [hasMore, setHasMore] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [retryKey, setRetryKey] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
   const router = useRouter();
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const requestRef = useRef(0);
+  const controllerRef = useRef<AbortController | null>(null);
+  const cancelSearch = useCallback(() => {
+    requestRef.current++;
+    controllerRef.current?.abort();
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+  }, []);
+  const handleOpenChange = useCallback((next: boolean) => {
+    setOpen(next);
+    if (!next) {
+      cancelSearch();
+      setQuery(""); setResults([]); setActiveIndex(0); setLoading(false);
+      setPage(0); setHasMore(false); setError(null);
+    }
+  }, [cancelSearch]);
 
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
         e.preventDefault();
-        setOpen((v) => !v);
+        handleOpenChange(!open);
       }
     }
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, []);
+  }, [open, handleOpenChange]);
 
   useEffect(() => {
     // Base UI's Dialog focuses its own Popup on open; stealing focus back to the input
@@ -72,49 +94,40 @@ export default function CommandPalette({ iconOnly = false }: { iconOnly?: boolea
     return () => clearTimeout(id);
   }, [open]);
 
-  // Resetting query/results/activeIndex happens here, at the one place that actually
-  // closes the dialog (Escape, outside click, or a real navigation), rather than
-  // synchronously inside a useEffect watching `open` — this project's lint config
-  // (react-hooks/set-state-in-effect) disallows the latter.
-  function handleOpenChange(next: boolean) {
-    setOpen(next);
-    if (!next) {
-      setQuery("");
-      setResults([]);
-      setActiveIndex(0);
-    }
-  }
-
-  // Likewise, the <2-char "nothing to search yet" reset and the loading flag both happen
-  // directly in the input's onChange (handleQueryChange below), not synchronously inside
-  // this effect — the effect only ever starts/cancels the debounced fetch, whose own
-  // setState calls are all inside .then()/.catch()/.finally(), which the rule allows.
   useEffect(() => {
-    if (debounceRef.current) clearTimeout(debounceRef.current);
-    if (query.trim().length < 2) return;
+    if (!open || query.trim().length < 2) return;
+    const requestId = requestRef.current;
+    const controller = new AbortController();
+    controllerRef.current = controller;
+    const current = () => !controller.signal.aborted && requestId === requestRef.current;
     debounceRef.current = setTimeout(() => {
-      fetch(`/api/search?q=${encodeURIComponent(query.trim())}`)
-        .then((res) => res.json())
-        .then((data: { results: SearchResult[] }) => {
-          setResults(data.results ?? []);
-          setActiveIndex(0);
+      fetch(`/api/search?q=${encodeURIComponent(query.trim())}&page=${page}`, { signal: controller.signal })
+        .then(async (res) => {
+          if (!res.ok) throw new Error(`${t("Search failed. Please retry.")} (HTTP ${res.status})`);
+          return res.json();
         })
-        .catch(() => setResults([]))
-        .finally(() => setLoading(false));
+        .then((data: { results: SearchResult[]; hasMore?: boolean }) => {
+          if (!current()) return;
+          setResults(data.results ?? []); setHasMore(!!data.hasMore); setActiveIndex(0); setError(null);
+        })
+        .catch(() => {
+          if (!current()) return;
+          setError(t("Search failed. Please retry."));
+        })
+        .finally(() => { if (current()) setLoading(false); });
     }, 250);
     return () => {
+      controller.abort();
       if (debounceRef.current) clearTimeout(debounceRef.current);
     };
-  }, [query]);
+  }, [query, open, page, retryKey, t]);
 
   function handleQueryChange(value: string) {
-    setQuery(value);
-    if (value.trim().length < 2) {
-      setResults([]);
-      setLoading(false);
-    } else {
-      setLoading(true);
-    }
+    cancelSearch(); setQuery(value); setPage(0); setHasMore(false); setError(null);
+    setResults([]); setActiveIndex(0); setLoading(value.trim().length >= 2);
+  }
+  function changePage(next: number) {
+    cancelSearch(); setPage(next); setResults([]); setActiveIndex(0); setLoading(true); setError(null);
   }
 
   const goTo = useCallback(
@@ -122,7 +135,7 @@ export default function CommandPalette({ iconOnly = false }: { iconOnly?: boolea
       handleOpenChange(false);
       router.push(result.href);
     },
-    [router]
+    [router, handleOpenChange]
   );
 
   function onKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
@@ -192,12 +205,13 @@ export default function CommandPalette({ iconOnly = false }: { iconOnly?: boolea
             {loading && <Loader2 aria-hidden="true" className="size-4 shrink-0 animate-spin text-muted-foreground" />}
           </div>
 
+          {error && <div role="alert" className="px-3 py-2 text-sm text-destructive">{error} <button type="button" aria-label={t("Retry search")} onClick={() => { cancelSearch(); setLoading(true); setError(null); setRetryKey(key => key + 1); }}>{t("Retry search")}</button></div>}
           <div
             id="command-palette-results"
             role="listbox"
             className="max-h-80 overflow-y-auto p-1.5"
           >
-            {query.trim().length >= 2 && !loading && results.length === 0 && (
+            {query.trim().length >= 2 && !loading && !error && results.length === 0 && (
               <p className="px-3 py-6 text-center text-sm text-muted-foreground">
                 Kuch nahi mila &quot;{query}&quot; ke liye.
               </p>
@@ -247,6 +261,13 @@ export default function CommandPalette({ iconOnly = false }: { iconOnly?: boolea
             })}
           </div>
 
+          {(page > 0 || hasMore) && (
+            <div className="flex justify-between border-t px-3 py-2">
+              <button type="button" aria-label={t("Previous search page")} disabled={loading || page === 0} onClick={() => changePage(page - 1)}>{t("Previous")}</button>
+              <span>{t("Page")} {page + 1}</span>
+              <button type="button" aria-label={t("Next search page")} disabled={loading || !hasMore} onClick={() => changePage(page + 1)}>{t("Next")}</button>
+            </div>
+          )}
           {/* Keyboard affordance footer — a small, unobtrusive reminder of the arrow
               keys/Enter/Esc shortcuts the palette already supports, so first-time users
               don't have to discover them by accident. */}

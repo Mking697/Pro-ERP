@@ -1,14 +1,15 @@
 import type { InferSelectModel } from "drizzle-orm";
 import { and, eq, inArray } from "drizzle-orm";
 import { indents, purchaseOrderLines, purchaseOrders, vendors } from "@/db/schema";
-import { db } from "@/db/client";
+import { db, runInTenantTransaction, afterTenantCommit } from "@/db/client";
+import { runIdempotentTenantMutation } from "@/lib/mutations";
 import { findById, insertRecord, updateById } from "@/db/repo";
 import { getTenantOrgId } from "@/lib/tenant";
 import { generateId } from "@/lib/id";
 import { getVendorItemLink, listVendorsForSkus, type VendorSuggestion } from "@/lib/parties/vendorItems";
 import { getPurchaseSetup } from "@/lib/purchase/settings";
 import { computeDefaultTatDeadline, computeTatDeadline } from "@/lib/fms/calendar";
-import { receiveIndent } from "@/lib/inventory/indents";
+import { receiveIndentForPurchaseOrder } from "@/lib/inventory/indents";
 import { getSetting } from "@/lib/settings";
 import { uploadAttachment } from "@/lib/storage";
 import { getQuotationSetup } from "@/lib/leads/quotationSetup";
@@ -281,6 +282,9 @@ async function resolvePoLines(
   vendorId: string,
   lines: CreatePurchaseOrderLineInput[]
 ): Promise<{ vendor: InferSelectModel<typeof vendors>; resolved: ResolvedPoLine[] }> {
+  if (new Set(lines.map((line) => line.indentId)).size !== lines.length) {
+    throw new PurchaseOrderError("Ek indent ko PO me sirf ek baar chunein.");
+  }
   const vendor = await findById(vendors, orgId, vendorId);
   if (!vendor) {
     throw new PurchaseOrderError("Vendor nahi mila.");
@@ -304,12 +308,16 @@ async function resolvePoLines(
       throw new PurchaseOrderError(`${vendor.vendorName} "${indent.itemName}" supply nahi karta.`);
     }
 
+    const quantity = Number(indent.finalQty);
+    if (!Number.isFinite(quantity) || !(quantity > 0)) {
+      throw new PurchaseOrderError("Indent quantity invalid hai.");
+    }
     resolved.push({
       indentId: indent.id,
       sku: indent.sku,
       itemName: indent.itemName,
       uom: indent.uom,
-      qty: Number(indent.finalQty) || 0,
+      qty: quantity,
       oldPrice: link.unitPrice,
       newPrice:
         line.newPrice !== undefined && line.newPrice !== null ? String(line.newPrice) : link.unitPrice,
@@ -328,7 +336,27 @@ async function resolvePoLines(
  * PO (max Lead Time across every line's vendor_items link), since the PO as a whole isn't
  * done until its slowest item arrives.
  */
-export async function createPurchaseOrder(input: CreatePurchaseOrderInput): Promise<PurchaseOrder> {
+export async function createPurchaseOrder(input: CreatePurchaseOrderInput, key?: string): Promise<PurchaseOrder> {
+  const orgId = await getTenantOrgId();
+  const work = async () => {
+    const result = await createPurchaseOrderInTransaction(input);
+    return { ...result, lines: result.lines.map((line) => ({ ...line })) };
+  };
+  if (key === undefined) return runInTenantTransaction(orgId, work);
+  return runIdempotentTenantMutation(orgId, {
+    operation: "purchase.issue.v1", actorId: input.issuedBy, key,
+    payload: {
+      vendorId: input.vendorId, attachmentUrl: input.attachmentUrl,
+      lines: input.lines.map((line) => ({ indentId: line.indentId, ...(line.newPrice !== undefined ? { newPrice: line.newPrice } : {}) })),
+      ...(input.generateAttachment !== undefined ? { generateAttachment: input.generateAttachment } : {}),
+      ...(input.gstPercent !== undefined ? { gstPercent: input.gstPercent } : {}),
+      ...(input.termsAndConditions !== undefined ? { termsAndConditions: input.termsAndConditions } : {}),
+      ...(input.note !== undefined ? { note: input.note } : {}),
+    },
+  }, work);
+}
+
+async function createPurchaseOrderInTransaction(input: CreatePurchaseOrderInput): Promise<PurchaseOrder> {
   if (input.lines.length === 0) {
     throw new PurchaseOrderError("Kam se kam ek item chunein.");
   }
@@ -387,24 +415,18 @@ export async function createPurchaseOrder(input: CreatePurchaseOrderInput): Prom
   }
 
   if (input.generateAttachment && !attachmentUrl) {
-    // The row now exists for real, so generatePoPdf() (below) can render against its actual
-    // saved data and set attachmentUrl itself. If it throws (a rendering error, Blob being
-    // unavailable, ...), the PO and its lines are already committed above — neon-http has no
-    // cross-call transaction to roll them back into, same as every other multi-statement
-    // sequential write in this file (see the "Sequential, not db.batch()" comment above).
-    // Rather than let a bare exception look like "nothing happened" when a real PO+lines now
-    // exist and the indent is already marked Ordered, name the PO so the caller can recover —
-    // either by retrying POST /api/purchase/orders/[poId]/generate-pdf, or by manually
-    // uploading and PATCHing attachmentUrl in some future screen.
-    try {
-      await generatePoPdf(poId);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      throw new PurchaseOrderError(
-        `PO ${poId} ban gaya hai (items reserve ho chuke hain), lekin PDF generate nahi ho paya: ${message}. ` +
-          `Dobara PDF generate karne ki koshish karein (PO ID: ${poId}).`
-      );
-    }
+    // Blob is external: the PO/claims and durable replay DTO commit first. The DTO
+    // deliberately remains the issue-time snapshot (blank attachment while generation
+    // is pending). Read the PO for the generated URL, or use generate-pdf to repair a
+    // committed generation failure; replaying the issue key must not issue/upload again.
+    await afterTenantCommit(async () => {
+      try {
+        await generatePoPdf(poId);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        throw new PurchaseOrderError(`PO ${poId} committed hai; PDF generate nahi ho paya: ${message}. Generate-PDF se repair karein.`);
+      }
+    });
   }
 
   const created = await getPurchaseOrder(poId);
@@ -573,6 +595,7 @@ export async function markFollowUpDone(
   remark: string
 ): Promise<PurchaseOrder> {
   const orgId = await getTenantOrgId();
+  return runInTenantTransaction(orgId, async () => {
   const po = await findById(purchaseOrders, orgId, poId);
   if (!po) throw new PurchaseOrderError("PO nahi mila.");
   if (po.status !== "Open") throw new PurchaseOrderError(`Ye PO "${po.status}" hai.`);
@@ -587,6 +610,7 @@ export async function markFollowUpDone(
   const updated = await getPurchaseOrder(poId);
   if (!updated) throw new PurchaseOrderError("PO update ho gaya lekin load nahi ho paya.");
   return updated;
+  });
 }
 
 /**
@@ -601,11 +625,28 @@ export async function receivePurchaseOrderLine(
   indentId: string,
   receivedQty: number,
   userId: string,
-  invoiceUrl?: string
+  invoiceUrl?: string,
+  key?: string
+): Promise<PurchaseOrder> {
+  const orgId = await getTenantOrgId();
+  const work = async () => {
+    const result = await receivePurchaseOrderLineInTransaction(poId, indentId, receivedQty, userId, invoiceUrl);
+    return { ...result, lines: result.lines.map((line) => ({ ...line })) };
+  };
+  if (key === undefined) return runInTenantTransaction(orgId, work);
+  return runIdempotentTenantMutation(orgId, {
+    operation: "purchase.receive.v1", actorId: userId, key,
+    payload: { poId, indentId, receivedQty, ...(invoiceUrl !== undefined ? { invoiceUrl } : {}) },
+  }, work);
+}
+
+async function receivePurchaseOrderLineInTransaction(
+  poId: string, indentId: string, receivedQty: number, userId: string, invoiceUrl?: string
 ): Promise<PurchaseOrder> {
   const orgId = await getTenantOrgId();
   const po = await findById(purchaseOrders, orgId, poId);
   if (!po) throw new PurchaseOrderError("PO nahi mila.");
+  if (po.status !== "Open") throw new PurchaseOrderError(`Ye PO "${po.status}" hai.`);
   if (!po.followUpDoneAt) {
     throw new PurchaseOrderError("Pehle Follow-up complete karein, tabhi receive kar sakte hain.");
   }
@@ -622,8 +663,12 @@ export async function receivePurchaseOrderLine(
     )
     .limit(1);
   if (!line) throw new PurchaseOrderError("Ye item is PO me nahi hai.");
+  const indent = await findById(indents, orgId, indentId);
+  if (!indent || indent.poId !== poId || indent.sku !== line.sku) {
+    throw new PurchaseOrderError("PO ka tenant-owned indent claim invalid hai.");
+  }
 
-  await receiveIndent(indentId, receivedQty, userId);
+  await receiveIndentForPurchaseOrder(indentId, receivedQty, userId, poId);
 
   if (invoiceUrl && !po.invoiceUrl) {
     await updateById(purchaseOrders, orgId, poId, { invoiceUrl });

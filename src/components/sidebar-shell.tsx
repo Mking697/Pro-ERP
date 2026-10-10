@@ -1,10 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState, useSyncExternalStore } from "react";
+import { useRef, useState, useSyncExternalStore } from "react";
 import { Menu, PanelLeftClose, PanelLeftOpen, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
+import { Dialog, DialogClose, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import NavLinks, { type NavEntry } from "@/components/nav-links";
 import CommandPalette from "@/components/command-palette";
 import LogoutButton from "@/app/dashboard/logout-button";
@@ -92,22 +93,12 @@ export default function SidebarShell({
     getCollapsedServerSnapshot
   );
   const [mobileOpen, setMobileOpen] = useState(false);
+  const menuTriggerRef = useRef<HTMLButtonElement>(null);
+  const menuCloseRef = useRef<HTMLButtonElement>(null);
 
   function toggleCollapsed() {
     setCollapsedPersisted(!collapsed);
   }
-
-  // The drawer is hand-built (not the existing Dialog primitive, which centers itself and
-  // would need real override work to slide from the left instead) so it needs its own
-  // Escape handling — every other overlay in this app gets that for free from Base UI.
-  useEffect(() => {
-    if (!mobileOpen) return;
-    function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") setMobileOpen(false);
-    }
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [mobileOpen]);
 
   return (
     <div className="flex min-h-dvh bg-muted/30">
@@ -137,7 +128,7 @@ export default function SidebarShell({
         )}
 
         <div className="flex-1 overflow-y-auto px-2.5 py-3">
-          <NavLinks items={items} collapsed={collapsed} />
+          <NavLinks items={items} collapsed={collapsed} onExpand={() => setCollapsedPersisted(false)} />
         </div>
 
         {!collapsed ? (
@@ -202,9 +193,12 @@ export default function SidebarShell({
         <header className="sticky top-0 z-40 flex h-14 shrink-0 items-center gap-3 border-b bg-background/95 px-4 backdrop-blur supports-[backdrop-filter]:bg-background/80 md:hidden">
           <button
             type="button"
+            ref={menuTriggerRef}
             onClick={() => setMobileOpen(true)}
             className="flex size-9 shrink-0 items-center justify-center rounded-xl text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             aria-label="Menu kholen"
+            aria-haspopup="dialog"
+            aria-expanded={mobileOpen}
           >
             <Menu className="size-5" aria-hidden="true" />
           </button>
@@ -222,60 +216,54 @@ export default function SidebarShell({
         <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-6 sm:px-6">{children}</main>
       </div>
 
-      {/* Mobile drawer */}
-      {mobileOpen && (
-        <div className="fixed inset-0 z-50 md:hidden">
-          <div
-            aria-hidden="true"
-            className="absolute inset-0 animate-in bg-black/40 fade-in-0 duration-150"
-            onClick={() => setMobileOpen(false)}
-          />
-          <div
-            role="dialog"
-            aria-modal="true"
-            aria-label="Main navigation"
-            className="absolute inset-y-0 left-0 flex w-72 max-w-[85vw] animate-in flex-col border-r bg-background slide-in-from-left duration-200"
-          >
-            <div className="flex h-14 shrink-0 items-center justify-between gap-2.5 border-b px-4">
-              <Link
-                href="/dashboard"
-                onClick={() => setMobileOpen(false)}
-                className="flex min-w-0 items-center gap-2.5"
-              >
-                <OrgLogo url={logoUrl} name={orgName} />
-                <span className="truncate text-sm font-semibold">{orgName}</span>
-              </Link>
-              <button
-                type="button"
-                onClick={() => setMobileOpen(false)}
-                className="flex size-8 shrink-0 items-center justify-center rounded-xl text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                aria-label="Menu band karein"
-              >
-                <X className="size-4" aria-hidden="true" />
-              </button>
-            </div>
+      {/* Base UI owns modal focus, background inertness and stacked Escape dismissal. */}
+      <Dialog open={mobileOpen} onOpenChange={setMobileOpen}>
+        <DialogContent
+          showCloseButton={false}
+          initialFocus={menuCloseRef}
+          finalFocus={menuTriggerRef}
+          className="inset-y-0 top-0 left-0 grid h-dvh max-h-dvh w-72 max-w-[85vw] translate-x-0 translate-y-0 grid-rows-[auto_1fr_auto] gap-0 rounded-none p-0 shadow-lg border-r bg-background data-open:zoom-in-100 data-closed:zoom-out-100 data-open:slide-in-from-left data-closed:slide-out-to-left"
+        >
+          <DialogTitle className="sr-only">Main navigation</DialogTitle>
+          <div className="flex h-14 shrink-0 items-center justify-between gap-2.5 border-b px-4">
+            <Link
+              href="/dashboard"
+              onClick={() => setMobileOpen(false)}
+              className="flex min-w-0 items-center gap-2.5"
+            >
+              <OrgLogo url={logoUrl} name={orgName} />
+              <span className="truncate text-sm font-semibold">{orgName}</span>
+            </Link>
+            <DialogClose
+              type="button"
+              className="flex size-8 shrink-0 items-center justify-center rounded-xl text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              ref={menuCloseRef}
+              aria-label="Menu band karein"
+            >
+              <X className="size-4" aria-hidden="true" />
+            </DialogClose>
+          </div>
 
-            <div className="flex-1 overflow-y-auto px-2.5 py-3">
-              <NavLinks items={items} onNavigate={() => setMobileOpen(false)} />
-            </div>
+          <div className="min-h-0 overflow-y-auto px-2.5 py-3">
+            <NavLinks items={items} onNavigate={() => setMobileOpen(false)} />
+          </div>
 
-            <div className="shrink-0 border-t p-3">
-              <div className="flex items-center justify-between gap-2">
-                <div className="min-w-0">
-                  <p className="truncate text-sm font-medium leading-tight">{fullName}</p>
-                  <p className="truncate text-xs leading-tight text-muted-foreground">{email}</p>
-                </div>
-                <Badge variant="secondary" className="shrink-0">
-                  {role}
-                </Badge>
+          <div className="shrink-0 border-t p-3">
+            <div className="flex items-center justify-between gap-2">
+              <div className="min-w-0">
+                <p className="truncate text-sm font-medium leading-tight">{fullName}</p>
+                <p className="truncate text-xs leading-tight text-muted-foreground">{email}</p>
               </div>
-              <div className="mt-2.5 flex items-center justify-end">
-                <LogoutButton />
-              </div>
+              <Badge variant="secondary" className="shrink-0">
+                {role}
+              </Badge>
+            </div>
+            <div className="mt-2.5 flex items-center justify-end">
+              <LogoutButton />
             </div>
           </div>
-        </div>
-      )}
+        </DialogContent>
+      </Dialog>
 
       {showChatWidget && <ChatWidget />}
     </div>

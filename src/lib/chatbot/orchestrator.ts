@@ -3,7 +3,6 @@ import { getAvailableTools, findTool, type ChatTool } from "@/lib/chatbot/tools"
 import {
   callGemini,
   functionResponse,
-  getGeminiApiKey,
   modelFunctionCall,
   modelText,
   userText,
@@ -13,9 +12,8 @@ import {
 import { appendMessage, recentSessionMessages } from "@/lib/chatbot/sessions";
 import { recordChatAudit } from "@/lib/chatbot/audit";
 import { checkRateLimit } from "@/lib/rateLimit";
-import { getSetting } from "@/lib/settings";
-import { getTenantOrgId } from "@/lib/tenant";
-import { getOrganization } from "@/lib/platform/registry";
+import { getAllSettings } from "@/lib/settings";
+import { getTenant } from "@/lib/tenant";
 import { logError } from "@/lib/errorLog";
 
 /**
@@ -176,14 +174,16 @@ export async function answerChatMessage(
   sessionId: string,
   userMessage: string
 ): Promise<ChatAnswerOutcome> {
-  const orgId = await getTenantOrgId();
+  const { orgId, org } = await getTenant();
 
-  const apiKey = await getGeminiApiKey();
+  // Both values belong to the same request-scoped settings snapshot.
+  const settings = await getAllSettings();
+  const apiKey = (settings.GEMINI_API_KEY ?? "").trim();
   if (!apiKey) {
     return { kind: "not_connected" };
   }
 
-  const capSetting = await getSetting("CHATBOT_DAILY_MESSAGE_CAP");
+  const capSetting = settings.CHATBOT_DAILY_MESSAGE_CAP;
   const cap = capSetting && Number(capSetting) > 0 ? Number(capSetting) : DEFAULT_DAILY_CAP;
   const rate = await checkRateLimit("chatbot-daily", orgId, cap, 86_400);
   if (!rate.allowed) {
@@ -202,8 +202,7 @@ export async function answerChatMessage(
   }
 
   const tools = getAvailableTools(session);
-  const org = await getOrganization(orgId).catch(() => null);
-  const system = systemPrompt(session, org?.orgName ?? "your organization", tools);
+  const system = systemPrompt(session, org.orgName, tools);
 
   const history = await recentSessionMessages(sessionId, 20);
   // The message we just appended is the last row of `history` — Gemini's own `contents`

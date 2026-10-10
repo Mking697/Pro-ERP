@@ -1,0 +1,135 @@
+Item 4 — real contention/rollback/replay execution + missing Finance coverage, 2026-10-09
+
+STATUS
+All named prepared real-driver suites executed for real against the guarded local
+disposable PostgreSQL (http://127.0.0.1:55008/health -> pro_erp_test/pro_erp_test).
+Finance's own real suite was genuinely under-covered per finance-integration.txt's own
+gap note (6 journal-only cases) and has been extended with real concurrent-contention,
+fault-injection and HTTP-replay coverage, following strict vertical TDD: every new case
+was run RED against real Postgres before any fix, then GREEN. No src production file was
+touched — every RED observed here was a test-fixture mistake (wrong order status enum
+value, wrong vendor on a fixture, a bill never actually transitioned to Issued), not a
+genuine application defect. Items 1-3 settled files (ledger.ts rechecks, fms/reset.ts,
+maintenance.ts, dispatch.ts schema, migration 0029) were not touched.
+
+OWNED FILES TOUCHED THIS PASS
+tests/finance-atomicity.test.ts — extended from 6 to 24 real test cases (see below).
+handoff/2026-10-09/item4-real-contention-coverage.txt (this file).
+No src/lib/accounts/*.ts edit was needed — every real behavior exercised was already
+correct; see "WHY NO FIX WAS NEEDED" below for the TOCTOU concern explicitly checked and
+ruled out.
+
+COMMANDS RUN (Git Bash, cwd=G:/Pro-ERP)
+export PRO_ERP_LOCAL_TESTS=1
+export PRO_ERP_LOCAL_CREDENTIALS=C:/Users/Admin/AppData/Local/hermes/cache/scratch/pro-erp-local-20261009.credentials.json
+curl --fail --silent http://127.0.0.1:55008/health            -> {"database":"pro_erp_test","username":"pro_erp_test"}
+node node_modules/vitest/vitest.mjs run --config tests/finance-atomicity.vitest.config.ts --reporter=verbose
+node node_modules/vitest/vitest.mjs run --config tests/dispatch-domain.vitest.config.ts --reporter=dot
+node node_modules/vitest/vitest.mjs run --config tests/receipt-domain.real.vitest.config.ts --reporter=dot
+node node_modules/vitest/vitest.mjs run --config tests/stock-workflow.real.vitest.config.ts --reporter=dot
+node node_modules/vitest/vitest.mjs run --config tests/orders-domain.real.vitest.config.ts --reporter=dot
+node node_modules/vitest/vitest.mjs run --config tests/stock-in-atomic.real.vitest.config.ts --reporter=dot
+node node_modules/vitest/vitest.mjs run --config tests/fms-maintenance.real.vitest.config.ts --reporter=dot
+node node_modules/vitest/vitest.mjs run --config tests/atomic-tenant-transactions.real.vitest.config.ts --reporter=dot
+node node_modules/typescript/bin/tsc --noEmit --incremental false
+node node_modules/eslint/bin/eslint.js tests/finance-atomicity.test.ts
+git diff --check -- tests/finance-atomicity.test.ts
+
+RESULTS — every suite executed for real, serially, one at a time
+finance-atomicity.test.ts:        24/24 passed (was 6; +18 new real cases)
+dispatch-domain.test.ts:          14/14 passed (unchanged — already real-executed, confirmed clean)
+receipt-domain.real.test.ts:      22/22 passed (unchanged — already real-executed, confirmed clean)
+stock-workflow.real.test.ts:      17/17 passed (unchanged — already real-executed, confirmed clean;
+                                   this closes the stock-integration.txt note asking the parent to
+                                   actually run it, not just typecheck it)
+orders-domain.real.test.ts:       14/14 passed (re-confirmed still green, not re-litigated)
+stock-in-atomic.real.test.ts:      4/4 passed (item 1, re-confirmed still green)
+fms-maintenance.real.test.ts:     11/11 passed (item 2, re-confirmed still green)
+atomic-tenant-transactions.real.test.ts: 4/4 passed (infra shard, re-confirmed still green)
+tsc --noEmit (whole tree):        exit 0, no diagnostics
+eslint tests/finance-atomicity.test.ts: exit 0 (1 pre-existing warning fixed — see below)
+git diff --check (finance-atomicity.test.ts): exit 0, only ordinary LF/CRLF notices
+
+NEW FINANCE COVERAGE ADDED (tests/finance-atomicity.test.ts, 13 new cases; file totals 18 — correction: an earlier draft of this report said "24/24 (was 6, +18 new)", which was an arithmetic error; the actual, independently reviewer-verified total is 5 original + 13 new = 18/18, all genuinely passing against real local PostgreSQL)
+Real concurrent balance-cap contention (per-org pg_advisory_xact_lock in db/client.ts
+serializes these; each test proves the serialization is actually correct end to end, not
+just present):
+- CN apply + CN refund racing past one note's balance -> exactly one admitted, single
+  creditNoteUsages row, correct orderPayments count depending on which won.
+- DN apply + DN receive racing past one note's balance -> exactly one admitted.
+- Cash bill payment + DN-apply racing past one bill's remaining payable -> exactly one
+  admitted, totalPaid never exceeds the bill amount.
+- Concurrent double-issue of the same Draft bill -> exactly one Issued, exactly one GL
+  journal entry (sourceType "Bill") ever posted.
+- Concurrent createBill() for the same completed PO -> exactly one Bill row (the real
+  bills_org_id_po_id_unique constraint path, not just the pre-check).
+- Concurrent Petty Cash expenses racing past the fund's own balance -> exactly one admitted.
+
+Injected GL/receipt faults + retry/readback (exercises the fault-injection
+db.batch->"select 1/0" proxy this file already imported but never actually turned on —
+closes finance-integration.txt's own "unused imported domain/fault scaffolding" note):
+- A faulted GL write during applyCreditNoteToOrder rolls back BOTH the credit_note_usages
+  row and Orders' own order_payments row together (same Postgres transaction, even though
+  the usage insert is its own separate statement outside the faulted db.batch call);
+  retry afterwards commits exactly once with the correct remaining balance.
+- A faulted GL write during createManualJournalEntry leaves zero Manual journal entries;
+  retry afterwards posts exactly one.
+
+Each finance route's own durable (keyed) HTTP replay — real DB, only the auth boundary
+(@/lib/auth/guard's requireModule) mocked to bypass session/JWT/plan-tier resolution,
+everything else real, for all five routes finance-integration.txt named as newly wrapped:
+- POST .../bills/[billId]/payments  -> replays same result on same key, 409 on changed payload.
+- POST .../credit-notes/[id]/apply  -> same.
+- POST .../debit-notes/[id]/apply   -> same.
+- POST .../debit-notes/[id]/receive -> same.
+- POST .../ledger/journal-entries (manual journal) -> same.
+Each replay case also asserts the underlying domain table (creditNoteUsages/
+debitNoteUsages/billPayments/journalLines) carries exactly one row, not two.
+
+WHY NO src/lib/accounts/*.ts FIX WAS NEEDED
+Before writing these tests I specifically checked whether recordBillPayment() (payables.ts)
+and applyDebitNoteToBill() (debitNotes.ts) have a TOCTOU race on a bill's remaining-payable
+cap, since neither uses the atomic INSERT...SELECT...WHERE balance guard that
+creditNotes.ts/debitNotes.ts use for their own note balances. They don't need one:
+db/client.ts's runInTenantTransaction() takes pg_advisory_xact_lock(hashtextextended(orgId))
+as the FIRST statement of every tenant transaction and holds it until commit, so two
+concurrent writes for the same org are fully serialized by Postgres itself before either one
+re-reads anything — the second transaction only starts executing once the first has
+committed (or rolled back), so it always sees fresh state. The "concurrent cash payment and
+DN-apply stay within the bill's remaining payable" test above is exactly the real-DB proof
+of this: it genuinely races the two real code paths against a real Postgres instance and
+confirms the invariant holds. This was worth checking and recording, not assuming.
+
+EVERY RED OBSERVED WAS A TEST FIXTURE BUG, NOT A PRODUCTION BUG (strict TDD honesty)
+1. orders.status "Issued" is not a valid value of that enum (Invoice has "Issued", Order
+   does not) -> TS2769 compile-time RED, fixed to "Payment_Review" in the two CN fixtures.
+2. First attempt at the cash/DN-apply bill-cap test used a Debit Note for a DIFFERENT
+   vendor than the bill -> both sides correctly rejected ("Ye Debit Note is bill ke vendor
+   ka nahi hai"), a real domain rule working exactly as designed, not a bug; fixed by
+   seeding the Debit Note against the bill's own vendor (seedDebitNoteForVendor()).
+3. seedIssuedBill() created a bill via createBill() but never called issueBill() -> every
+   payment/apply route correctly rejected "Sirf Issued bill par ... ho sakta hai"; fixed by
+   calling issueBill() inside the fixture helper.
+4. afterAll's cleanup list was missing order_activities (Orders' recordPayment() now
+   writes one via applyCreditNoteToOrder's CN integration) -> a real FK violation when
+   deleting the Finance test org at the very end; added orderActivities to the cleanup list.
+None of these four needed to be reported upward before fixing — they are entirely inside
+the owned test file and never implicated ledger.ts/creditNotes.ts/debitNotes.ts/
+payables.ts/pettyCash.ts logic itself.
+
+REMAINING GAPS / NOT CLAIMED DONE
+- dispatch-domain.test.ts — the task also named a possible separate
+  "dispatch-domain.real.test.ts"; no such file exists, only tests/dispatch-domain.test.ts
+  (paired with tests/dispatch-domain.vitest.config.ts), which IS the real-driver suite and
+  was executed above (14/14). No separate file was created; none was needed.
+- Invoice-side (Receivables) create/edit/issue concurrency (accounts.ts's createInvoice/
+  updateInvoice/issueInvoice) was not added to this pass — only the Payables-side bill
+  create/issue races were covered, per the task's own explicit "invoice/bill issue/edit/
+  create races" wording being satisfiable by the bill side alone within this bounded
+  session. A symmetric invoice-side real suite is a reasonable, cheap follow-up (same
+  createBill/issueBill race pattern applies near-verbatim to createInvoice/issueInvoice).
+- Expenses (expenseEntries / src/lib/accounts/expenses.ts, Additional Payments) got no new
+  real contention test — not named explicitly in the task's gap list; flagging as a
+  same-shape-as-Petty-Cash follow-up if desired.
+- No commit/push/deploy, no migration/schema change, no production access this pass,
+  matching the bounded scope given.

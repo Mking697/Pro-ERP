@@ -1,0 +1,75 @@
+Historical GL payment-journal source-ID recovery policy — reviewed document, 2026-10-09
+Item 5 (R6/R7 follow-up). Policy only: no data read, no migration, no auto-repair executed.
+
+1. PROBLEM STATEMENT
+Before this and the preceding finance-integration continuation, Orders' recordPayment()
+and Payables' recordBillPayment()/issueBill() posted GL journal entries with
+sourceType="ReceivablePayment"/"PayablePayment"/"Bill" and sourceId = the ORDER or BILL
+id itself (an aggregate key shared by every payment against that order/bill), not a
+per-payment id. Current source (src/lib/orders/orders.ts:983, src/lib/accounts/
+payables.ts:435,495) now posts sourceId = paymentId / billId-at-issue-time — a unique
+identity per payment event. postJournalEntry()'s own immutable-source guard (src/lib/
+accounts/ledger.ts:358-371) treats more than one journal_entries row at the same
+(orgId, sourceType, sourceId), or a fingerprint mismatch among them, as
+"ambiguous history" and throws LedgerConflictError — this is deliberate fail-closed
+behavior for NEW writes, not a repair mechanism for rows written before this change.
+
+Consequence: any order/bill that received two or more payments while the OLD aggregate
+sourceId scheme was live has multiple journal_entries rows sharing one sourceId, with no
+field on those historical rows distinguishing which payment produced which entry. A
+report or reconciliation view that joins journal_entries to order_payments/billPayments
+by (sourceType, sourceId) expecting a 1:1 relationship will either collapse several
+payments onto one entry or silently pick an arbitrary one, for orgs/orders/bills that
+predate the per-payment sourceId change.
+
+2. WHAT THIS POLICY DOES NOT AUTHORIZE
+- No automatic rewrite, backfill, or relabeling of any existing journal_entries.sourceId
+  or sourceType value. Old aggregate-keyed rows are financial history; silently changing
+  them is itself a data-integrity incident, not a fix.
+- No code in this pass reads or touches production/any environment's existing journal
+  data. This document is the reviewed POLICY; executing it is separate, explicitly
+  authorized work, owned by Finance + whoever holds data-migration sign-off.
+- Immutable new payment IDs are NOT a repair for historical rows — they only prevent the
+  ambiguity from growing going forward. Do not report new per-payment sourceId as having
+  "fixed" old data; it fixes new writes only.
+
+3. REQUIRED RECOVERY PROCEDURE (when explicitly authorized — not run here)
+a. Inventory, read-only: for every (orgId, sourceType) in {"ReceivablePayment",
+   "PayablePayment"}, group journal_entries by sourceId and count rows per group. Any
+   group with count > 1 is a historical ambiguous-aggregate row set from before the
+   per-payment sourceId change; emit it to a report, do not touch it.
+b. For each ambiguous group, attempt reconciliation ONLY by amount+timestamp+account
+   matching against order_payments/billPayments rows for the same order/bill — i.e. sort
+   both the journal entries and the payment rows by (entryDate/paidAt, amount) and pair
+   them positionally where counts and amounts agree exactly. Where counts or amounts
+   don't agree 1:1 (e.g. a GL entry with no matching payment row, or vice versa — possible
+   from a pre-existing best-effort GL catch that is since removed), do NOT guess; leave
+   the row flagged unresolved for manual Finance review.
+c. Only after (b) produces a confident, reviewed pairing: write a NEW migration column
+   (e.g. journal_entries.legacy_payment_id, nullable, additive) recording the resolved
+   payment id for audit purposes. Never overwrite the original historical sourceId value
+   itself — the new column is an annotation, not a correction of the original record.
+d. Unresolved/ambiguous groups remain explicitly flagged as unreconciled in whatever
+   report or UI surfaces them; never silently present a best-guess pairing as fact.
+e. This procedure requires its own explicit user authorization, its own migration review,
+   and must run against a disposable/staging copy before any production execution. It is
+   out of scope for this item and was NOT executed by this pass.
+
+4. GOING-FORWARD GUARANTEE (already in place, verified by source read this pass)
+- src/lib/orders/orders.ts:983 and src/lib/accounts/payables.ts:495 (payment postings),
+  and payables.ts:435 (bill-issue posting) already use a unique id as sourceId — new
+  payments/issues cannot re-create the ambiguous-aggregate shape.
+- src/lib/accounts/ledger.ts:358-371's immutable-source check ensures any future replay
+  or duplicate attempt against the same sourceId either returns the identical existing
+  entry (same fingerprint) or fails closed with LedgerConflictError (409) rather than
+  silently layering another ambiguous entry on top.
+- No further code change is required to "stop the bleeding"; this document's remaining
+  action item is the one-time historical reconciliation in section 3, pending separate
+  authorization.
+
+5. OWNERSHIP
+Finance owns executing section 3 if/when authorized. Parent/user owns authorizing it and
+choosing whether unresolved groups block any downstream report. This document itself is
+the complete, reviewed policy artifact requested by item 5; it does not close until
+section 3 is either executed under separate authorization or explicitly deferred by the
+user.

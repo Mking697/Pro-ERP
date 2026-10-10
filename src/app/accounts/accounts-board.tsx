@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import {
   Table,
@@ -15,11 +15,59 @@ import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { TableSkeleton } from "@/components/loading-states";
 import EmptyState from "@/components/empty-state";
-import { Eye, FileText, PackageSearch } from "lucide-react";
+import { AlertTriangle, Eye, FileText, PackageSearch } from "lucide-react";
 import { useT } from "@/components/preferences-provider";
 import CreateInvoiceDialog from "./create-invoice-dialog";
 import InvoiceDetailDialog from "./invoice-detail-dialog";
 import type { AccountsOrderRow, InvoiceRow } from "./types";
+
+// BEGIN request guard (pure logic, exercised by isolated tests)
+class ResponseNotOkError extends Error {
+  readonly status: number;
+  readonly body: unknown;
+
+  constructor(status: number, body: unknown) {
+    super(`Request failed with status ${status}`);
+    this.name = "ResponseNotOkError";
+    this.status = status;
+    this.body = body;
+  }
+}
+
+async function parseJsonResponse<T = unknown>(res: Response): Promise<T> {
+  if (!res.ok) {
+    let body: unknown = null;
+    try {
+      body = await res.json();
+    } catch {
+      // Non-JSON error body (e.g. an HTML error page) — leave body null, status still tells the story.
+    }
+    throw new ResponseNotOkError(res.status, body);
+  }
+  return res.json() as Promise<T>;
+}
+
+class RequestSequencer {
+  private currentId = 0;
+  private controller: AbortController | null = null;
+
+  begin(): { id: number; signal: AbortSignal } {
+    this.controller?.abort();
+    this.controller = new AbortController();
+    this.currentId += 1;
+    return { id: this.currentId, signal: this.controller.signal };
+  }
+
+  isStale(id: number): boolean {
+    return id !== this.currentId;
+  }
+
+  get activeId(): number {
+    return this.currentId;
+  }
+}
+
+// END request guard
 
 const TABS = [
   { value: "candidates", label: "Needs Invoicing" },
@@ -34,34 +82,85 @@ export default function AccountsBoard() {
   const t = useT();
   const [tab, setTab] = useState<TabValue>("candidates");
   const [candidates, setCandidates] = useState<AccountsOrderRow[]>([]);
-  const [invoices, setInvoices] = useState<InvoiceRow[]>([]);
+  const [invoicesByTab, setInvoicesByTab] = useState<Record<string, InvoiceRow[]>>({});
+  const invoices = invoicesByTab[tab] ?? [];
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [version, setVersion] = useState(0);
   const [createFor, setCreateFor] = useState<AccountsOrderRow | null>(null);
   const [openInvoiceId, setOpenInvoiceId] = useState<string | null>(null);
 
   const def = useMemo(() => TABS.find((tb) => tb.value === tab) ?? TABS[0], [tab]);
 
-  useEffect(() => {
+  // Only the latest board request may update data or pending/error state.
+  const sequencerRef = useRef(new RequestSequencer());
+
+  const load = useCallback(() => {
+    const { id, signal } = sequencerRef.current.begin();
+
+    function applyIfCurrent<T>(apply: (data: T) => void) {
+      return (data: T) => {
+        if (sequencerRef.current.isStale(id)) return;
+        apply(data);
+        setLoading(false);
+      };
+    }
+
+    const handleError = (err: unknown) => {
+      if (sequencerRef.current.isStale(id)) return;
+      if ((err as { name?: string })?.name === "AbortError") return;
+      // Retain last known-good data; surface a real, retryable error instead of blanking it.
+      const message =
+        err instanceof ResponseNotOkError
+          ? t("Load nahi ho paya (status {status}).").replace("{status}", String(err.status))
+          : t("Load nahi ho paya — network ya server error.");
+      setLoadError(message);
+      toast.error(message);
+      setLoading(false);
+    };
+
     if (def.value === "candidates") {
-      fetch("/api/accounts/candidates")
-        .then((res) => res.json())
-        .then((data: { candidates?: AccountsOrderRow[] }) => setCandidates(data.candidates ?? []))
-        .catch(() => toast.error(t("Intake candidates load nahi ho paye.")))
-        .finally(() => setLoading(false));
+      fetch("/api/accounts/candidates", { signal })
+        .then((res) => parseJsonResponse<{ candidates?: AccountsOrderRow[] }>(res))
+        .then(applyIfCurrent<{ candidates?: AccountsOrderRow[] }>((data) => setCandidates(data.candidates ?? [])))
+        .catch(handleError);
       return;
     }
     const url = def.value === "all" ? "/api/accounts/invoices" : `/api/accounts/invoices?status=${def.value}`;
-    fetch(url)
-      .then((res) => res.json())
-      .then((data: { invoices?: InvoiceRow[] }) => setInvoices(data.invoices ?? []))
-      .catch(() => toast.error(t("Invoices load nahi ho payi.")))
-      .finally(() => setLoading(false));
-  }, [def, version, t]);
+    fetch(url, { signal })
+      .then((res) => parseJsonResponse<{ invoices?: InvoiceRow[] }>(res))
+      .then(applyIfCurrent<{ invoices?: InvoiceRow[] }>((data) => setInvoicesByTab((prev) => ({ ...prev, [tab]: data.invoices ?? [] }))))
+      .catch(handleError);
+  }, [def, tab, t]);
+
+  useEffect(() => {
+    load();
+    const sequencer = sequencerRef.current;
+    return () => { sequencer.begin(); };
+  }, [load, version]);
+
+  function refresh() {
+    sequencerRef.current.begin();
+    setLoading(true);
+    setLoadError(null);
+    setVersion((v) => v + 1);
+  }
 
   return (
     <div className="space-y-4">
-      <Tabs value={tab} onValueChange={(v) => v && setTab(v as TabValue)}>
+      {loadError && (
+        <div role="alert" className="flex items-center justify-between gap-3 rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">
+          <span className="flex items-center gap-2">
+            <AlertTriangle className="size-4" aria-hidden="true" />
+            {loadError}
+          </span>
+          <Button size="sm" variant="outline" onClick={refresh}>
+            {t("Dobara try karein")}
+          </Button>
+        </div>
+      )}
+
+      <Tabs value={tab} onValueChange={(v) => { if (v) { refresh(); setTab(v as TabValue); } }}>
         <TabsList className="flex-wrap">
           {TABS.map((tb) => (
             <TabsTrigger key={tb.value} value={tb.value}>
@@ -180,7 +279,7 @@ export default function AccountsBoard() {
           }}
           onCreated={(invoice) => {
             setCreateFor(null);
-            setVersion((v) => v + 1);
+            refresh();
             setOpenInvoiceId(invoice.id);
           }}
         />
@@ -193,7 +292,7 @@ export default function AccountsBoard() {
           onOpenChange={(open) => {
             if (!open) setOpenInvoiceId(null);
           }}
-          onChanged={() => setVersion((v) => v + 1)}
+          onChanged={refresh}
         />
       )}
     </div>

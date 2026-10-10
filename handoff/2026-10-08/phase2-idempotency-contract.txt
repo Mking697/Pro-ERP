@@ -1,0 +1,49 @@
+SECOND: durable idempotent mutation primitive — implementation contract
+
+Source API (src/lib/mutations.ts):
+  type MutationJsonValue = null | boolean | number | string | MutationJsonValue[] | { [key: string]: MutationJsonValue };
+  interface TenantMutationOptions { operation: string; actorId: string; key?: string; payload: MutationJsonValue }
+  runIdempotentTenantMutation<T extends MutationJsonValue>(orgId: string, options: TenantMutationOptions, work: () => Promise<T>): Promise<T>
+  getMutationKey(request: Request): string | undefined
+  MutationConflictError: Error, status=409, code="MUTATION_CONFLICT"
+  MutationInputError: Error, status=400, code="MUTATION_INPUT_INVALID"
+
+Integration:
+- Invoke at the OUTERMOST money/receipt service boundary, replacing its top-level transaction wrapper. Nested entry is explicitly rejected BEFORE work. Domain work can use existing db and same-org runInTenantTransaction joins; do not invoke another idempotent mutation inside work. This restriction prevents ambient parallel replay races and swallowed-error partial commits without editing DB foundation.
+- Key is tenant-wide and opaque, case-sensitive, 1–200 printable ASCII characters excluding whitespace. Never trimmed/case-folded. Missing undefined is allowed; empty, null, nonstring and malformed supplied keys reject. Header-only extraction has no Next dependency; Fetch Headers may already trim transport whitespace before application access.
+- Pass the trusted authenticated actorId, a nonblank versioned operation identifier (e.g. accounts.bill-payment.create.v1), and JSON-safe parsed/validated domain payload. Scope authorization remains the caller's responsibility; receipt replay does not rerun work authorization.
+- Hash is SHA-256 of stable canonical {actorId,operation,payload}; object keys sorted, array order preserved. Stored actor/operation are independently checked too. Bindings are snapshotted before awaiting admission.
+- Existing READ COMMITTED tenant advisory lock is acquired before receipt read. A matching committed receipt returns stored JSON without invoking work. Mismatched actor/operation/payload throws typed conflict. Different tenants or different keys remain genuine independent mutations, including equal-valued payments.
+- Receipt insert occurs after successful work on the same transaction. Work/result validation/receipt insert errors roll back both; failed attempts leave no receipt. No automatic retry. A committed:true post-commit failure retains the receipt; do not blindly retry it.
+- Missing key retains transactional execution, with NO duplicate/replay guarantee. No amount-only deduplication.
+- T is constrained to JSON DTOs, not Date-bearing database records. Explicitly project Date fields to ISO strings; unsupported Date, undefined, bigint, function, symbol, nonfinite number, class, accessor/nonenumerable/symbol property, sparse/augmented array, circular graph, NUL/unpaired Unicode surrogate reject clearly. Nesting limit 100 includes the binding envelope. Payload failure => MutationInputError; invalid work result => TypeError and rollback. First and replay results both use JSON representations; negative zero becomes zero. JSON null is stored via parameterized ::jsonb, NOT SQL NULL.
+- Operation version must retain one consistent DTO contract across callers. No arbitrary domain-shape decoder is included, and lying casts/any cannot be runtime type-checked as a requested generic shape. Receipt rows are JSON-safety validated on replay.
+- DB writes/builders must be inside work. afterTenantCommit effects are nondurable; no queue/outbox/general side-effect guarantee or receipt expiry policy was added. Existing lock/statement timeout failures can still reject contention rather than automatically retry.
+
+Files:
+- NEW src/lib/mutations.ts
+- NEW src/db/schema/mutations.ts: mutation_receipts, composite PK(org_id,key), organizations FK, actor_id, operation, payload_hash, result JSONB NOT NULL, created_at timestamptz default now.
+- src/db/schema/index.ts: export only.
+- src/lib/platform/registry.ts: import + one deleteOrganization batch item before organization deletion only.
+- NEW tests/mutation-idempotency.test.ts
+- NEW tests/mutation-idempotency.vitest.config.ts: approved scratch local setup, no dotenv.
+- No domain services, db/client.ts, transaction-context.ts, snapshots or migrations edited.
+
+Executed evidence:
+- RED 1: concurrent replay test failed because helper module absent; GREEN 1 passed.
+- RED 2: bound actor/operation/payload conflict behavior absent; GREEN 2 passed.
+- RED validation slice: 26 failed/1 passed (missing key helper/validation, lossy payloads, recursive overflow, Date-result acceptance); GREEN 27 passed.
+- RED rollback-boundary/cleanup slice: 2 failed/30 passed (nested entry accepted, organization FK deletion failed); GREEN 32 passed.
+- RED metadata/JSONB slice: 9 failed/32 passed (metadata and incompatible strings accepted, JSON null became SQL NULL); GREEN 41 passed.
+- Final GREEN: 1 file, 44 tests passed. Includes real concurrent PostgreSQL matching and conflicting keys, foreign tenants, distinct/case-sensitive keys/equal values, rollback+retry, no-key compatibility, actor binding, JSON round-trip, post-commit committed:true receipt preservation, organization deletion isolation, and read-back zero owned fixture rows after cleanup.
+- Command: node node_modules/vitest/vitest.mjs run --config tests/mutation-idempotency.vitest.config.ts --reporter=dot
+- node node_modules/typescript/bin/tsc --noEmit --incremental false => exit 0.
+- Focused ESLint on all six owned source/test paths => exit 0.
+- Scoped git diff --check => exit 0; preexisting Windows LF/CRLF warning only.
+
+Local DB scope:
+- Explicit target pro_erp_test@pro-erp-regression-pg:5432/pro_erp_test; loopback WS55007 and HTTP55008 via approved setup.
+- Test beforeAll checks target host/port/database/user and only creates mutation_receipts if absent (DDL equivalent to schema), then creates uniquely prefixed ORG-mutation-test fixtures. afterAll deletes and reads back only exact owned IDs. Shared receipt table is intentionally retained; no production migration, env/credential read, live provider, install, build, full suite, commit/push/deploy/reset/stash.
+- Isolated config currently references C:/Users/Admin/AppData/Local/hermes/cache/scratch/pro-erp-local-test-setup.ts; that approved local prerequisite must exist for reruns.
+
+Parent next: review top-level integration contract, coordinate a single schema migration generation after all Second schemas settle, and wire domain services/HTTP error mapping separately.

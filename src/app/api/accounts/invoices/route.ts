@@ -1,3 +1,6 @@
+import { getMutationKey, runIdempotentTenantMutation, MutationConflictError, MutationInputError } from "@/lib/mutations";
+import { getTenantOrgId } from "@/lib/tenant";
+import { LedgerConflictError } from "@/lib/accounts/ledger";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { requireModule } from "@/lib/auth/guard";
@@ -41,9 +44,16 @@ export async function POST(request: Request) {
   }
 
   try {
-    const invoice = await createInvoice(parsed.data, guard.session.userId);
+    const invoice = await runIdempotentTenantMutation(await getTenantOrgId(), {
+      operation: "accounts.invoices.v1", actorId: guard.session.userId, key: getMutationKey(request),
+      // Parsed JSON input; omit absent optional fields, never hash a Date/domain row.
+      payload: JSON.parse(JSON.stringify({ ...parsed.data })),
+    }, async () => ({ ...await createInvoice(parsed.data, guard.session.userId) }));
     return NextResponse.json({ invoice });
   } catch (err) {
+    if (err instanceof MutationConflictError || err instanceof MutationInputError || err instanceof LedgerConflictError) {
+      return NextResponse.json({ error: err.message }, { status: err.status });
+    }
     const message = err instanceof AccountsError || err instanceof Error ? err.message : "Invoice ban nahi payi.";
     return NextResponse.json({ error: message }, { status: 400 });
   }

@@ -1,6 +1,6 @@
 import { listTasks, type TaskRecord } from "@/lib/tasks";
 import { listUsers } from "@/lib/auth/users";
-import { sendWhatsAppMessage } from "@/lib/chatxflow";
+import { sendWhatsAppBatch, type WhatsAppRecipient } from "@/lib/chatxflow";
 import { isOverdue, computeCombinedMisSummary, computeMisBreakdown, formatScore } from "@/lib/mis";
 import { listAllFmsRuns } from "@/lib/fms/engine";
 import { filterTasks, filterFmsRuns, type DateRange } from "@/lib/analytics";
@@ -23,8 +23,7 @@ export async function sendPendingTaskReminders(): Promise<ReminderResult> {
     pendingByUser.set(task.Assigned_To, list);
   }
 
-  let sent = 0;
-  let failed = 0;
+  const recipients: WhatsAppRecipient[] = [];
 
   for (const [userId, userTasks] of pendingByUser) {
     const user = userMap.get(userId);
@@ -36,12 +35,10 @@ export async function sendPendingTaskReminders(): Promise<ReminderResult> {
     });
     const message = `Namaste ${user.Full_Name}, aapke ${userTasks.length} pending task(s) hain:\n${lines.join("\n")}`;
 
-    const result = await sendWhatsAppMessage(user.Phone_Number, message);
-    if (result.ok) sent += 1;
-    else failed += 1;
+    recipients.push({ phone: user.Phone_Number, message });
   }
 
-  return { sent, failed };
+  return sendWhatsAppBatch(recipients);
 }
 
 export interface PerformanceReportResult {
@@ -66,8 +63,7 @@ export async function sendPerformanceReports(range: DateRange): Promise<Performa
   const rangedTasks = filterTasks(tasks, range);
   const rangedFmsRuns = filterFmsRuns(fmsRuns, range);
 
-  let sent = 0;
-  let failed = 0;
+  const recipients: WhatsAppRecipient[] = [];
   let skipped = 0;
 
   for (const user of users) {
@@ -97,10 +93,8 @@ export async function sendPerformanceReports(range: DateRange): Promise<Performa
       ...lines,
     ].join("\n");
 
-    const result = await sendWhatsAppMessage(user.Phone_Number, message);
-    if (result.ok) sent += 1;
-    else failed += 1;
+    recipients.push({ phone: user.Phone_Number, message });
   }
 
-  return { sent, failed, skipped };
+  return { ...await sendWhatsAppBatch(recipients), skipped };
 }

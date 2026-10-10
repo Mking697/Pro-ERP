@@ -1,0 +1,56 @@
+ITEM2 — FMS reset / Maintenance safeguards, 2026-10-09
+Implemented and locally verified; STOPPED for parent rerun and independent review. Item3 not started.
+
+Exact modified production paths:
+- src/lib/fms/reset.ts
+- src/lib/maintenance/maintenance.ts
+Exact new verification paths:
+- tests/fms-maintenance.unit.test.ts
+- tests/fms-maintenance.unit.vitest.config.ts
+- tests/fms-maintenance.real.test.ts
+- tests/fms-maintenance.real.vitest.config.ts
+- handoff/2026-10-09/fms-maintenance-safeguards.txt
+No engine/plans/dataSource/shared primitive/API/schema/migration edits; pre-existing dirty tree preserved.
+
+Guards and policy:
+- resetAllFmsData acquires common tenant transaction/lock BEFORE history admission or deletion.
+- Any tenant run whose contextRef starts PRODUCTION_PLANS: blocks the ENTIRE reset, including completed history. No partial/silent production-history deletion. Retained run evidence keeps hasFmsLine / completePlan election intact.
+- Design-only reset deletes runs then templates in ONE atomic transaction, both tenant-scoped.
+- All eight Maintenance mutations acquire the common tenant lock before domain reads/writes. Request/activity and FMS pause/resume commit or roll back together. Same-org nesting joins existing transaction.
+- FMS transitions include exact observed prior status AND assignee plus org/id. Missing/changed row rejects before success; terminal stock steps cannot be overwritten by Paused or Pending.
+- Maintenance request updates include exact observed prior status plus org/id; terminal requests cannot be overwritten from stale reads.
+- Reporter/assignee authorization remains inside the lock. Resolution shifts deadline only when actually resuming Paused; terminal/missing run is unchanged, and activity no longer falsely claims it resumed.
+
+Observed behavioral RED -> GREEN (bounded vertical slices):
+1. Production-history reset resolved with templatesDeleted=1,runsDeleted=1 (expected rejection). GREEN 1/1.
+2. Report activity fault left run Paused and orphan request (expected rollback). GREEN 2/2.
+3. Cancel activity fault left run Pending (expected Paused rollback). GREEN 3/3.
+4. Resolve activity fault committed deadline/resume/request (expected rollback). GREEN 4/4.
+5. Exact run prior-state guard: report/cancel/resolve each resolved across injected stale terminal state (3 RED failures). Shared transition guard GREEN 7/7.
+6. Remaining five Maintenance commands each changed request despite activity failure (5 RED failures). Common mutation protocol GREEN 12/12.
+7. Request prior-state guard: cancellation resolved across injected stale Resolved request. GREEN 13/13.
+8. Real PG late-resolution activity falsely claimed 'resume ho gayi' for terminal run (1 RED / 10 skipped). Accurate activity GREEN in full 11/11.
+Test-only SQL AST fixture bugs (eq offsets and and-wrapper decoding) were corrected; only the corrected expected behavioral assertions are counted above.
+
+Final executed verification:
+- DB-free dedicated config: 13/13 PASS, setupFiles:[], mocked persistence/provider boundaries; no dotenv.
+- Serial dedicated real PG config: 11/11 PASS, 24.58s final run.
+- Actual health probe http://127.0.0.1:55008/health returned database=pro_erp_test,username=pro_erp_test BEFORE writes.
+- Existing tests/local-isolated/setup.ts/runtime.cjs/safety.cjs inspected; opt-in loader only. Setup verified actual WS Pool identity via port55007 and HTTP SQL identity via55008; exact test URL asserted. No credentials/.env read or printed by agent.
+- Every real test used random item2-UUID tenant; teardown deleted ONLY exact tenant fixtures in maintenanceActivities,maintenanceRequests,mutationReceipts,fmsRuns,fmsTemplates,planMaterials,productionPlans,stockLedger then organizations, with zero-row readbacks after each.
+- Real tests: Line actually writes stock -> reset rejected -> PPC completion writes NO second FG; reset waits behind in-flight stock action; report racing completion waits then rejects; legacy cancel/resolve wait behind actual completion and preserve full terminal row; breakdown-first prevents action until cancellation; real report/cancel/resolve activity faults fully roll back; reset template-delete failure rolls back run deletion; outer transaction rollback leaks no pause.
+- node node_modules/typescript/bin/tsc --noEmit --pretty false PASS on current whole tree.
+- Focused ESLint on both production files and four dedicated test/config files PASS. Dynamic DB-free SQL interpreter has documented test-only no-explicit-any exemption.
+- git diff --check -- src/lib/fms/reset.ts src/lib/maintenance/maintenance.ts PASS (only pre-existing Git LF/CRLF advisory).
+
+Repeat commands (from actual repository root, no default npm test):
+node node_modules/vitest/vitest.mjs run --config tests/fms-maintenance.unit.vitest.config.ts
+PRO_ERP_LOCAL_TESTS=1 PRO_ERP_LOCAL_CREDENTIALS=C:/Users/Admin/AppData/Local/hermes/cache/scratch/pro-erp-local-20261009.credentials.json node node_modules/vitest/vitest.mjs run --config tests/fms-maintenance.real.vitest.config.ts
+node node_modules/eslint/bin/eslint.js src/lib/fms/reset.ts src/lib/maintenance/maintenance.ts tests/fms-maintenance.unit.test.ts tests/fms-maintenance.unit.vitest.config.ts tests/fms-maintenance.real.test.ts tests/fms-maintenance.real.vitest.config.ts
+node node_modules/typescript/bin/tsc --noEmit --pretty false
+
+Remaining gates/boundaries:
+- Parent rerun and fresh independent review REQUIRED before acceptance/item3.
+- No full/default test suite, build, installation, live provider access, migration, commit, push, deploy, destructive Git action or infra restart performed.
+- No automatic repair of previously deleted production history: guard prevents future deletion; historical recovery requires explicit audited policy.
+- Existing reset API has no domain-error translation: blocked reset propagates error instead of returning deletion success. Optional structured409/UI policy explanation requires parent-authorized API/UI scope; not changed here.

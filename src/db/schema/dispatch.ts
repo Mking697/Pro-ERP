@@ -1,4 +1,5 @@
-import { index, numeric, pgEnum, pgTable, text, timestamp, unique } from "drizzle-orm/pg-core";
+import { index, numeric, pgEnum, pgTable, text, timestamp, unique, uniqueIndex } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 import { organizations } from "./platform";
 
 /**
@@ -69,6 +70,19 @@ export const dispatches = pgTable(
   },
   (table) => [
     unique("dispatches_org_id_gate_pass_no_unique").on(table.orgId, table.gatePassNo),
+    // PARTIAL on purpose: historical rows created before shipment_id was populated are
+    // blank (""), and this project's policy is to preserve that legacy history rather
+    // than delete/rewrite it (see handoff/2026-10-09/second-schema-migration.txt for the
+    // full reconciliation record). A plain non-partial UNIQUE(org_id, shipment_id) would
+    // collide across any org with more than one such legacy blank row, so the tenant
+    // invariant this enforces is scoped to NONEMPTY shipment_id only. Before
+    // generating/applying the coordinated migration, preflight production:
+    // SELECT org_id, shipment_id, count(*) FROM dispatches WHERE shipment_id <> ''
+    // GROUP BY org_id, shipment_id HAVING count(*) > 1;
+    // Stop and reconcile duplicate stock/consumption/links; never auto-delete history.
+    uniqueIndex("dispatches_org_id_shipment_id_unique")
+      .on(table.orgId, table.shipmentId)
+      .where(sql`${table.shipmentId} <> ''`),
     index("dispatches_org_id_order_id_idx").on(table.orgId, table.orderId),
   ]
 );

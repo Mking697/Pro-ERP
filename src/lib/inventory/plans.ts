@@ -1,10 +1,12 @@
 import type { InferSelectModel } from "drizzle-orm";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { productionPlans, planMaterials } from "@/db/schema";
-import { db } from "@/db/client";
+import { db, runInTenantTransaction } from "@/db/client";
+import { getStockAvailability, assertStockAvailableMany } from "@/lib/inventory/availability";
 import { listByOrg, updateById } from "@/db/repo";
 import { getTenantOrgId } from "@/lib/tenant";
 import { generateId } from "@/lib/id";
+import { runIdempotentTenantMutation } from "@/lib/mutations";
 import { numOr0, findItem } from "@/lib/inventory/items";
 import { listBoms, type Bom } from "@/lib/inventory/bom";
 import {
@@ -13,12 +15,7 @@ import {
   type AllocationLine,
   type AllocatedMaterial,
 } from "@/lib/inventory/allocation";
-import {
-  listLedger,
-  onHandBySku,
-  recordMovement,
-  InsufficientStockError,
-} from "@/lib/inventory/ledger";
+import { recordMovement } from "@/lib/inventory/ledger";
 import { byNewest, parseStamp } from "@/lib/timestamp";
 
 export { allocateAcrossPool };
@@ -47,7 +44,7 @@ export type PlanStatus = (typeof PLAN_STATUSES)[number];
  * list only for completeness — starting production sets Allocated equal to Consumed, so
  * such a plan contributes nothing.
  */
-const RESERVING: readonly PlanStatus[] = ["Ready", "Shortage", "In_Production"];
+// Eligibility is enforced by the shared authoritative availability policy.
 
 /** Statuses a plan can still be worked on from. */
 const OPEN: readonly PlanStatus[] = ["Ready", "Shortage"];
@@ -196,34 +193,7 @@ export async function listPlans(): Promise<Plan[]> {
  * in. It lives here rather than in ledger.ts because plans own the data it derives from.
  */
 export async function committedBySku(): Promise<Map<string, number>> {
-  const orgId = await getTenantOrgId();
-  // Filters by status in SQL (production_plans_org_id_status_idx) and scopes planMaterials
-  // to just the reserving plan ids (plan_materials_org_id_plan_id_idx) instead of pulling
-  // every plan/material row the org has ever created — this ran on every plan creation/
-  // preview and every Start Production call.
-  const planRows = await db
-    .select({ id: productionPlans.id })
-    .from(productionPlans)
-    .where(and(eq(productionPlans.orgId, orgId), inArray(productionPlans.status, RESERVING)))
-    .catch(() => [] as { id: string }[]);
-  const reservingIds = planRows.map((p) => p.id);
-
-  const materialRows = reservingIds.length
-    ? await db
-        .select()
-        .from(planMaterials)
-        .where(and(eq(planMaterials.orgId, orgId), inArray(planMaterials.planId, reservingIds)))
-        .catch(() => [] as PlanMaterialRow[])
-    : [];
-
-  const out = new Map<string, number>();
-  for (const row of materialRows) {
-    if (!row.sku) continue;
-    const held = numOr0(row.allocatedQty) - numOr0(row.consumedQty);
-    if (held <= 0) continue;
-    out.set(row.sku, round3((out.get(row.sku) ?? 0) + held));
-  }
-  return out;
+  return (await getStockAvailability()).planReserved;
 }
 
 // ---------------------------------------------------------------------------
@@ -249,23 +219,8 @@ interface PlanContext {
 }
 
 async function planContext(): Promise<PlanContext> {
-  const [boms, ledger, committed] = await Promise.all([
-    listBoms(),
-    listLedger(),
-    committedBySku(),
-  ]);
-
-  const onHand = onHandBySku(ledger);
-  const free = new Map<string, number>();
-  for (const [sku, qty] of onHand) {
-    free.set(sku, round3(qty - (committed.get(sku) ?? 0)));
-  }
-  // A SKU that has only ever been committed still needs an entry, or it reads as 0
-  // instead of negative and a genuine over-commitment hides.
-  for (const [sku, qty] of committed) {
-    if (!free.has(sku)) free.set(sku, round3(-qty));
-  }
-  return { boms, free };
+  const [boms, stock] = await Promise.all([listBoms(), getStockAvailability()]);
+  return { boms, free: stock.free };
 }
 
 function bomFor(boms: Bom[], productName: string): Bom {
@@ -378,10 +333,23 @@ export async function previewPlans(lines: PlanLineInput[]): Promise<PlanPreviewL
  */
 export async function createPlans(
   lines: PlanLineInput[],
-  createdBy: string
+  createdBy: string,
+  key?: string
 ): Promise<Plan[]> {
   validateLines(lines);
   const orgId = await getTenantOrgId();
+  if (key !== undefined) {
+    const payload = lines.map((line) => ({
+      productName: line.productName, plannedQty: line.plannedQty, productionDate: line.productionDate,
+      notes: line.notes ?? "", orderNo: line.orderNo?.trim() ?? "", fmsTemplateId: line.fmsTemplateId?.trim() ?? "",
+    }));
+    return runIdempotentTenantMutation(orgId, {
+      operation: "ppc.plans.create.v1", actorId: createdBy, key, payload: { lines: payload },
+    }, async () => (await createPlans(lines, createdBy)).map((plan) => ({
+      ...plan, materials: plan.materials.map((material) => ({ ...material })),
+    })));
+  }
+  return runInTenantTransaction(orgId, async () => {
   const { boms, free } = await planContext();
   const prepared = toAllocationLines(lines, boms);
   const results = allocateAcrossPool(
@@ -480,6 +448,7 @@ export async function createPlans(
   if (planRows.length > 0) await db.insert(productionPlans).values(planRows);
 
   return created;
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -509,23 +478,33 @@ async function setPlanFields(
  * free stock already excludes what it holds, so there is no risk of it claiming material
  * twice.
  */
-export async function reallocatePlan(planId: string): Promise<Plan> {
+export async function reallocatePlan(planId: string, actorId?: string, key?: string): Promise<Plan> {
   const orgId = await getTenantOrgId();
+  if (key !== undefined) {
+    if (!actorId) throw new PlanError("Idempotency key ke saath actor zaroori hai.");
+    return runIdempotentTenantMutation(orgId, {
+      operation: "ppc.plan.recheck.v1", actorId, key, payload: { planId },
+    }, async () => {
+      const plan = await reallocatePlan(planId, actorId);
+      return { ...plan, materials: plan.materials.map((material) => ({ ...material })) };
+    });
+  }
+  return runInTenantTransaction(orgId, async () => {
   const plan = await loadPlan(planId);
   if (!OPEN.includes(plan.status)) {
     throw new PlanError("Sirf Ready ya Shortage plan dobara check ho sakta hai.");
   }
 
-  const [ledger, committed] = await Promise.all([listLedger(), committedBySku()]);
-  const onHand = onHandBySku(ledger);
+  const stock = await getStockAvailability();
 
   const writes: Promise<unknown>[] = [];
   const materials = plan.materials.map((m) => {
     if (m.shortageQty <= 0) return m;
 
-    const free = round3((onHand.get(m.sku) ?? 0) - (committed.get(m.sku) ?? 0));
+    const free = stock.free.get(m.sku) ?? 0;
     const topUp = round3(Math.min(m.shortageQty, Math.max(free, 0)));
     if (topUp <= 0) return m;
+    stock.free.set(m.sku, round3(free - topUp));
 
     const allocatedQty = round3(m.allocatedQty + topUp);
     const shortageQty = round3(m.shortageQty - topUp);
@@ -558,10 +537,21 @@ export async function reallocatePlan(planId: string): Promise<Plan> {
   if (status !== plan.status) await setPlanFields(orgId, planId, { status });
 
   return { ...plan, status, materials };
+  });
 }
 
-export async function cancelPlan(planId: string): Promise<Plan> {
+export async function cancelPlan(planId: string, actorId?: string, key?: string): Promise<Plan> {
   const orgId = await getTenantOrgId();
+  if (key !== undefined) {
+    if (!actorId) throw new PlanError("Idempotency key ke saath actor zaroori hai.");
+    return runIdempotentTenantMutation(orgId, {
+      operation: "ppc.plan.cancel.v1", actorId, key, payload: { planId },
+    }, async () => {
+      const plan = await cancelPlan(planId, actorId);
+      return { ...plan, materials: plan.materials.map((material) => ({ ...material })) };
+    });
+  }
+  return runInTenantTransaction(orgId, async () => {
   const plan = await loadPlan(planId);
   if (!OPEN.includes(plan.status)) {
     throw new PlanError(
@@ -574,6 +564,7 @@ export async function cancelPlan(planId: string): Promise<Plan> {
   // statuses releases the reservation on its own.
   await setPlanFields(orgId, planId, { status: "Cancelled" });
   return { ...plan, status: "Cancelled" };
+  });
 }
 
 /**
@@ -611,8 +602,17 @@ async function hasFmsLine(planId: string): Promise<boolean> {
  * at whatever quantity actually survived every stage, not the plan's optimistic actual
  * quantity from Start Production.
  */
-export async function completePlan(planId: string, completedBy: string): Promise<Plan> {
+export async function completePlan(planId: string, completedBy: string, key?: string): Promise<Plan> {
   const orgId = await getTenantOrgId();
+  if (key !== undefined) {
+    return runIdempotentTenantMutation(orgId, {
+      operation: "ppc.plan.complete.v1", actorId: completedBy, key, payload: { planId },
+    }, async () => {
+      const plan = await completePlan(planId, completedBy);
+      return { ...plan, materials: plan.materials.map((material) => ({ ...material })) };
+    });
+  }
+  return runInTenantTransaction(orgId, async () => {
   const plan = await loadPlan(planId);
   if (plan.status !== "In_Production") {
     throw new PlanError("Sirf chal raha plan complete ho sakta hai.");
@@ -642,6 +642,7 @@ export async function completePlan(planId: string, completedBy: string): Promise
 
   await setPlanFields(orgId, planId, { status: "Completed" });
   return { ...plan, status: "Completed" };
+  });
 }
 
 /**
@@ -651,44 +652,41 @@ export async function completePlan(planId: string, completedBy: string): Promise
  * differ in practice, and a system that consumes the planned figure quietly drifts from
  * what is physically on the shelf.
  *
- * Every material is checked against its allowance before a single `Out` is written.
- * Postgres has no cross-request transaction held open here either, so a mid-way failure
- * would leave a half-consumed plan — checking up front is what keeps that from happening.
+ * Admit the aggregate material draw under the common tenant lock. Every movement,
+ * material consumption, plan transition and chosen Line start shares that transaction.
  */
 export async function startProduction(
   planId: string,
   actualQty: number,
-  userId: string
+  userId: string,
+  key?: string
 ): Promise<Plan> {
+  if (key !== undefined) {
+    const orgId = await getTenantOrgId();
+    return runIdempotentTenantMutation(orgId, {
+      operation: "ppc.production.start.v1", actorId: userId, key, payload: { planId, actualQty },
+    }, async () => {
+      const plan = await startProduction(planId, actualQty, userId);
+      return { ...plan, materials: plan.materials.map((material) => ({ ...material })) };
+    });
+  }
   if (!(actualQty > 0)) {
     throw new PlanError("Actual quantity 0 se zyada honi chahiye.");
   }
 
   const orgId = await getTenantOrgId();
+  return runInTenantTransaction(orgId, async () => {
   const plan = await loadPlan(planId);
   if (!OPEN.includes(plan.status)) {
     throw new PlanError("Ye plan production ke liye taiyar nahi hai.");
   }
 
-  const [ledger, committed] = await Promise.all([listLedger(), committedBySku()]);
-  const onHand = onHandBySku(ledger);
-
-  const draws = plan.materials.map((m) => {
-    const consume = round3(m.qtyPerUnit * actualQty);
-    // What this plan may legitimately draw: free stock plus the reservation it already
-    // holds. Without adding its own reservation back, the free-stock check would refuse
-    // the very material this plan set aside.
-    const free = round3((onHand.get(m.sku) ?? 0) - (committed.get(m.sku) ?? 0));
-    const ownHold = round3(m.allocatedQty - m.consumedQty);
-    return { material: m, consume, allowance: round3(free + ownHold) };
-  });
-
-  const short = draws.find((d) => d.consume > d.allowance);
-  if (short) {
-    throw new InsufficientStockError(
-      `"${short.material.itemName}" kam pad raha hai — ${actualQty} banane ke liye ${short.consume} ${short.material.uom} chahiye, milega ${short.allowance} ${short.material.uom}.`
-    );
-  }
+  const draws = plan.materials.map((material) => ({
+    material, consume: round3(material.qtyPerUnit * actualQty),
+  }));
+  const requests = draws.filter((draw) => draw.consume > 0)
+    .map((draw) => ({ sku: draw.material.sku, quantity: draw.consume }));
+  if (requests.length) await assertStockAvailableMany(requests, { excludePlanId: planId });
 
   for (const draw of draws) {
     await recordMovement(
@@ -702,7 +700,8 @@ export async function startProduction(
         remark: `${plan.productName} — ${actualQty} unit`,
         userId,
       },
-      draw.allowance
+      undefined,
+      { excludePlanId: planId }
     );
   }
 
@@ -737,6 +736,18 @@ export async function startProduction(
     startedAt,
   });
 
+  // Required DB work joins this transaction; no best-effort post-commit Line start.
+  // Dynamic import avoids engine -> resolver -> plans -> engine initialization cycles.
+  if (plan.fmsTemplateId) {
+    const { startFmsInstance } = await import("@/lib/fms/engine");
+    await startFmsInstance({
+      templateId: plan.fmsTemplateId,
+      contextRef: `PRODUCTION_PLANS:${planId}`,
+      startedBy: "SYSTEM",
+      initialQuantity: actualQty,
+    });
+  }
+
   return {
     ...plan,
     status: "In_Production",
@@ -751,6 +762,7 @@ export async function startProduction(
       status: "Consumed",
     })),
   };
+  });
 }
 
 export interface PlanShortage {

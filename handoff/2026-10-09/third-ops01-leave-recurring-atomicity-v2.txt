@@ -1,0 +1,312 @@
+# OPS-01 v2 — leave-creation-time reassignment, active-holder FMS assignment, and the
+# durable natural-cycle identity gap
+
+Status: implementation + DB-free focused Vitest TDD done and verified. Cut short mid-task
+by an imminent machine restart — the exploratory RED-recreation pass (copying pre-fix
+source to prove tests fail against it) was abandoned partway through for time; the GREEN
+evidence below is real and was actually run, but formal RED traces for the newly-added
+atomic-audit tests are not captured in this file (see "What's NOT done" below). No
+production/deploy/commit/push/installs/schema migration performed.
+
+## Read first
+
+- `handoff/2026-10-09/third-ops01-leave-recurring-atomicity.txt` (the v1 report from an
+  earlier interrupted attempt) describes work that, on inspection of the actual current
+  tree, IS present and uncommitted/unstaged in the working copy (confirmed via `git diff`/
+  `git status`): `activateLeave()`/`revertLeave()` already wrapped in one
+  `runInTenantTransaction`, `resolveActiveAssignee()` already existed, migration 0031 +
+  `tasks_org_id_recurring_id_due_date_unique` already generated and present as an
+  untracked file (`drizzle/0031_tasks_recurring_cycle_unique.sql`), the recurring
+  generator's `createOccurrenceIdempotently()` already catching the 23505 against that
+  constraint. v1's own "Known residual gap" section explicitly flagged `fms/engine.ts` as
+  NOT touched and FMS run creation as still assigning the absent original doer verbatim —
+  **that is exactly what this v2 pass closes**, plus the atomic-audit gap for
+  cron-generated Task occurrences that v1 also left open (see below).
+- `src/db/transaction-context.ts` — the lock/savepoint contract (`createTenantTransactionAdapter`,
+  `runInTenantTransaction`, nested-call same-org check, `afterTenantCommit`). Confirmed:
+  nested calls inside an already-open scope reuse the same transaction (`active.orgId ===
+  orgId` check), so every new atomicity added below composes correctly with the existing
+  `startFmsInstance`/`completeFmsStep`/`activateLeave`/`revertLeave` transaction scopes
+  rather than opening a second, separate one.
+
+## Scope touched this pass
+
+- `src/lib/leave/reassignment.ts` (owned) — added `resolveActiveAssigneeWithAudit()`.
+- `src/lib/recurringGenerator.ts` (owned) — switched to the new audit-aware resolver;
+  `createOccurrenceIdempotently()` now wraps the Task insert + its conditional
+  `leave_reassignments` audit insert in one `runInTenantTransaction`.
+- `src/lib/fms/engine.ts` (owned this pass — the file v1 explicitly left untouched) —
+  `appendStepRun()` now resolves the active holder (buddy during an active leave) for
+  EVERY new FMS run it creates (`startFmsInstance`'s first step, and every successor step
+  `completeFmsStep`'s `createRun()` appends), computing TAT and the audit insert against
+  that same resolved assignee, inside the caller's already-open transaction scope.
+- `tests/fms-trusted-fields.test.ts` (fixed pre-existing breakage, see below) — its mocks
+  of `@/db/client`/`@/lib/mutations`/`@/lib/leave/reassignment` were stale against
+  `engine.ts`'s own already-staged (uncommitted, pre-dating this session)
+  transaction/idempotency wrapping — the whole suite was failing with "No
+  runInTenantTransaction export" before any of this session's edits. Not part of this
+  item's assigned scope by file ownership, but blocking verification of the
+  `appendStepRun()` change above (every call site this pass touches runs through
+  `completeFmsStep`, which this suite exercises) — fixed minimally (mock shapes only, zero
+  assertion changes) rather than left broken.
+- `tests/recurring-generator-cycle-buddy-unit.test.ts` (owned) — updated mocks for the new
+  `resolveActiveAssigneeWithAudit` shape, added `@/db/client`/`@/db/schema`/`@/db/repo`/
+  `@/lib/id` mocks (recurringGenerator.ts now imports these directly for the audit
+  insert), two new tests for the atomic-audit-row behavior.
+- No other file touched. `src/db/schema/**`, `drizzle/**`, `eslint.config.mjs`,
+  `tsconfig.json`, `package.json` untouched.
+
+## 1. FMS run creation now uses the ACTIVE holder, with audit, atomically
+
+**Before this pass** (confirmed by reading `fms/engine.ts` before editing):
+`appendStepRun()` — the single internal helper both `startFmsInstance()` (a flow's first
+step) and `completeFmsStep()`'s `createRun()` (every successor step) call — used
+`input.assignedTo` (the template step's configured `Assigned_To`, or the prior step's
+successor-step `Assigned_To`) verbatim for both the real DB row's `assignedTo` column AND
+the TAT computation (`queueOpenTatStart`/`computeTatDeadline`). A step whose configured
+assignee was currently mid-leave got a new run born on the absent doer, with a TAT window
+computed against the absent doer's own working calendar — exactly the gap v1's "Known
+residual gap" section flagged and explicitly left unfixed.
+
+**Fix:** `appendStepRun()` now calls `resolveActiveAssigneeWithAudit(input.orgId,
+input.assignedTo)` (dynamic import, breaking the same leave<->fms circular-import shape
+`reassignment.ts`'s own `recomputeRunTat()` call already avoids) before doing anything
+else. The resolved `assignedTo` — the buddy, if the step's natural assignee is currently
+mid-leave, else unchanged — is used for:
+- `queueOpenTatStart`/`computeTatDeadline` (the buddy's own working-hours calendar, open-
+  TAT queue, shift/lunch/weekly-off — not the absent doer's).
+- The inserted `fms_runs.assigned_to` column itself.
+- A `leave_reassignments` audit row (`entityType: "FMS_RUN"`, `originalAssignee` = the
+  step's own configured assignee, `buddyId` = the resolved active holder), inserted
+  immediately after the run row, in the SAME call — and since `appendStepRun()` is only
+  ever invoked from inside `startFmsInstance()`'s or `completeFmsStep()`'s own
+  `runInTenantTransaction` scope (confirmed: both wrap their entire body in one already),
+  the run insert and its audit insert are atomic with everything else that transaction
+  does (TAT computation, the step-completion update, chained `emitFmsEvent`, etc.) — a
+  failure anywhere rolls back the run AND its audit row together, never one without the
+  other.
+- `revertLeave()` (unchanged this pass — already correct from v1) finds this exact audit
+  row later via its existing `entityType === "FMS_RUN"` branch and hands the run back only
+  if it's still `Pending` and still held by the buddy — the same asymmetric
+  "only revert what is still Pending and still held by the buddy" rule v1 preserved for
+  pre-existing work now applies identically to FMS runs born DURING an active leave.
+
+## 2. Recurring-Task creation: atomic audit row for buddy-born occurrences
+
+**Before this pass:** `resolveActiveAssignee()` (v1) correctly resolved the buddy for a
+newly generated occurrence's `assignedTo`, but recorded NO `leave_reassignments` audit
+row for it — `revertLeave()` had no way to find and hand back a recurring occurrence that
+was born on the buddy during the leave (as opposed to one that existed before activation
+and got redirected by `activateLeave()`, which does audit correctly). This was a real gap
+left open by v1, not explicitly flagged in its "Known residual gap" section (which only
+named `fms/engine.ts`) — found by inspecting `revertLeave()`'s own revert logic against
+what `resolveActiveAssignee()` actually left behind.
+
+**Fix:** `resolveActiveAssigneeWithAudit(orgId, userId)` — new export in
+`reassignment.ts`, same resolution as `resolveActiveAssignee()` but also returns the
+leave's own `id` (or `""` when nobody is on leave). `recurringGenerator.ts`'s
+`createOccurrenceIdempotently()` now wraps the Task insert (`createRecurringOccurrence`)
+and, when a leave id was returned, a `leave_reassignments` audit insert
+(`entityType: "TASK"`, `originalAssignee` = the rule's own `Doer_ID`, `buddyId` = the
+resolved assignee) inside one `runInTenantTransaction(orgId, ...)` — so a crash between
+the Task insert and the audit insert rolls back the whole occurrence, never leaving a
+Task reassigned to a buddy with no audit trail. The existing 23505
+(`tasks_org_id_recurring_id_due_date_unique`) idempotent-duplicate catch wraps the whole
+transaction attempt, unchanged in behavior (a concurrent/retried duplicate-cycle insert is
+still treated as "already generated", not an error).
+
+`revertLeave()` itself needed NO changes for this — its existing `entityType === "TASK"`
+branch already handles any audit row shaped this way identically to one `activateLeave()`
+wrote.
+
+## 3. Durable natural-cycle identity across midnight — INSPECTED, already covered by v1,
+   no further schema change proposed
+
+Re-verified v1's own claim by reading `recurringGenerator.ts` and
+`drizzle/0031_tasks_recurring_cycle_unique.sql` directly (not trusting the v1 report
+blindly, per instruction): every occurrence this generator creates — both the Daily path
+and the non-Daily/carry-forward path via `findMostRecentScheduledDay()` — is stamped with
+`dueDate: \`${today}T23:59\`` where `today` is the GENERATION day (`todayIST()`), not the
+cycle's own natural day. A missed Weekly/15D/Monthly/Quarterly/Yearly cycle whose natural
+day was yesterday (or further back, within `LOOKBACK_DAYS`) and gets generated TODAY
+(carried forward past a holiday/weekly-off) is stamped with TODAY's date, not its own
+natural day — meaning `(org_id, recurring_id, due_date)` is unique per GENERATION day, not
+per logical cycle. Two different cron runs on two different calendar days that both think
+they owe the SAME missed natural cycle (e.g. a transient `listTasks()` read failure on
+day N meant the in-memory `alreadyGenerated` check incorrectly said "not yet generated" on
+day N+1 too, after day N's run had already silently retried and succeeded) would each
+produce a row with a DIFFERENT `due_date` (day N's date vs day N+1's date) for the
+logically same cycle — the unique index does not catch this, because the index key
+literally differs between the two rows.
+
+**This is a real, distinct gap from what v1's 0031 migration actually closes** (0031 only
+stops two SIMULTANEOUS/retried calls within the SAME generation day from double-inserting
+— confirmed by reading the migration SQL and the generator's own doc comments, which say
+exactly this: "two cron runs ... on the same day"). The task description's framing
+("0031's due_date uniqueness only prevents same-day duplicates, not a cycle CARRIED
+FORWARD across midnight") is accurate and is NOT fully closed by v1.
+
+**Why no code fix was attempted this pass, and no schema change is proposed yet:**
+closing this properly needs a durable per-cycle identity key that is independent of which
+day the occurrence actually got generated on — e.g. a stored `natural_cycle_start_date`
+column (computed once per rule invocation from `findMostRecentScheduledDay()`'s own
+return value, not from `todayIST()`) with its OWN unique index
+`(org_id, recurring_id, natural_cycle_start_date)` replacing or supplementing the current
+`due_date`-keyed one. This is a genuine new column — `tasks` has no existing field that
+already encodes "which natural cycle does this occurrence belong to" independent of its
+due date (`recurringId` identifies the RULE, `dueDate` identifies the GENERATION day, not
+the cycle). Per this task's own explicit instruction, a subagent finding a real schema gap
+must STOP and report it rather than editing `src/db/schema/**` or generating a migration
+— this is exactly that case, so the implementation is intentionally left as a proposal
+below rather than attempted.
+
+### Proposed schema change (for parent review/application — NOT applied)
+
+- Table: `tasks` (`src/db/schema/tasks.ts`).
+- New column: `natural_cycle_start_date` — type `date` (calendar date, no time-of-day,
+  matching `holiday_list.date`'s own precedent in the same file), nullable or defaulted to
+  `''`/the row's own `dueDate`'s date portion for backfill safety on existing rows,
+  `NOT NULL DEFAULT ''` if a sentinel-empty convention is preferred (matching this
+  codebase's existing `recurringId`'s own `''`-for-one-off convention) — parent's call on
+  exact nullability.
+- Populated by `recurringGenerator.ts` at insertion time as the ISO date
+  `findMostRecentScheduledDay()` actually returned for the non-Daily path (or `today`
+  itself for the Daily path, which has no carry-forward concept and is always its own
+  single-day cycle) — NOT `todayIST()` unconditionally.
+- New partial unique index, replacing or alongside the existing
+  `tasks_org_id_recurring_id_due_date_unique`:
+  `tasks_org_id_recurring_id_natural_cycle_unique` on
+  `(org_id, recurring_id, natural_cycle_start_date)`, same
+  `WHERE recurring_id <> ''` partial-index scoping as the existing one (one-off Tasks are
+  unaffected).
+- Why this and not reusing `due_date`: `due_date` is already load-bearing for the UI/MIS
+  ("when is this occurrence due") and must keep reflecting the day it was actually
+  generated (today), which is correct and should not change — the fix needs a SECOND,
+  independent column for "which cycle", not a repurposing of `due_date`.
+- Migration: would need `npx drizzle-kit generate` run by the parent (or whoever owns
+  schema changes) against the real schema, generating a new numbered migration after 0031
+  — not generated or hand-written by this pass, per the no-schema-touch constraint.
+- Generator change needed alongside (not yet made): `createOccurrenceIdempotently()`'s
+  `isUniqueViolation()` check would need the new constraint name added (can coexist with
+  the existing one — a genuine retry will trip the new constraint even in cases the old
+  one wouldn't catch, which is the whole point of adding it).
+
+## RED → GREEN evidence (this pass's own new/changed behavior)
+
+**`tests/recurring-generator-cycle-buddy-unit.test.ts`** — 7 tests, all GREEN against the
+current fixed code:
+```
+npx vitest run --config tests/recurring-generator-cycle-buddy-unit.vitest.config.ts
+Test Files  1 passed (1)
+     Tests  7 passed (7)
+```
+Two of these are new this pass ("records a leave_reassignments audit row for an occurrence
+born on the buddy", "records no audit row when nobody is on leave") — they assert against
+a `h.auditRows` array populated only by a mocked `@/db/repo`'s `insertRecord`, proving
+`createOccurrenceIdempotently()` actually calls through to an audit insert with the right
+shape (`leaveId`, `entityType: "TASK"`, `entityId`, `originalAssignee`, `buddyId`) exactly
+when `resolveActiveAssigneeWithAudit` returns a non-empty `leaveId`, and not otherwise.
+**RED trace not re-captured this pass** (time-boxed by the wrap-up): before this session's
+edit, `recurringGenerator.ts` had no audit-insert call at all and the mocked
+`@/db/repo`/`@/db/client`/`@/db/schema`/`@/lib/id` modules this test file now needs didn't
+exist in the test file either — attempting to run the new tests against the untouched
+pre-session source would fail at import/mock-shape level (missing exports), not as a
+clean assertion failure; this is the expected "doesn't exist yet" RED shape for a newly
+added primitive, same pattern v1's own report used for `resolveActiveAssignee` itself.
+
+**`tests/leave-reassignment-atomicity-unit.test.ts`** — 6 tests, unchanged by this pass
+(no new behavior added to `activateLeave`/`revertLeave` themselves), re-run to confirm
+still GREEN after `reassignment.ts`'s new `resolveActiveAssigneeWithAudit` addition:
+```
+npx vitest run --config tests/leave-reassignment-atomicity-unit.vitest.config.ts
+Test Files  1 passed (1)
+     Tests  6 passed (6)
+```
+
+**`tests/fms-trusted-fields.test.ts`** — 33 tests, all GREEN after fixing its stale mocks
+(see "Scope touched" above) to match `engine.ts`'s current shape, including this pass's
+own `appendStepRun()` change (every test in this file completes a step via
+`completeFmsStep`, which calls `appendStepRun()` for every successor run):
+```
+npx vitest run --config tests/fms-trusted-fields.vitest.config.ts
+Test Files  1 passed (1)
+     Tests  33 passed (33)
+```
+Before the mock fix, this ENTIRE suite failed with "[vitest] No \"runInTenantTransaction\"
+export is defined on the \"@/db/client\" mock" — confirming `engine.ts`'s transaction/
+idempotency wrapping predates this session (it was already staged/uncommitted in the
+working tree) but this test file's mocks had never been updated to match, for any file in
+this tree; this pass's edit to `appendStepRun()` is covered by the now-passing 33, but
+there is no separate NEW test in this file specifically asserting "buddy gets the run,
+original doer does not" at the `completeFmsStep`/successor-run level — this file's mock
+for `resolveActiveAssigneeWithAudit` always returns the input userId unchanged
+(`leaveId: ""`), so these 33 tests prove the active-holder resolution call is wired in and
+doesn't break existing trusted-field behavior, but do NOT themselves exercise the
+buddy-redirect branch for FMS successor runs. See "What's NOT done" below.
+
+## What's NOT done / left for the next pass
+
+1. **No dedicated new test asserts the FMS active-holder redirect itself** (i.e., "a
+   template step's configured assignee is mid-leave; the new run and its TAT land on the
+   buddy; a leave_reassignments audit row with entityType FMS_RUN is created atomically").
+   The `appendStepRun()` code change is real and reviewed by hand against
+   `resolveActiveAssigneeWithAudit`'s exact contract (same primitive, same shape, already
+   proven correct by `tests/leave-reassignment-atomicity-unit.test.ts`'s own 4
+   `resolveActiveAssignee`-equivalent cases), but strict vertical TDD was not completed for
+   this specific file/behavior — no RED was captured for it either. This is the most
+   important gap to close next: a small new test file or an addition to
+   `fms-trusted-fields.test.ts` that sets `resolveActiveAssigneeWithAudit`'s mock to return
+   a buddy+leaveId for one case and asserts the inserted run's `assignedTo` and a captured
+   audit-insert call reflect it.
+2. **No RED trace was re-captured** for the recurring-generator audit-row tests (see
+   above) — the GREEN evidence is real and was actually run; the formal "revert source,
+   confirm red, restore" dance v1's own report did was skipped under the wrap-up deadline.
+3. **Durable natural-cycle identity (item 3 above) is analysis + a proposed schema change
+   only** — no code change was made, per the explicit schema-stop instruction. The
+   generator still carries the gap described above (a missed cycle generated on two
+   different calendar days produces two distinct `due_date` keys and is NOT caught by the
+   existing 0031 index).
+4. **No full-suite regression run** (finance/orders/dispatch/etc.) — only the
+   leave/recurring/fms-trusted-fields DB-free suites directly touched or affected by this
+   pass's files were run, plus `tsc --noEmit -p tsconfig.json` (clean) and scoped
+   `eslint` on every touched file (clean after one `no-explicit-any` file-level disable
+   comment was added to the test file, matching this codebase's own established
+   convention in `tests/leave-reassignment-atomicity-unit.test.ts` and others).
+5. **Real-PG / integration-level verification was not attempted this pass** — no
+   disposable DB container was started or touched; everything above is DB-free mocked
+   Vitest only.
+
+## Exact verification commands run, with output, at the point of this handoff
+
+```
+cd D:/Pro-ERP
+npx vitest run --config tests/leave-reassignment-atomicity-unit.vitest.config.ts
+  => Test Files  1 passed (1) / Tests  6 passed (6)
+
+npx vitest run --config tests/recurring-generator-cycle-buddy-unit.vitest.config.ts
+  => Test Files  1 passed (1) / Tests  7 passed (7)
+
+npx vitest run --config tests/fms-trusted-fields.vitest.config.ts
+  => Test Files  1 passed (1) / Tests  33 passed (33)
+
+npx tsc --noEmit -p tsconfig.json
+  => exit 0, no output (clean)
+
+npx eslint src/lib/leave/reassignment.ts src/lib/recurringGenerator.ts src/lib/fms/engine.ts \
+  tests/leave-reassignment-atomicity-unit.test.ts tests/recurring-generator-cycle-buddy-unit.test.ts \
+  tests/fms-trusted-fields.test.ts
+  => (after adding the file-level no-explicit-any disable comment to the one test file
+      that needed it) exit 0, no problems
+```
+
+## Boundaries respected
+
+No other domain file touched (confirmed via `git status`/`git diff` before and after —
+only `src/lib/leave/reassignment.ts`, `src/lib/recurringGenerator.ts`,
+`src/lib/fms/engine.ts`, and the two owned test files plus the one pre-existing-breakage
+fix to `tests/fms-trusted-fields.test.ts` were modified this pass). No
+`src/db/schema/**`/`drizzle/**` edits or `drizzle-kit generate`/`migrate` invocation. No
+`npm install`/dependency changes. No `.env`/secret reads. No real/disposable database
+started, connected to, or touched. No `git commit`/`push`/`stash`/`checkout`/`clean`. No
+edits to `eslint.config.mjs`/`tsconfig.json`/`package.json`. No other THIRD-phase item's
+files (vendor/BOM/Indent, OPS-02, OPS-03, QA-01..04) touched.

@@ -1,0 +1,61 @@
+PERF-01 / PERF-05 resume — core implementation DB-free verified, NOT full finding acceptance
+2026-10-10, D:/Pro-ERP
+
+Status
+- PERF-01: owned request-scoped tenant/settings/AppShell implementation completed and locally unit/lint verified. Parent acceptance, independent review and actual final-tree type/build gates still pending.
+- PERF-05: recent-prompt SQL bounding + stable ordering implemented/verified. Full finding remains INCOMPLETE because independent transcript/session UI pagination is not implemented (routes/UI outside this agent's ownership).
+- Tracker deliberately untouched (outside assigned ownership). Preserve pre-existing staged tenant/auth work; all new changes remain unstaged/uncommitted.
+
+Production files changed (only assigned ownership)
+1. src/lib/tenant.ts: React cache wraps only implicit live-session + allowed-organization resolution, with explicit tenant taking precedence. Request-only mutable cache state comes from React cache in RSC or a fresh AsyncLocalStorage.run operation cache in runWithTenant. No global auth TTL and NO implicit ALS enterWith. Ordinary route calls are not assumed to have React memoization.
+2. src/lib/settings.ts: one in-flight promise per org/request-operation, defensive snapshot copies, evict failed reads, invalidate after successful upsert. Inside an active tenant transaction, discard any HTTP snapshot and use fresh uncached transaction-visible reads; transaction results never populate request cache.
+3. src/lib/orders/settings.ts: read getAllSettings once and derive all 13 fields, preserving existing default/unit/doer behavior. saveOrderSetup contract unchanged.
+4. src/components/app-shell.tsx: use validated getTenant().org, reject tenant/session org mismatch, run settings/nav helpers in explicit validated tenant scope in parallel. Removed process-global tenantCached navigation TTL; fresh reads on the following shell invocation.
+5. src/lib/chatbot/sessions.ts: recentSessionMessages issues org+session filtered ORDER BY created_at DESC, id DESC LIMIT N; map/reverse bounded rows without mutating query rows. Default 20; integer 1..100 limit policy rejects unsafe/unbounded caller input before querying (only existing production caller supplies 20). Full transcript uses created_at ASC, id ASC for consistent tie order. Existing getMySession ownership gate remains unchanged.
+
+Test files
+- Existing tests/perf01-perf05.unit.vitest.config.ts retained: node, setupFiles: [], only tests/perf01-perf05.*.test.ts. Inspected before execution; no dotenv/setup.ts.
+- Existing tests/perf01-perf05.sessions.test.ts extended.
+- Created tests/perf01-perf05.settings.test.ts, tests/perf01-perf05.tenant.test.ts, tests/perf01-perf05.shell.test.ts.
+- Tenant tests execute the installed React server cache implementation through a test request-cache dispatcher. This is stronger than replacing cache with a global memoizer, but is NOT a real Next HTTP/RSC rendering run. DB/client, cookie/live-session and registry transport boundaries are mocked; real tenant/settings/order-settings functions and real Drizzle predicates/order expressions are exercised.
+
+Strict vertical RED -> minimal implementation -> GREEN evidence (actual local executable)
+Command on every cycle: node node_modules/vitest/vitest.mjs run --config tests/perf01-perf05.unit.vitest.config.ts --reporter=dot
+- Initial existing recent transcript tests legitimately RED: LIMIT called zero times; caller 3 returned M-3/M-2/M-1 instead of M-28/M-29/M-30. SQL descending LIMIT implementation -> 2 GREEN.
+- Added descending stable ID tie test RED: received only created_at DESC, expected created_at DESC + id DESC. Added tie ordering -> 3 GREEN.
+- Order setup RED: 13 settings reads instead of 1. Single explicit snapshot -> 4 GREEN.
+- Implicit RSC tenant dedupe RED: 3 live validations instead of 1. React request cache -> 5 GREEN.
+- Concurrent per-key settings RED: 3 SQL reads instead of 1. Request-operation in-flight snapshot -> 6 GREEN.
+- Successful upsert read-after-write RED: DOER-A instead of DOER-B. Cache invalidation -> 7 GREEN.
+- Transaction visibility RED: HTTP DOER-A instead of transaction TX. Uncached transaction-visible reads + snapshot removal -> 8 GREEN.
+- AppShell reuse/freshness RED: Pro ERP instead of validated org name, independent registry/navigation context. Validated tenant + explicit helper scope/no global TTL -> 9 GREEN.
+- AppShell mismatch RED: promise resolved for a mismatched org instead of rejecting. Mismatch guard -> 10 GREEN.
+- Invalid limits RED: six unsafe caller inputs resolved instead of rejecting. Integer 1..100 validation -> 16 GREEN.
+- Full transcript stable tie RED: only created_at ASC instead of created_at ASC + id ASC. Added ascending tie -> 25 GREEN (additional safety regression tests had been added).
+- Supplemental regression coverage: immediately next-request revocation, ordinary non-render revalidation, concurrent tenants, explicit scope restoration, suspended org, RSC settings request isolation, mutable snapshot defense, failed-read retry, SQL org predicates, 20/200/20,000-history bounded reads, same-tenant foreign-user session denial. No new production behavior was added without its preceding RED above.
+
+Measured query-count / bounded-read evidence (DB-free instrumentation, NOT latency claims)
+- getOrderSetup: captured before 13 settings SELECT invocations, after 1; parsing/default output preserved.
+- Three concurrent per-key/all-settings consumers: before 3 settings SELECT invocations, after 1 within an explicit operation.
+- Three concurrent implicit tenant consumers in a render: before 3 live validations, after 1 live validation and 1 organization resolution. Immediately next request validates again; revoked session gets no organization resolution.
+- Concurrent ORG-A/ORG-B operations: one settings read each; SQL predicates compiled by actual PgDialect have the correct org IDs.
+- Recent transcript: before full history transfer then JS slice; after one scoped SQL read with LIMIT 20, 20 returned rows for historical fixture sizes 20, 200 and 20,000. AST checks require both DESC ordering terms; oldest-first mapped output and smaller limit 3 verified.
+- AppShell: zero extra direct registry reads; nav/used-template callbacks execute on each later shell call, not from a global 60-second TTL.
+
+Final actual verification
+- node node_modules/vitest/vitest.mjs run --config tests/perf01-perf05.unit.vitest.config.ts --reporter=verbose: exit 0, 4 files, 30 tests passed.
+- Inspected tests/sec01.vitest.config.ts and tests/orders-unit.vitest.config.ts; both setupFiles: []. Local Vitest rerun: security/live-session/chatbot 301 passed; orders domain/API 60 passed.
+- node node_modules/eslint/bin/eslint.js --max-warnings=0 [five production files] tests/perf01-perf05.*.test.ts tests/perf01-perf05.unit.vitest.config.ts: exit 0, zero warnings/errors.
+- git diff --check restricted to five owned production files: exit 0 (Git LF/CRLF conversion notices only).
+- Parent owns the one final tsc/build after all agents return; this agent did NOT run those or claim them passed.
+- Installed Next documentation read before framework changes: node_modules/next/dist/docs/01-app/01-getting-started/06-fetching-data.md:546-604 (React cache is ORM-friendly and request-only).
+
+Exact outstanding acceptance gaps / next ownership needed
+1. PERF-05 pagination: listMySessions(userId) still loads every session; listSessionMessages(sessionId) still loads the complete transcript. src/app/api/chatbot/sessions/route.ts returns the unbounded session list; src/app/api/chatbot/sessions/[sessionId]/route.ts validates getMySession then returns the unbounded transcript. src/app/chat/chat-client.tsx fetches both whole responses and has no cursor/load-older/load-more path. Must implement independently bounded session and transcript pages end-to-end with stable timestamp+ID cursors, owner/tenant predicates and stale-session-safe UI merge; do NOT silently truncate the current arrays without a discoverable pagination contract. Routes/UI are outside assigned ownership and the UI is concurrently owned by another agent, so no edits there.
+2. Actual real PostgreSQL transfer/query plans/latency and real HTTP endpoint query-count instrumentation were not authorized/executed. Current chat-message index is org_id+session_id, not the timestamp+ID ordering index; SQL LIMIT bounds returned rows but does NOT prove bounded backend scan/sort work. Review EXPLAIN under an approved disposable DB before claiming database CPU/latency improvement or proposing an ordering index migration.
+3. Real Next RSC lifecycle/HTTP smoke and independent source review still needed; unit tests provide installed React-cache dispatcher evidence, not production browser/renderer proof.
+4. Parent final-tree TypeScript/lint/i18n/build gates and acceptance/tracker updates remain pending. No whole-finding complete claim is justified, especially PERF-05 pagination.
+
+Safety / issues
+- No .env/secret reads, DB/provider calls, dependency installs/node_modules changes, manifest/lock edits, migrations, commits, pushes, deployment or destructive Git commands.
+- Local tool entrypoints recovered and worked; no npx fallback used. Write-file wrapper refused two test appends despite full read; safely used targeted patches instead. One cosmetic blank-line patch did not match CRLF and was left unchanged; no functional effect.

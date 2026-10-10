@@ -1,6 +1,5 @@
-import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
-import { verifySession, SESSION_COOKIE } from "@/lib/auth/session";
+import { getLiveSession } from "@/lib/auth/live-session";
 import AppShell from "@/components/app-shell";
 import InventoryBoard from "./inventory-board";
 import PageHeader from "@/components/page-header";
@@ -9,9 +8,7 @@ import { getInventoryItemRows } from "@/lib/inventory/service";
 
 export default async function InventoryPage() {
   const t = await getT();
-  const cookieStore = await cookies();
-  const token = cookieStore.get(SESSION_COOKIE)?.value;
-  const session = token ? await verifySession(token) : null;
+  const session = await getLiveSession();
 
   if (!session) redirect("/login");
   if (!session.access.includes("INVENTORY_VIEW")) redirect("/dashboard");

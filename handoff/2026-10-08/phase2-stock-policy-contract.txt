@@ -1,0 +1,102 @@
+Second / DATA-03: authoritative stock availability policy contract
+
+IMPLEMENTED FILES (no domain integration)
+G:/Pro-ERP/src/lib/inventory/availability.ts
+G:/Pro-ERP/tests/stock-availability-policy.test.ts
+G:/Pro-ERP/tests/stock-availability-policy.vitest.config.ts
+
+PUBLIC API (import from @/lib/inventory/availability)
+interface StockAvailabilityOptions {
+  excludeOrderId?: string;
+  excludePlanId?: string;
+}
+interface StockAvailability {
+  onHand: Map<string, number>;
+  orderReserved: Map<string, number>;
+  planReserved: Map<string, number>;
+  free: Map<string, number>;
+}
+interface StockRequest { sku: string; quantity: number; }
+getStockAvailability(options?: StockAvailabilityOptions): Promise<StockAvailability>
+assertStockAvailable(sku: string, quantity: number, options?: StockAvailabilityOptions): Promise<StockAvailability>
+assertStockAvailableMany(requests: readonly StockRequest[], options?: StockAvailabilityOptions): Promise<StockAvailability>
+StockAvailabilityError extends Error
+InsufficientAvailableStockError extends StockAvailabilityError {
+  readonly sku: string;
+  readonly requested: number;
+  readonly available: number;
+}
+
+MAP / EXCLUSION SEMANTICS
+- Tenant comes only from getTenantOrgId(); no caller-supplied tenant override.
+- onHand is unchanged by exclusions.
+- orderReserved and planReserved are EFFECTIVE commitments after exclusions. They are not unadjusted display totals when options are supplied.
+- free is round3(onHand - orderReserved - planReserved), on the union of all source keys. Reservation-only SKUs retain negative free; no clamping. Missing SKU reads as zero for assertions.
+- Each supplied caller ID is queried verbatim with this tenant's orgId. Missing/foreign entities reject with StockAvailabilityError; empty/whitespace-only IDs reject before DB reads. IDs are not normalized.
+- A verified caller exclusion removes ONLY its eligible still-unconsumed reservation rows, never the tenant's entire order/plan commitment map, never consumed stock, and never another caller's reservations.
+- Existing non-reserving callers (Cancelled order; Completed/Cancelled plan; pre-stock order) are valid exclusions with zero effect. Both options may be supplied together.
+- Errors from tenant resolution, ledger/commitment reads, or exclusion verification propagate unchanged. No catch-to-empty fallback exists.
+
+EXACT SOURCE COMPATIBILITY / TRACED DEFINITIONS
+1. src/lib/inventory/ledger.ts:listLedger + onHandBySku, src/db/schema/inventory.ts:stockLedger:
+   Every tenant ledger row contributes regardless of source, location, UOM, reference, or Item-master status/existence. Blank SKU is skipped. Direction === "Out" subtracts; every other direction adds, preserving current legacy behavior. Quantity preserves null-as-zero but rejects corrupt non-null operands before direction multiplication (intentional hardening versus items.numOr0). round3 is applied after EACH addition, not just to an SQL SUM.
+2. src/lib/orders/orders.ts:orderReservedBySku / RESERVING_ORDER_STATUSES, src/db/schema/orders.ts:
+   Parent order statuses ONLY Stock_Check, Dispatch_Pending, Ready_For_PDI. Both parent and child orgId are required. Quantity is round3(validated reservedQty - validated consumedQty); each null operand is zero and each corrupt non-null operand rejects before subtraction/rounding/nonpositive clamping. Nonpositive held quantity and blank SKU are skipped; accumulator is round3 after each addition. Items_Pending, Payment_Review, Credit_Hold and Cancelled do not reserve.
+   Dispatch writes a ledger Out and increments order_items.consumedQty while an order may remain Ready_For_PDI; subtract consumedQty here exactly once so stock is not deducted twice. Cancellation drops the parent out of reserving statuses; no phantom reservation reversal is added to onHand.
+3. src/lib/inventory/plans.ts:committedBySku / RESERVING (the current production reservation function is named committedBySku, not planReservedBySku), src/db/schema/ppc.ts:
+   Parent plan statuses ONLY Ready, Shortage, In_Production. Both parent and child orgId are required. Positive held quantity is validated allocatedQty - validated consumedQty; accumulator uses round3 after every addition. Each corrupt non-null operand rejects before subtraction/nonpositive clamping; null quantity fields retain zero semantics. Material status is NOT a reservation eligibility filter. Completed/Cancelled do not reserve.
+   Partial Shortage allocation holds real stock. In_Production remains eligible for genuinely remaining held quantity; normal startProduction sets allocatedQty == consumedQty and releases the remainder, yielding no commitment. Cancelled releases via parent status only.
+4. UOM remains SKU-based exactly as current maps: no mixed-UOM filtering, conversion, active-item filtering, or invented conversion fields. Writers must supply the SKU's canonical UOM. The PG fixture deliberately mixes UOM/source/location values to prove all-source eligibility is retained, not to endorse mixed-UOM writes.
+5. Minimal projected queries: ledger {sku,direction,quantity}; order child {orderId,sku,reservedQty,consumedQty} joined to parent; plan child {planId,sku,allocatedQty,consumedQty} joined to parent. Three bounded-query passes, O(rows) map aggregation, no per-SKU queries or Orders/Plans domain imports. Exclusions add at most one tenant-scoped ID-only lookup each.
+6. Intentional fail-closed hardening: ledger.quantity, order.reservedQty, order.consumedQty, plan.allocatedQty and plan.consumedQty all reject non-null NaN/Infinity/-Infinity (numeric values and string encodings), malformed numeric text and blank/whitespace strings before operand math. Only null is deliberate zero. Error is StockAvailabilityError with message "Nonfinite stock quantity: <source.field>." Computed nonfinite order reservations/stock accumulators still reject. Existing blank-SKU/order/plan caller-exclusion eligibility remains unchanged; excluded reservation rows are not quantity operands. Domain reservation helpers remain unchanged.
+
+ASSERTION / BATCH ADMISSION
+- Nonempty SKU and nonempty request batch required. Requests must be finite and strictly positive, representable at round3 stock precision. Extra decimal quantities such as 1.0004, below-resolution 0.0001 and overflow quantities reject, not silently round down into unsafe admission. Small binary floating-point noise is tolerated.
+- Normalize domain-derived quantities with existing round3 BEFORE assertion AND persist those same normalized quantities. Do not validate a rounded quantity then write a different raw quantity.
+- assertStockAvailableMany aggregates duplicate SKU request lines into one demand per SKU before comparison, reads one availability view, and rejects requested > free. Unknown SKUs have zero free.
+- Both assertion helpers return the availability view, make no writes, and do not decrement any in-memory or persistent pool.
+- For any multi-line caller, use assertStockAvailableMany ONCE with the entire caller batch. Repeated single assertions without intervening writes are not batch admission and can over-admit.
+- New insufficiency error is InsufficientAvailableStockError from availability.ts, NOT ledger.ts's InsufficientStockError. Integration must catch/translate the new error deliberately.
+
+REQUIRED CONCURRENCY INTEGRATION (NOT IMPLEMENTED HERE)
+const orgId = await getTenantOrgId();
+await runInTenantTransaction(orgId, async () => {
+  // Load/validate the tenant caller inside this scope as needed.
+  await assertStockAvailableMany(allCallerRequests, callerExclusions);
+  // Perform ALL reservation/movement/caller-state writes here.
+});
+- Every competing stock reservation/movement writer must use the same runInTenantTransaction tenant-wide admission lock, including reallocation, cancellation, Dispatch, Production, manual/FMS movements and imports where applicable.
+- This helper alone is a read view, NOT a concurrency guarantee or a single multi-query MVCC snapshot. It does not begin a transaction or acquire a lock. Outside the coordinated transaction it may read concurrent changes between queries.
+- The existing db adapter routes reads through the current transaction. Its READ COMMITTED reads after tenant-wide advisory-lock admission support the full domain admission+write protocol only when every competing writer participates.
+- Keep HTTP/provider side effects outside the atomic DB writes / use the foundation's after-commit mechanism as appropriate; not implemented by this helper.
+
+EXECUTED RED/GREEN EVIDENCE
+Command: node node_modules/vitest/vitest.mjs run --config tests/stock-availability-policy.vitest.config.ts
+- RED initial contract: 1 failed, missing availability module. GREEN after minimal base helper: 1 passed.
+- RED exclusions: 5 failed / 1 passed (own caller still deducted; foreign/missing/blank options wrongly accepted). GREEN: 6 passed.
+- RED assertions: 10 failed / 6 passed (assertion exports missing). GREEN: 16 passed.
+- RED nonfinite order balance: 1 failed / 22 passed (Infinity-Infinity reservation disappeared). GREEN with fail-closed policy and actual PG fixture: 24 passed.
+- RED extra-decimal admission regression: requested quantity 1.0004 reached availability reads/rounded demand instead of validation rejection. GREEN final: 25 passed.
+Final verbose command: node node_modules/vitest/vitest.mjs run --config tests/stock-availability-policy.vitest.config.ts --reporter verbose
+Original result: 1 test file passed; 25 tests passed, including real local PG fixture (927ms); total duration 3.95s. All original 25 tests remain intact.
+
+INDEPENDENT REVIEW BLOCKER / EXECUTED OPERAND RED-GREEN
+- Before source changes, parameterized admission tests reproduced every one of the five source fields with numeric NaN/+Infinity/-Infinity, string NaN/+Infinity/-Infinity, malformed text, empty string and whitespace string. The 45 invalid-operand cases and actual PG NaN Out admission failed; all original 25 cases and five explicit null-as-zero cases passed: RED 46 failed / 30 passed (76 total).
+- Minimal fix: one null-preserving finite-operand parser; ledger parses before sign multiplication, order/plan parse both operands before subtraction, rounding and positive-only holding. No eligibility, exclusion, precision or domain integration changes.
+- GREEN final command: node node_modules/vitest/vitest.mjs run --config tests/stock-availability-policy.vitest.config.ts --reporter verbose
+- Final result: 1 test file passed; 76 tests passed; duration 2.05s. Real NaN Out fixture 425ms; original tenant/status fixture 594ms.
+- Evidence logs: C:/Users/Admin/AppData/Local/hermes/cache/scratch/stock-policy-nonfinite-red.log and stock-policy-nonfinite-green.log in the same directory.
+- Actual PG NaN fixture: independent stock-policy-nan-<randomUUID> organization; In 10 plus Out PostgreSQL numeric 'NaN', read back as 'NaN' inside the tenant transaction. assertStockAvailable(sku,10) throws StockAvailabilityError for ledger.quantity; that original admission error propagates out and triggers rollback. Exact organization and all ledger rows for its orgId are read back outside the transaction and verified absent, including during the RED failure run. No fixture committed.
+- Verification: focused ESLint on the three owned files exit 0; in-memory TypeScript program rooted at those files gives 0 diagnostics, no emit; scoped git diff --check exit 0. Only availability.ts, stock-availability-policy.test.ts and this contract were modified by the blocker fix; test config remains unchanged.
+
+REAL PG FIXTURE / SAFETY
+Dedicated config setup: C:/Users/Admin/AppData/Local/hermes/cache/scratch/pro-erp-local-test-setup.ts
+Approved target only: pro_erp_test via local WS 55007 / HTTP 55008. No dotenv, provider calls, installs, migrations, schema edits, build, full suite or commit.
+Fixture prefix: stock-policy-<randomUUID>, plus its own foreign sibling org. Fixture inserts occur within runInTenantTransaction and are deliberately rolled back. Exact organization IDs were read within the transaction to prove fixture presence, then read via HTTP after rollback to verify neither persisted.
+The real fixture exercises every order/plan enum status, partial consumption, remaining In_Production allocation even with Consumed material status, null consumed fields, orphan children, cross-tenant parent/child mismatches, foreign exclusions, terminal zero-effect exclusions, all nine existing source labels plus Dispatch Out, UOM/location variance, duplicate-SKU admission and caller-only add-back. Expected onHand=102, orderReserved=15, planReserved=18, free=69; verified own order+plan exclusion yields free=80 (only unconsumed holds 5+6 added back).
+
+OTHER VERIFICATION / SCOPE
+Focused ESLint on all three owned files: exit 0.
+In-memory TypeScript program rooted at the three owned files, using repository aliases/strict options and dependency graph: 0 diagnostics; no tsbuildinfo emitted.
+git diff --check: exit 0 (existing CRLF warnings elsewhere only).
+Only the three new owned repository files and this requested contract file were written. Orders, Accounts, Plans, ledger, FMS, auth/chatbot/user modifications, schema, registry and transaction foundation were not edited. Existing permissive domain reservation maps remain untouched; parent owns subsequent integration. DATA-03 is not closed globally until that integration and competing-writer coverage are verified.

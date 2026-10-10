@@ -1,3 +1,6 @@
+import { getMutationKey, runIdempotentTenantMutation, MutationConflictError, MutationInputError } from "@/lib/mutations";
+import { getTenantOrgId } from "@/lib/tenant";
+import { LedgerConflictError } from "@/lib/accounts/ledger";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { requireModule } from "@/lib/auth/guard";
@@ -25,9 +28,18 @@ export async function POST(request: Request, { params }: { params: Promise<{ bil
   }
 
   try {
-    const bill = await recordBillPayment(billId, parsed.data, guard.session.userId);
+    const bill = await runIdempotentTenantMutation(await getTenantOrgId(), {
+      operation: "accounts.bill-payment.create.v1", actorId: guard.session.userId, key: getMutationKey(request),
+      payload: JSON.parse(JSON.stringify({ billId, ...parsed.data })),
+    }, async () => ({ ...await recordBillPayment(billId, parsed.data, guard.session.userId) }));
     return NextResponse.json({ bill });
   } catch (err) {
+    if (err instanceof Error && "committed" in err && err.committed === true && "result" in err) {
+      return NextResponse.json({ bill: err.result, committed: true, warning: err.message });
+    }
+    if (err instanceof MutationConflictError || err instanceof MutationInputError || err instanceof LedgerConflictError) {
+      return NextResponse.json({ error: err.message }, { status: err.status });
+    }
     const message = err instanceof PayablesError || err instanceof Error ? err.message : "Payment record nahi ho paya.";
     return NextResponse.json({ error: message }, { status: 400 });
   }

@@ -1,0 +1,52 @@
+Finance integration bounded continuation — 2026-10-09
+
+STATUS
+User requested token-cost stop after the current vertical slice. Implementation preserved, uncommitted. Finance/SECOND is NOT complete; no production, migrations, installs, commit, push or deployment. Parent alone must execute real DB suites serially.
+
+IMPLEMENTED IN THIS CONTINUATION
+- Added durable top-level receipt wrapping to five previously uncovered HTTP entries: bill payments, CN application, DN application, DN cash receipt, manual journals. Bindings use parsed payload + path identity + trusted guard actor; manual dates remain strings in receipt payload and become domain Dates only inside work. JSON DTO first/replay contract; malformed keys 400, mutation/ledger conflicts 409. Different keys preserve genuine equal-valued transactions.
+- DN application now shares the bill remaining-payable cap with cash payments under the common tenant scope. DN create/apply/receive reject nonfinite rounded amounts.
+- Manual journal account resolution, direct manual account creation and lazy chart seeding now have a common tenant transaction boundary. Default account inserts use recoverable db.batch savepoints so tolerated unique collisions cannot poison a surrounding transaction.
+- Finished current CN slice: applyCreditNoteToOrder calls the three-argument Orders recordPayment path inside its active transaction, rather than independently inserting an order payment and a second journal. Orders owns payment/activity/GL with immutable individual payment source ID. No Orders/shared/schema edits.
+
+FILES MODIFIED BY THIS CONTINUATION
+src/lib/accounts/creditNotes.ts
+src/lib/accounts/debitNotes.ts
+src/lib/accounts/ledger.ts
+src/app/api/accounts/bills/[billId]/payments/route.ts
+src/app/api/accounts/credit-notes/[creditNoteId]/apply/route.ts
+src/app/api/accounts/debit-notes/[debitNoteId]/apply/route.ts
+src/app/api/accounts/debit-notes/[debitNoteId]/receive/route.ts
+src/app/api/accounts/ledger/journal-entries/route.ts
+tests/finance-unit.test.ts
+handoff/2026-10-09/finance-integration.txt (new)
+Existing interrupted finance work in other files preserved.
+
+EXECUTED EVIDENCE
+Inspected checkpoint, transaction/idempotency contracts, local isolated setup/runtime/safety and infrastructure handoff; no credentials or dotenv opened. Installed Next route-handler docs read. DB-free config has setupFiles:[], exactly tests/finance-unit.test.ts, complete persistence mocks; real Orders boundary remains mocked in this shard.
+Baseline: finance-unit 30/30 passed.
+Strict vertical RED -> GREEN observed separately for:
+- bill replay: two payments instead of one;
+- CN/DN apply and DN receive replay: balance reduced twice;
+- manual journal replay: different adjustment IDs;
+- mixed bill cash/DN admission: both succeeded beyond cap;
+- manual journal admission: unlocked account reads;
+- DN finite input: Infinity created a note;
+- lazy seeding admission: unlocked default-account reads;
+- direct account creation: unlocked write;
+- CN Orders integration: recordPayment called zero times before integration.
+Final command: node node_modules/vitest/vitest.mjs run --config tests/finance-unit.vitest.config.ts --reporter=dot
+Result: 1 file /44 tests passed, exit0 (11:16:50 local runner time).
+Final targeted ESLint on all eight production files above plus finance-unit.test.ts: no diagnostics.
+Final node node_modules/typescript/bin/tsc --noEmit --incremental false: no diagnostics, final combined tool exit0.
+No real DB tests executed or added in this continuation; no full suite/build/independent reviewer claim.
+
+GAPS / PARENT NEXT (DO NOT CLOSE FINANCE)
+- Extend and execute tests/finance-atomicity.test.ts using guarded local setup: actual concurrent CN refund/apply, DN receive/apply, cash/DN bill caps, invoice/bill issue/edit/create, petty-cash contention, injected GL/receipt faults, retry/readback and each route's durable replay. Current real file has only six journal-focused cases; unused imported domain/fault scaffolding remains interrupted work, not coverage.
+- Independently review new CN -> real Orders integration and verify actual order activity, payment, one journal, note usage and receipt roll back/commit together. Unit boundary mock is not proof of actual PostgreSQL integration.
+- Historical ambiguous order/bill payment journal recovery policy remains undocumented/unimplemented. Do not relabel old aggregate source aliases automatically; immutable new payment IDs are not a repair for historical GL drift.
+- Audit remaining finance public paths/input dates/rounded-zero monetary values, all existing creation routes' successful replay and actor/operation/path mismatch, receipt insert failures and post-commit committed:true handling. Existing guard+implicit tenant resolution pattern retained; broader authorization/context changes were not attempted.
+- Real local infrastructure handoff reports intermittent WS acquisition timeouts; parent must resolve/attribute, not conceal, those failures before accepting gates.
+- Production migration coordination, independent review and final actual-tree gates remain parent-owned. No tracker edits.
+
+Scope stopped immediately after the current CN slice and focused verification per user instruction; no new slices or speculative retry loops.

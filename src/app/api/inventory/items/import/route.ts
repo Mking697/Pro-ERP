@@ -3,6 +3,8 @@ import { requireModule } from "@/lib/auth/guard";
 import { createItemsBulk, ITEM_CATEGORIES } from "@/lib/inventory/items";
 import { parseItemsFile } from "@/lib/inventory/itemsImport";
 import { recordMovementsBulk, type BulkMovementInput } from "@/lib/inventory/ledger";
+import { getMutationKey, runIdempotentTenantMutation, MutationConflictError } from "@/lib/mutations";
+import { getTenantOrgId } from "@/lib/tenant";
 
 // Same ceiling as the generic attachment upload — Vercel's Hobby serverless functions cap
 // a request body around 4.5MB. A spreadsheet of item rows is plain text/XML and tiny per
@@ -85,35 +87,66 @@ export async function POST(request: Request) {
     ? parsed.rows.map((row) => ({ ...row, category: forcedCategory }))
     : parsed.rows;
 
-  const result = await createItemsBulk(rows, guard.session.email);
+  // The whole import — every created item row AND every opening-stock movement it
+  // implies — is one replay-safe unit: a retried/duplicated request (same key, same
+  // validated rows) must neither re-create items nor re-post opening stock a second
+  // time. recordMovementsBulk()'s own runInTenantTransaction(orgId, ...) and
+  // createItemsBulk()'s db.insert() both resolve against the AsyncLocalStorage-bound
+  // transaction this call opens (src/db/transaction-context.ts), so they automatically
+  // join it instead of each opening a separate commit — no signature change needed in
+  // either module. The full validated row array (after forcedCategory is applied) is
+  // the payload, not a per-row key: a retry must match the entire request, not one row.
+  const orgId = await getTenantOrgId();
+  try {
+    const result = await runIdempotentTenantMutation(orgId, {
+      operation: "inventory.items.import.v1",
+      actorId: guard.session.userId,
+      key: getMutationKey(request),
+      // JSON.parse(JSON.stringify(...)) drops `undefined` fields (e.g. an omitted SKU)
+      // that canonicalJson would otherwise reject as JSON-unsafe.
+      payload: JSON.parse(JSON.stringify(rows)),
+    }, async () => {
+      const created = await createItemsBulk(rows, guard.session.email);
 
-  // A row's Opening Stock is written as one ledger entry per item, in the same batch —
-  // looked up by row number (not SKU) because a blank-SKU row's real SKU only exists on
-  // the created record, not on what the file itself said.
-  const inputByRow = new Map(parsed.rows.map((r) => [r.row, r]));
-  const movements: BulkMovementInput[] = [];
-  for (const { row, item } of result.created) {
-    const openingStock = inputByRow.get(row)?.openingStock;
-    if (openingStock && openingStock > 0) {
-      movements.push({
-        sku: item.SKU,
-        direction: "In",
-        quantity: openingStock,
-        uom: item.UOM,
-        source: "Opening",
-        location: item.Location,
-        remark: "Bulk import",
-        userId: guard.session.userId,
-      });
+      // A row's Opening Stock is written as one ledger entry per item, in the same
+      // batch — looked up by row number (not SKU) because a blank-SKU row's real SKU
+      // only exists on the created record, not on what the file itself said.
+      const inputByRow = new Map(parsed.rows.map((r) => [r.row, r]));
+      const movements: BulkMovementInput[] = [];
+      for (const { row, item } of created.created) {
+        const openingStock = inputByRow.get(row)?.openingStock;
+        if (openingStock && openingStock > 0) {
+          movements.push({
+            sku: item.SKU,
+            direction: "In",
+            quantity: openingStock,
+            uom: item.UOM,
+            source: "Opening",
+            location: item.Location,
+            remark: "Bulk import",
+            userId: guard.session.userId,
+          });
+        }
+      }
+      if (movements.length > 0) {
+        await recordMovementsBulk(movements);
+      }
+
+      return {
+        created: created.created.length,
+        openingStockRecorded: movements.length,
+        errors: created.errors,
+      };
+    });
+
+    return NextResponse.json(result);
+  } catch (err) {
+    if (err instanceof Error && "committed" in err && err.committed === true && "result" in err) {
+      return NextResponse.json({ ...(err.result as object), committed: true, warning: err.message });
     }
+    if (err instanceof MutationConflictError) {
+      return NextResponse.json({ error: err.message }, { status: 409 });
+    }
+    throw err;
   }
-  if (movements.length > 0) {
-    await recordMovementsBulk(movements);
-  }
-
-  return NextResponse.json({
-    created: result.created.length,
-    openingStockRecorded: movements.length,
-    errors: result.errors,
-  });
 }

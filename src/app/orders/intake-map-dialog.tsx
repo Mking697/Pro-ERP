@@ -86,6 +86,12 @@ export default function IntakeMapDialog({
       }
       toast.success(t("Order ban gaya."));
       onCreated(data.order);
+    } catch {
+      toast.error(
+        t(
+          "Save nahi ho paya — network ya server error ho sakta hai. Status confirm kiye bina dobara submit na karein."
+        )
+      );
     } finally {
       setSaving(false);
     }

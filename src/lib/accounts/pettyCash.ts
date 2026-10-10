@@ -1,7 +1,7 @@
 import type { InferSelectModel } from "drizzle-orm";
 import { and, eq } from "drizzle-orm";
 import { journalEntries, journalLines, pettyCashEntries } from "@/db/schema";
-import { db } from "@/db/client";
+import { db, runInTenantTransaction } from "@/db/client";
 import { findById, listByOrg } from "@/db/repo";
 import { getTenantOrgId } from "@/lib/tenant";
 import { generateId } from "@/lib/id";
@@ -117,13 +117,18 @@ export interface TopUpPettyCashInput {
   attachmentUrl?: string;
 }
 
-export async function topUpPettyCash(
+export async function topUpPettyCash(input: TopUpPettyCashInput, createdBy: string): Promise<PettyCashEntryRecord> {
+  const orgId = await getTenantOrgId();
+  return runInTenantTransaction(orgId, () => topUpPettyCashInTransaction(input, createdBy));
+}
+
+async function topUpPettyCashInTransaction(
   input: TopUpPettyCashInput,
   createdBy: string
 ): Promise<PettyCashEntryRecord> {
   const orgId = await getTenantOrgId();
   const amount = round2(input.amount);
-  if (!(amount > 0)) throw new PettyCashError("Amount 0 se zyada hona chahiye.");
+  if (!Number.isFinite(amount) || !(amount > 0)) throw new PettyCashError("Amount 0 se zyada hona chahiye.");
 
   const accounts = await listChartOfAccounts();
   const pettyAccount = findPettyCashAccount(accounts);
@@ -194,13 +199,18 @@ export interface RecordPettyCashExpenseInput {
  * here rather than silently patched around, matching this codebase's own practice of
  * flagging a known limitation instead of hiding it.
  */
-export async function recordPettyCashExpense(
+export async function recordPettyCashExpense(input: RecordPettyCashExpenseInput, createdBy: string): Promise<PettyCashEntryRecord> {
+  const orgId = await getTenantOrgId();
+  return runInTenantTransaction(orgId, () => recordPettyCashExpenseInTransaction(input, createdBy));
+}
+
+async function recordPettyCashExpenseInTransaction(
   input: RecordPettyCashExpenseInput,
   createdBy: string
 ): Promise<PettyCashEntryRecord> {
   const orgId = await getTenantOrgId();
   const amount = round2(input.amount);
-  if (!(amount > 0)) throw new PettyCashError("Amount 0 se zyada hona chahiye.");
+  if (!Number.isFinite(amount) || !(amount > 0)) throw new PettyCashError("Amount 0 se zyada hona chahiye.");
 
   const accounts = await listChartOfAccounts();
   const pettyAccount = findPettyCashAccount(accounts);

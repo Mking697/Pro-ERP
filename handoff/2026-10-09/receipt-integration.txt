@@ -1,0 +1,29 @@
+SECOND Purchase/receipts continuation — 2026-10-09
+Status: locally verified DB-free continuation; NOT whole SECOND accepted. Stopped promptly on token-budget steering.
+
+Preserved prior partial domain integrations; did not touch dispatch-domain.test.ts, shared ledger/plans/FMS, migrations, dotenv/credentials, production or Git state.
+Changed this continuation:
+- src/lib/inventory/indents.ts: PO-claimed indents cannot be independently received/cancelled; explicit internal receiveIndentForPurchaseOrder joins the owning transaction, rejects standalone use and checks expected PO claim; finite receipt input.
+- src/lib/purchase/orders.ts: use internal indent primitive (no nested replay wrapper); generated PO Blob upload deferred until confirmed commit. Durable issue DTO is an issue-time snapshot (blank attachment while generation is pending); GET PO retrieves generated URL. Upload failure is committed:true and repaired with generate-pdf, not another issue identity.
+- src/lib/inward/deviation.ts: missing configured approver now fails/rolls back required approval-task admission instead of saving an orphan request.
+- Eight APIs: purchase issue/receipt, indent receipt, inward create/IQC, deviation request/approve/reject map durable identity conflicts to 409. Confirmed-commit errors return committed:true + warning and saved DTO (or ok:true) rather than retryable 400.
+- tests/receipt-domain.unit.test.ts: existing baseline finished and new vertical slices added.
+- tests/receipt-domain.real.test.ts: expanded real PostgreSQL concurrency/fault/replay/successor gates; external PDF/Blob/WhatsApp boundaries mocked only. Parent must execute serially using guarded tests/local-isolated/setup.ts. No DB suite executed by this agent.
+
+Executed evidence:
+1. Initial safe DB-free baseline: 37 pass / 8 expected API conflict failures (400 vs 409); GREEN 45 pass.
+2. Vertical RED->GREEN: PO direct receive bypass; claimed-indent cancel; PDF upload inside transaction; committed PDF error API; missing configured approver; 7 committed-result API errors; standalone internal PO writer. Each observed expected behavioral RED before implementation.
+3. Final command: node node_modules/vitest/vitest.mjs run --config tests/receipt-domain.unit.vitest.config.ts => 1 file, 59 tests passed, exit 0.
+4. Focused ESLint on changed domain/API/unit/real test files => exit 0, no output.
+5. Scoped git diff --check => exit 0; only ordinary LF/CRLF warnings.
+6. TypeScript --noEmit --incremental false => exit 0 after real-test expansion, before final committed-API/internal-guard additions. Parent should rerun its final coordinated compiler gate.
+
+Remaining gates/paths:
+- Parent serial execution: tests/receipt-domain.real.vitest.config.ts, including actual PO competing claim/claim rollback, receipt replay/distinct identities/caps, PO completed+invoice rollback, IQC route rollback/concurrency/replay, deviation approval/request/reject replay, required FMS successor rollback, committed PDF failure receipt preservation, exact fixture cleanup.
+- Independent review of final domain/API diff and added real tests, particularly new compatibility policy: claimed PO indents must receive through Purchase, not plain Inventory receive.
+- Parent final type/lint/build/full safe tests and stage tracker acceptance. No claim that whole current tree or SECOND is done.
+- Review legacy round3 receipt precision policy separately if sub-milliquantity receipts are supported; it predates this continuation and was not expanded under stop steering.
+- Generated PDF issue DTO intentionally stays stable with blank attachment; validate frontend refetch/repair expectations. No durable outbox added; blank persisted attachment identifies manual generate-pdf recovery after crash/failure.
+- Existing standalone generatePoPdf document-only update remains outside tenant lock; consider scoped document-generation coordination if required, without conflating it with stock/claim atomicity.
+
+No install/commit/push/deploy/production migration. Dirty preexisting work preserved.

@@ -150,6 +150,59 @@ export function describeDataSourceType(config: StepDataSourceConfig): string {
   return "";
 }
 
+/** Only the step's configured editable fields may be submitted. Lookup selection also
+ * stores a hidden row id; autofill targets must still be declared sibling fields.
+ * Runtime keys are supplied by the engine for the active outcome type only. Existing
+ * source columns are deliberately NOT an allowlist: those values are server-resolved. */
+export function validateSubmittedFormFields(
+  config: StepDataSourceConfig,
+  values: Record<string, string>,
+  runtimeKeys: readonly string[] = []
+): void {
+  const allowed = new Set(runtimeKeys);
+  for (const field of config.form?.fields ?? []) {
+    allowed.add(field.key);
+    if (field.type === "lookup" && field.lookup) allowed.add(`${field.key}__id`);
+  }
+  for (const key of Object.keys(values)) {
+    if (!allowed.has(key)) {
+      throw new Error(`Form field "${key}" is not editable in this step.`);
+    }
+  }
+}
+
+/** Resolve action inputs without letting an editable field replace a configured,
+ * server-resolved source column. Equal echoes are harmless; differing values fail
+ * before writes. Active runtime quantity keys describe THIS run, not the source run,
+ * so they intentionally remain editable even when pulled from an earlier step. */
+export function resolveSubmittedFormFields(
+  config: StepDataSourceConfig,
+  referenceFields: Record<string, string>,
+  values: Record<string, string>,
+  runtimeKeys: readonly string[] = []
+): Record<string, string> {
+  validateSubmittedFormFields(config, values, runtimeKeys);
+  const runtime = new Set(runtimeKeys);
+  for (const key of config.existing?.columns ?? []) {
+    if (
+      !runtime.has(key) &&
+      Object.hasOwn(values, key) &&
+      (!Object.hasOwn(referenceFields, key) || values[key] !== referenceFields[key])
+    ) {
+      throw new Error(`Form field "${key}" cannot overwrite an existing source field.`);
+    }
+  }
+  // THIS_FLOW resolves an entire earlier run (including Form_Data). Only the
+  // columns selected by the template are this step's read-only reference inputs;
+  // incidental earlier keys must not shadow this step's manual/autofill fields.
+  const selectedReferences = Object.fromEntries(
+    (config.existing?.columns ?? [])
+      .filter((key) => Object.hasOwn(referenceFields, key))
+      .map((key) => [key, referenceFields[key]])
+  );
+  return { ...selectedReferences, ...values };
+}
+
 /** Which of a form's fields are missing from a submitted values map. */
 export function missingRequiredFields(
   config: FormDataSourceConfig,

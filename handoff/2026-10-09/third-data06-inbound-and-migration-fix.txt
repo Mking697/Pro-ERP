@@ -1,0 +1,241 @@
+DATA-06 continuation — inbound ledger admission + migration rollback harness fix
+2026-10-09 (this slice)
+Status: IMPLEMENTED + focused DB-free verification. STOPPED FOR PARENT REVIEW.
+Full DATA-06/THIRD acceptance remains OPEN — this is not independent approval, parent
+acceptance, real-driver acceptance, or deployment evidence. Does NOT touch, restart, or
+re-approve the already-DONE Indent unknown-outcome contract (indents.ts,
+app/api/inventory/indents/route.ts, reorder-board.tsx, tests/indent-*.*) or the
+independently-approved vendor/BOM slices (vendorItems.ts, bom.ts) — those files are
+untouched by this diff.
+
+OWNED FILES CHANGED
+- src/lib/inventory/ledger.ts (production fix)
+- NEW tests/ledger-admission.unit.test.ts
+- NEW tests/ledger-admission.unit.vitest.config.ts (setupFiles: [])
+- NEW tests/ledger-admission.unit.tsconfig.json (scoped, no emit/incremental)
+- tests/local-isolated/runtime.cjs (added resolveMigrationByTagPrefix helper)
+- tests/local-isolated/migrate-0029-rollback-scoped.cjs (hardcoded-total fix)
+- tests/local-isolated/migrate-0030-rollback-scoped.cjs (hardcoded-total fix)
+- tests/local-isolated/migrate-0031-rollback-scoped.cjs (hardcoded-total fix)
+- handoff/2026-10-09/third-data06-inbound-and-migration-fix.txt (this file)
+No edits to indents.ts, the indents route, reorder-board.tsx, tests/indent-*.*,
+vendorItems.ts, bom.ts, schema/**, drizzle/** (no new migration), eslint.config.mjs,
+tsconfig.json, or package.json.
+
+=====================================================================================
+PART 1 — Inbound single/bulk ledger item SKU ownership admission
+=====================================================================================
+
+Problem found: src/lib/inventory/ledger.ts's recordMovement() (single) and
+recordMovementsBulk() (bulk/import) never resolved/validated their SKU(s) against the
+tenant's own Items master before writing a stock_ledger row — unlike the already-
+approved vendor/BOM/Indent DATA-06 slices, a caller could record a movement (and every
+caller does: inward.ts's IQC pass, inward/deviation.ts's Accept-Under-Deviation,
+plans.ts's production consume/output, fms/actionRunner.ts's Stock Ledger Movement
+Action, the bulk items-import's Opening Stock) for ANY string SKU — missing, typo'd, or
+belonging to another tenant entirely — with no typed rejection and no admission check at
+all. Every one of those six call sites already resolves/checks the item itself via
+findItem() before calling recordMovement/recordMovementsBulk (so no production bug was
+observed there), but the writer itself had no defense of its own — any NEW or future
+caller (or a caller that forgets the check) would silently write ledger rows for an
+unowned/foreign/missing SKU, exactly the class of bug DATA-06 already fixed for
+vendorItems.upsertVendorItem() and bom.createBom().
+
+Fix (src/lib/inventory/ledger.ts):
+- New `LedgerAdmissionError` (typed, `status: 400 | 404`, defaults to 404) — same shape
+  as IndentAdmissionError/VendorItemAdmissionError.
+- New `admitOwnedItem(sku)`: resolves via the real tenant-scoped `findItem()` (same
+  function every existing caller already uses); throws LedgerAdmissionError if the SKU
+  doesn't resolve for the CURRENT tenant (missing or foreign-tenant-only both fail the
+  same way, since findItem() is already org-scoped).
+- New `admitOwnedSkus(skus)`: admits every DISTINCT SKU in a batch once (via a Set, not
+  once per row) — a bulk writer must reject the WHOLE batch before any insert if even
+  one SKU in it is unowned, never partially admit some rows and write the rest.
+- `recordMovement()`: calls `admitOwnedItem(input.sku)` as the FIRST statement inside
+  the existing `runInTenantTransaction(orgId, ...)` scope, before the existing
+  `assertStockAvailable()` check and before the insert — admission failure never even
+  reaches availability checking.
+- `recordMovementsBulk()`: calls `admitOwnedSkus(inputs.map(i => i.sku))` as the FIRST
+  statement inside the existing `runInTenantTransaction(orgId, ...)` scope, before the
+  existing `assertStockAvailableMany()` aggregate check and before the insert.
+- Both admission checks run under the SAME tenant lock/transaction the existing write
+  already uses (runInTenantTransaction) — no new transaction boundary, no change to
+  rollback/confirmed-commit semantics, which the real adapter
+  (src/db/transaction-context.ts) already handles identically to the Indent/vendor/BOM
+  slices (a thrown error before COMMIT rolls back; a post-COMMIT cleanup failure is
+  reported with `committed: true, result` and must never be blindly retried).
+- No change to any of the six call sites (inward.ts, inward/deviation.ts, plans.ts,
+  fms/actionRunner.ts, movements/route.ts, items/import/route.ts) — each already passes
+  a real tenant-resolved sku string; the new admission check is pure defense-in-depth at
+  the writer itself, matching the DATA-06 pattern of "the domain/writer re-validates
+  authoritatively, callers are not trusted alone."
+- Not touched: validateMovementQuantity() (finite/positive/3-decimal check, unchanged),
+  assertStockAvailable/assertStockAvailableMany (availability math, independently
+  covered by tests/stock-workflow-unit.test.ts and stock-availability-policy.test.ts —
+  mocked as a trusted boundary in the new focused test so this slice stays scoped to SKU
+  ownership admission, not reimplement availability's own join logic).
+
+Strict vertical TDD RED -> GREEN evidence (tests/ledger-admission.unit.test.ts, real
+production source, DB-free):
+1. Reverted both admitOwnedItem()/admitOwnedSkus() call sites in ledger.ts (kept the
+   now-dead helper functions defined, so TypeScript's own unused-var errors wouldn't
+   mask the real runtime RED) and reran the exact focused command:
+   node node_modules/vitest/vitest.mjs run --config tests/ledger-admission.unit.vitest.config.ts --reporter verbose
+   RED: 9 failed / 5 passed — every admission-dependent test failed (missing/foreign SKU
+   accepted and written for both single and bulk; batch admitted zero item reads;
+   availability checked before admission in the Out+missing-SKU case) exactly as
+   expected; the 5 that passed were tests independent of admission (empty-batch no-op,
+   and two "rejects ... with instanceof/matches" variants whose assertion itself failed
+   with "promise resolved instead of rejecting" — counted as failed above, not passed;
+   actual pass count on this run was 5, not the full suite).
+2. Restored both call sites exactly as written. Reran the same exact command.
+   GREEN: 14 passed / 14 passed, 0 failed, 1 file.
+
+Final exact named command (exit 0; 1 file, 14 passed, 0 skipped):
+  node node_modules/vitest/vitest.mjs run --config tests/ledger-admission.unit.vitest.config.ts --reporter verbose
+
+Regression rerun of every pre-existing focused suite that imports/exercises ledger.ts
+(all exit 0, all at their prior pass counts — no new failures introduced):
+  node node_modules/vitest/vitest.mjs run --config tests/stock-workflow-unit.vitest.config.ts --reporter dot
+    1 file, 38 passed
+  node node_modules/vitest/vitest.mjs run --config tests/items-import-replay.unit.vitest.config.ts --reporter dot
+    1 file, 2 passed
+  node node_modules/vitest/vitest.mjs run --config tests/indent-admission.unit.vitest.config.ts --reporter dot
+    1 file, 29 passed
+  node node_modules/vitest/vitest.mjs run --config tests/bom-component-integrity.unit.vitest.config.ts --reporter dot
+    1 file, 28 passed
+  node node_modules/vitest/vitest.mjs run --config tests/vendor-item-integrity.unit.vitest.config.ts --reporter dot
+    1 file, 28 passed
+
+Focused ESLint (exit 0, no diagnostics):
+  node node_modules/eslint/bin/eslint.js src/lib/inventory/ledger.ts tests/ledger-admission.unit.test.ts tests/ledger-admission.unit.vitest.config.ts
+
+Scoped TypeScript (exit 0, no diagnostics; mirrors tests/indent-admission.unit.tsconfig.json's
+exact pattern — extends the real tsconfig.json, incremental:false, includes only the
+production file under test plus the two new test/config files):
+  node node_modules/typescript/bin/tsc --project tests/ledger-admission.unit.tsconfig.json --noEmit
+
+Test isolation: dedicated config uses setupFiles: [] and only the one named file.
+@/lib/tenant and @/db/client (transport) are mocked, same as indent-admission.unit.test.ts
+— @/db/client's mock wires the REAL createTenantTransactionAdapter from
+src/db/transaction-context.ts against an in-memory Drizzle-predicate interpreter, so the
+real transaction/rollback/confirmed-commit contract is exercised, not a stubbed domain
+function. @/lib/orders/orders (recheckShortfallForSku, fired best-effort after an "In"
+movement) and @/lib/inventory/availability (assertStockAvailable/-Many) are mocked as
+trusted boundaries — both are independently covered elsewhere (stock-workflow-unit.test.ts,
+stock-availability-policy.test.ts) and are out of this slice's scope (SKU ownership
+admission, not quantity/availability math or shortfall rechecking).
+
+Remaining gaps / what this does NOT prove:
+- No real PostgreSQL run in this slice — mock rollback/commit is not proof of real
+  transaction/lock/FK durability. Real-driver acceptance for ledger admission (two
+  tenants, same SKU, concurrent writers) is still open, same caveat every other DATA-06
+  slice's handoff already discloses.
+- The six existing callers (inward.ts, inward/deviation.ts, plans.ts, fms/actionRunner.ts,
+  movements/route.ts, items/import/route.ts) were inspected, not modified or individually
+  re-tested here — each already resolves the item via findItem() before calling the
+  ledger writer, so no caller-level behavior change is expected, but this was not
+  independently re-verified end-to-end through every one of those six call paths beyond
+  the existing regression suites rerun above (stock-workflow-unit.test.ts exercises
+  plans.ts/fms/actionRunner.ts/movements route; items-import-replay.unit.test.ts exercises
+  the import route). inward.ts and inward/deviation.ts have no dedicated focused unit
+  suite in this repo today (confirmed by search) — not created here, out of this
+  slice's explicit scope (ledger.ts itself, not every caller file).
+- LedgerAdmissionError is a new exported class; nothing currently imports/catches it by
+  name at any API route (recordMovement/recordMovementsBulk callers currently catch
+  generic Error / check `.message`/`instanceof InsufficientStockError`, which still
+  works since LedgerAdmissionError extends Error) — a route wanting to map this
+  specifically to 404 vs the generic 400 it already returns would need its own explicit
+  `instanceof LedgerAdmissionError` branch; not added here since no route in this slice's
+  scope was asked to change its HTTP mapping.
+
+=====================================================================================
+PART 2 — Migration rollback harness: hardcoded total-migration-count fix
+=====================================================================================
+
+Problem found (as described in the task): tests/local-isolated/migrate-0030-rollback-
+scoped.cjs and migrate-0031-rollback-scoped.cjs each asserted a hardcoded TOTAL checked-
+in migration count (`allMigrations.length === 31` / `=== 32`) via drizzle-orm/migrator's
+readMigrationFiles() and then indexed into that array by a hardcoded position
+(`allMigrations[30]` / `allMigrations[31]`) to find "their own" migration. Both
+assumptions go stale the moment ANY later migration (0032, 0033, ...) is checked in —
+confirmed for real: drizzle/meta/_journal.json currently lists 32 entries (0000-0031),
+so the 0030 script's own hardcoded "31" assertion was ALREADY wrong before this fix (it
+would throw immediately on its very first assertion if someone tried to run it against
+the real disposable target today). The SAME bug, same shape, was independently found in
+migrate-0029-rollback-scoped.cjs (hardcoded 30/`allMigrations[29]`) — fixed too, since
+leaving one of three near-identical sibling scripts with the exact same stale assumption
+would just relocate the same class of bug, and the task's own instruction to "search
+tests/ and scripts/ for a rollback harness referencing a hardcoded migration count" does
+not scope that search to only 0030.
+
+Fix (tests/local-isolated/runtime.cjs): new shared `resolveMigrationByTagPrefix
+(migrationsFolder, tagPrefix)` helper — reads the REAL current drizzle/meta/_journal.json
+directly (not a count passed in), finds the single journal entry whose `tag` starts with
+the given numeric prefix (e.g. "0030"), asserts exactly one match exists, cross-checks
+that readMigrationFiles()'s own returned array length matches the journal's own entry
+count (so a future divergence between the two is still caught, not silently ignored),
+and returns `{ migration: allMigrations[entry.idx], idx, totalMigrations, entry }` —
+`allMigrations[entry.idx]` is guaranteed to be the SAME migration object the old
+hardcoded `allMigrations[N]` indexing was already reaching for, just resolved by tag
+instead of by a number that must be kept in sync by hand.
+
+Each of the three scripts now calls `resolveMigrationByTagPrefix(migrationsFolder,
+'0029'|'0030'|'0031')` instead of asserting a hardcoded `allMigrations.length` and
+indexing by a hardcoded position. Every other assertion in all three scripts is
+UNCHANGED and exact:
+- migrate-0029: `before.rows[0].n === 29` (29 applied before 0029 runs, for real) — untouched.
+- migrate-0030: `before.rows[0].n === 30` (30 applied before 0030 runs — i.e. the
+  "30-applied disposable baseline guard" the task explicitly said to preserve exactly)
+  — untouched; "migcount === 31" after the real upgrade (30+1) — untouched.
+- migrate-0031: `before.rows[0].n === 30` (same 30-applied baseline — 0031 is scoped
+  against the SAME pre-0030 starting point as 0030, by the original author's own design,
+  since 0031 touches `tasks`, not `items`, and has no real schema dependency on 0030
+  having run first in this isolated savepoint-scoped scope) — untouched; "migcount ===
+  31" after the real upgrade (30+1) — untouched.
+None of these three "applied-count" baseline numbers were the thing that was stale — only
+the TOTAL CHECKED-IN FILE COUNT assumption was, and that is exactly what was fixed.
+
+Verification performed (all exit 0; these are standalone CommonJS scripts requiring a
+real guarded disposable PostgreSQL target to run to completion end-to-end — per this
+task's explicit scope and the paused-checkpoint's local test safety rules, no new
+disposable DB/bridge was started or connected to in this slice, so verification here is
+syntax + resolver-logic correctness, not a live rerun):
+  node --check tests/local-isolated/runtime.cjs
+  node --check tests/local-isolated/migrate-0029-rollback-scoped.cjs
+  node --check tests/local-isolated/migrate-0030-rollback-scoped.cjs
+  node --check tests/local-isolated/migrate-0031-rollback-scoped.cjs
+  node node_modules/eslint/bin/eslint.js tests/local-isolated/runtime.cjs tests/local-isolated/migrate-0029-rollback-scoped.cjs tests/local-isolated/migrate-0030-rollback-scoped.cjs tests/local-isolated/migrate-0031-rollback-scoped.cjs
+    -> no diagnostics on any of the four files.
+  Direct resolver invocation against the REAL on-disk drizzle/ folder (no DB touched):
+    node -e "const path=require('path');const {root,resolveMigrationByTagPrefix}=require('./tests/local-isolated/runtime.cjs');const f=path.join(root,'drizzle');console.log(resolveMigrationByTagPrefix(f,'0029').idx, resolveMigrationByTagPrefix(f,'0029').totalMigrations);console.log(resolveMigrationByTagPrefix(f,'0030').idx, resolveMigrationByTagPrefix(f,'0030').totalMigrations);console.log(resolveMigrationByTagPrefix(f,'0031').idx, resolveMigrationByTagPrefix(f,'0031').totalMigrations);"
+    -> real output: 0029 resolves to idx 29 (total 32); 0030 resolves to idx 30 (total
+       32); 0031 resolves to idx 31 (total 32) — i.e. the helper finds the exact same
+       migration objects the old hardcoded `allMigrations[29]/[30]/[31]` indexing was
+       reaching for, against the REAL current 32-entry journal, and will keep resolving
+       correctly as 0032+ are added later, without touching these three scripts again.
+    -> also confirmed the helper's own guard fires correctly for an unmatched prefix:
+       resolveMigrationByTagPrefix(f, '9999') throws "Expected exactly one journal entry
+       tagged \"9999_*\", found 0".
+
+Remaining gaps:
+- Not run end-to-end against the real disposable PostgreSQL target in this slice (no DB
+  was started/connected to, per this task's explicit scope) — the resolver's own logic
+  and the unchanged real-DB assertions were verified statically; a parent-run full
+  end-to-end rerun of all three scripts against the actual pro-erp-regression-pg target
+  (if still live) is the real acceptance gate for this part, same as every other
+  migration-related DATA-06 claim in this repo's handoffs.
+- migrate.cjs (the plain fresh-install migration runner, not rollback-scoped) was
+  inspected and found to have NO hardcoded total-count assumption already — it calls
+  readMigrationFiles() and applies whatever it returns, with no length assertion — left
+  untouched, out of scope.
+- scripts/check-migration-sync.ts (the production migration-sync health-check script)
+  was inspected and also has no hardcoded migration count — it diffs the real journal
+  against the real `drizzle.__drizzle_migrations` table dynamically. Left untouched, out
+  of scope; mentioned here only because the task said to search both tests/ and scripts/.
+
+NO schema/migration change was made or needed for either part of this slice.
+NO npm test, no real DB/live credentials read, no dependency installs, no commit/push/
+git mutations, no edits to eslint.config.mjs/tsconfig.json/package.json, no touching of
+orders/dispatch/FMS/accounts/OPS-01/02/03/QA files, no touching of indents.ts/vendorItems.ts/
+bom.ts or their existing approved tests.

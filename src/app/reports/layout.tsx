@@ -1,6 +1,5 @@
-import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
-import { verifySession, SESSION_COOKIE } from "@/lib/auth/session";
+import { getLiveSession } from "@/lib/auth/live-session";
 import AppShell from "@/components/app-shell";
 import PageHeader from "@/components/page-header";
 import { reportsFor } from "@/lib/reports";
@@ -16,9 +15,7 @@ import ReportsNav from "./reports-nav";
  * link still opens exactly one report, this only changes what surrounds it.
  */
 export default async function ReportsLayout({ children }: { children: React.ReactNode }) {
-  const cookieStore = await cookies();
-  const token = cookieStore.get(SESSION_COOKIE)?.value;
-  const session = token ? await verifySession(token) : null;
+  const session = await getLiveSession();
 
   if (!session) redirect("/login");
 

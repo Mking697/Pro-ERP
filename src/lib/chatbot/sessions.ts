@@ -88,7 +88,7 @@ export async function listSessionMessages(sessionId: string): Promise<ChatMessag
     .select()
     .from(chatMessages)
     .where(and(eq(chatMessages.orgId, orgId), eq(chatMessages.sessionId, sessionId)))
-    .orderBy(asc(chatMessages.createdAt));
+    .orderBy(asc(chatMessages.createdAt), asc(chatMessages.id));
   return rows.map(messageToRecord);
 }
 
@@ -130,6 +130,15 @@ export async function appendMessage(input: AppendMessageInput): Promise<ChatMess
  * multi-turn context. Capped so a very long-running session doesn't grow the prompt (and
  * the per-request cost) without bound. */
 export async function recentSessionMessages(sessionId: string, limit = 20): Promise<ChatMessageRecord[]> {
-  const all = await listSessionMessages(sessionId);
-  return all.slice(-limit);
+  if (!Number.isInteger(limit) || limit < 1 || limit > 100) {
+    throw new RangeError("Recent transcript limit must be an integer between 1 and 100.");
+  }
+  const orgId = await getTenantOrgId();
+  const rows = await db
+    .select()
+    .from(chatMessages)
+    .where(and(eq(chatMessages.orgId, orgId), eq(chatMessages.sessionId, sessionId)))
+    .orderBy(desc(chatMessages.createdAt), desc(chatMessages.id))
+    .limit(limit);
+  return rows.map(messageToRecord).reverse();
 }

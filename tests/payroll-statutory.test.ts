@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { computeEsi, computePf, computeStatutoryDeductions, computeTds } from "@/lib/payroll/statutory";
+import {
+  capDeductionsToGrossPay,
+  computeEsi,
+  computePf,
+  computeStatutoryDeductions,
+  computeTds,
+} from "@/lib/payroll/statutory";
 
 describe("PF (Provident Fund)", () => {
   it("caps PF wage at the statutory ceiling for a salary above it", () => {
@@ -108,6 +114,48 @@ describe("computeStatutoryDeductions — opt-in flags", () => {
     expect(result.esiEmployee).toBeGreaterThan(0);
     // TDS at this income is well under the rebate threshold, so 0 is still correct here.
     expect(result.tds).toBe(0);
+  });
+});
+
+describe("capDeductionsToGrossPay — OPS-02 zero/partial-pay safety", () => {
+  it("does not touch deductions when grossPay comfortably covers them", () => {
+    const deductions = { pfEmployee: 1800, pfEmployer: 1800, esiEmployee: 0, esiEmployer: 0, tds: 0 };
+    const result = capDeductionsToGrossPay(deductions, 20000);
+    expect(result).toEqual({ ...deductions, deductionShortfall: 0 });
+  });
+
+  it("reproduces the finding: monthlySalary=20000, grossPay=0, PF enabled -> zero deduction, full shortfall reported", () => {
+    const pf = computePf(20000); // 1800 flat (ceiling-capped PF wage)
+    const deductions = { pfEmployee: pf.employeeContribution, pfEmployer: pf.employerContribution, esiEmployee: 0, esiEmployer: 0, tds: 0 };
+    const result = capDeductionsToGrossPay(deductions, 0);
+    expect(result.pfEmployee).toBe(0);
+    expect(result.deductionShortfall).toBe(1800);
+    // Employer-side contribution is untouched — it's the org's own cost, not withheld pay.
+    expect(result.pfEmployer).toBe(1800);
+  });
+
+  it("caps deductions PROPORTIONALLY, not by priority order, when grossPay partially covers them", () => {
+    // PF=1800, ESI=10 requested, grossPay only 905 (half of the 1810 requested total).
+    const deductions = { pfEmployee: 1800, pfEmployer: 1800, esiEmployee: 10, esiEmployer: 43.33, tds: 0 };
+    const result = capDeductionsToGrossPay(deductions, 905);
+    expect(result.pfEmployee + result.esiEmployee + result.tds).toBeLessThanOrEqual(905);
+    // Each deduction shrinks by roughly the same ~50% factor — neither is zeroed to let the
+    // other through in full.
+    expect(result.pfEmployee).toBeGreaterThan(0);
+    expect(result.pfEmployee).toBeLessThan(1800);
+    expect(result.esiEmployee).toBeGreaterThan(0);
+    expect(result.esiEmployee).toBeLessThan(10);
+    expect(result.pfEmployee / 1800).toBeCloseTo(result.esiEmployee / 10, 1);
+    expect(result.deductionShortfall).toBeCloseTo(1810 - 905, 1);
+  });
+
+  it("never lets net pay go negative: grossPay minus capped deductions is always >= 0", () => {
+    for (const grossPay of [0, 1, 500, 1799.99, 1800, 1800.01, 5000]) {
+      const deductions = { pfEmployee: 1800, pfEmployer: 1800, esiEmployee: 0, esiEmployer: 0, tds: 0 };
+      const result = capDeductionsToGrossPay(deductions, grossPay);
+      const netPay = round2(grossPay - result.pfEmployee - result.esiEmployee - result.tds);
+      expect(netPay).toBeGreaterThanOrEqual(0);
+    }
   });
 });
 

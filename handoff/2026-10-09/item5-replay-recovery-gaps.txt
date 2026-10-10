@@ -1,0 +1,139 @@
+Item 5 — Historical GL recovery policy + remaining API committed-result/replay gaps
+(R6/R7 closeout), 2026-10-09
+
+STATUS
+Bounded API/policy cleanup done via strict vertical TDD. No schema/migration change, no
+commit/push/deploy/install, no production access, no data read/rewrite. Items 1-4's
+settled files untouched (ledger.ts rechecks, fms/reset.ts, maintenance.ts, dispatch.ts
+schema, migration 0029, tests/finance-atomicity.test.ts's 18 cases — all unmodified).
+
+VERIFIED CURRENT SOURCE FIRST — do not re-claim R6/R7 findings already fixed by item4's
+HTTP replay work (finance-integration.txt, stock-integration.txt, receipt-integration.txt,
+dispatch-integration.txt) before touching anything. Exact per-finding disposition below.
+
+R6 (replay wiring) — ALREADY FIXED, confirmed by reading current source (stale in the
+2026-10-08/09 second-coverage-review.txt report, which predates these continuations):
+- accounts/debit-notes/[debitNoteId]/apply/route.ts:29-34 and receive/route.ts:28-33 DO
+  forward getMutationKey() through runIdempotentTenantMutation; MutationConflictError
+  maps to its own .status (409).
+- accounts/ledger/journal-entries/route.ts:39-54 same pattern; key is wired.
+- FMS instances/route.ts:28-32 and steps/[runId]/complete/route.ts:28-34 forward
+  getMutationKey(); MutationConflictError -> 409 (not 400 as R6 claimed).
+- PPC plans/[planId]/route.ts PATCH "start"/"complete" actions forward getMutationKey();
+  MutationConflictError -> 409.
+- inventory/movements/route.ts:46-53 now wraps the write in runIdempotentTenantMutation
+  with a durable key — R6's "manual movements have no durable request key" is resolved
+  for this route.
+- inward/failure-log/.../request-deviation and approve-deviation routes: keyed +
+  MutationConflictError -> 409 (these are the "deviation routes" R6 named).
+- Purchase: purchase/orders/route.ts (issue) and orders/[poId]/receive/route.ts, plus
+  inventory/indents/[indentId]/receive/route.ts and inward/[entryId]/quality-check/
+  route.ts: all keyed, MutationConflictError -> 409, AND already have committed:true
+  handling (see R7 below) — these are the reference-correct pattern alongside Orders.
+
+R6 — GENUINELY STILL OPEN (documented, not silently accepted):
+- inventory/items/import/route.ts (opening import): createItemsBulk() + 
+  recordMovementsBulk() run with NO idempotency key and no runIdempotentTenantMutation
+  wrapper at all. A retried/duplicated bulk import request has NO replay guarantee —
+  explicitly documented here rather than silently assumed safe. Out of scope to wrap
+  this pass (bulk multi-row import semantics — "replay" would need per-row identity, not
+  a single header key — genuinely larger than this bounded item; flagging for a future
+  item, not fixing speculatively).
+- accounts/bills/[billId]/issue/route.ts and accounts/invoices/[invoiceId]/issue/
+  route.ts: no idempotency key; issueBill()/issueInvoice() reject an already-Issued
+  bill/invoice (domain-level guard), so a repeat command returns a 400 domain error, not
+  a replayed DTO of the first successful issue. This is natural guarded idempotence
+  (can't double-issue) but NOT durable response replay (caller gets an error, not the
+  original Issued DTO back). Documented as a real distinction per the task's instruction;
+  not changed this pass — adding full keyed replay to these two routes is a comparable-
+  sized slice to the 8 fixed below and was left out to stay within the bounded scope
+  given ("not a rewrite of accounts/orders domain logic"). Flagging as the clearest
+  concrete next slice if replay is required there.
+- PPC plans/[planId]/route.ts "cancel"/"recheck" actions still call cancelPlan(planId)/
+  reallocatePlan(planId) with no key argument (stock-integration.txt already flagged
+  this as deliberately out of scope for that continuation) — confirmed still true,
+  not duplicated as a new finding, not silently fixed either.
+
+R7 (committed-result AggregateError misreported as 400) — GENUINE GAP FOUND AND FIXED
+THIS PASS (strict TDD: RED observed on all 8 before any src edit, GREEN after):
+Fixed — each route now returns {<payload-key>: err.result, committed: true, warning}
+with HTTP 200 instead of a generic 400, mirroring the existing Orders payment route
+reference pattern (src/app/api/orders/[orderId]/payment/route.ts:36-37):
+1. src/app/api/accounts/debit-notes/[debitNoteId]/apply/route.ts:37-39 (new)
+2. src/app/api/accounts/debit-notes/[debitNoteId]/receive/route.ts:36-38 (new)
+3. src/app/api/accounts/ledger/journal-entries/route.ts:57-59 (new)
+4. src/app/api/accounts/bills/[billId]/payments/route.ts:37-39 (new)
+5. src/app/api/fms/instances/route.ts:35-37 (new)
+6. src/app/api/fms/steps/[runId]/complete/route.ts:37-39 (new)
+7. src/app/api/ppc/plans/[planId]/route.ts:77-79 (new)
+8. src/app/api/inventory/movements/route.ts:57-59 (new)
+
+Already correct before this pass (verified, not touched, not re-claimed):
+- Orders payment route.ts:36-37 (the R7 reference pattern itself).
+- Purchase: purchase/orders/route.ts:73-77, orders/[poId]/receive/route.ts:42-44.
+- inventory/indents/[indentId]/receive/route.ts:40-42.
+- inward/[entryId]/quality-check/route.ts:44-46, failure-log request/approve-deviation
+  routes:21-23/23-25.
+R7's claim that "Finance bill payment route, inventory receipt route, PPC PATCH, FMS and
+purchase route catches need the same committed-result-aware handling" was correct for
+Finance/FMS/PPC/manual-movements (fixed above) but stale for Purchase/inward/indent
+receipt routes, which already had it from the prior receipt-domain continuation.
+
+TESTS ADDED (strict vertical TDD, DB-free isolated route tests per existing pattern)
+tests/replay-recovery-api.unit.test.ts (new, 8 cases) + tests/replay-recovery-api.unit.
+vitest.config.ts (new, setupFiles: [], mocked persistence/auth, no real DB).
+RED observed first: ran the suite before any src edit — all 8 failed (400 instead of
+200), confirming the gap was real, not assumed. Fixed each route one at a time, re-ran
+to GREEN after the full set. Final: 8/8 passed.
+Command: node node_modules/vitest/vitest.mjs run --config tests/replay-recovery-api.unit.vitest.config.ts
+
+REGRESSION CHECK (existing DB-free suites, unchanged, all still green after the 8 edits)
+tests/finance-unit.test.ts: 44/44 passed
+tests/stock-workflow-unit.test.ts: 38/38 passed
+tests/receipt-domain.unit.test.ts: 59/59 passed
+tests/orders-unit.test.ts + orders-payment-api.unit.test.ts: 60/60 passed
+tests/dispatch-unit.test.ts: 32/32 passed
+node node_modules/typescript/bin/tsc --noEmit --incremental false: exit 0, no diagnostics
+node node_modules/eslint/bin/eslint.js on all 8 changed routes + 2 new test files: exit 0
+git diff --check: exit 0, only ordinary LF/CRLF notices
+No real-DB suite was run or needed for this item (route-level 409/committed mapping is
+provable DB-free; no driver-specific behavior was changed).
+
+HISTORICAL GL RECOVERY POLICY DOCUMENT (written, not executed)
+handoff/2026-10-09/historical-gl-recovery-policy.txt
+Covers: the old aggregate order/bill-id sourceId scheme vs the current unique-per-payment
+sourceId (src/lib/orders/orders.ts:983, src/lib/accounts/payables.ts:435,495); why
+ledger.ts:358-371's immutable-source LedgerConflictError check cannot repair historical
+ambiguous rows; an explicit multi-step reconciliation procedure (read-only inventory,
+amount/timestamp positional pairing, additive annotation column, never overwrite
+original sourceId) that requires SEPARATE explicit authorization before any execution;
+and confirmation that no historical data was read, migrated, or rewritten by this pass.
+
+FILES CHANGED THIS PASS
+src/app/api/accounts/debit-notes/[debitNoteId]/apply/route.ts
+src/app/api/accounts/debit-notes/[debitNoteId]/receive/route.ts
+src/app/api/accounts/ledger/journal-entries/route.ts
+src/app/api/accounts/bills/[billId]/payments/route.ts
+src/app/api/fms/instances/route.ts
+src/app/api/fms/steps/[runId]/complete/route.ts
+src/app/api/ppc/plans/[planId]/route.ts
+src/app/api/inventory/movements/route.ts
+tests/replay-recovery-api.unit.test.ts (new)
+tests/replay-recovery-api.unit.vitest.config.ts (new)
+handoff/2026-10-09/historical-gl-recovery-policy.txt (new)
+handoff/2026-10-09/item5-replay-recovery-gaps.txt (this file)
+
+OUT-OF-SCOPE / DEFERRED (explicit, not silently dropped)
+- inventory/items/import/route.ts: no replay key at all (see R6 above) — needs its own
+  per-row-identity design, not a single header key; deferred as a separate item.
+- accounts/bills/[billId]/issue/route.ts and accounts/invoices/[invoiceId]/issue/route.ts:
+  guarded idempotence only, no durable replay DTO (see R6 above) — same-sized slice as
+  the 8 fixed, deferred to keep this item bounded.
+- PPC cancel/recheck actions: no key forwarded (already known from stock-integration.txt,
+  reconfirmed, not fixed — not this item's named scope).
+- Historical GL reconciliation procedure (section 3 of the policy doc): written but NOT
+  executed; requires separate explicit authorization, its own migration review, and a
+  staging/disposable run before any production step.
+
+Stopping point: item 5's named R6/R7 scope is closed to the extent it was genuinely open;
+remaining items above are explicitly flagged, not claimed fixed. Parent review requested.

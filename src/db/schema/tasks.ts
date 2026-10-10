@@ -1,4 +1,5 @@
-import { date, index, integer, pgEnum, pgTable, primaryKey, text, timestamp } from "drizzle-orm/pg-core";
+import { date, index, integer, pgEnum, pgTable, primaryKey, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 import { organizations } from "./platform";
 
 /**
@@ -44,10 +45,42 @@ export const tasks = pgTable(
     // Blank for a one-off task; set for a generated recurring occurrence — groups back to
     // its Recurring_Tasks definition row.
     recurringId: text("recurring_id").notNull().default(""),
+    // Durable per-cycle identity, independent of which calendar day the occurrence actually
+    // got generated on (added 2026-10-09, OPS-01 v2 — see CLAUDE.md's "OPS-01 natural-cycle
+    // identity schema proposal" and handoff/2026-10-09/third-ops01-leave-recurring-
+    // atomicity-v2.txt). Populated by recurringGenerator.ts as the ISO date
+    // findMostRecentScheduledDay() actually returned for the carry-forward (non-Daily) path,
+    // or the generation day itself for the Daily path (which has no carry-forward concept).
+    // `due_date` stays "which day was this occurrence generated/due on" (UI/MIS-facing,
+    // unchanged); this column answers "which logical cycle does it belong to" — a missed
+    // cycle carried forward across two different calendar days must still resolve to the
+    // SAME value here, which `due_date` cannot guarantee. NULL for one-off tasks and
+    // historical occurrences whose natural day was never recorded. Do not infer it from
+    // due_date: a carried-forward occurrence's generation day is not its natural day.
+    naturalCycleStartDate: date("natural_cycle_start_date"),
   },
   (table) => [
     index("tasks_org_id_idx").on(table.orgId),
     index("tasks_org_id_assigned_to_idx").on(table.orgId, table.assignedTo),
+    // Same-generation-day guard for the recurring generator (src/lib/recurringGenerator.ts):
+    // every occurrence it creates for a given rule on a given day shares one Due_Date
+    // (`${today}T23:59`), so (org_id, recurring_id, due_date) IS that rule's cycle key for
+    // the day it was generated on. Scoped to `recurring_id <> ''` (the sentinel for a
+    // one-off, non-recurring task — see recurringId's own column comment below) so one-off
+    // Tasks, which share no such cycle concept, are never constrained by this at all. This
+    // is what makes a concurrent/retried cron run idempotent at the database itself, not
+    // just by the generator's own read-before-insert check (which two racing calls can both
+    // pass before either has inserted).
+    uniqueIndex("tasks_org_id_recurring_id_due_date_unique")
+      .on(table.orgId, table.recurringId, table.dueDate)
+      .where(sql`${table.recurringId} <> ''`),
+    // Catches a missed cycle carried forward to two DIFFERENT calendar days (0031's own
+    // due_date-keyed index above only catches two SAME-day duplicate generations) — see the
+    // column's own doc comment above. Only known recurring identities participate;
+    // unknown legacy occurrences remain NULL and one-off tasks remain unconstrained.
+    uniqueIndex("tasks_org_id_recurring_id_natural_cycle_unique")
+      .on(table.orgId, table.recurringId, table.naturalCycleStartDate)
+      .where(sql`${table.recurringId} <> '' and ${table.naturalCycleStartDate} is not null`),
   ]
 );
 

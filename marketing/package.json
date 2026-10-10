@@ -1,0 +1,9 @@
+{
+  "name": "pro-erp-marketing-tools",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Isolated marketing/video production toolchain for Pro ERP — never part of the production app build.",
+  "devDependencies": {
+    "playwright": "^1.48.0"
+  }
+}

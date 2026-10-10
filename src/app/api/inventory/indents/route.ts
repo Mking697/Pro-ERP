@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { requireModule } from "@/lib/auth/guard";
-import { createIndent, listIndents, INDENT_REASONS } from "@/lib/inventory/indents";
+import { createIndent, listIndents, INDENT_REASONS, IndentAdmissionError, type IndentRecord } from "@/lib/inventory/indents";
 
 export async function GET() {
   const guard = await requireModule("INVENTORY_VIEW");
@@ -41,8 +41,11 @@ export async function POST(request: Request) {
     );
   }
 
-  const created = [];
+  const created: IndentRecord[] = [];
   const failed: { sku: string; error: string }[] = [];
+  const unknown: { sku: string; error: string }[] = [];
+  const warnings: { sku: string; warning: string }[] = [];
+  let failureStatus = 400;
 
   // Sequential, and one failure does not abort the rest: raising ten indents where the
   // third has a bad quantity should still leave the other nine raised.
@@ -50,12 +53,36 @@ export async function POST(request: Request) {
     try {
       created.push(await createIndent({ ...input, requestedBy: guard.session.userId }));
     } catch (err) {
-      failed.push({
-        sku: input.sku,
-        error: err instanceof Error ? err.message : "Ban nahi paya.",
-      });
+      // The transaction adapter supplies the committed DTO on cleanup failure.
+      // Never retry this item or classify its already-written row as a rollback.
+      if (err instanceof Error && "committed" in err && err.committed === true && "result" in err) {
+        created.push(err.result as IndentRecord);
+        warnings.push({ sku: input.sku, warning: "Indent ban gaya; transaction cleanup failed." });
+        continue;
+      }
+      // A typed admission rejection is a definite failure: the transaction never ran, so
+      // nothing was written and this SKU is safe to edit and resubmit.
+      if (err instanceof IndentAdmissionError) {
+        failureStatus = err.status;
+        failed.push({ sku: input.sku, error: err.message });
+        continue;
+      }
+      // Any other error (DB/network/adapter failure with no typed rejection and no
+      // confirmed-commit marker) is genuinely UNKNOWN, not a definite failure: the
+      // adapter's own contract only guarantees rollback-on-reject for an ordinary
+      // error, but a lost COMMIT acknowledgement looks identical to the caller.
+      // Never call this "failed" — that would invite a blind retry that silently
+      // duplicates an indent that was actually written.
+      unknown.push({ sku: input.sku, error: "Result confirm nahi hua." });
     }
   }
 
-  return NextResponse.json({ created: created.length, indents: created, failed });
+  return NextResponse.json({
+    created: created.length, indents: created, failed,
+    ...(unknown.length ? { unknown } : {}),
+    ...(created.length && (unknown.length || warnings.length) ? { committed: true } : {}),
+    ...(warnings.length ? { warnings } : {}),
+  }, {
+    status: unknown.length ? 500 : created.length ? 200 : failureStatus,
+  });
 }

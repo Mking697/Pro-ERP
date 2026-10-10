@@ -1,10 +1,11 @@
 import { and, eq } from "drizzle-orm";
 import type { InferSelectModel } from "drizzle-orm";
-import { fmsRuns } from "@/db/schema";
-import { db } from "@/db/client";
+import { fmsRuns, leaveReassignments } from "@/db/schema";
+import { db, runInTenantTransaction, afterTenantCommit } from "@/db/client";
 import { listByOrg, insertRecord, findById, updateById } from "@/db/repo";
 import { getTenantOrgId } from "@/lib/tenant";
 import { generateId } from "@/lib/id";
+import { runIdempotentTenantMutation } from "@/lib/mutations";
 import { parseStamp } from "@/lib/timestamp";
 import {
   getFmsTemplateStep,
@@ -18,6 +19,8 @@ import { computeNextWorkingInstant, computeTatDeadline, computeUserDayEnd } from
 import {
   parseStepDataSourceConfig,
   missingRequiredFields,
+  validateSubmittedFormFields,
+  resolveSubmittedFormFields,
   type StepDataSourceConfig,
 } from "@/lib/fms/dataSource";
 import { resolveExistingFmsData } from "@/lib/fms/dataSourceResolver";
@@ -197,9 +200,20 @@ interface AppendStepRunInput {
 }
 
 async function appendStepRun(input: AppendStepRunInput): Promise<FmsRunRecord> {
-  const tatStartMs = await queueOpenTatStart(input.orgId, input.assignedTo, Date.now());
+  // FMS assignment at creation time must use the ACTIVE holder — the buddy, if whoever
+  // this step would naturally go to is currently mid-leave — not the absent original
+  // doer, exactly like src/lib/recurringGenerator.ts's own Task creation. Both the TAT
+  // computation (queueOpenTatStart/computeTatDeadline below) and the audit insert use
+  // this same resolved assignee, atomically, inside the caller's existing
+  // runInTenantTransaction scope (startFmsInstance/completeFmsStep). Dynamic import
+  // breaks the same leave<->fms circular-import shape reassignment.ts's own
+  // recomputeRunTat() call already avoids.
+  const { resolveActiveAssigneeWithAudit } = await import("@/lib/leave/reassignment");
+  const { assignedTo, leaveId } = await resolveActiveAssigneeWithAudit(input.orgId, input.assignedTo);
+
+  const tatStartMs = await queueOpenTatStart(input.orgId, assignedTo, Date.now());
   const tatDeadlineMs = await computeTatDeadline(
-    input.assignedTo,
+    assignedTo,
     tatStartMs,
     input.tatValue,
     input.tatUnit
@@ -216,7 +230,7 @@ async function appendStepRun(input: AppendStepRunInput): Promise<FmsRunRecord> {
     startedAt: input.startedAt,
     stepNo: input.stepNo,
     stepName: input.stepName,
-    assignedTo: input.assignedTo,
+    assignedTo,
     createdAt: new Date(),
     tatStart: new Date(tatStartMs),
     tatDeadline: new Date(tatDeadlineMs),
@@ -228,6 +242,18 @@ async function appendStepRun(input: AppendStepRunInput): Promise<FmsRunRecord> {
     formData: null,
     quantity: input.quantity !== undefined ? String(input.quantity) : null,
   });
+
+  if (leaveId) {
+    await insertRecord(leaveReassignments, {
+      id: generateId("LRA"),
+      orgId: input.orgId,
+      leaveId,
+      entityType: "FMS_RUN",
+      entityId: row.id,
+      originalAssignee: input.assignedTo,
+      buddyId: assignedTo,
+    });
+  }
 
   return runToRecord(row);
 }
@@ -274,8 +300,15 @@ interface StartFmsInstanceInput {
   initialQuantity?: number;
 }
 
-export async function startFmsInstance(input: StartFmsInstanceInput): Promise<FmsRunRecord> {
+export async function startFmsInstance(input: StartFmsInstanceInput, key?: string): Promise<FmsRunRecord> {
   const orgId = await getTenantOrgId();
+  if (key !== undefined) {
+    return runIdempotentTenantMutation(orgId, {
+      operation: "fms.instance.start.v1", actorId: input.startedBy, key,
+      payload: { templateId: input.templateId, contextRef: input.contextRef, initialQuantity: input.initialQuantity ?? null },
+    }, async () => ({ ...await startFmsInstance(input) }));
+  }
+  return runInTenantTransaction(orgId, async () => {
   const firstStep = await getFmsTemplateStep(input.templateId, 1);
   if (!firstStep) {
     throw new Error("Is template ka pehla step nahi mila.");
@@ -296,6 +329,7 @@ export async function startFmsInstance(input: StartFmsInstanceInput): Promise<Fm
     tatUnit: firstStep.TAT_Unit as FmsTatUnit,
     quantity: input.initialQuantity,
   });
+  });
 }
 
 interface CompleteFmsStepInput {
@@ -308,9 +342,20 @@ interface CompleteFmsStepInput {
 }
 
 export async function completeFmsStep(
-  input: CompleteFmsStepInput
+  input: CompleteFmsStepInput,
+  key?: string
 ): Promise<{ completed: FmsRunRecord; next: FmsRunRecord[] }> {
   const orgId = await getTenantOrgId();
+  if (key !== undefined) {
+    return runIdempotentTenantMutation(orgId, {
+      operation: "fms.step.complete.v1", actorId: input.completedBy, key,
+      payload: { runId: input.runId, outcome: input.outcome, remark: input.remark ?? "", formData: input.formData ?? {} },
+    }, async () => {
+      const result = await completeFmsStep(input);
+      return { completed: { ...result.completed }, next: result.next.map((run) => ({ ...run })) };
+    });
+  }
+  return runInTenantTransaction(orgId, async () => {
   const runRow = await findById(fmsRuns, orgId, input.runId);
   if (!runRow) throw new Error("Step nahi mila.");
   const run = runToRecord(runRow);
@@ -329,6 +374,9 @@ export async function completeFmsStep(
 
   const formValues = input.formData ?? {};
   const dataSource = parseStepDataSourceConfig(step.Data_Source_Config);
+  const outcomeType = parseOutcomeType(step.Outcome_Type);
+  const runtimeKeys = outcomeType === "PASS_FAIL_QTY" ? [PASS_QTY_KEY, FAIL_QTY_KEY, SCRAP_QTY_KEY] : [];
+  validateSubmittedFormFields(dataSource, formValues, runtimeKeys);
   if (dataSource.form) {
     const missing = missingRequiredFields(dataSource.form, formValues);
     if (missing.length > 0) {
@@ -339,7 +387,6 @@ export async function completeFmsStep(
   // PASS_FAIL_QTY has no Outcome dropdown for the completer to pick — whatever the client
   // sent is ignored, and the branch always follows the numbers actually typed in, so a
   // tampered request can't claim "Pass" while reporting a nonzero Fail Qty.
-  const outcomeType = parseOutcomeType(step.Outcome_Type);
   let outcome = input.outcome;
   let passQty = 0;
   let failQty = 0;
@@ -387,7 +434,12 @@ export async function completeFmsStep(
     const rows = await resolveExistingFmsData(dataSource.existing, run.Context_Ref, run.Instance_ID);
     referenceFields = rows[0] ?? {};
   }
-  const resolvedFields = { ...referenceFields, ...formValues };
+  const resolvedFields = resolveSubmittedFormFields(
+    dataSource,
+    referenceFields,
+    formValues,
+    runtimeKeys
+  );
 
   // Runs before anything is written: the movement it promises is the whole point of this
   // outcome, so a failure here must leave the step Pending, not complete it half-done.
@@ -430,7 +482,7 @@ export async function completeFmsStep(
   /** Appends a run at another step of this same instance, carrying a quantity forward. */
   async function createRun(stepNo: number, quantity: number | undefined): Promise<FmsRunRecord | null> {
     const target = await getFmsTemplateStep(run.Template_ID, stepNo);
-    if (!target) return null;
+    if (!target) throw new Error(`Required FMS successor step ${stepNo} nahi mila.`);
     return appendStepRun({
       orgId,
       instanceId: run.Instance_ID,
@@ -480,30 +532,14 @@ export async function completeFmsStep(
     }
   }
 
-  // Best-effort chaining: a broken or archived downstream template must never undo the
-  // step completion that has already saved above. No loop guard — trusted to the admin
-  // who wires up triggers, per the confirmed scope of this build.
-  try {
-    await emitFmsEvent(`FMS:${run.Template_ID}:${run.Step_No}:${outcome}`, run.Context_Ref);
-  } catch (error) {
-    console.error(`[fms] chained event emit failed for run ${run.Run_ID}:`, error);
-  }
+  // Chained DB starts are required workflow state and join the completion transaction.
+  await emitFmsEvent(`FMS:${run.Template_ID}:${run.Step_No}:${outcome}`, run.Context_Ref);
 
-  // Best-effort, same as the chaining above: whoever is on this step's own
-  // Notify_On_Complete list just wants to *know* the moment it's done — a supervisor who
-  // isn't part of the flow at all, independent of whichever assignee the next run above
-  // was created for. A send failure (missing/invalid phone, ChatXFlow unconfigured,
-  // network) must never undo the completion already saved above — notifyStepComplete
-  // never throws (every recipient's own send is individually try/caught inside it) and
-  // fires every recipient in parallel via Promise.all, so N slow/broken sends only ever
-  // cost as long as the single slowest one, never their sum.
-  try {
-    await notifyStepComplete(step, completed);
-  } catch (error) {
-    console.error(`[fms] notifyStepComplete failed for run ${run.Run_ID}:`, error);
-  }
+  // External sends are best-effort after confirmed commit, never before it.
+  await afterTenantCommit(() => notifyStepComplete(step, completed));
 
   return { completed, next };
+  });
 }
 
 /** Fires WhatsApp notifications to every user on a step's Notify_On_Complete list — never
@@ -548,23 +584,22 @@ export async function emitFmsEvent(
   contextRef: string,
   initialQuantity?: number
 ): Promise<void> {
+  const orgId = await getTenantOrgId();
+  await runInTenantTransaction(orgId, async () => {
   const allSteps = await listFmsTemplates();
   const matchingFirstSteps = allSteps.filter(
     (s) => Number(s.Step_No) === 1 && s.Trigger_Event === sourceKey && s.Status === "Active"
   );
 
   for (const step of matchingFirstSteps) {
-    try {
-      await startFmsInstance({
-        templateId: step.Template_ID,
-        contextRef,
-        startedBy: "SYSTEM",
-        initialQuantity,
-      });
-    } catch (error) {
-      console.error(`[fms] emitFmsEvent failed to start template ${step.Template_ID}:`, error);
-    }
+    await startFmsInstance({
+      templateId: step.Template_ID,
+      contextRef,
+      startedBy: "SYSTEM",
+      initialQuantity,
+    });
   }
+  });
 }
 
 export interface FmsStepContext {

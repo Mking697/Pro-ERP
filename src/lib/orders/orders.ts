@@ -9,17 +9,17 @@ import {
   quotationItems,
   quotations,
 } from "@/db/schema";
-import { db } from "@/db/client";
+import { afterTenantCommit, db, runInTenantTransaction } from "@/db/client";
+import { runIdempotentTenantMutation } from "@/lib/mutations";
 import { findById, insertRecord, listByOrg, updateById } from "@/db/repo";
 import { getTenantOrgId } from "@/lib/tenant";
 import { generateId } from "@/lib/id";
 import { findItem } from "@/lib/inventory/items";
-import { listLedger, onHandBySku, positionFor } from "@/lib/inventory/ledger";
-import { committedBySku } from "@/lib/inventory/plans";
-import { inTransitBySku } from "@/lib/inventory/indents";
+import { getStockAvailability } from "@/lib/inventory/availability";
 import { round2, round3, lineAmount } from "@/lib/leads/quotationMath";
 import { createCustomer } from "@/lib/parties/customers";
-import { emitFmsEvent } from "@/lib/fms/engine";
+import { startFmsInstance } from "@/lib/fms/engine";
+import { listFmsTemplates } from "@/lib/fms/templates";
 import { createTask } from "@/lib/tasks";
 import { sendWhatsAppMessage } from "@/lib/chatxflow";
 import { listUsers } from "@/lib/auth/users";
@@ -34,6 +34,18 @@ import { getOrderSetup } from "@/lib/orders/settings";
  */
 
 export class OrderError extends Error {}
+
+function orderQuantity(value: string | number | null, positive = false): number {
+  const quantity = value === null ? 0 : Number(value);
+  const rounded = round3(quantity);
+  const noise = Number.EPSILON * Math.max(1, Math.abs(quantity)) * 8;
+  if (!Number.isFinite(quantity) || !Number.isFinite(rounded) ||
+    (typeof value === "string" && !value.trim()) || quantity < 0 ||
+    (positive && rounded <= 0) || Math.abs(quantity - rounded) > noise) {
+    throw new OrderError("Order stock quantity must be finite, nonnegative and representable at stock precision (demand must be positive).");
+  }
+  return rounded;
+}
 
 export type OrderStatus =
   | "Items_Pending"
@@ -176,12 +188,12 @@ function rowToItem(row: OrderItemRow): OrderItemRecord {
     sku: row.sku,
     itemName: row.itemName,
     uom: row.uom,
-    qty: Number(row.qty) || 0,
+    qty: orderQuantity(row.qty, true),
     rate: Number(row.rate) || 0,
     amount: Number(row.amount) || 0,
-    reservedQty: Number(row.reservedQty) || 0,
-    shortageQty: Number(row.shortageQty) || 0,
-    consumedQty: Number(row.consumedQty) || 0,
+    reservedQty: orderQuantity(row.reservedQty),
+    shortageQty: orderQuantity(row.shortageQty),
+    consumedQty: orderQuantity(row.consumedQty),
   };
 }
 
@@ -380,33 +392,7 @@ export async function listOrderPayments(orderId: string): Promise<OrderPaymentRe
  * ever clear it (see src/db/schema/orders.ts's own comment on `consumedQty`).
  */
 export async function orderReservedBySku(): Promise<Map<string, number>> {
-  const orgId = await getTenantOrgId();
-  // Filters by status in SQL (covered by the orders_org_id_status_idx index) instead of
-  // pulling every order the org has ever created — this ran on every stock-check and
-  // every "In" stock movement anywhere in the org (see recheckShortfallForSku below).
-  const orderRows = await db
-    .select({ id: orders.id })
-    .from(orders)
-    .where(and(eq(orders.orgId, orgId), inArray(orders.status, RESERVING_ORDER_STATUSES)))
-    .catch(() => [] as { id: string }[]);
-  const reservingIds = orderRows.map((o) => o.id);
-
-  const itemRows = reservingIds.length
-    ? await db
-        .select()
-        .from(orderItems)
-        .where(and(eq(orderItems.orgId, orgId), inArray(orderItems.orderId, reservingIds)))
-        .catch(() => [] as OrderItemRow[])
-    : [];
-
-  const out = new Map<string, number>();
-  for (const row of itemRows) {
-    if (!row.sku) continue;
-    const qty = round3((Number(row.reservedQty) || 0) - (Number(row.consumedQty) || 0));
-    if (qty <= 0) continue;
-    out.set(row.sku, round3((out.get(row.sku) ?? 0) + qty));
-  }
-  return out;
+  return (await getStockAvailability()).orderReserved;
 }
 
 // ---------------------------------------------------------------------------
@@ -628,6 +614,13 @@ export async function createOrderFromQuotation(
   createdBy: string
 ): Promise<OrderRecord> {
   const orgId = await getTenantOrgId();
+  return runInTenantTransaction(orgId, () => createOrderFromQuotationInTransaction(input, createdBy));
+}
+
+async function createOrderFromQuotationInTransaction(
+  input: CreateOrderFromQuotationInput, createdBy: string
+): Promise<OrderRecord> {
+  const orgId = await getTenantOrgId();
   const quotationRow = await findById(quotations, orgId, input.quotationId);
   if (!quotationRow) throw new OrderError("Quotation nahi mila.");
   if (quotationRow.status !== "Accepted") {
@@ -779,6 +772,13 @@ export async function createDirectOrder(
   input: CreateDirectOrderInput,
   createdBy: string
 ): Promise<OrderRecord> {
+  const orgId = await getTenantOrgId();
+  return runInTenantTransaction(orgId, () => createDirectOrderInTransaction(input, createdBy));
+}
+
+async function createDirectOrderInTransaction(
+  input: CreateDirectOrderInput, createdBy: string
+): Promise<OrderRecord> {
   if (input.items.length === 0) {
     throw new OrderError("Kam se kam ek item chunein.");
   }
@@ -809,7 +809,7 @@ export async function createDirectOrder(
     if (!item) {
       throw new OrderError(`SKU "${line.sku}" Items master me nahi hai.`);
     }
-    const qty = round3(line.qty);
+    const qty = orderQuantity(line.qty, true);
     const rate = round2(line.rate);
     lines.push({
       sku: item.SKU,
@@ -903,11 +903,48 @@ export interface RecordPaymentInput {
 export async function recordPayment(
   orderId: string,
   input: RecordPaymentInput,
+  actorId: string,
+  key?: string
+): Promise<OrderRecord> {
+  // The 3-argument internal/CN path joins the active tenant transaction without a receipt.
+  // Only a keyed external root owns durable replay; its payload has no Dates/undefined.
+  // Snapshot the effective DTO before any await; defaults never bind undefined/Date.
+  if (!["Cash", "UPI", "Bank_Transfer", "Cheque", "Card", "Credit_Note", "Other"].includes(input.mode)) {
+    throw new OrderError("Order payment mode invalid hai.");
+  }
+  const amount = round2(input.amount);
+  if (!Number.isFinite(input.amount) || !Number.isFinite(amount) || !(amount > 0)) {
+    throw new OrderError("Amount finite aur rounding ke baad 0 se zyada hona chahiye.");
+  }
+  const receivedAt = input.receivedAt ? new Date(input.receivedAt) : null;
+  if (receivedAt && !Number.isFinite(receivedAt.getTime())) throw new OrderError("Payment date samajh nahi aayi.");
+  const parsed: RecordPaymentInput = { amount, mode: input.mode, reference: input.reference?.trim() ?? "",
+    ...(receivedAt ? { receivedAt: receivedAt.toISOString() } : {}) };
+  const orgId = await getTenantOrgId();
+  const work = () => recordPaymentInTransaction(orderId, parsed, actorId);
+  if (key === undefined) return runInTenantTransaction(orgId, work);
+  const result = await runIdempotentTenantMutation(orgId, {
+    operation: "orders.recordPayment.v1", actorId, key,
+    payload: { orderId, amount: parsed.amount, mode: parsed.mode,
+      reference: parsed.reference ?? "", receivedAt: parsed.receivedAt ?? null },
+  }, async () => {
+    const order = await work();
+    return { ...order, items: order.items.map((line) => ({ ...line })) };
+  });
+  return result;
+}
+
+async function recordPaymentInTransaction(
+  orderId: string,
+  input: RecordPaymentInput,
   actorId: string
 ): Promise<OrderRecord> {
-  if (!(input.amount > 0)) {
-    throw new OrderError("Amount 0 se zyada hona chahiye.");
+  const amount = round2(input.amount);
+  if (!Number.isFinite(input.amount) || !Number.isFinite(amount) || !(amount > 0)) {
+    throw new OrderError("Amount finite aur rounding ke baad 0 se zyada hona chahiye.");
   }
+  const receivedAt = input.receivedAt ? new Date(input.receivedAt) : new Date();
+  if (!Number.isFinite(receivedAt.getTime())) throw new OrderError("Payment date samajh nahi aayi.");
 
   const orgId = await getTenantOrgId();
   const order = await findById(orders, orgId, orderId);
@@ -916,15 +953,15 @@ export async function recordPayment(
     throw new OrderError("Cancelled order par payment record nahi ho sakta.");
   }
 
-  const amount = round2(input.amount);
+  const paymentId = generateId("OPY");
   await insertRecord(orderPayments, {
-    id: generateId("OPY"),
+    id: paymentId,
     orgId,
     orderId,
     amount: String(amount),
     mode: input.mode,
     reference: input.reference?.trim() ?? "",
-    receivedAt: input.receivedAt ? new Date(input.receivedAt) : new Date(),
+    receivedAt,
     recordedBy: actorId,
   });
 
@@ -936,26 +973,21 @@ export async function recordPayment(
     actorId
   );
 
-  // GL posting — best-effort (dynamic import: accounts/ledger.ts is a separate, generic
-  // module that never imports back into orders.ts, so this is not actually breaking a
-  // cycle, but it keeps the same "a broken downstream write must never undo the payment
-  // that already saved" shape every other best-effort chain in this file already follows).
-  try {
-    const { postJournalEntry, SYSTEM_ACCOUNT_CODES } = await import("@/lib/accounts/ledger");
-    await postJournalEntry({
-      orgId,
-      description: `Payment received — Order ${orderId}`,
-      sourceType: "ReceivablePayment",
-      sourceId: orderId,
-      createdBy: actorId,
-      lines: [
-        { accountCode: SYSTEM_ACCOUNT_CODES.CASH_BANK, debit: amount },
-        { accountCode: SYSTEM_ACCOUNT_CODES.ACCOUNTS_RECEIVABLE, credit: amount },
-      ],
-    });
-  } catch (error) {
-    console.error(`[orders] postJournalEntry failed for payment on order ${orderId}:`, error);
-  }
+  // Accounting is part of the payment, not a best-effort notification. The stable
+  // payment event ID distinguishes two genuine equal-amount installments.
+  const { postJournalEntry, SYSTEM_ACCOUNT_CODES } = await import("@/lib/accounts/ledger");
+  await postJournalEntry({
+    orgId,
+    description: `Payment received — Order ${orderId}`,
+    sourceType: "ReceivablePayment",
+    sourceId: paymentId,
+    createdBy: actorId,
+    lines: [
+      { accountCode: input.mode === "Credit_Note"
+        ? SYSTEM_ACCOUNT_CODES.CUSTOMER_CREDIT_BALANCE : SYSTEM_ACCOUNT_CODES.CASH_BANK, debit: amount },
+      { accountCode: SYSTEM_ACCOUNT_CODES.ACCOUNTS_RECEIVABLE, credit: amount },
+    ],
+  });
 
   const updated = await getOrder(orderId);
   if (!updated) throw new OrderError("Payment record ho gaya lekin order load nahi ho paya.");
@@ -1051,6 +1083,11 @@ async function computeCreditPosition(
  */
 export async function workPaymentReview(orderId: string, actorId: string): Promise<OrderRecord> {
   const orgId = await getTenantOrgId();
+  return runInTenantTransaction(orgId, () => workPaymentReviewInTransaction(orderId, actorId));
+}
+
+async function workPaymentReviewInTransaction(orderId: string, actorId: string): Promise<OrderRecord> {
+  const orgId = await getTenantOrgId();
   const order = await findById(orders, orgId, orderId);
   if (!order) throw new OrderError("Order nahi mila.");
   if (order.status !== "Payment_Review") {
@@ -1120,6 +1157,13 @@ export async function approveCreditHold(
   actor: { userId: string; role: string }
 ): Promise<OrderRecord> {
   const orgId = await getTenantOrgId();
+  return runInTenantTransaction(orgId, () => approveCreditHoldInTransaction(orderId, actor));
+}
+
+async function approveCreditHoldInTransaction(
+  orderId: string, actor: { userId: string; role: string }
+): Promise<OrderRecord> {
+  const orgId = await getTenantOrgId();
   const order = await findById(orders, orgId, orderId);
   if (!order) throw new OrderError("Order nahi mila.");
   if (order.status !== "Credit_Hold") {
@@ -1176,9 +1220,7 @@ async function listUsersWithGrant(
     .map((u) => ({ userId: u.User_ID, fullName: u.Full_Name, phone: u.Phone_Number }));
 }
 
-/** A Task + best-effort WhatsApp to every PPC_PLAN holder, then one activity log entry —
- * mirrors src/lib/fms/engine.ts's notifyStepComplete() fan-out pattern exactly: every
- * recipient in parallel, a missing phone or a failed send never blocks anything else. */
+/** Required tasks/activity are atomic; only WhatsApp delivery is best-effort after commit. */
 async function notifyShortage(
   orgId: string,
   orderId: string,
@@ -1201,9 +1243,7 @@ async function notifyShortage(
 
   const dueDate = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
 
-  await Promise.all(
-    holders.map(async (u) => {
-      try {
+  for (const u of holders) {
         await createTask({
           title: `Order ${orderId} — stock shortage`,
           description: `${order.partyName} ke Order ${orderId} ke liye stock kam hai: ${skuList}. Production plan banane ki zaroorat hai.`,
@@ -1214,10 +1254,9 @@ async function notifyShortage(
           attachmentUrl: "",
           remark: "",
         });
-      } catch (error) {
-        console.error(`[orders] shortage task creation failed for order ${orderId}, user ${u.userId}:`, error);
-      }
 
+    // Only external delivery is deferred; task and activity rows belong to this command.
+    await afterTenantCommit(async () => {
       try {
         const result = await sendWhatsAppMessage(
           u.phone,
@@ -1229,8 +1268,8 @@ async function notifyShortage(
       } catch (error) {
         console.error(`[orders] shortage WhatsApp send threw for order ${orderId}, user ${u.userId}:`, error);
       }
-    })
-  );
+    });
+  }
 
   await logOrderActivity(
     orgId,
@@ -1254,6 +1293,11 @@ async function notifyShortage(
  */
 export async function runStockCheck(orderId: string, actorId: string): Promise<OrderRecord> {
   const orgId = await getTenantOrgId();
+  return runInTenantTransaction(orgId, () => runStockCheckInTransaction(orderId, actorId));
+}
+
+async function runStockCheckInTransaction(orderId: string, actorId: string): Promise<OrderRecord> {
+  const orgId = await getTenantOrgId();
   const order = await findById(orders, orgId, orderId);
   if (!order) throw new OrderError("Order nahi mila.");
   if (order.status !== "Stock_Check") {
@@ -1268,46 +1312,41 @@ export async function runStockCheck(orderId: string, actorId: string): Promise<O
     throw new OrderError("Is order me koi item nahi hai.");
   }
 
-  const [ledger, committed, inTransit, reserved] = await Promise.all([
-    listLedger(),
-    committedBySku(),
-    inTransitBySku(),
-    orderReservedBySku(),
-  ]);
-  const onHand = onHandBySku(ledger);
+  // The verified order is the only trusted add-back; all lines share one pool.
+  const { free } = await getStockAvailability({ excludeOrderId: orderId });
 
   const used = new Map<string, number>();
   const shortLines: ShortLine[] = [];
-  const updates: Promise<unknown>[] = [];
+  const updates: { lineNo: string; reservedQty: string; shortageQty: string }[] = [];
 
   for (const row of itemRows) {
-    const qty = Number(row.qty) || 0;
-    const position = positionFor(row.sku, onHand, committed, inTransit, reserved);
+    const qty = orderQuantity(row.qty, true);
+    const consumed = orderQuantity(row.consumedQty);
+    const reserved = orderQuantity(row.reservedQty);
+    const shortage = orderQuantity(row.shortageQty);
+    if (consumed > reserved || reserved > qty || shortage > qty) {
+      throw new OrderError("Order reservation/consumed/shortage quantity exceeds demand.");
+    }
     const alreadyUsed = used.get(row.sku) ?? 0;
-    const availableNow = round3(Math.max(0, position.free - alreadyUsed));
-    const reservedQty = round3(Math.min(qty, availableNow));
+    const availableNow = round3(Math.max(0, (free.get(row.sku) ?? 0) - alreadyUsed));
+    const held = round3(Math.min(round3(qty - consumed), availableNow));
+    const reservedQty = round3(consumed + held);
     const shortageQty = round3(qty - reservedQty);
-    used.set(row.sku, round3(alreadyUsed + reservedQty));
+    used.set(row.sku, round3(alreadyUsed + held));
 
-    updates.push(
-      db
-        .update(orderItems)
-        .set({ reservedQty: String(reservedQty), shortageQty: String(shortageQty) })
-        .where(
-          and(
-            eq(orderItems.orgId, orgId),
-            eq(orderItems.orderId, orderId),
-            eq(orderItems.lineNo, row.lineNo)
-          )
-        )
-    );
+    updates.push({ lineNo: row.lineNo, reservedQty: String(reservedQty), shortageQty: String(shortageQty) });
 
     if (shortageQty > 0) {
       shortLines.push({ sku: row.sku, itemName: row.itemName, uom: row.uom, shortageQty });
     }
   }
 
-  await Promise.all(updates);
+  // Validate every line before building/executing sequential writes on the connection.
+  for (const { lineNo, reservedQty, shortageQty } of updates) {
+    await db.update(orderItems).set({ reservedQty, shortageQty }).where(
+      and(eq(orderItems.orgId, orgId), eq(orderItems.orderId, orderId), eq(orderItems.lineNo, lineNo))
+    );
+  }
   await updateById(orders, orgId, orderId, { status: "Dispatch_Pending" });
 
   const message =
@@ -1317,11 +1356,7 @@ export async function runStockCheck(orderId: string, actorId: string): Promise<O
   await logOrderActivity(orgId, orderId, "Stock_Reserved", message, actorId);
 
   if (shortLines.length > 0) {
-    try {
-      await notifyShortage(orgId, orderId, order, shortLines);
-    } catch (error) {
-      console.error(`[orders] notifyShortage failed for order ${orderId}:`, error);
-    }
+    await notifyShortage(orgId, orderId, order, shortLines);
   }
 
   const updated = await getOrder(orderId);
@@ -1337,6 +1372,13 @@ export async function commitDispatch(
   orderId: string,
   dispatchCommitDate: string,
   actorId: string
+): Promise<OrderRecord> {
+  const orgId = await getTenantOrgId();
+  return runInTenantTransaction(orgId, () => commitDispatchInTransaction(orderId, dispatchCommitDate, actorId));
+}
+
+async function commitDispatchInTransaction(
+  orderId: string, dispatchCommitDate: string, actorId: string
 ): Promise<OrderRecord> {
   const orgId = await getTenantOrgId();
   const order = await findById(orders, orgId, orderId);
@@ -1361,10 +1403,12 @@ export async function commitDispatch(
     actorId
   );
 
-  try {
-    await emitFmsEvent("ORDER_READY_FOR_PDI", `ORDERS:${orderId}`);
-  } catch (error) {
-    console.error(`[orders] emitFmsEvent(ORDER_READY_FOR_PDI) failed for ${orderId}:`, error);
+  // Chaining creates required DB rows; the best-effort event emitter swallows
+  // failures, so start the matching successors directly in this transaction.
+  const templates = await listFmsTemplates();
+  for (const step of templates) {
+    if (Number(step.Step_No) !== 1 || step.Trigger_Event !== "ORDER_READY_FOR_PDI" || step.Status !== "Active") continue;
+    await startFmsInstance({ templateId: step.Template_ID, contextRef: `ORDERS:${orderId}`, startedBy: "SYSTEM" });
   }
 
   const updated = await getOrder(orderId);
@@ -1390,9 +1434,9 @@ export async function commitDispatch(
  * allows, and clears the shortage exactly as much as that permits — no manual "recheck"
  * button anywhere, this runs automatically the instant stock is recorded.
  *
- * Never throws — this is called from deep inside recordMovement()'s own hot path (a bad
- * SKU or a network blip here must never be able to undo or fail a real stock write that
- * already committed), so every failure is caught and logged internally.
+ * Admission, all top-ups and their required activity/PDI rows share one tenant
+ * transaction. Authoritative faults propagate and roll the whole command back.
+ * Stock-in callers must await this inside their own transaction (not after commit).
  *
  * FAIRNESS when two+ orders compete for the same newly-arrived stock: orders are processed
  * one at a time, strictly oldest (`createdAt`) first, and the Free-stock snapshot is
@@ -1404,50 +1448,47 @@ export async function commitDispatch(
  */
 export async function recheckShortfallForSku(sku: string): Promise<void> {
   if (!sku) return;
-  try {
-    const orgId = await getTenantOrgId();
-
-    // Filters orders by status in SQL (orders_org_id_status_idx) and order_items by
-    // (org_id, sku) (order_items_org_id_sku_idx) instead of pulling every order/line the
-    // org has ever created — this fires on every single "In" stock movement anywhere in
-    // the org (see this function's own header comment), so an unbounded, ever-growing scan
-    // here was the costliest query in the whole stock-in path.
-    const orderRows = await db
-      .select({ id: orders.id, createdAt: orders.createdAt })
-      .from(orders)
-      .where(and(eq(orders.orgId, orgId), inArray(orders.status, RESERVING_ORDER_STATUSES)))
-      .catch(() => [] as { id: string; createdAt: Date }[]);
-    const reservingOrderIds = new Set(orderRows.map((o) => o.id));
-    const createdAtById = new Map(orderRows.map((o) => [o.id, o.createdAt]));
-
-    const itemRows = reservingOrderIds.size
-      ? await db
-          .select({ orderId: orderItems.orderId, shortageQty: orderItems.shortageQty })
-          .from(orderItems)
-          .where(and(eq(orderItems.orgId, orgId), eq(orderItems.sku, sku)))
-          .catch(() => [] as { orderId: string; shortageQty: string | null }[])
-      : [];
-
-    const shortOrderIds = Array.from(
-      new Set(
-        itemRows
-          .filter((r) => reservingOrderIds.has(r.orderId) && (Number(r.shortageQty) || 0) > 0)
-          .map((r) => r.orderId)
-      )
-    ).sort((a, b) => {
-      const ta = createdAtById.get(a)?.getTime() ?? 0;
-      const tb = createdAtById.get(b)?.getTime() ?? 0;
-      return ta - tb; // oldest first — see this function's own fairness note above.
-    });
-
-    for (const orderId of shortOrderIds) {
-      await topUpOneOrderForSku(orgId, orderId, sku);
-    }
-  } catch (error) {
-    console.error(`[orders] recheckShortfallForSku(${sku}) failed:`, error);
-  }
+  const orgId = await getTenantOrgId();
+  return runInTenantTransaction(orgId, () => recheckShortfallInTransaction(orgId, sku));
 }
 
+async function recheckShortfallInTransaction(orgId: string, sku: string): Promise<void> {
+
+  // Filters orders by status in SQL (orders_org_id_status_idx) and order_items by
+  // (org_id, sku) (order_items_org_id_sku_idx) instead of pulling every order/line the
+  // org has ever created — this fires on every single "In" stock movement anywhere in
+  // the org (see this function's own header comment), so an unbounded, ever-growing scan
+  // here was the costliest query in the whole stock-in path.
+  const orderRows = await db
+    .select({ id: orders.id, createdAt: orders.createdAt })
+    .from(orders)
+    .where(and(eq(orders.orgId, orgId), inArray(orders.status, RESERVING_ORDER_STATUSES)));
+  const reservingOrderIds = new Set(orderRows.map((o) => o.id));
+  const createdAtById = new Map(orderRows.map((o) => [o.id, o.createdAt]));
+
+  const itemRows = reservingOrderIds.size
+    ? await db
+        .select({ orderId: orderItems.orderId, shortageQty: orderItems.shortageQty })
+        .from(orderItems)
+        .where(and(eq(orderItems.orgId, orgId), eq(orderItems.sku, sku)))
+    : [];
+
+  const shortOrderIds = Array.from(
+    new Set(
+      itemRows
+        .filter((r) => reservingOrderIds.has(r.orderId) && orderQuantity(r.shortageQty) > 0)
+        .map((r) => r.orderId)
+    )
+  ).sort((a, b) => {
+    const ta = createdAtById.get(a)?.getTime() ?? 0;
+    const tb = createdAtById.get(b)?.getTime() ?? 0;
+    return ta - tb; // oldest first — see this function's own fairness note above.
+  });
+
+  for (const orderId of shortOrderIds) {
+    await topUpOneOrderForSku(orgId, orderId, sku);
+  }
+}
 /** Tops up exactly one order's own lines for `sku`, against a Free-stock snapshot read
  * fresh for this order alone (see recheckShortfallForSku()'s fairness note). */
 async function topUpOneOrderForSku(orgId: string, orderId: string, sku: string): Promise<void> {
@@ -1458,28 +1499,33 @@ async function topUpOneOrderForSku(orgId: string, orderId: string, sku: string):
     .select()
     .from(orderItems)
     .where(and(eq(orderItems.orgId, orgId), eq(orderItems.orderId, orderId), eq(orderItems.sku, sku)));
+  for (const line of lineRows) {
+    const qty = orderQuantity(line.qty, true);
+    const reserved = orderQuantity(line.reservedQty);
+    const consumed = orderQuantity(line.consumedQty);
+    const shortage = orderQuantity(line.shortageQty);
+    if (consumed > reserved || reserved > qty || shortage > round3(qty - reserved)) {
+      throw new OrderError("Order reservation/shortage quantity exceeds demand.");
+    }
+  }
   const shortLines = lineRows
-    .filter((r) => (Number(r.shortageQty) || 0) > 0)
+    .filter((r) => orderQuantity(r.shortageQty) > 0)
     .sort((a, b) => Number(a.lineNo) - Number(b.lineNo));
   if (shortLines.length === 0) return;
 
-  const [ledger, committed, inTransit, reserved] = await Promise.all([
-    listLedger(),
-    committedBySku(),
-    inTransitBySku(),
-    orderReservedBySku(),
-  ]);
-  let available = positionFor(sku, onHandBySku(ledger), committed, inTransit, reserved).free;
+  // This is an incremental top-up: existing own reservations stay deducted.
+  const { free } = await getStockAvailability();
+  let available = free.get(sku) ?? 0;
   if (available <= 0) return;
 
   let totalToppedUp = 0;
   for (const line of shortLines) {
     if (available <= 0) break;
-    const shortage = Number(line.shortageQty) || 0;
+    const shortage = orderQuantity(line.shortageQty);
     const topUp = round3(Math.min(shortage, available));
     if (topUp <= 0) continue;
 
-    const newReserved = round3((Number(line.reservedQty) || 0) + topUp);
+    const newReserved = round3(orderQuantity(line.reservedQty) + topUp);
     const newShortage = round3(shortage - topUp);
     available = round3(available - topUp);
     totalToppedUp = round3(totalToppedUp + topUp);
@@ -1512,15 +1558,11 @@ async function topUpOneOrderForSku(orgId: string, orderId: string, sku: string):
   );
 
   if (!stillShort && order.pdiId) {
-    try {
-      const { noteStockAvailable } = await import("@/lib/pdi/pdi");
-      await noteStockAvailable(
-        order.pdiId,
-        `Order ${orderId} ka stock ab pura available hai — inspection ke liye ready hai.`
-      );
-    } catch (error) {
-      console.error(`[orders] noteStockAvailable failed for order ${orderId}:`, error);
-    }
+    const { noteStockAvailable } = await import("@/lib/pdi/pdi");
+    await noteStockAvailable(
+      order.pdiId,
+      `Order ${orderId} ka stock ab pura available hai — inspection ke liye ready hai.`
+    );
   }
 }
 
@@ -1534,6 +1576,13 @@ export async function setTransportArrangedBy(
   orderId: string,
   value: "Self" | "Party",
   actorId: string
+): Promise<OrderRecord> {
+  const orgId = await getTenantOrgId();
+  return runInTenantTransaction(orgId, () => setTransportArrangedByInTransaction(orderId, value, actorId));
+}
+
+async function setTransportArrangedByInTransaction(
+  orderId: string, value: "Self" | "Party", actorId: string
 ): Promise<OrderRecord> {
   if (value !== "Self" && value !== "Party") {
     throw new OrderError('Transport arrangement "Self" ya "Party" hona chahiye.');
@@ -1560,6 +1609,11 @@ export async function setTransportArrangedBy(
 }
 
 export async function cancelOrder(orderId: string, reason: string, actorId: string): Promise<OrderRecord> {
+  const orgId = await getTenantOrgId();
+  return runInTenantTransaction(orgId, () => cancelOrderInTransaction(orderId, reason, actorId));
+}
+
+async function cancelOrderInTransaction(orderId: string, reason: string, actorId: string): Promise<OrderRecord> {
   const orgId = await getTenantOrgId();
   const order = await findById(orders, orgId, orderId);
   if (!order) throw new OrderError("Order nahi mila.");

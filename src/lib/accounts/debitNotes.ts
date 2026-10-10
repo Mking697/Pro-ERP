@@ -1,7 +1,7 @@
 import type { InferSelectModel } from "drizzle-orm";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { billPayments, debitNotes, debitNoteUsages, failureLog, journalEntries, journalLines, vendors } from "@/db/schema";
-import { db } from "@/db/client";
+import { db, runInTenantTransaction } from "@/db/client";
 import { findById, listByOrg } from "@/db/repo";
 import { getTenantOrgId } from "@/lib/tenant";
 import { generateId } from "@/lib/id";
@@ -280,13 +280,18 @@ export interface CreateDebitNoteInput {
  * auto-suggestion (amount is manually entered in full, per explicit product decision,
  * unlike Purchase's own PO-issue screen).
  */
-export async function createDebitNote(
+export async function createDebitNote(input: CreateDebitNoteInput, createdBy: string): Promise<DebitNoteRecord> {
+  const orgId = await getTenantOrgId();
+  return runInTenantTransaction(orgId, () => createDebitNoteInTransaction(input, createdBy));
+}
+
+async function createDebitNoteInTransaction(
   input: CreateDebitNoteInput,
   createdBy: string
 ): Promise<DebitNoteRecord> {
   const orgId = await getTenantOrgId();
   const amount = round2(input.amount);
-  if (!(amount > 0)) throw new DebitNoteError("Amount 0 se zyada hona chahiye.");
+  if (!Number.isFinite(amount) || !(amount > 0)) throw new DebitNoteError("Amount 0 se zyada hona chahiye.");
 
   const vendor = await findById(vendors, orgId, input.vendorId);
   if (!vendor) throw new DebitNoteError("Vendor nahi mila.");
@@ -451,13 +456,18 @@ export interface ApplyDebitNoteInput {
  * wherever it's displayed, see getBill()'s own totalPaid), so inserting the payment row
  * directly here needs no extra status handling to stay consistent with that.
  */
-export async function applyDebitNoteToBill(
+export async function applyDebitNoteToBill(input: ApplyDebitNoteInput, createdBy: string): Promise<DebitNoteRecord> {
+  const orgId = await getTenantOrgId();
+  return runInTenantTransaction(orgId, () => applyDebitNoteToBillInTransaction(input, createdBy));
+}
+
+async function applyDebitNoteToBillInTransaction(
   input: ApplyDebitNoteInput,
   createdBy: string
 ): Promise<DebitNoteRecord> {
   const orgId = await getTenantOrgId();
   const amount = round2(input.amount);
-  if (!(amount > 0)) throw new DebitNoteError("Amount 0 se zyada hona chahiye.");
+  if (!Number.isFinite(amount) || !(amount > 0)) throw new DebitNoteError("Amount 0 se zyada hona chahiye.");
 
   const noteRow = await findById(debitNotes, orgId, input.debitNoteId);
   if (!noteRow) throw new DebitNoteError("Debit Note nahi mila.");
@@ -469,6 +479,10 @@ export async function applyDebitNoteToBill(
   }
   if (billDetail.bill.status !== "Issued") {
     throw new DebitNoteError("Sirf Issued bill par Debit Note apply ho sakta hai.");
+  }
+  const remainingPayable = round2(billDetail.bill.amount - billDetail.totalPaid);
+  if (!Number.isFinite(amount) || !Number.isFinite(remainingPayable) || amount > remainingPayable) {
+    throw new DebitNoteError("Payment exceeds the bill's remaining payable amount.");
   }
 
   const accounts = await listChartOfAccounts();
@@ -542,13 +556,18 @@ export interface ReceiveDebitNotePaymentInput {
 
 /** Posts `Dr Cash-Bank / Cr Vendor Claim Receivable` — the vendor pays the note's value
  * back in real cash instead of it being applied against a future Bill. */
-export async function receiveDebitNotePayment(
+export async function receiveDebitNotePayment(input: ReceiveDebitNotePaymentInput, createdBy: string): Promise<DebitNoteRecord> {
+  const orgId = await getTenantOrgId();
+  return runInTenantTransaction(orgId, () => receiveDebitNotePaymentInTransaction(input, createdBy));
+}
+
+async function receiveDebitNotePaymentInTransaction(
   input: ReceiveDebitNotePaymentInput,
   createdBy: string
 ): Promise<DebitNoteRecord> {
   const orgId = await getTenantOrgId();
   const amount = round2(input.amount);
-  if (!(amount > 0)) throw new DebitNoteError("Amount 0 se zyada hona chahiye.");
+  if (!Number.isFinite(amount) || !(amount > 0)) throw new DebitNoteError("Amount 0 se zyada hona chahiye.");
 
   const noteRow = await findById(debitNotes, orgId, input.debitNoteId);
   if (!noteRow) throw new DebitNoteError("Debit Note nahi mila.");

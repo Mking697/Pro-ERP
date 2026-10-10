@@ -1,7 +1,7 @@
 import type { InferSelectModel } from "drizzle-orm";
 import { and, desc, eq, inArray } from "drizzle-orm";
 import { bills, billPayments, purchaseOrders, vendors } from "@/db/schema";
-import { db } from "@/db/client";
+import { db, runInTenantTransaction } from "@/db/client";
 import { findById, insertRecord, listByOrg, updateById } from "@/db/repo";
 import { getTenantOrgId } from "@/lib/tenant";
 import { generateId } from "@/lib/id";
@@ -290,6 +290,11 @@ export interface CreateBillInput {
  * arrives. issueBill() below is where both become mandatory. */
 export async function createBill(input: CreateBillInput, createdBy: string): Promise<BillRecord> {
   const orgId = await getTenantOrgId();
+  return runInTenantTransaction(orgId, () => createBillInTransaction(input, createdBy));
+}
+
+async function createBillInTransaction(input: CreateBillInput, createdBy: string): Promise<BillRecord> {
+  const orgId = await getTenantOrgId();
   const po = await findById(purchaseOrders, orgId, input.poId);
   if (!po) throw new PayablesError("Purchase Order nahi mila.");
   if (po.status !== "Completed") {
@@ -342,6 +347,11 @@ export interface UpdateBillInput {
 
 export async function updateBill(billId: string, input: UpdateBillInput): Promise<BillRecord> {
   const orgId = await getTenantOrgId();
+  return runInTenantTransaction(orgId, () => updateBillInTransaction(billId, input));
+}
+
+async function updateBillInTransaction(billId: string, input: UpdateBillInput): Promise<BillRecord> {
+  const orgId = await getTenantOrgId();
   const row = await findById(bills, orgId, billId);
   if (!row) throw new PayablesError("Bill nahi mili.");
   if (row.status !== "Draft") throw new PayablesError("Issued bill edit nahi ho sakti.");
@@ -371,6 +381,11 @@ export async function updateBill(billId: string, input: UpdateBillInput): Promis
 
 export async function issueBill(billId: string, actorId: string): Promise<BillRecord> {
   const orgId = await getTenantOrgId();
+  return runInTenantTransaction(orgId, () => issueBillInTransaction(billId, actorId));
+}
+
+async function issueBillInTransaction(billId: string, actorId: string): Promise<BillRecord> {
+  const orgId = await getTenantOrgId();
   const row = await findById(bills, orgId, billId);
   if (!row) throw new PayablesError("Bill nahi mili.");
   if (row.status !== "Draft") throw new PayablesError("Ye bill pehle se Issued hai.");
@@ -394,7 +409,6 @@ export async function issueBill(billId: string, actorId: string): Promise<BillRe
   // while Draft (updateBill()), after gstAmount was already snapshotted at createBill() time.
   const gstAmount = computeBillGst(amount, Number(updated.gstPercent) || 0);
   if (amount > 0) {
-    try {
       // Pre-GST bills (gstAmount 0 — every bill created before this GST-tracking change, or
       // a PO with no gstPercent set) keep exactly the original 2-line posting. Otherwise
       // split the GST portion into its own Input Credit asset instead of folding it into
@@ -422,9 +436,6 @@ export async function issueBill(billId: string, actorId: string): Promise<BillRe
         createdBy: actorId,
         lines,
       });
-    } catch (error) {
-      console.error(`[payables] postJournalEntry failed for bill ${billId}:`, error);
-    }
   }
 
   return rowToBill(updated, await vendorNameFor(orgId, updated.vendorId));
@@ -442,7 +453,12 @@ export interface RecordBillPaymentInput {
   paidAt?: string;
 }
 
-export async function recordBillPayment(
+export async function recordBillPayment(billId: string, input: RecordBillPaymentInput, actorId: string): Promise<BillRecord> {
+  const orgId = await getTenantOrgId();
+  return runInTenantTransaction(orgId, () => recordBillPaymentInTransaction(billId, input, actorId));
+}
+
+async function recordBillPaymentInTransaction(
   billId: string,
   input: RecordBillPaymentInput,
   actorId: string
@@ -455,8 +471,14 @@ export async function recordBillPayment(
   if (row.status !== "Issued") throw new PayablesError("Sirf Issued bill par payment record ho sakta hai.");
 
   const amount = round2(input.amount);
+  const detail = await getBill(billId);
+  const remaining = detail ? round2(detail.bill.amount - detail.totalPaid) : NaN;
+  if (!Number.isFinite(amount) || !Number.isFinite(remaining) || amount > remaining) {
+    throw new PayablesError("Payment exceeds the bill's remaining payable amount.");
+  }
+  const paymentId = generateId("BPY");
   await insertRecord(billPayments, {
-    id: generateId("BPY"),
+    id: paymentId,
     orgId,
     billId,
     amount: String(amount),
@@ -466,23 +488,17 @@ export async function recordBillPayment(
     recordedBy: actorId,
   });
 
-  // GL posting — best-effort, same convention as every other posting hook: the payment
-  // itself is already recorded regardless of whether this succeeds.
-  try {
     await postJournalEntry({
       orgId,
       description: `Payment made — Bill ${billId}`,
       sourceType: "PayablePayment",
-      sourceId: billId,
+      sourceId: paymentId,
       createdBy: actorId,
       lines: [
         { accountCode: SYSTEM_ACCOUNT_CODES.ACCOUNTS_PAYABLE, debit: amount },
         { accountCode: SYSTEM_ACCOUNT_CODES.CASH_BANK, credit: amount },
       ],
     });
-  } catch (error) {
-    console.error(`[payables] postJournalEntry failed for bill payment ${billId}:`, error);
-  }
 
   return rowToBill(row, await vendorNameFor(orgId, row.vendorId));
 }

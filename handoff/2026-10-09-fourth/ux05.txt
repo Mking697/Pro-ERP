@@ -1,0 +1,103 @@
+UX-05 — Form label/control association (client-side only)
+Finding source: handoff/2026-10-08/implementation-tracker.json item UX-05
+Evidence cited: src/app/orders/new-order-dialog.tsx:169-191; src/app/purchase/po-issue-board.tsx:318-341; src/components/ui/label.tsx:7-16
+
+## Files changed
+- src/app/orders/new-order-dialog.tsx
+- src/app/purchase/po-issue-board.tsx
+- src/components/ui/label.tsx — NOT modified. Inspected first per instructions: `Label`
+  already spreads `{...props}` straight onto a native `<label>` element, so `htmlFor` was
+  already fully functional — the bug was that callers never passed it, not that the
+  primitive couldn't support it. No change needed; no risk to its many other callers.
+
+## What was wrong
+Every repeated per-row field (Qty/Rate per order line, New Price per PO candidate row) and
+several single fields used a bare `<Label>Text</Label>` with no `htmlFor`, paired with an
+`<Input>`/`<Textarea>` with no `id` — the label and control were only visually adjacent
+siblings, not programmatically associated. A screen reader announced "Quantity" with no
+line context, and clicking the label text did nothing (didn't focus the input). No field had
+`aria-invalid`/`aria-describedby`, so even the one validation message that did exist (a
+generic toast) was invisible to assistive tech and not tied to any specific row.
+
+## Fix — src/app/orders/new-order-dialog.tsx
+- Per order line (keyed by the line's own stable `line.key`, never the array index, so a
+  removed earlier line can't silently re-point another line's ids):
+  - Qty: `id="order-line-qty-${line.key}"`, `Label htmlFor` matching.
+  - Rate: `id="order-line-rate-${line.key}"`, `Label htmlFor` matching.
+  - Added a `submitAttempted` state (set true on `handleSubmit`, reset on dialog
+    close/reset) so a line with an item selected but `qty` not `> 0` now gets
+    `aria-invalid="true"`, `aria-describedby` pointing at a new visible inline error
+    `<p>` (`order-line-qty-error-${line.key}`), in addition to the existing toast.
+  - Rate intentionally got only id+htmlFor, no aria-invalid — there is no actual rate
+    validation in `handleSubmit`/the API today, and fabricating one wasn't in scope.
+- Single fields also fixed for completeness (not repeated, but still unassociated before):
+  GST % (`order-gst-percent`), Transport Arrangement (`order-transport-arrangement`,
+  `SelectTrigger` now carries the `id` a `<label htmlFor>` can target — base-ui's Select
+  trigger renders a real `<button>`, which is a labelable element).
+- Left alone (out of ownership / already correct): the "Customer" label (wraps
+  `CustomerPicker`, a sibling component not owned by this task), `ItemPicker`'s own
+  per-instance `Label htmlFor={useId()}` (already correct, ships its own comment
+  explaining the exact same repeated-row bug class), the per-row Checkbox/"PO
+  Attachment" (`FileUploadField`) which already carry their own distinct
+  `aria-label`/label wiring in components not owned here.
+
+## Fix — src/app/purchase/po-issue-board.tsx
+- Vendor select: `id="po-vendor"` on `SelectTrigger`, `Label htmlFor="po-vendor"`.
+- GST % / Note / Terms & Conditions: `id`s `po-gst-percent` / `po-note` / `po-terms`,
+  each paired with `Label htmlFor`.
+- Per-candidate-row New Price input (the repeated-row case this file was cited for),
+  keyed by `r.candidate.indentId` (the row's own real identity, not array index):
+  - Added a stable `id="po-new-price-${indentId}"` (the row already had a correct,
+    distinct `aria-label` giving each row its own accessible name — that part was
+    already right; it just had no `id` and no validation wiring).
+  - Added `aria-invalid`/`aria-describedby` wired to a new, row-scoped `sr-only`
+    (`role="alert"`) error message when the typed price is non-empty and negative
+    (`Number(priceValue) < 0`) — this previously had no inline validation at all; a
+    visually-hidden message was used (not a visible one) to avoid disturbing this
+    dense table's layout, following the existing `sr-only` convention already used
+    elsewhere in this codebase (`command-palette.tsx`, `file-upload-field.tsx`,
+    `loading-states.tsx`, `dialog.tsx`).
+
+## Verification
+- `npx tsc --noEmit -p tsconfig.json` — PASSED, exit 0, no errors introduced
+  (whole-tree run, not scoped — ran clean).
+- `npx eslint <changed files>` — COULD NOT RUN: the installed `eslint`'s own
+  dependency `@eslint-community/eslint-utils` is missing from `node_modules`
+  entirely (`Error: Cannot find module '@eslint-community/eslint-utils'`), confirmed
+  pre-existing and unrelated to this change (the package directory
+  `node_modules/@eslint-community` does not exist at all on disk). Per the "no npm
+  install" rule for this task, this was not fixed — flagging, not hiding. Whoever next
+  touches dependencies should run `npm install` (no version change) to restore this
+  missing eslint dependency, then rerun lint on these two files.
+- No component-test harness exists in this repo (`package.json` has `vitest` only —
+  no `jsdom`, `@testing-library/react`, or `happy-dom`; `tests/` is all Vitest
+  unit/integration specs against Node/DB logic, nothing renders a component tree) — so
+  per instructions, no automated test file was added. Manual verification steps below.
+
+## Manual verification steps (since no component-test harness exists)
+1. Orders → "+ Naya Order" → add 2-3 line items. In a screen reader (or just via
+   `document.querySelector('label[for="order-line-qty-123"]')`/devtools accessibility
+   tree), confirm each Qty/Rate label announces as "Qty"/"Rate" with a distinct
+   `id`/`for` pair per line, and clicking a line's "Qty" label text focuses exactly
+   that line's own input (not row 1's).
+2. Leave a line's Qty blank (with an item picked) and click "Order Banayein": confirm
+   that line's Qty input now shows a red inline error text, has `aria-invalid="true"`,
+   and the error `<p>`'s `id` matches the input's `aria-describedby` — in the browser's
+   Accessibility pane (Elements → Accessibility in Chrome DevTools) the input's
+   "Description" should show the exact error text, not a generic one shared by every
+   line.
+3. Purchase → PO Issue → pick a vendor with ≥2 eligible candidate rows. Confirm each
+   row's "New Price" input has a distinct `id` (`po-new-price-<indentId>`) and a
+   distinct `aria-label` (already existed) in the accessibility tree. Type `-5` into
+   one row's price: confirm only that row gets `aria-invalid="true"` and an
+   `aria-describedby`-linked (visually hidden) error, siblings are unaffected.
+4. Tab through the Vendor select / GST % / Note / Terms & Conditions fields on both
+   screens and confirm each now has a proper accessible name via DevTools'
+   Accessibility pane (previously these reported no accessible name / relied only on
+   visual adjacency).
+
+## Status
+Done for the three owned files. `label.tsx` deliberately left unchanged (already
+correct). tsc clean. eslint blocked by a pre-existing missing dependency in this
+checkout, not by anything touched here — flagged above for the next session with
+install permission.

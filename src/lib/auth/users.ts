@@ -1,6 +1,6 @@
 import bcrypt from "bcryptjs";
 import { and, eq, sql, type InferSelectModel } from "drizzle-orm";
-import { db } from "@/db/client";
+import { db, runInTenantTransaction } from "@/db/client";
 import { users } from "@/db/schema";
 import { getTenantOrgId } from "@/lib/tenant";
 import { generateId } from "@/lib/id";
@@ -167,6 +167,33 @@ interface CreateUserInput {
   reportingManagerId?: string;
 }
 
+/**
+ * Usage-limit gate (src/lib/platform/planLimits.ts) — the only billing enforcement this
+ * codebase has (no payment gateway; a Platform Admin changes `plan` by hand from
+ * /platform). Counts every Active row, mirroring the same "Active users" figure
+ * /api/platform/organizations already shows. A Trial org (or an org with no plan on
+ * record) gets `null` here — unlimited, matching Trial's own "full feature set" promise.
+ *
+ * Shared by createUser() and updateUser()'s reactivate path (OPS-03): admitting a new
+ * Active user is the same org-level decision whether the row is brand new or a disabled
+ * one being turned back on, so both call this instead of each re-deriving their own
+ * count. MUST be called from inside the same runInTenantTransaction(orgId, ...) scope as
+ * the insert/update it is guarding — see those call sites for why.
+ */
+async function assertActiveUserCapAvailable(orgId: string, plan: string | null | undefined): Promise<void> {
+  const limit = getPlanLimit(plan ?? "Trial").maxActiveUsers;
+  if (limit === null) return;
+  const activeCount = await db
+    .select()
+    .from(users)
+    .where(and(eq(users.orgId, orgId), eq(users.status, "Active")));
+  if (activeCount.length >= limit) {
+    throw new Error(
+      `"${plan ?? "Trial"}" plan par sirf ${limit} active users ho sakte hain. Kisi user ko deactivate karein ya plan upgrade karayein.`
+    );
+  }
+}
+
 export async function createUser(input: CreateUserInput): Promise<SheetUser> {
   const orgId = await getTenantOrgId();
   const normalizedEmail = input.email.trim().toLowerCase();
@@ -177,46 +204,39 @@ export async function createUser(input: CreateUserInput): Promise<SheetUser> {
     throw new Error("Is email se pehle se ek user maujood hai.");
   }
 
-  // Usage-limit gate (src/lib/platform/planLimits.ts) — the only billing enforcement this
-  // codebase has (no payment gateway; a Platform Admin changes `plan` by hand from
-  // /platform). Counts every Active row, mirroring the same "Active users" figure
-  // /api/platform/organizations already shows. A Trial org (or an org with no plan on
-  // record) gets `null` here — unlimited, matching Trial's own "full feature set" promise.
   const org = await getOrganization(orgId);
-  const limit = getPlanLimit(org?.plan ?? "Trial").maxActiveUsers;
-  if (limit !== null) {
-    const activeCount = await db
-      .select()
-      .from(users)
-      .where(and(eq(users.orgId, orgId), eq(users.status, "Active")));
-    if (activeCount.length >= limit) {
-      throw new Error(
-        `"${org?.plan ?? "Trial"}" plan par sirf ${limit} active users ho sakte hain. Kisi user ko deactivate karein ya plan upgrade karayein.`
-      );
-    }
-  }
-
   const userId = generateId("UID");
   const passwordHash = await hashPassword(input.password);
 
-  const [row] = await db
-    .insert(users)
-    .values({
-      id: userId,
-      orgId,
-      fullName: input.fullName,
-      email: input.email,
-      passwordHash,
-      role: input.role,
-      department: input.department,
-      phoneNumber: input.phoneNumber,
-      status: "Active",
-      createdBy: input.createdBy,
-      moduleAccess: moduleAccessToArray(input.moduleAccess ?? []),
-      shift: input.shift?.trim() || "1",
-      reportingManagerId: input.reportingManagerId?.trim() ?? "",
-    })
-    .returning();
+  // Cap check + insert run inside one org-serialized transaction — the same
+  // pg_advisory_xact_lock-backed runInTenantTransaction() every other org-level admission
+  // decision in this codebase already uses (see src/db/client.ts's `admit()`). Without
+  // this, two concurrent creates (or a create racing a reactivate — see updateUser())
+  // targeting the organization's last available slot could both read "under the cap"
+  // before either writes; the lock makes the second call block until the first commits,
+  // then re-read the now-updated count.
+  const row = await runInTenantTransaction(orgId, async () => {
+    await assertActiveUserCapAvailable(orgId, org?.plan);
+    const [inserted] = await db
+      .insert(users)
+      .values({
+        id: userId,
+        orgId,
+        fullName: input.fullName,
+        email: input.email,
+        passwordHash,
+        role: input.role,
+        department: input.department,
+        phoneNumber: input.phoneNumber,
+        status: "Active",
+        createdBy: input.createdBy,
+        moduleAccess: moduleAccessToArray(input.moduleAccess ?? []),
+        shift: input.shift?.trim() || "1",
+        reportingManagerId: input.reportingManagerId?.trim() ?? "",
+      })
+      .returning();
+    return inserted;
+  });
 
   const newUser = rowToSheetUser(row);
 
@@ -244,120 +264,129 @@ interface UpdateUserInput {
 
 export async function updateUser(userId: string, patch: UpdateUserInput): Promise<SheetUser> {
   const orgId = await getTenantOrgId();
-  const found = await getUserRow(orgId, userId);
-  if (!found) {
-    throw new Error("User nahi mila.");
-  }
-
-  const newRole = patch.role ?? found.role;
-  const newStatus = (patch.status ?? found.status) as "Active" | "Inactive";
-
-  // An organization with no Active Admin cannot be administered again — mirrors
-  // deleteUser()'s own "last Admin" guard, which this lacked even though PATCH can produce
-  // the identical lockout: demoting the last Admin away from the role, or deactivating
-  // them, leaves nobody who can manage users or settings.
-  //
-  // The "is there another active Admin" check is folded into the UPDATE's own WHERE
-  // clause below (an EXISTS subquery evaluated atomically by Postgres as part of the same
-  // statement) rather than read-then-decide beforehand — two concurrent requests each
-  // demoting a different one of the last two Admins would otherwise both see "one other
-  // Admin still exists" at read time and both succeed, leaving zero. Folding the check
-  // into the WHERE means only one of the two statements can match a row; the other
-  // affects zero rows and this function detects that via an empty `.returning()`.
-  const demotedAwayFromAdmin = found.role === "Admin" && newRole !== "Admin";
-  const deactivatingAdmin =
-    found.role === "Admin" && found.status === "Active" && newStatus === "Inactive";
-  const removesThisUsersAdminStatus = demotedAwayFromAdmin || deactivatingAdmin;
-
-  // deactivatedAt tracks the real Active -> Inactive transition moment (used by Payroll's
-  // computeDaysEmployed() to prorate a mid-month exit instead of zeroing the whole month).
-  // Only touch it on a genuine flip; leave it exactly as-is when status isn't changing.
-  let deactivatedAt = found.deactivatedAt;
-  if (patch.status && patch.status !== found.status) {
-    if (found.status === "Active" && newStatus === "Inactive") {
-      deactivatedAt = new Date();
-    } else if (found.status === "Inactive" && newStatus === "Active") {
-      deactivatedAt = null; // reactivated — no current exit date
+  // Every update shares the admission lock: even a department-only patch must
+  // decide from the current row, not an Active snapshot from before deactivation.
+  const { updated, statusChanged } = await runInTenantTransaction(orgId, async () => {
+    const found = await getUserRow(orgId, userId);
+    if (!found) {
+      throw new Error("User nahi mila.");
     }
-  }
 
-  // A role, status, or module-access change invalidates any session already issued for
-  // this user — bumping tokenVersion is what makes requireSession() reject their old
-  // cookie on the next request instead of letting it coast to the natural 8h expiry.
-  const accessChanged =
-    patch.moduleAccess !== undefined &&
-    serializeModuleAccess(patch.moduleAccess) !== found.moduleAccess.join(",");
-  const securityRelevantChange =
-    (patch.role !== undefined && patch.role !== found.role) ||
-    (patch.status !== undefined && patch.status !== found.status) ||
-    accessChanged;
+    const newRole = patch.role ?? found.role;
+    const newStatus = (patch.status ?? found.status) as "Active" | "Inactive";
 
-  // When this update would remove the target's own Admin status, require — as part of
-  // the very same statement — that at least one OTHER Active Admin row already exists.
-  // `FOR UPDATE` inside the subquery is what actually makes this atomic: without it,
-  // Postgres evaluates a plain EXISTS against whatever was last committed when the
-  // statement started, so two concurrent UPDATEs each demoting a different one of the
-  // last two Admins both see "one other Admin still exists" and both succeed — leaving
-  // zero (confirmed by a real concurrency test; a plain EXISTS alone was not enough).
-  // `FOR UPDATE` takes a row lock on the matching admin row(s): the second transaction
-  // blocks until the first commits, then re-reads that row fresh and re-checks the WHERE
-  // predicate against its NEW state — by which point the first transaction's own demotion
-  // has already flipped that row's role away from "Admin", so the second transaction's
-  // EXISTS correctly evaluates to false.
-  const anotherActiveAdminExists = sql`exists (
-    select 1 from ${users}
-    where ${users.orgId} = ${orgId}
-      and ${users.role} = 'Admin'
-      and ${users.status} = 'Active'
-      and ${users.id} != ${userId}
-    for update
-  )`;
+    // Retain the statement-level last-Admin guard (also used by deleteUser).
+    // The tenant lock serializes updateUser decisions; the locked EXISTS additionally
+    // refuses removal unless another Active Admin still matches at write time.
+    const demotedAwayFromAdmin = found.role === "Admin" && newRole !== "Admin";
+    const deactivatingAdmin =
+      found.role === "Admin" && found.status === "Active" && newStatus === "Inactive";
+    const removesThisUsersAdminStatus = demotedAwayFromAdmin || deactivatingAdmin;
 
-  const [row] = await db
-    .update(users)
-    .set({
-      role: newRole,
-      department: patch.department ?? found.department,
-      phoneNumber: patch.phoneNumber ?? found.phoneNumber,
-      status: newStatus,
-      moduleAccess:
-        patch.moduleAccess !== undefined
-          ? moduleAccessToArray(patch.moduleAccess)
-          : found.moduleAccess,
-      shift: patch.shift?.trim() || found.shift,
-      reportingManagerId:
-        patch.reportingManagerId !== undefined
-          ? patch.reportingManagerId.trim()
-          : found.reportingManagerId,
-      deactivatedAt,
-      tokenVersion: securityRelevantChange
-        ? sql`${users.tokenVersion} + 1`
-        : sql`${users.tokenVersion}`,
-    })
-    .where(
-      and(
-        eq(users.orgId, orgId),
-        eq(users.id, userId),
-        removesThisUsersAdminStatus ? anotherActiveAdminExists : undefined
-      )
-    )
-    .returning();
-
-  if (!row) {
-    // Either the row vanished between the read above and here, or (the real reason this
-    // guard exists) this was the organization's last Active Admin and the WHERE clause's
-    // EXISTS check correctly refused to match any row.
-    if (removesThisUsersAdminStatus) {
-      throw new UserDeletionError(
-        "Ye organization ka aakhri Admin hai. Pehle kisi aur ko Admin banayein."
-      );
+    // deactivatedAt tracks the real Active -> Inactive transition moment (used by Payroll's
+    // computeDaysEmployed() to prorate a mid-month exit instead of zeroing the whole month).
+    // Only touch it on a genuine flip; leave it exactly as-is when status isn't changing.
+    let deactivatedAt = found.deactivatedAt;
+    if (patch.status && patch.status !== found.status) {
+      if (found.status === "Active" && newStatus === "Inactive") {
+        deactivatedAt = new Date();
+      } else if (found.status === "Inactive" && newStatus === "Active") {
+        deactivatedAt = null; // reactivated — no current exit date
+      }
     }
-    throw new Error("User nahi mila.");
-  }
 
-  const updated = rowToSheetUser(row);
+    // A role, status, or module-access change invalidates any session already issued for
+    // this user — bumping tokenVersion is what makes requireSession() reject their old
+    // cookie on the next request instead of letting it coast to the natural 8h expiry.
+    const accessChanged =
+      patch.moduleAccess !== undefined &&
+      serializeModuleAccess(patch.moduleAccess) !== found.moduleAccess.join(",");
+    const securityRelevantChange =
+      (patch.role !== undefined && patch.role !== found.role) ||
+      (patch.status !== undefined && patch.status !== found.status) ||
+      accessChanged;
 
-  if (patch.status && patch.status !== found.status) {
+    // When this update would remove the target's own Admin status, require — as part of
+    // the very same statement — that at least one OTHER Active Admin row already exists.
+    // `FOR UPDATE` inside the subquery is what actually makes this atomic: without it,
+    // Postgres evaluates a plain EXISTS against whatever was last committed when the
+    // statement started, so two concurrent UPDATEs each demoting a different one of the
+    // last two Admins both see "one other Admin still exists" and both succeed — leaving
+    // zero (confirmed by a real concurrency test; a plain EXISTS alone was not enough).
+    // `FOR UPDATE` takes a row lock on the matching admin row(s): the second transaction
+    // blocks until the first commits, then re-reads that row fresh and re-checks the WHERE
+    // predicate against its NEW state — by which point the first transaction's own demotion
+    // has already flipped that row's role away from "Admin", so the second transaction's
+    // EXISTS correctly evaluates to false.
+    const anotherActiveAdminExists = sql`exists (
+      select 1 from ${users}
+      where ${users.orgId} = ${orgId}
+        and ${users.role} = 'Admin'
+        and ${users.status} = 'Active'
+        and ${users.id} != ${userId}
+      for update
+    )`;
+
+    const isReactivation = found.status === "Inactive" && newStatus === "Active";
+
+    const performUpdate = () =>
+      db
+        .update(users)
+        .set({
+          role: newRole,
+          department: patch.department ?? found.department,
+          phoneNumber: patch.phoneNumber ?? found.phoneNumber,
+          ...(patch.status !== undefined ? { status: newStatus } : {}),
+          moduleAccess:
+            patch.moduleAccess !== undefined
+              ? moduleAccessToArray(patch.moduleAccess)
+              : found.moduleAccess,
+          shift: patch.shift?.trim() || found.shift,
+          reportingManagerId:
+            patch.reportingManagerId !== undefined
+              ? patch.reportingManagerId.trim()
+              : found.reportingManagerId,
+          deactivatedAt,
+          tokenVersion: securityRelevantChange
+            ? sql`${users.tokenVersion} + 1`
+            : sql`${users.tokenVersion}`,
+        })
+        .where(
+          and(
+            eq(users.orgId, orgId),
+            eq(users.id, userId),
+            removesThisUsersAdminStatus ? anotherActiveAdminExists : undefined
+          )
+        )
+        .returning();
+
+    // Only a genuine admission consumes a seat; all read/decision/write paths
+    // already hold the same organization lock, including ordinary profile edits.
+    if (isReactivation) {
+      const org = await getOrganization(orgId);
+      await assertActiveUserCapAvailable(orgId, org?.plan);
+    }
+    const [row] = await performUpdate();
+
+    if (!row) {
+      // Either the row vanished between the read above and here, or (the real reason this
+      // guard exists) this was the organization's last Active Admin and the WHERE clause's
+      // EXISTS check correctly refused to match any row.
+      if (removesThisUsersAdminStatus) {
+        throw new UserDeletionError(
+          "Ye organization ka aakhri Admin hai. Pehle kisi aur ko Admin banayein."
+        );
+      }
+      throw new Error("User nahi mila.");
+    }
+
+    return {
+      updated: rowToSheetUser(row),
+      statusChanged: Boolean(patch.status && patch.status !== found.status),
+    };
+  });
+
+  if (statusChanged) {
     await updateIndexedUserStatus(updated.Email, updated.Status);
   }
 

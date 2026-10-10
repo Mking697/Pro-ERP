@@ -23,3 +23,4 @@ export * from "./dispatch";
 export * from "./payroll";
 export * from "./chatbot";
 export * from "./maintenance";
+export * from "./mutations";

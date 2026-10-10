@@ -1,5 +1,5 @@
 import { listOrganizations } from "@/lib/platform/registry";
-import { runWithTenant, type TenantContext } from "@/lib/tenant";
+import { runWithTenant, tenantFromOrgId, type TenantContext } from "@/lib/tenant";
 
 export interface OrgRunResult<T> {
   orgId: string;
@@ -45,9 +45,25 @@ export async function forEachActiveOrganization<T>(
 
   async function runOne(index: number): Promise<void> {
     const org = orgs[index];
-    const ctx: TenantContext = { orgId: org.id, org };
 
     try {
+      // Resolves through the exact same check the interactive request path already goes
+      // through (getTenant() -> tenantFromOrgId()) instead of building the tenant context
+      // directly off the raw listOrganizations() row. POLICY DECISION (documented,
+      // conservative, overridable — not a silent guess): a background/cron run for an org
+      // whose trial has expired must not silently keep generating new business records
+      // (e.g. new recurring task occurrences) the way an active org's does. This file
+      // used to only filter on `org.status === "Active"`, which says nothing about trial
+      // expiry — an org can stay "Active" status-wise for its whole expired trial, so
+      // cron kept running for it even though every interactive request from that org was
+      // already being hard-blocked with TRIAL_EXPIRED. tenantFromOrgId() throws the same
+      // TenantResolutionError for that case here, which the catch below turns into an
+      // ordinary per-org failure — this org's generation is skipped entirely for the run,
+      // never aborting any other tenant's, exactly like any other org-specific error.
+      // A different business choice — e.g. continue generating but mark the result
+      // read-only — remains a valid alternative; this is the one place to change if the
+      // business picks that instead.
+      const ctx = await tenantFromOrgId(org.id);
       const result = await runWithTenant(ctx, () => fn(ctx));
       results[index] = { orgId: org.id, orgName: org.orgName, ok: true, result };
     } catch (error) {

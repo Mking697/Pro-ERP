@@ -1,0 +1,49 @@
+SECOND Stock/PPC/FMS continuation — 2026-10-09
+Status: current HTTP replay/error-mapping slice verified DB-free; real-driver acceptance remains parent-owned, not claimed complete.
+
+Outcome / strict vertical TDD:
+- Reproduced the existing PPC HTTP start regression unchanged: first 200, replay 400. Cause: PATCH omitted header key when calling already-keyed startProduction. Forwarded getMutationKey(request); existing 25-test shard became green.
+- Added and observed individual behavioral REDs before fixes for PPC completion replay (400), PPC creation replay (duplicate reservations), FMS completion replay (400), FMS manual start replay (duplicate instance), manual movement replay (duplicate ledger movement). Forwarded header-only keys to parsed domain boundaries; manual movement uses outer runIdempotentTenantMutation with parsed payload and trusted actor.
+- Added six HTTP conflicting-intent tests: all RED 400 vs required 409, then GREEN via MutationConflictError mapping across five route files.
+- Added stock HTTP tampering/admission test: body available/excludeOrderId cannot spend held stock. RED incorrect 400 response, GREEN explicit InsufficientAvailableStockError -> 409. No public body exclusions forwarded.
+- Removed redundant legacy availability reads in actionRunner and movement route; central ledger admission remains authoritative. Cleaned unused plans imports and stale stock transaction comments. No new circular import.
+- Preserved parent joinedTable query-mock snapshot and FIRST trusted-field implementation. Existing engine/ledger transaction integration retained rather than restarted.
+
+Files changed this continuation:
+src/app/api/ppc/plans/[planId]/route.ts
+src/app/api/ppc/plans/route.ts
+src/app/api/fms/instances/route.ts
+src/app/api/fms/steps/[runId]/complete/route.ts
+src/app/api/inventory/movements/route.ts
+src/lib/fms/actionRunner.ts
+src/lib/inventory/plans.ts (unused imports/comment cleanup only)
+src/lib/inventory/ledger.ts (bulk admission comment only)
+tests/stock-workflow-unit.test.ts
+tests/stock-workflow.real.test.ts
+This handoff.
+
+Final executed checks (all exit 0):
+node node_modules/vitest/vitest.mjs run --config tests/stock-workflow-unit.vitest.config.ts
+=> 1 file, 37 passed, 0 failed; final duration 2.31s. Config inspected: setupFiles [], persistence/provider boundaries mocked, no dotenv/real client imports.
+Focused ESLint: inventory ledger/plans, FMS engine/actionRunner, five changed route files, stock-workflow unit + real test files => clean, no warnings.
+node node_modules/typescript/bin/tsc --noEmit --incremental false => clean.
+Scoped git diff --check => clean; Git emits only LF-to-CRLF notices.
+No default tests/build/real PG execution, credentials/env read, installs, schema/migration/shared-domain edits, commits/push/deploy/destructive Git.
+
+Coverage retained in DB-free shard:
+PPC authoritative allocation with Order holds; reservations/header rollback; aggregate production demand; own-plan consumption; plan final-state rollback; chosen Line failure rollback; FG completion rollback; reallocation rollback; cancellation/start serialization; FMS action/state/successor/chained-flow rollback; notification deferral; event-start rollback; manual FMS TAT serialization; read-failure propagation; canonical quantities/UOM; domain keyed replay plus HTTP replay/conflict/tampering.
+
+Real PG coverage prepared, TYPECHECKED ONLY (parent must execute serially):
+Existing ledger real tests retained. Added eight committed-state cases: concurrent keyed multi-material start; later material-state failure plus same-key retry; missing chosen Line rollback; reallocation competing with manual issue; concurrent keyed completion single FG output; selected Line sole FG writer; FMS state fault rollback + keyed action/successor retry; missing required successor rollback. Existing availability-fault test now injects actual SQL division by zero and expects cause.code 22012 rather than a synchronous JS spy error. Fault flags reset before each fixture; exact tenant rows and organization cleanup readback retained.
+Command: node node_modules/vitest/vitest.mjs run --config tests/stock-workflow.real.vitest.config.ts
+Do not treat authored tests as passing real-driver evidence. Config uses tests/local-isolated/setup.ts; parent verifies guarded infrastructure and runs it serially.
+
+Remaining acceptance / paths:
+- Parent real-PG execution of stock-workflow.real.test.ts; fix only demonstrated failures using TDD.
+- Parent independent review of actual stock/PPC/FMS tree; not independently approved here.
+- Cross-domain every-writer inventory remains parent-owned (Orders/Dispatch/receipts/import callers); those files were not changed.
+- Required FMS successor starts remain in the completion transaction; external WhatsApp is after commit. Existing post-commit Order shortfall recheck remains best-effort/nondurable; parent decides whether automatic reallocation is required recovery work.
+- No new API key support was added for PPC cancel/recheck or item-import endpoint; their existing central domain lock participation is retained. If replay is required there, that is remaining work.
+- SECOND is not closed by these focused checks. Production/migration/deployment unchanged.
+
+Stopped after user token-budget steering; no further slices or agents.

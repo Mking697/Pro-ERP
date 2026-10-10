@@ -1,0 +1,66 @@
+UX-01 / UX-02 — implementation + isolated local verification, 2026-10-09
+
+Owned source changes only:
+- src/app/orders/orders-board.tsx
+- src/app/accounts/accounts-board.tsx
+- src/app/chat/chat-client.tsx
+
+UX-01: board requests now carry AbortSignal and monotonically increasing IDs.
+Tab switches, mutation refreshes and Retry synchronously invalidate the old request,
+set pending=true and clear the old error before the effect fetch starts. Cleanup
+invalidates/aborts requests on unmount or effect replacement. Late successes/errors
+cannot replace current data or clear another request's pending state. Non-2xx JSON
+and non-JSON responses are rejected with HTTP status. Errors are persistent alerts
+with an explicit Retry button. Last-known-good results are preserved per tab, so a
+failed Issued refresh cannot render Draft's cached rows under the Issued heading.
+Existing board dialogs/input are not reset by transport errors. Dialog-internal
+mutation error handling was not edited (outside ownership).
+
+UX-02 choice: deliberately BLOCK session-switching/New Chat throughout a send.
+Disabled controls plus a synchronous flight ref (session ID + optimistic message ID)
+prevent switching/double-submit even before React's next render. History requests
+remain switchable, but only the latest request ID can apply; New Chat invalidates
+history and clears pending. Sending is blocked while history loads, preventing late
+history from replacing optimistic bubbles/replies. Failed sends remove only their
+optimistic ID, never slice(0,-1). Unmount suppresses late transcript updates. Failed
+network send restores the draft. No backend, DB, schema or transport policy edits.
+Abort cancels browser waiting; it is NOT claimed to cancel server-side work.
+
+Created tests:
+- tests/helpers/ux-request-guard.cjs: extracts actual pure guards from owned source.
+- tests/stale-response-guard.unit.test.ts + .unit.vitest.config.ts: 10 focused
+  assertions, setupFiles=[], no dotenv/DB. Vitest could NOT execute locally.
+- tests/ux01-ux02.node.test.cjs: 12 executed Node tests; real extracted chat action
+  functions, mock fetch/deferred responses; source guard tests for both boards.
+
+Real differential RED->GREEN evidence:
+UX_BASELINE=1 node --test tests/ux01-ux02.node.test.cjs
+  Uses read-only git show HEAD:src/app/chat/chat-client.tsx, NOT checkout/stash/reset.
+  Original chat actions: 8 passed, 4 failed. Late A history replaced B (A !== B);
+  switching/New Chat during send changed active session (null !== A); history and
+  send overlapped (2 requests !== 1). Baseline mode only swaps CHAT actions; board
+  guard assertions still exercise the repaired guards. This was differential
+  regression verification after initial edits, not strict test-first TDD evidence.
+node --test tests/ux01-ux02.node.test.cjs
+  Current source: 12 passed, 0 failed. B-first/A-late keeps B, aborts old request;
+  403/500 retain good data and successful retry replaces it; stale history rejected;
+  send locks switch/New Chat; unrelated message survives ID rollback; history blocks
+  sending. Node emits an experimental stripTypeScriptTypes warning.
+
+Tooling blockers (NOT clean passes):
+- npx tsc --noEmit -p tsconfig.json: local TypeScript incomplete; npx resolves the
+  unrelated 'tsc' package ('This is not the tsc command you are looking for'). Direct
+  local TypeScript bin fails because ../lib/tsc.js is missing.
+- npx eslint <owned source + new test TS/config>: cannot load local eslint/config
+  (previous attempt missing lib/config-api.js). No lint results obtained.
+- Vitest local package missing vitest.mjs/package.json/config export; cannot load
+  even an existing unit config. No full Vitest results obtained.
+- Early npx attempts automatically fetched fallback Vitest/ESLint into npm cache;
+  no npm install or package.json/lockfile edits were performed by this agent. Later
+  attempts use --no-install. Parent must rerun gates after approved dependency repair.
+- Relevant installed Next docs path is absent as part of incomplete node_modules;
+  no Next API/convention changes made.
+
+Not done: real browser/component rendering/E2E, keyboard/UI screenshots, production
+verification, full build/i18n gates, independent review, clean tsc/eslint acceptance.
+No .env reads, DB/network tests, migration, commit, push or deployment.

@@ -1,3 +1,6 @@
+import { getMutationKey, runIdempotentTenantMutation, MutationConflictError, MutationInputError } from "@/lib/mutations";
+import { getTenantOrgId } from "@/lib/tenant";
+import { LedgerConflictError } from "@/lib/accounts/ledger";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { requireModule } from "@/lib/auth/guard";
@@ -25,9 +28,16 @@ export async function POST(request: Request) {
   }
 
   try {
-    const entry = await recordPettyCashExpense(parsed.data, guard.session.userId);
+    const entry = await runIdempotentTenantMutation(await getTenantOrgId(), {
+      operation: "accounts.petty-cash.expense.v1", actorId: guard.session.userId, key: getMutationKey(request),
+      // Parsed JSON input; omit absent optional fields, never hash a Date/domain row.
+      payload: JSON.parse(JSON.stringify({ ...parsed.data })),
+    }, async () => ({ ...await recordPettyCashExpense(parsed.data, guard.session.userId) }));
     return NextResponse.json({ entry });
   } catch (err) {
+    if (err instanceof MutationConflictError || err instanceof MutationInputError || err instanceof LedgerConflictError) {
+      return NextResponse.json({ error: err.message }, { status: err.status });
+    }
     const message =
       err instanceof PettyCashError || err instanceof LedgerError || err instanceof Error
         ? err.message

@@ -8,13 +8,14 @@ import {
   tmsShipments,
   transportVendors,
 } from "@/db/schema";
-import { db } from "@/db/client";
+import { db, runInTenantTransaction } from "@/db/client";
 import { findById, insertRecord, listByOrg, updateById } from "@/db/repo";
 import { getTenantOrgId } from "@/lib/tenant";
 import { generateId } from "@/lib/id";
 import { getOrder, type OrderRecord } from "@/lib/orders/orders";
 import { round3 } from "@/lib/leads/quotationMath";
-import { emitFmsEvent } from "@/lib/fms/engine";
+import { startFmsInstance } from "@/lib/fms/engine";
+import { listFmsTemplates } from "@/lib/fms/templates";
 
 /**
  * TMS (Transport Management) — leg 4 of the Sales chain (Lead -> Order -> PDI -> TMS ->
@@ -194,6 +195,16 @@ async function logActivity(
  * dock still counts as "spoken for" — the order is no longer waiting on a *decision*, only
  * on the truck showing up, which is a separate, later fact (see confirmLoadingDock()).
  */
+function stockQuantity(value: number | string): number {
+  const quantity = Number(value);
+  const rounded = round3(quantity);
+  const noise = Number.EPSILON * Math.max(1, Math.abs(quantity)) * 8;
+  if (!Number.isFinite(quantity) || !(rounded > 0) || Math.abs(quantity - rounded) > noise) {
+    throw new TmsError("Quantity must be finite, positive and representable at stock precision.");
+  }
+  return rounded;
+}
+
 async function shippedQtyBySku(orgId: string, orderId: string): Promise<Map<string, number>> {
   const shipmentRows = await db
     .select()
@@ -209,9 +220,9 @@ async function shippedQtyBySku(orgId: string, orderId: string): Promise<Map<stri
 
   const out = new Map<string, number>();
   for (const row of itemRows) {
-    const qty = Number(row.qty) || 0;
-    if (qty <= 0 || !row.sku) continue;
-    out.set(row.sku, round3((out.get(row.sku) ?? 0) + qty));
+    const qty = stockQuantity(row.qty);
+    if (!row.sku) throw new TmsError("Shipment SKU is missing.");
+    out.set(row.sku, stockQuantity((out.get(row.sku) ?? 0) + qty));
   }
   return out;
 }
@@ -229,7 +240,7 @@ export async function getShipmentProgress(orderId: string, order?: OrderRecord):
   const qtyBySku = new Map<string, number>();
   const displayBySku = new Map<string, { itemName: string; uom: string; lineNo: string }>();
   for (const line of ord.items) {
-    qtyBySku.set(line.sku, round3((qtyBySku.get(line.sku) ?? 0) + line.qty));
+    qtyBySku.set(line.sku, stockQuantity((qtyBySku.get(line.sku) ?? 0) + stockQuantity(line.qty)));
     if (!displayBySku.has(line.sku)) {
       displayBySku.set(line.sku, { itemName: line.itemName, uom: line.uom, lineNo: line.lineNo });
     }
@@ -397,8 +408,10 @@ export async function planShipment(
   actorId: string
 ): Promise<TmsShipmentRecord> {
   const orgId = await getTenantOrgId();
+  return runInTenantTransaction(orgId, async () => {
   const order = await getOrder(orderId);
   if (!order) throw new TmsError("Order nahi mila.");
+  if (order.status !== "Ready_For_PDI") throw new TmsError("Order is not dispatchable.");
   if (!order.transportArrangedBy) {
     throw new TmsError("Pehle transport arrangement (Self/Party) set karein.");
   }
@@ -426,8 +439,9 @@ export async function planShipment(
   const requestedBySku = new Map<string, number>();
   for (const line of input.items) {
     const qty = round3(line.qty);
-    if (!(qty > 0)) {
-      throw new TmsError("Har line ki quantity 0 se zyada honi chahiye.");
+    const noise = Number.EPSILON * Math.max(1, Math.abs(line.qty)) * 8;
+    if (!Number.isFinite(line.qty) || !(qty > 0) || Math.abs(line.qty - qty) > noise) {
+      throw new TmsError("Quantity must be finite, positive and representable at stock precision.");
     }
     const lineInfo = remainingBySku.get(line.sku);
     if (!lineInfo) {
@@ -483,19 +497,38 @@ export async function planShipment(
     createdBy: actorId,
   });
 
-  let lineNo = 1;
-  for (const line of input.items) {
-    const lineInfo = remainingBySku.get(line.sku)!;
+  // Shipment line_no identifies the ORDER line, never a new per-truck ordinal.
+  // Keep SKU-based public input compatible while distributing over exact line capacity.
+  const priorShipments = await db.select().from(tmsShipments)
+    .where(and(eq(tmsShipments.orgId, orgId), eq(tmsShipments.orderId, orderId)));
+  const priorItems = priorShipments.length ? await db.select().from(tmsShipmentItems)
+    .where(and(eq(tmsShipmentItems.orgId, orgId), inArray(tmsShipmentItems.shipmentId, priorShipments.map(s => s.id)))) : [];
+  const allocated = new Map<string, number>();
+  for (const item of priorItems) {
+    const line = order.items.find(l => l.lineNo === item.lineNo && l.sku === item.sku && l.uom === item.uom);
+    if (!line) throw new TmsError("Shipment line history requires reconciliation with its exact order line.");
+    const total = stockQuantity((allocated.get(item.lineNo) ?? 0) + stockQuantity(item.qty));
+    if (total > stockQuantity(line.qty)) {
+      throw new TmsError("Shipment line history exceeds exact order line capacity and requires reconciliation.");
+    }
+    allocated.set(item.lineNo, total);
+  }
+  const allocations: TmsShipmentItemRecord[] = [];
+  for (const [sku, requested] of requestedBySku) {
+    let remaining = requested;
+    for (const line of order.items.filter(l => l.sku === sku)) {
+      const capacity = round3(line.qty - (allocated.get(line.lineNo) ?? 0));
+      const qty = round3(Math.min(remaining, Math.max(0, capacity)));
+      if (qty > 0) allocations.push({ lineNo: line.lineNo, sku, itemName: line.itemName, uom: line.uom, qty });
+      remaining = round3(remaining - qty);
+    }
+    if (remaining > 0) throw new TmsError("Insufficient exact order line allocation capacity.");
+  }
+  for (const line of allocations) {
     await insertRecord(tmsShipmentItems, {
-      shipmentId,
-      orgId,
-      lineNo: String(lineNo),
-      sku: line.sku,
-      itemName: lineInfo.itemName,
-      uom: lineInfo.uom,
-      qty: String(round3(line.qty)),
+      shipmentId, orgId, lineNo: line.lineNo, sku: line.sku,
+      itemName: line.itemName, uom: line.uom, qty: String(line.qty),
     });
-    lineNo += 1;
   }
 
   const kindLabel = order.transportArrangedBy === "Self" ? "Self-arranged" : "Party-arranged (pickup expected)";
@@ -511,6 +544,7 @@ export async function planShipment(
   const created = await findById(tmsShipments, orgId, shipmentId);
   if (!created) throw new TmsError("Shipment ban gaya lekin load nahi ho paya.");
   return rowToShipment(created, vendorMap);
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -520,6 +554,7 @@ export async function planShipment(
 
 export async function followUpShipment(shipmentId: string, note: string, actorId: string): Promise<void> {
   const orgId = await getTenantOrgId();
+  return runInTenantTransaction(orgId, async () => {
   const shipment = await findById(tmsShipments, orgId, shipmentId);
   if (!shipment) throw new TmsError("Shipment nahi mila.");
   if (shipment.status !== "Pending") {
@@ -533,6 +568,7 @@ export async function followUpShipment(shipmentId: string, note: string, actorId
     note.trim() ? `Follow-up — ${note.trim()}` : `Shipment ${shipmentId} ke liye follow-up kiya gaya — vehicle abhi tak nahi aaya.`,
     actorId
   );
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -550,6 +586,7 @@ export async function confirmLoadingDock(
   actorId: string
 ): Promise<TmsShipmentRecord> {
   const orgId = await getTenantOrgId();
+  return runInTenantTransaction(orgId, async () => {
   const shipment = await findById(tmsShipments, orgId, shipmentId);
   if (!shipment) throw new TmsError("Shipment nahi mila.");
   if (shipment.status !== "Pending") {
@@ -574,21 +611,22 @@ export async function confirmLoadingDock(
     actorId
   );
 
-  // Best-effort, optional per-module event — mirrors emitFmsEvent's own chaining
-  // convention (ORDER_READY_FOR_PDI, ORDER_PDI_PASSED, ...). Fired from here (the actual
-  // truck confirmed) rather than from planShipment() (a plan alone isn't dispatch-ready).
-  try {
-    const progress = await getShipmentProgress(shipment.orderId);
-    if (progress.fullyShipped) {
-      await logActivity(orgId, shipment.orderId, "Note", "Order ab poora ship ho chuka hai.", "SYSTEM");
-      await emitFmsEvent("ORDER_FULLY_SHIPPED", `ORDERS:${shipment.orderId}`);
+  // Required successor DB creation participates in the shipment transaction.
+  const progress = await getShipmentProgress(shipment.orderId);
+  const orderShipments = await db.select().from(tmsShipments)
+    .where(and(eq(tmsShipments.orgId, orgId), eq(tmsShipments.orderId, shipment.orderId)));
+  if (progress.fullyShipped && orderShipments.every(s => s.status === "At_Loading_Dock")) {
+    await logActivity(orgId, shipment.orderId, "Note", "Order ab poora ship ho chuka hai.", "SYSTEM");
+    for (const step of await listFmsTemplates()) {
+      if (Number(step.Step_No) === 1 && step.Trigger_Event === "ORDER_FULLY_SHIPPED" && step.Status === "Active") {
+        await startFmsInstance({ templateId: step.Template_ID, contextRef: `ORDERS:${shipment.orderId}`, startedBy: "SYSTEM" });
+      }
     }
-  } catch (error) {
-    console.error(`[tms] fully-shipped follow-up failed for order ${shipment.orderId}:`, error);
   }
 
   const vendorMap = await vendorNameMap(orgId, [shipment.transportVendorId]);
   const updated = await findById(tmsShipments, orgId, shipmentId);
   if (!updated) throw new TmsError("Update ho gaya lekin shipment load nahi ho paya.");
   return rowToShipment(updated, vendorMap);
+  });
 }

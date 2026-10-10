@@ -1,0 +1,60 @@
+DATA-06 Indent admission slice — 2026-10-09
+STATUS: Implemented and subagent-tested; STOPPED for parent verification/independent review.
+Full DATA-06 and Phase 3 remain incomplete. No deploy, commit, install, migration, real DB or production calls.
+Baseline observed: dirty main, HEAD d796730. Existing FIRST/SECOND/THIRD changes preserved; prior vendor/BOM slices not redone.
+
+OWNED CHANGES
+- src/lib/inventory/indents.ts: createIndent only plus imports/new IndentAdmissionError.
+- src/app/api/inventory/indents/route.ts: typed admission/infrastructure/confirmed-commit outcome mapping.
+- NEW tests/indent-admission.unit.test.ts
+- NEW tests/indent-admission.unit.vitest.config.ts
+- NEW tests/indent-admission.unit.tsconfig.json
+- This handoff.
+No edits to ledger/BOM/vendors/schema/migrations/shared primitives. Existing SECOND approve/cancel/receipt implementations untouched (git diff against index limited to imports/new create admission slice).
+
+TRACE / CONTRACT
+- Real findItem in src/lib/inventory/items.ts resolves (orgId, sku); ItemRecord exposes SKU, Item_Name, UOM.
+- createIndent now resolves owned item and writes its metadata inside runInTenantTransaction. Missing/foreign-only items fail without a write. Public itemName/UOM remain accepted for caller compatibility but are not authoritative.
+- finalQty: finite strictly positive. suggestedQty: finite nonnegative; zero and fractional suggestions remain legitimate (suggestIndentQty can return zero; API already allowed nonnegative suggestion). Fractional final quantities preserved, not rounded to integers.
+- Purchase Setup/TAT computation and insert remain in the same transaction; nested callers join the existing tenant scope/lock.
+- Production plan schema names id as real Plan_ID (distinct from free-text orderNo and display jobNo). Only current createIndent caller is the Indents POST API; reorder-board sends no linkedPlanId. FMS source exposes Linked_Plan_ID. Nonempty linkedPlanId now requires findById(productionPlans, orgId, id) in the same transaction. Missing/foreign references reject. Undefined/empty still persist empty, including Production_Shortage; no new mandatory link, status restriction or SKU-to-plan-material rule invented.
+- Existing SECOND receipt/approval regressions inspected and rerun.
+- Installed Next guide read before route edit: node_modules/next/dist/docs/01-app/01-getting-started/15-route-handlers.md.
+- API all-missing admission returns typed 404; domain invalid quantities are intentional 400 (API schema already rejects invalid quantities). Mixed typed-failure/success keeps prior sequential per-item success contract (200 plus failed array).
+- Unknown infrastructure failures return 500 with generic item errors, never raw infrastructure messages as 4xx. Successful siblings remain in the response, marked committed on mixed infrastructure failure.
+- Confirmed committed:true/result transaction cleanup errors count the saved DTO as created, emit generic warnings, do not retry or list it as failed/rollback.
+
+VERTICAL TDD EVIDENCE
+Each new production behavior followed an executed expected-behavior RED then its minimal GREEN using the focused verbose command below:
+1. Missing/foreign-only SKU: 2 failures (resolved/wrote instead of rejected) -> 2 pass after owned lookup+transaction.
+2. Shared SKU tenant metadata/spoof override: 1 failure (spoof persisted) -> 3 pass after authoritative metadata.
+3. Finite finalQty: 1 failure (Infinity admitted; existing NaN/negative/zero checks passed) -> 8 pass.
+4. Finite nonnegative suggestion: 4 expected failures -> 12 pass.
+5. Linked plan ownership: 2 expected failures -> 14 pass.
+6. Typed route admission mapping: 2 failures (200 instead of404) ->16 pass.
+7. Infrastructure mapping: 1 failure (400/raw error path) ->17 pass.
+8. Confirmed committed cleanup outcome: 1 failure (500 instead of200) ->18 pass.
+9. Mixed infrastructure batch committed marker: 1 expected failure ->19 pass.
+Supplemental compatibility/rollback gates added after green; final focused suite 27 pass.
+Final harness strengthened to mock persistence transport only (plus request identity/auth and a deterministic Date.now): real domain, findItem, repo, Drizzle predicates/schema, purchase settings/calendar and createTenantTransactionAdapter execute. No mocked item resolver or mocked createIndent. Original RED cycles used lighter persistence/config-boundary harness; final stronger harness passes the same behavioral assertions.
+Config explicitly has setupFiles: []; does not extend default Vitest config, load .env or use a DB URL. No default npm test used.
+
+EXECUTED VERIFICATION (G:/Pro-ERP)
+1. node node_modules/vitest/vitest.mjs run --config tests/indent-admission.unit.vitest.config.ts --reporter verbose
+   PASS: 1 file, 27 named tests (latest run after final persistence-harness strengthening).
+   Covers absent/foreign item+plan no writes, shared SKU metadata, spoof override, fractional final/suggestion+zero suggestion, nonfinite operands, blank/owned plan, real TAT branches, nested required-state rollback, insert acknowledgement rollback, partial batch behavior, infrastructure privacy/status, confirmed committed cleanup no retry.
+2. node node_modules/vitest/vitest.mjs run --config tests/receipt-domain.unit.vitest.config.ts --reporter verbose
+   PASS: 1 file, 59 named tests. Config inspected: setupFiles: [], persistence/external-boundary mocks, no real DB/default setup. Includes SECOND indent approval/receipt/PO-linked contracts.
+3. node node_modules/eslint/bin/eslint.js src/lib/inventory/indents.ts src/app/api/inventory/indents/route.ts tests/indent-admission.unit.test.ts tests/indent-admission.unit.vitest.config.ts
+   PASS: exit0, no diagnostics (rerun after final harness changes).
+4. node node_modules/typescript/bin/tsc --noEmit -p tests/indent-admission.unit.tsconfig.json
+   PASS: exit0, no diagnostics on latest rerun. One intermediate concurrent-tree run encountered transient out-of-scope src/lib/auth/users.ts syntax errors (TS1005 at410/495); no edits made there, next run passed after that file changed independently.
+5. git diff --check -- src/lib/inventory/indents.ts src/app/api/inventory/indents/route.ts tests/indent-admission.unit.test.ts tests/indent-admission.unit.vitest.config.ts tests/indent-admission.unit.tsconfig.json
+   PASS exit0; Git emits existing Windows LF->CRLF advisory for route.ts, not a whitespace error.
+
+REMAINING GATES / PARENT STOP POINT
+- Parent rerun exact focused 27 and relevant receipt59 commands; independently inspect settled diff including new tests/config.
+- Parent acceptance/reviewer approval not performed by this subagent.
+- No real-driver PostgreSQL concurrency/rollback readbacks executed: DB-free tests cannot prove actual advisory-lock blocking. Parent must schedule authorized guarded disposable-target coverage if required by phase acceptance.
+- No broad/full repo build, default tests, DATA-06 closure or Phase3 closure claimed.
+- Item metadata maintenance writers' participation in the shared lock is outside this slice; admission lookup+insert now share the existing lock but this is not a claim that all item writers are locked.

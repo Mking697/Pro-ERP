@@ -1,11 +1,12 @@
 import type { InferSelectModel } from "drizzle-orm";
 import { desc, eq } from "drizzle-orm";
-import { indents } from "@/db/schema";
-import { db } from "@/db/client";
+import { indents, productionPlans } from "@/db/schema";
+import { db, runInTenantTransaction, isInTenantTransaction } from "@/db/client";
+import { runIdempotentTenantMutation } from "@/lib/mutations";
 import { findById, insertRecord, listByOrg, updateById } from "@/db/repo";
 import { getTenantOrgId } from "@/lib/tenant";
 import { generateId } from "@/lib/id";
-import { num, numOr0, type ItemRecord } from "@/lib/inventory/items";
+import { findItem, num, numOr0, type ItemRecord } from "@/lib/inventory/items";
 import { recordMovement } from "@/lib/inventory/ledger";
 import { parseStamp } from "@/lib/timestamp";
 import { getPurchaseSetup } from "@/lib/purchase/settings";
@@ -164,52 +165,70 @@ export interface CreateIndentInput {
   requestedBy: string;
 }
 
+export class IndentAdmissionError extends Error {
+  constructor(message: string, public readonly status: 400 | 404 = 400) {
+    super(message);
+    this.name = "IndentAdmissionError";
+  }
+}
+
 export async function createIndent(input: CreateIndentInput): Promise<IndentRecord> {
-  if (!(input.finalQty > 0)) {
-    throw new Error("Indent quantity 0 se zyada honi chahiye.");
+  if (!Number.isFinite(input.finalQty) || !(input.finalQty > 0)) {
+    throw new IndentAdmissionError("Indent quantity 0 se zyada honi chahiye.");
+  }
+  if (!Number.isFinite(input.suggestedQty) || input.suggestedQty < 0) {
+    throw new IndentAdmissionError("Suggested quantity finite aur nonnegative honi chahiye.");
   }
 
   const orgId = await getTenantOrgId();
+  return runInTenantTransaction(orgId, async () => {
+    const item = await findItem(input.sku);
+    if (!item) throw new IndentAdmissionError("Item nahi mila.", 404);
+    // Blank remains an unlinked reorder; a supplied ID names a real tenant-owned plan.
+    if (input.linkedPlanId && !await findById(productionPlans, orgId, input.linkedPlanId)) {
+      throw new IndentAdmissionError("Linked plan nahi mila.", 404);
+    }
 
-  // Purchase flow Step 1's own deadline — "Indent Approve" must happen by this time.
-  // Computed once here, working-hours-aware, exactly like Inward's IQC TAT (see
-  // computeDefaultTatDeadline's own doc comment) — falls back to the company default
-  // shift when the Admin hasn't assigned a Step 1 Doer yet in Purchase Setup.
-  const purchaseSetup = await getPurchaseSetup();
-  const createdAt = Date.now();
-  const step1DueAtMs = purchaseSetup.step1Doer
-    ? await computeTatDeadline(
-        purchaseSetup.step1Doer,
-        createdAt,
-        purchaseSetup.step1TatValue,
-        purchaseSetup.step1TatUnit
-      )
-    : await computeDefaultTatDeadline(
-        createdAt,
-        purchaseSetup.step1TatValue,
-        purchaseSetup.step1TatUnit
-      );
+    // Purchase flow Step 1's own deadline — "Indent Approve" must happen by this time.
+    // Computed once here, working-hours-aware, exactly like Inward's IQC TAT (see
+    // computeDefaultTatDeadline's own doc comment) — falls back to the company default
+    // shift when the Admin hasn't assigned a Step 1 Doer yet in Purchase Setup.
+    const purchaseSetup = await getPurchaseSetup();
+    const createdAt = Date.now();
+    const step1DueAtMs = purchaseSetup.step1Doer
+      ? await computeTatDeadline(
+          purchaseSetup.step1Doer,
+          createdAt,
+          purchaseSetup.step1TatValue,
+          purchaseSetup.step1TatUnit
+        )
+      : await computeDefaultTatDeadline(
+          createdAt,
+          purchaseSetup.step1TatValue,
+          purchaseSetup.step1TatUnit
+        );
 
-  const row = await insertRecord(indents, {
-    id: generateId("IND"),
-    orgId,
-    sku: input.sku,
-    itemName: input.itemName,
-    suggestedQty: String(input.suggestedQty),
-    finalQty: String(input.finalQty),
-    uom: input.uom,
-    reason: input.reason,
-    linkedPlanId: input.linkedPlanId ?? "",
-    status: "Pending",
-    requestedBy: input.requestedBy,
-    approvedBy: "",
-    expectedDate: input.expectedDate ? parseStamp(input.expectedDate) : null,
-    receivedQty: null,
-    poId: "",
-    step1DueAt: new Date(step1DueAtMs),
+    const row = await insertRecord(indents, {
+      id: generateId("IND"),
+      orgId,
+      sku: item.SKU,
+      itemName: item.Item_Name,
+      suggestedQty: String(input.suggestedQty),
+      finalQty: String(input.finalQty),
+      uom: item.UOM,
+      reason: input.reason,
+      linkedPlanId: input.linkedPlanId ?? "",
+      status: "Pending",
+      requestedBy: input.requestedBy,
+      approvedBy: "",
+      expectedDate: input.expectedDate ? parseStamp(input.expectedDate) : null,
+      receivedQty: null,
+      poId: "",
+      step1DueAt: new Date(step1DueAtMs),
+    });
+
+    return rowToRecord(row);
   });
-
-  return rowToRecord(row);
 }
 
 async function loadIndent(orgId: string, indentId: string): Promise<IndentRow> {
@@ -224,11 +243,13 @@ export async function approveIndent(
   finalQty?: number
 ): Promise<IndentRecord> {
   const orgId = await getTenantOrgId();
+  return runInTenantTransaction(orgId, async () => {
   const found = await loadIndent(orgId, indentId);
   if (found.status !== "Pending") {
     throw new Error(`Ye indent pehle se "${found.status}" hai.`);
   }
-  if (finalQty !== undefined && !(finalQty > 0)) {
+  const approvedQty = finalQty ?? Number(found.finalQty);
+  if (!Number.isFinite(approvedQty) || !(approvedQty > 0)) {
     throw new Error("Quantity 0 se zyada honi chahiye.");
   }
 
@@ -239,19 +260,27 @@ export async function approveIndent(
     finalQty: finalQty !== undefined ? String(finalQty) : found.finalQty,
   });
   if (!updated) throw new Error("Indent nahi mila.");
+  const { emitFmsEvent } = await import("@/lib/fms/engine");
+  await emitFmsEvent("INDENT_APPROVED", `INDENTS:${indentId}`);
   return rowToRecord(updated);
+  });
 }
 
 export async function cancelIndent(indentId: string): Promise<IndentRecord> {
   const orgId = await getTenantOrgId();
+  return runInTenantTransaction(orgId, async () => {
   const found = await loadIndent(orgId, indentId);
   if (found.status === "Received") {
     throw new Error("Received indent cancel nahi ho sakta.");
+  }
+  if (found.poId) {
+    throw new Error("PO-linked indent ko alag se cancel nahi kar sakte.");
   }
 
   const updated = await updateById(indents, orgId, indentId, { status: "Cancelled" });
   if (!updated) throw new Error("Indent nahi mila.");
   return rowToRecord(updated);
+  });
 }
 
 export class IndentReceiptError extends Error {}
@@ -270,14 +299,39 @@ export async function receiveIndent(
   indentId: string,
   receivedNow: number,
   userId: string,
-  location?: string
+  location?: string,
+  key?: string
 ): Promise<IndentRecord> {
-  if (!(receivedNow > 0)) {
+  const orgId = await getTenantOrgId();
+  const work = async () => ({ ...await receiveIndentInTransaction(indentId, receivedNow, userId, location) });
+  if (key === undefined) return runInTenantTransaction(orgId, work);
+  return runIdempotentTenantMutation(orgId, {
+    operation: "inventory.indent.receive.v1", actorId: userId, key,
+    payload: { indentId, receivedNow, ...(location !== undefined ? { location } : {}) },
+  }, work);
+}
+
+/** Internal PO receipt path: no replay wrapper; joins the caller's transaction. */
+export async function receiveIndentForPurchaseOrder(
+  indentId: string, receivedNow: number, userId: string, poId: string
+): Promise<IndentRecord> {
+  if (!isInTenantTransaction()) throw new IndentReceiptError("PO receipt requires the owning transaction.");
+  const orgId = await getTenantOrgId();
+  return runInTenantTransaction(orgId, () => receiveIndentInTransaction(indentId, receivedNow, userId, undefined, poId));
+}
+
+async function receiveIndentInTransaction(
+  indentId: string, receivedNow: number, userId: string, location?: string, expectedPoId?: string
+): Promise<IndentRecord> {
+  if (!Number.isFinite(receivedNow) || !(receivedNow > 0)) {
     throw new IndentReceiptError("Received quantity 0 se zyada honi chahiye.");
   }
 
   const orgId = await getTenantOrgId();
   const indent = await loadIndent(orgId, indentId);
+  if (expectedPoId !== undefined ? indent.poId !== expectedPoId : Boolean(indent.poId)) {
+    throw new IndentReceiptError("PO-linked indent ko Purchase PO receiving se receive karein.");
+  }
 
   if (!OPEN_STATUSES.includes(indent.status as IndentStatus)) {
     throw new IndentReceiptError(
@@ -285,8 +339,11 @@ export async function receiveIndent(
     );
   }
 
-  const ordered = numOr0(indent.finalQty);
-  const already = numOr0(indent.receivedQty);
+  const ordered = Number(indent.finalQty);
+  const already = indent.receivedQty === null ? 0 : Number(indent.receivedQty);
+  if (!Number.isFinite(ordered) || !(ordered > 0) || !Number.isFinite(already) || already < 0 || already > ordered) {
+    throw new IndentReceiptError("Persisted indent quantity invalid hai.");
+  }
   const outstanding = ordered - already;
 
   if (receivedNow > outstanding) {

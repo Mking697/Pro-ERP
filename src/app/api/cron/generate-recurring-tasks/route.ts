@@ -18,12 +18,18 @@ function isCronCall(request: Request): boolean {
 }
 
 /** Both are once-a-day, per-org, date-driven jobs — riding the same daily cron slot keeps
- * vercel.json's cron list from growing one entry per job. */
+ * vercel.json's cron list from growing one entry per job.
+ *
+ * Sequential, leave first, deliberately — not Promise.all. generateDueRecurringOccurrences()
+ * resolves each new occurrence's assignee against *live* leave state (see
+ * src/lib/leave/reassignment.ts's resolveActiveAssignee), so a leave whose start date is
+ * today must already be activated before recurring generation runs today, or a task
+ * generated today for a doer going on leave today would still be born on the absent doer
+ * instead of their buddy — running the two concurrently left that outcome to scheduling
+ * luck instead of guaranteeing it. */
 async function runDailyJobs() {
-  const [recurring, leave] = await Promise.all([
-    generateDueRecurringOccurrences(),
-    processLeaveTransitions(),
-  ]);
+  const leave = await processLeaveTransitions();
+  const recurring = await generateDueRecurringOccurrences();
   return { recurring, leave };
 }
 

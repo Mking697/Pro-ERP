@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { requireModule } from "@/lib/auth/guard";
 import { createPlans, listPlans, PlanError } from "@/lib/inventory/plans";
+import { getMutationKey, MutationConflictError } from "@/lib/mutations";
 
 export async function GET() {
   const guard = await requireModule("PPC_PLAN");
@@ -38,9 +39,12 @@ export async function POST(request: Request) {
   }
 
   try {
-    const plans = await createPlans(parsed.data.lines, guard.session.email);
+    const plans = await createPlans(parsed.data.lines, guard.session.email, getMutationKey(request));
     return NextResponse.json({ plans });
   } catch (err) {
+    if (err instanceof MutationConflictError) {
+      return NextResponse.json({ error: err.message }, { status: 409 });
+    }
     if (err instanceof PlanError) {
       return NextResponse.json({ error: err.message }, { status: 400 });
     }

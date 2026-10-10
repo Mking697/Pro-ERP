@@ -1,8 +1,8 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { forEachActiveOrganization } from "@/lib/platform/runner";
 import { getTenantOrgId } from "@/lib/tenant";
-import { deleteOrganization } from "@/lib/platform/registry";
-import { makeTestOrg } from "./helpers/testOrg";
+import * as registry from "@/lib/platform/registry";
+import { makeTestOrgs, cleanupTestOrgs } from "./helpers/testOrg";
 
 /**
  * forEachActiveOrganization() was parallelized (bounded worker pool, CONCURRENCY=10 in
@@ -26,15 +26,13 @@ import { makeTestOrg } from "./helpers/testOrg";
  */
 describe("forEachActiveOrganization concurrency", () => {
   it("never leaks tenant context across concurrently-running organizations", async () => {
-    const orgs = await Promise.all([
-      makeTestOrg("Concurrency-A"),
-      makeTestOrg("Concurrency-B"),
-      makeTestOrg("Concurrency-C"),
-      makeTestOrg("Concurrency-D"),
-      makeTestOrg("Concurrency-E"),
-      makeTestOrg("Concurrency-F"),
+    const orgs = await makeTestOrgs([
+      "Concurrency-A", "Concurrency-B", "Concurrency-C",
+      "Concurrency-D", "Concurrency-E", "Concurrency-F",
     ]);
-    const expectedIds = new Set(orgs.map((o) => o.id));
+    // Restrict enumeration BEFORE any callback; never run work for unrelated tenants.
+    // getOrganization/tenantFromOrgId and AsyncLocalStorage remain the real code path.
+    const enumeration = vi.spyOn(registry, "listOrganizations").mockResolvedValue(orgs);
 
     try {
       const results = await forEachActiveOrganization(async (ctx) => {
@@ -52,8 +50,8 @@ describe("forEachActiveOrganization concurrency", () => {
         return { expectedOrgId: ctx.orgId, resolvedOrgId };
       });
 
-      // Only this test's own six orgs, in case other orgs already exist on this DB.
-      const own = results.filter((r) => expectedIds.has(r.orgId));
+      const own = results;
+      expect(own.map((r) => r.orgId)).toEqual(orgs.map((org) => org.id));
       expect(own).toHaveLength(6);
 
       for (const r of own) {
@@ -62,18 +60,16 @@ describe("forEachActiveOrganization concurrency", () => {
         expect(r.result?.resolvedOrgId).toBe(r.orgId);
       }
     } finally {
-      await Promise.all(orgs.map((o) => deleteOrganization(o.id).catch(() => {})));
+      enumeration.mockRestore();
+      await cleanupTestOrgs(orgs);
     }
   });
 
   it("isolates one organization's failure from the rest, even running concurrently", async () => {
-    const orgs = await Promise.all([
-      makeTestOrg("Isolation-A"),
-      makeTestOrg("Isolation-B"),
-      makeTestOrg("Isolation-Fail"),
-      makeTestOrg("Isolation-C"),
+    const orgs = await makeTestOrgs([
+      "Isolation-A", "Isolation-B", "Isolation-Fail", "Isolation-C",
     ]);
-    const expectedIds = new Set(orgs.map((o) => o.id));
+    const enumeration = vi.spyOn(registry, "listOrganizations").mockResolvedValue(orgs);
     const failingOrg = orgs.find((o) => o.orgName.includes("Isolation-Fail"))!;
 
     try {
@@ -84,7 +80,8 @@ describe("forEachActiveOrganization concurrency", () => {
         return "ok";
       });
 
-      const own = results.filter((r) => expectedIds.has(r.orgId));
+      const own = results;
+      expect(own.map((r) => r.orgId)).toEqual(orgs.map((org) => org.id));
       expect(own).toHaveLength(4);
 
       const failed = own.find((r) => r.orgId === failingOrg.id);
@@ -98,7 +95,8 @@ describe("forEachActiveOrganization concurrency", () => {
         expect(r.result).toBe("ok");
       }
     } finally {
-      await Promise.all(orgs.map((o) => deleteOrganization(o.id).catch(() => {})));
+      enumeration.mockRestore();
+      await cleanupTestOrgs(orgs);
     }
   });
 });

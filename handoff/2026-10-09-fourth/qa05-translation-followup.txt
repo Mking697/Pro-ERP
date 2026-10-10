@@ -1,0 +1,80 @@
+QA-05 translation follow-up — 2026-10-10 — 53-key slice COMPLETE; repository i18n gate FAILS
+
+OUTCOME / SCOPE
+- Read latest CLAUDE.md checkpoint, qa05-dep01.txt, actual dictionary/checker/baseline.
+- Added accurate English values for all 53 ORIGINAL baselined missing keys, preserving identifiers exactly. Already-English labels receive identity translations, making their explicit t() calls satisfy the strict dictionary gate.
+- Removed ONLY those 53 now-stale untranslated allowances. untranslated is [].
+- Unwrapped baseline is unchanged: 1,500 identities / 1,552 occurrences. SHA256 of JSON.stringify(unwrapped) before/after: 5ab86e5cf0032486772c7ed5aa0316d3bfc2edf6a976d59a89e799eba4ce8b00.
+- Did not edit any other agent's UI/API files, add new allowances, install dependencies, touch node_modules/lockfiles/env/DB, run fallback npx, or use destructive git/commit/push/deploy.
+- No claim that the entire English UI is translated. Static unwrapped debt and dynamic/helper-produced copy remain.
+
+REAL CHECKER BUG FOUND AND TDD FIXED
+- Orphan-key detection searched a corpus including src/lib/i18n/en.ts itself, so every key matched its own declaration. Its reported 0 unmatched was false.
+- Added an orphan-key regression fixture first: dictionary {known: Known, orphan: Unused} with only t('known') incorrectly returned status 0; test failed as expected (0 !== 1).
+- Narrow fix: exclude ONLY src/lib/i18n/en.ts from the source corpus used for unmatched-key detection. No relaxed behavior or extra allowances.
+- Fix exposes 14 existing unmatched keys. Left them unchanged rather than expanding this 53-key translation slice into unrelated dictionary cleanup. Parent should review/remove genuinely obsolete keys or reconcile the intended source usage; do not weaken the check.
+
+EXECUTION EVIDENCE
+- Real installed parser: D:/Pro-ERP/node_modules/typescript/lib/typescript.js; no loader/fallback/mock.
+- Initial npm run i18n:check: exit 1, 1,495 EN keys, 1,396 wrapped keys, 53 missing keys (all baselined), 1,506 current copy identities, 7 new copy identities, 1 stale copy allowance.
+- Translation regression RED before dictionary edits: 15 tests, 14 pass / 1 fails on missing '60 din se upar' (actual undefined vs Over 60 days).
+- Final node --test tests/qa05-translation-followup.node.test.mjs: 16/16 pass, exit 0.
+- Fixtures use the REAL repository checker with isolated trees in Hermes cache/scratch, cleaned after each fixture. They prove unknown single-quote/template/multiline/one-character keys exit 1; blank EN exits 1; resolved-key stale allowance exits 1; new JSX/placeholder/toast/conditional copy exits 1; allowed copy passes; increased count/stale copy fail; complete dictionary passes; comment fake calls are ignored; orphan dictionary key fails.
+- Final npm run i18n:check: EXIT 1, honestly not a pass. Output below.
+- node --check scripts/i18n-check.mjs: pass.
+- Local node node_modules/eslint/bin/eslint.js src/lib/i18n/en.ts scripts/i18n-check.mjs tests/qa05-translation-followup.node.test.mjs: pass, no warnings/errors.
+- Local node node_modules/typescript/bin/tsc --noEmit --skipLibCheck --target ES2022 src/lib/i18n/en.ts: pass (dictionary-only check, NOT whole-tree tsc).
+- git diff --check -- src/lib/i18n/en.ts scripts/i18n-check.mjs: pass.
+- No full build/default npm test/DB test performed; integration parent owns final whole-tree acceptance.
+
+EXACT FINAL DIAGNOSTIC COUNTS
+- EN entries: 1,548; duplicate keys: 0.
+- Distinct statically wrapped source keys: 1,396.
+- Missing EN keys: 0; exact list []; new missing keys []; stale missing allowances [].
+- Guide IDs: 125 hi / 125 en, no drift.
+- Unmatched dictionary keys: 14 (listed below).
+- Actual unwrapped copy: 1,506 file/kind/text identities / 1,558 occurrences.
+- Preserved baseline: 1,500 identities / 1,552 occurrences; 1 allowance is stale, leaving 1,499 currently present baseline identities / 1,551 occurrences plus 7 new identities/occurrences.
+- Gate fails on 14 unmatched keys + 7 new unwrapped identities + 1 stale unwrapped allowance.
+- Exact full debt remains enumerated in scripts/i18n-baseline.json unwrapped. Do NOT automatically bless new UI/API copy or remove unrelated copy allowances in this follow-up.
+
+EXACT UNMATCHED DICTIONARY KEYS (14)
+"Dashboard pe jayein"
+"Pehle ye kar lein"
+"Setup poora karein"
+"Tasks load ho rahe hain"
+"Tasks load nahi ho paye."
+"Settings load nahi ho payi."
+"Upload nahi ho paya — server se file ka link nahi mila."
+"Bas ho gaya"
+"Abhi koi data nahi."
+"Sab select karein "
+"Outcomes (comma se alag)"
+"Koi nahi (sirf Outcome/Remark)"
+"PDI Pass hote hi order yahan Invoice banane ke liye aata hai — Invoice No., E-way Bill aur documents dekar Issue karein."
+"Invoices load nahi ho payi."
+
+EXACT NEW UNWRAPPED COPY / OWNER COORDINATION REQUIRED (all count 1)
+1. src/app/api/admin/settings/whatsapp/route.ts | property:message | "Base URL sirf https://chatxflow.online hona chahiye; custom hosts allowed nahi hain."
+2. src/components/command-palette.tsx | call:setError | "Search failed. Please retry."
+3. src/components/command-palette.tsx | attribute:aria-label | "Previous search page"
+4. src/components/command-palette.tsx | jsx-text | "Previous"
+5. src/components/command-palette.tsx | jsx-text | "Page"
+6. src/components/command-palette.tsx | attribute:aria-label | "Next search page"
+7. src/components/command-palette.tsx | jsx-text | "Next"
+The first was already present at this agent's initial check; command-palette copy also predates this follow-up and belongs to the active search/performance ownership. Flags are not assertions about who introduced a particular line. Parent must coordinate owners to wrap/translate new copy (even already-English literals need explicit EN entries if wrapped under this gate), not increase allowances.
+
+EXACT STALE COPY ALLOWANCE (intentionally preserved under user scope)
+src/app/api/admin/settings/whatsapp/route.ts | property:message | count 1
+"Base URL ek https:// address hona chahiye, aur internal network ka pata nahi ho sakta."
+Parent/owner should coordinate removal of this obsolete allowance when reconciling the new replacement message; this agent was authorized to remove only corresponding missing-key allowances, preserving copy baseline.
+
+FILES MODIFIED/CREATED IN THIS SLICE
+- src/lib/i18n/en.ts: 53 new entries only; preserved preceding concurrent/pre-existing work.
+- scripts/i18n-baseline.json: untranslated shrunk from original 53 to []; unwrapped unchanged.
+- scripts/i18n-check.mjs: narrow orphan-detection corpus fix; pre-existing AST/ratchet changes preserved.
+- tests/qa05-translation-followup.node.test.mjs: new reproducible Node test suite with all 53 expected translations and original copy-baseline integrity assertion.
+- handoff/2026-10-09-fourth/qa05-translation-followup.txt: this report.
+
+LIMITS
+The checker is a conservative static-literal ratchet, not comprehensive dataflow/alias/dynamic-key translation analysis. Its corpus-based unmatched check remains a source-string reference check, not a proof of runtime reachability. JSON diagnostic mode does not include unmatched keys (normal command lists them); both modes fail the same gate. Existing historical 0-orphan reports should not be treated as independent evidence because of the fixed self-match bug.

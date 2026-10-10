@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { requireModule } from "@/lib/auth/guard";
 import { OrderError, recordPayment } from "@/lib/orders/orders";
+import { getMutationKey, MutationConflictError } from "@/lib/mutations";
 
 const bodySchema = z.object({
   amount: z.coerce.number().positive("Amount 0 se zyada hona chahiye."),
@@ -29,10 +30,13 @@ export async function POST(
   }
 
   try {
-    const order = await recordPayment(orderId, parsed.data, guard.session.userId);
+    const order = await recordPayment(orderId, parsed.data, guard.session.userId, getMutationKey(request));
     return NextResponse.json({ order });
   } catch (err) {
+    if (err instanceof Error && "committed" in err && err.committed === true && "result" in err) {
+      return NextResponse.json({ order: err.result, committed: true, warning: "Payment saved; post-commit cleanup failed. Do not record it again." });
+    }
     const message = err instanceof OrderError || err instanceof Error ? err.message : "Payment record nahi ho paya.";
-    return NextResponse.json({ error: message }, { status: 400 });
+    return NextResponse.json({ error: message }, { status: err instanceof MutationConflictError ? 409 : 400 });
   }
 }

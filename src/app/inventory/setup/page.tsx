@@ -1,15 +1,12 @@
-import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import Link from "next/link";
-import { verifySession, SESSION_COOKIE } from "@/lib/auth/session";
+import { getLiveSession } from "@/lib/auth/live-session";
 import AppShell from "@/components/app-shell";
 import { Button } from "@/components/ui/button";
 import BulkSetup from "./bulk-setup";
 
 export default async function InventorySetupPage() {
-  const cookieStore = await cookies();
-  const token = cookieStore.get(SESSION_COOKIE)?.value;
-  const session = token ? await verifySession(token) : null;
+  const session = await getLiveSession();
 
   if (!session) redirect("/login");
   if (!session.access.includes("INVENTORY_SETUP")) redirect("/dashboard");

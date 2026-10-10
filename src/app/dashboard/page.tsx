@@ -1,9 +1,8 @@
 import type { CSSProperties, ReactNode } from "react";
-import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { CheckCircle2, Gauge, ListTodo } from "lucide-react";
-import { verifySession, SESSION_COOKIE } from "@/lib/auth/session";
+import { getLiveSession } from "@/lib/auth/live-session";
 import { listTasks, type TaskRecord } from "@/lib/tasks";
 import { MODULE_ACCESS } from "@/lib/moduleAccess";
 import AppShell from "@/components/app-shell";
@@ -127,9 +126,7 @@ export default async function DashboardPage({
   const t = await getT();
   const sp = await searchParams;
   const one = (k: string) => (Array.isArray(sp[k]) ? sp[k][0] : sp[k]);
-  const cookieStore = await cookies();
-  const token = cookieStore.get(SESSION_COOKIE)?.value;
-  const session = token ? await verifySession(token) : null;
+  const session = await getLiveSession();
 
   if (!session) {
     redirect("/login");

@@ -10,7 +10,7 @@ import {
   PlanError,
 } from "@/lib/inventory/plans";
 import { InsufficientStockError } from "@/lib/inventory/ledger";
-import { startFmsInstance } from "@/lib/fms/engine";
+import { getMutationKey, MutationConflictError } from "@/lib/mutations";
 
 const bodySchema = z.discriminatedUnion("action", [
   z.object({
@@ -58,46 +58,32 @@ export async function PATCH(
         const plan = await startProduction(
           planId,
           parsed.data.actualQty,
-          guard.session.email
+          guard.session.email,
+          getMutationKey(request)
         );
-
-        // Best-effort: lets an org-defined FMS "Line" (e.g. Winding -> ... -> IPQC -> PDI
-        // -> Dispatch) pick up right when the physical manufacturing actually begins —
-        // not this route depending on the FMS engine's own module graph. startProduction()
-        // itself never imports it, to avoid a circular import back through the Action
-        // engine's own use of plans.ts.
-        //
-        // Only a plan with its own chosen Line (fmsTemplateId) starts one — directly, by
-        // that exact template id. A blank fmsTemplateId starts no Line at all; it used to
-        // broadcast-fire every Active PRODUCTION_STARTED template instead, which meant two
-        // products each needing a different Line would both fire for every plan that hadn't
-        // picked one — exactly the ambiguity picking a Line exists to remove. Explicit
-        // "no Line for this plan" is safer than an implicit guess.
-        if (plan.fmsTemplateId) {
-          try {
-            await startFmsInstance({
-              templateId: plan.fmsTemplateId,
-              contextRef: `PRODUCTION_PLANS:${planId}`,
-              startedBy: "SYSTEM",
-              initialQuantity: plan.actualQty ?? undefined,
-            });
-          } catch (error) {
-            console.error(`[ppc] FMS Line start failed for ${planId}:`, error);
-          }
-        }
 
         return NextResponse.json({ plan });
       }
       case "complete": {
-        const plan = await completePlan(planId, guard.session.email);
+        const plan = await completePlan(planId, guard.session.email, getMutationKey(request));
         return NextResponse.json({ plan });
       }
-      case "cancel":
-        return NextResponse.json({ plan: await cancelPlan(planId) });
-      case "recheck":
-        return NextResponse.json({ plan: await reallocatePlan(planId) });
+      case "cancel": {
+        const plan = await cancelPlan(planId, guard.session.email, getMutationKey(request));
+        return NextResponse.json({ plan });
+      }
+      case "recheck": {
+        const plan = await reallocatePlan(planId, guard.session.email, getMutationKey(request));
+        return NextResponse.json({ plan });
+      }
     }
   } catch (err) {
+    if (err instanceof Error && "committed" in err && err.committed === true && "result" in err) {
+      return NextResponse.json({ plan: err.result, committed: true, warning: err.message });
+    }
+    if (err instanceof MutationConflictError) {
+      return NextResponse.json({ error: err.message }, { status: 409 });
+    }
     if (err instanceof PlanError || err instanceof InsufficientStockError) {
       return NextResponse.json({ error: err.message }, { status: 400 });
     }

@@ -12,6 +12,29 @@ import { cn } from "@/lib/utils";
 import { formatDueDisplay } from "@/lib/formatDate";
 import { useT } from "@/components/preferences-provider";
 
+// BEGIN request guard (pure logic, exercised by isolated tests)
+class RequestSequencer {
+  private currentId = 0;
+  private controller: AbortController | null = null;
+
+  begin(): { id: number; signal: AbortSignal } {
+    this.controller?.abort();
+    this.controller = new AbortController();
+    this.currentId += 1;
+    return { id: this.currentId, signal: this.controller.signal };
+  }
+
+  isStale(id: number): boolean {
+    return id !== this.currentId;
+  }
+
+  get activeId(): number {
+    return this.currentId;
+  }
+}
+
+// END request guard
+
 interface SessionSummary {
   id: string;
   title: string;
@@ -55,6 +78,10 @@ export default function ChatClient({ compact = false }: { compact?: boolean }) {
   const [loadingMessages, setLoadingMessages] = useState(false);
   const [sending, setSending] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const sendFlight = useRef<{ sessionId: string | null; optimisticId: string } | null>(null);
+  const optimisticIdCounter = useRef(0);
+  const historyBusy = useRef(false);
+  const mounted = useRef(true);
 
   useEffect(() => {
     Promise.all([
@@ -73,23 +100,43 @@ export default function ChatClient({ compact = false }: { compact?: boolean }) {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
   }, [messages]);
 
+  const historySeqRef = useRef(new RequestSequencer());
+
+  useEffect(() => {
+    mounted.current = true;
+    const seq = historySeqRef.current;
+    return () => { mounted.current = false; seq.begin(); };
+  }, []);
+
+  // UX-02: block switching/New Chat during a send. The synchronous ref also
+  // closes the gap before React renders disabled controls. History may switch,
+  // but only the latest open attempt can write, and sending waits for history.
   async function openSession(id: string) {
+    if (sendFlight.current) return;
+    historyBusy.current = true;
+    setMessages([]);
     setActiveSessionId(id);
     setLoadingMessages(true);
+    const { id: reqId, signal } = historySeqRef.current.begin();
     try {
-      const res = await fetch(`/api/chatbot/sessions/${id}`);
+      const res = await fetch(`/api/chatbot/sessions/${id}`, { signal });
+      if (!res.ok) throw new Error(`History request failed (${res.status})`);
       const data = await res.json();
-      setMessages(
-        (data.messages ?? []).map((m: Message) => ({ ...m }))
-      );
+      if (historySeqRef.current.isStale(reqId)) return; // user already opened a different session
+      setMessages((data.messages ?? []).map((m: Message) => ({ ...m })));
     } catch {
+      if (historySeqRef.current.isStale(reqId)) return;
       toast.error(t("Chat load nahi ho paya."));
     } finally {
-      setLoadingMessages(false);
+      if (!historySeqRef.current.isStale(reqId)) { historyBusy.current = false; setLoadingMessages(false); }
     }
   }
 
   function startNewChat() {
+    if (sendFlight.current) return;
+    historySeqRef.current.begin(); // invalidates any still-in-flight openSession() response too
+    historyBusy.current = false;
+    setLoadingMessages(false);
     setActiveSessionId(null);
     setMessages([]);
     setDraft("");
@@ -97,24 +144,53 @@ export default function ChatClient({ compact = false }: { compact?: boolean }) {
 
   async function send(text: string) {
     const trimmed = text.trim();
-    if (!trimmed || sending) return;
+    if (!trimmed || sendFlight.current || historyBusy.current) return;
 
+    // A real optimistic id (not a positional `slice(0,-1)` rollback) — rollback below always
+    // removes exactly this message by id, so it can never delete the wrong bubble even if
+    // something else appended to `messages` in between (e.g. a session's own history re-render).
+    // Deterministic monotonic per-mount id — no impure Date.now()/Math.random() during render
+    // (react-hooks/purity), but still unique enough to never collide with a real message id.
+    optimisticIdCounter.current += 1;
+    const optimisticId = `tmp-${optimisticIdCounter.current}`;
+    const flight = { sessionId: activeSessionId, optimisticId };
+    sendFlight.current = flight;
     setSending(true);
     setDraft("");
-    // Optimistic user bubble — the real row is created server-side; a temporary id is fine
-    // since this is purely a display list, not something looked up by id afterward.
     setMessages((prev) => [
       ...prev,
-      { id: `tmp-${Date.now()}`, role: "user", content: trimmed, toolsUsed: [], createdAt: new Date().toISOString() },
+      { id: optimisticId, role: "user", content: trimmed, toolsUsed: [], createdAt: new Date().toISOString() },
     ]);
+
+    const rollbackOptimisticMessage = () =>
+      setMessages((prev) => prev.filter((m) => m.id !== optimisticId));
 
     try {
       const res = await fetch("/api/chatbot/message", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sessionId: activeSessionId ?? undefined, message: trimmed }),
+        body: JSON.stringify({ sessionId: flight.sessionId ?? undefined, message: trimmed }),
       });
       const data = await res.json();
+      if (!mounted.current || sendFlight.current !== flight) return;
+
+      if (res.status === 429) {
+        toast.error(t("Aaj ke liye Pro ERP Chatbot ki message limit poori ho gayi — kal phir try karein."));
+        rollbackOptimisticMessage();
+        return;
+      }
+
+      if (data.status === "not_connected") {
+        rollbackOptimisticMessage();
+        setConfig((prev) => (prev ? { ...prev, connected: false } : prev));
+        return;
+      }
+
+      if (!res.ok) {
+        toast.error(t(data.error ?? "Message bhej nahi paya."));
+        rollbackOptimisticMessage();
+        return;
+      }
 
       if (!activeSessionId && data.sessionId) {
         setActiveSessionId(data.sessionId);
@@ -122,23 +198,6 @@ export default function ChatClient({ compact = false }: { compact?: boolean }) {
           { id: data.sessionId, title: trimmed.slice(0, 80), updatedAt: new Date().toISOString() },
           ...prev,
         ]);
-      }
-
-      if (res.status === 429) {
-        toast.error(t("Aaj ke liye Pro ERP Chatbot ki message limit poori ho gayi — kal phir try karein."));
-        setMessages((prev) => prev.slice(0, -1));
-        return;
-      }
-
-      if (data.status === "not_connected") {
-        setConfig((prev) => (prev ? { ...prev, connected: false } : prev));
-        return;
-      }
-
-      if (!res.ok) {
-        toast.error(t(data.error ?? "Message bhej nahi paya."));
-        setMessages((prev) => prev.slice(0, -1));
-        return;
       }
 
       setMessages((prev) => [
@@ -152,10 +211,15 @@ export default function ChatClient({ compact = false }: { compact?: boolean }) {
         },
       ]);
     } catch {
+      if (!mounted.current || sendFlight.current !== flight) return;
+      setDraft(trimmed);
       toast.error(t("Kuch galat ho gaya — dobara try karein."));
-      setMessages((prev) => prev.slice(0, -1));
+      rollbackOptimisticMessage();
     } finally {
-      setSending(false);
+      if (sendFlight.current === flight) {
+        sendFlight.current = null;
+        if (mounted.current) setSending(false);
+      }
     }
   }
 
@@ -191,7 +255,14 @@ export default function ChatClient({ compact = false }: { compact?: boolean }) {
       {!compact && (
         <Card className="hidden w-64 shrink-0 sm:flex sm:flex-col">
           <CardContent className="flex h-full flex-col gap-2 p-3">
-            <Button variant="outline" size="sm" className="justify-start gap-2" onClick={startNewChat}>
+            <Button
+              variant="outline"
+              size="sm"
+              className="justify-start gap-2"
+              onClick={startNewChat}
+              disabled={sending}
+              title={sending ? t("Message bhejte waqt chat switch nahi ki ja sakti.") : undefined}
+            >
               <MessageSquarePlus className="size-4" aria-hidden="true" />
               {t("New Chat")}
             </Button>
@@ -204,8 +275,10 @@ export default function ChatClient({ compact = false }: { compact?: boolean }) {
                   key={s.id}
                   type="button"
                   onClick={() => openSession(s.id)}
+                  disabled={sending}
+                  title={sending ? t("Message bhejte waqt chat switch nahi ki ja sakti.") : undefined}
                   className={cn(
-                    "w-full truncate rounded-md px-2 py-1.5 text-left text-sm hover:bg-muted",
+                    "w-full truncate rounded-md px-2 py-1.5 text-left text-sm hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50",
                     activeSessionId === s.id && "bg-accent text-accent-foreground"
                   )}
                 >
@@ -221,7 +294,14 @@ export default function ChatClient({ compact = false }: { compact?: boolean }) {
         <CardContent className={cn("flex min-h-0 flex-1 flex-col gap-3", compact ? "p-1" : "p-4")}>
           {compact && (
             <div className="flex justify-end">
-              <Button variant="ghost" size="sm" className="gap-1.5 text-xs" onClick={startNewChat}>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="gap-1.5 text-xs"
+                onClick={startNewChat}
+                disabled={sending}
+                title={sending ? t("Message bhejte waqt chat switch nahi ki ja sakti.") : undefined}
+              >
                 <MessageSquarePlus className="size-3.5" aria-hidden="true" />
                 {t("New Chat")}
               </Button>
@@ -239,7 +319,7 @@ export default function ChatClient({ compact = false }: { compact?: boolean }) {
                 {config && config.suggestedQuestions.length > 0 && (
                   <div className="flex flex-wrap justify-center gap-2">
                     {config.suggestedQuestions.map((q) => (
-                      <Button key={q} variant="secondary" size="sm" onClick={() => send(q)}>
+                      <Button key={q} variant="secondary" size="sm" onClick={() => send(q)} disabled={sending || loadingMessages}>
                         {q}
                       </Button>
                     ))}
@@ -293,9 +373,9 @@ export default function ChatClient({ compact = false }: { compact?: boolean }) {
               }}
               placeholder={t("Apna sawal likhein...")}
               className="min-h-11"
-              disabled={sending}
+              disabled={sending || loadingMessages}
             />
-            <Button type="submit" size="icon" disabled={sending || !draft.trim()} aria-label={t("Bhejein")}>
+            <Button type="submit" size="icon" disabled={sending || loadingMessages || !draft.trim()} aria-label={t("Bhejein")}>
               <Send className="size-4" aria-hidden="true" />
             </Button>
           </form>

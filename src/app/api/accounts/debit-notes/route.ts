@@ -1,3 +1,6 @@
+import { getMutationKey, runIdempotentTenantMutation, MutationConflictError, MutationInputError } from "@/lib/mutations";
+import { getTenantOrgId } from "@/lib/tenant";
+import { LedgerConflictError } from "@/lib/accounts/ledger";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { requireModule } from "@/lib/auth/guard";
@@ -39,9 +42,16 @@ export async function POST(request: Request) {
   }
 
   try {
-    const debitNote = await createDebitNote(parsed.data, guard.session.userId);
+    const debitNote = await runIdempotentTenantMutation(await getTenantOrgId(), {
+      operation: "accounts.debit-notes.v1", actorId: guard.session.userId, key: getMutationKey(request),
+      // Parsed JSON input; omit absent optional fields, never hash a Date/domain row.
+      payload: JSON.parse(JSON.stringify({ ...parsed.data })),
+    }, async () => ({ ...await createDebitNote(parsed.data, guard.session.userId) }));
     return NextResponse.json({ debitNote });
   } catch (err) {
+    if (err instanceof MutationConflictError || err instanceof MutationInputError || err instanceof LedgerConflictError) {
+      return NextResponse.json({ error: err.message }, { status: err.status });
+    }
     const message =
       err instanceof DebitNoteError || err instanceof Error ? err.message : "Debit Note nahi ban paya.";
     return NextResponse.json({ error: message }, { status: 400 });

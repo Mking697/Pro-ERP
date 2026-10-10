@@ -1,16 +1,17 @@
 import { NextResponse } from "next/server";
-import { cookies } from "next/headers";
-import { eq, and } from "drizzle-orm";
-import { db } from "@/db/client";
-import { users } from "@/db/schema";
-import { verifySession, SESSION_COOKIE, type SessionPayload } from "@/lib/auth/session";
+import type { SessionPayload } from "@/lib/auth/session";
+import { getLiveSession } from "@/lib/auth/live-session";
 import { getModuleAccessDefinition, type ModuleAccessKey } from "@/lib/moduleAccess";
 import { isPlatformAdmin } from "@/lib/platform/admin";
-import { tenantFromOrgId, TenantResolutionError } from "@/lib/tenant";
+import { tenantFromOrgId, TenantResolutionError, type TenantContext } from "@/lib/tenant";
 import { moduleAllowedForPlan } from "@/lib/platform/planLimits";
 
 type GuardResult =
   | { ok: true; session: SessionPayload }
+  | { ok: false; response: NextResponse };
+
+type ModuleGuardResult =
+  | { ok: true; session: SessionPayload; tenant: TenantContext }
   | { ok: false; response: NextResponse };
 
 const unauthorized = () =>
@@ -26,21 +27,9 @@ const unauthorized = () =>
  * ever looked at whether the account behind it had changed since. See updateUser()/
  * resetUserPassword() in src/lib/auth/users.ts for where tokenVersion gets bumped. */
 export async function requireSession(): Promise<GuardResult> {
-  const cookieStore = await cookies();
-  const token = cookieStore.get(SESSION_COOKIE)?.value;
-  const session = token ? await verifySession(token) : null;
+  const session = await getLiveSession();
 
   if (!session) {
-    return { ok: false, response: unauthorized() };
-  }
-
-  const [row] = await db
-    .select({ tokenVersion: users.tokenVersion, status: users.status })
-    .from(users)
-    .where(and(eq(users.orgId, session.orgId), eq(users.id, session.userId)))
-    .limit(1);
-
-  if (!row || row.status !== "Active" || Number(row.tokenVersion) !== session.tokenVersion) {
     return { ok: false, response: unauthorized() };
   }
 
@@ -100,7 +89,7 @@ async function resolveTenantOr403(
  * The per-user grant still lives on the session (baked into the JWT at login, see
  * effectiveModuleAccess) — only the plan/tenant half of this check is a real read.
  */
-export async function requireModule(key: ModuleAccessKey): Promise<GuardResult> {
+export async function requireModule(key: ModuleAccessKey): Promise<ModuleGuardResult> {
   const guard = await requireSession();
   if (!guard.ok) return guard;
 
@@ -135,7 +124,10 @@ export async function requireModule(key: ModuleAccessKey): Promise<GuardResult> 
     };
   }
 
-  return guard;
+  return {
+    ...guard,
+    tenant: { orgId: tenantResult.org.id, org: tenantResult.org },
+  };
 }
 
 /**

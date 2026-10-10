@@ -1,0 +1,94 @@
+Pending item 1 ONLY — stock-in automatic Order rechecks atomic with movement
+Date: 2026-10-09. Repository: G:/Pro-ERP. Existing dirty main preserved.
+Status: implemented and focused local checks passed; STOP here for parent rerun/review.
+No commit/push/deploy/install/migration/production action. No other pending item touched.
+
+Task-owned delta
+- src/lib/inventory/ledger.ts: single and bulk In rechecks now awaited inside the
+  existing runInTenantTransaction; removed afterTenantCommit import and swallowed
+  recheck errors. Existing bulk unique-SKU filtering retained. Dynamic Orders import
+  retained to avoid the Orders -> ledger cycle. No detached work/builder escape.
+- tests/stock-workflow-unit.test.ts: replace invocation-only rollback assertions
+  for FG/PPC completion and FMS action with reservation, Order/PDI timeline and
+  deferred-send state rollback checks. Added exact per-SKU bulk invocation/active
+  scope regression (duplicates and empty SKU).
+- tests/stock-workflow.real.test.ts: replace obsolete deferred-recheck expectation
+  with real PG nested-successor state rollback assertions; rest preserved.
+- NEW tests/stock-in-atomic.real.test.ts and .real.vitest.config.ts: real ledger,
+  availability, Orders FIFO top-up and PDI implementations; only late PDI insert
+  failure injection and external WhatsApp boundary mocked. Tenant context is real.
+- NEW handoff/2026-10-09/stock-in-atomic-rechecks.txt (this file).
+
+Trace findings
+recheckShortfallForSku joins the same org's current transaction. It top-ups exact
+Order lines from central availability, then inserts Stock_Reserved activity, then
+calls noteStockAvailable when fully reserved. noteStockAvailable reads Pending PDI
+and inserts Stock_Available activity only: no notification/FMS emission on this
+path, no recursion into movement. Neither actual implementation swallows these DB
+errors. PDI's old best-effort comment is stale but no companion change was needed.
+External afterTenantCommit machinery is untouched; regression checks verify effects
+remain deferred and suppressed by outer rollback. No Orders/PDI source modification.
+
+Safety before writes
+Inspected tests/local-isolated/setup.ts, runtime.cjs and safety.cjs before running.
+Both 127.0.0.1 ports 55007 and 55008 connected successfully before first DB write.
+Every real-suite setup verifies actual WS + HTTP database/user pro_erp_test /
+pro_erp_test before fixtures. Credentials were loaded only by the guarded loader
+from existing scratch; never read/printed/copied into repo; no dotenv/default setup.
+
+Exact real-suite command prefix (used for every real run below):
+PRO_ERP_LOCAL_TESTS=1 PRO_ERP_LOCAL_CREDENTIALS=C:/Users/Admin/AppData/Local/hermes/cache/scratch/pro-erp-local-20261009.credentials.json
+
+Strict vertical TDD evidence
+1. FIRST wrote single failure/receipt-retry real test, ran:
+   <prefix> node node_modules/vitest/vitest.mjs run --config tests/stock-in-atomic.real.vitest.config.ts
+   RED: 1 failed (1), promise resolved instead of rejecting; ledger logged/swallowed
+   the injected actual PDI successor failure after movement/receipt had committed.
+   Minimal GREEN: single call precommit + stop swallowing shared recheck errors.
+   Same exact command: 1 passed (1).
+2. THEN wrote bulk successor failure test, ran:
+   <prefix> node node_modules/vitest/vitest.mjs run --config tests/stock-in-atomic.real.vitest.config.ts -t 'bulk stock-in'
+   RED: 1 failed / 1 skipped (2), got 'Transaction committed; post-commit effects
+   failed' instead of 'late PDI successor failure'. This exposed bulk's remaining
+   postcommit hook. Minimal GREEN: bulk call precommit; unused hook import removed.
+   Full new shard: 2 passed (2).
+3. Existing DB-free shard initially: 2 failed / 35 passed (37), solely obsolete
+   'recheck not called' assertions in rollback tests. Replaced these with stronger
+   committed-state guarantees (not weakened), then 37 passed (37).
+4. Added verification regressions one at a time, with no additional production
+   changes: bulk dedupe 1 passed / 37 skipped (38); real outer rollback 1 passed /
+   2 skipped (3); real common-lock/FIFO/competing issue 1 passed / 3 skipped (4).
+
+Final focused acceptance commands, serial, all exit 0:
+<prefix> node node_modules/vitest/vitest.mjs run --config tests/stock-in-atomic.real.vitest.config.ts
+  4 passed (4). Actual successors execute with active transaction; late PDI failure
+  rolls back all earlier movement/reservation/activity writes; failed durable receipt
+  absent; same-key retry succeeds once and replay duplicates nothing. Outer failure
+  rolls back successful successors. Independent HTTP read sees no premature commit,
+  pg_try_advisory_xact_lock(hashtextextended(orgId,0)) returns false while receive
+  remains open; oldest Order reserves first; competing issue rejects after commit.
+<prefix> node node_modules/vitest/vitest.mjs run --config tests/stock-workflow.real.vitest.config.ts
+  17 passed (17).
+node node_modules/vitest/vitest.mjs run --config tests/stock-workflow-unit.vitest.config.ts
+  38 passed (38).
+node node_modules/eslint/bin/eslint.js src/lib/inventory/ledger.ts tests/stock-in-atomic.real.test.ts tests/stock-in-atomic.real.vitest.config.ts tests/stock-workflow-unit.test.ts tests/stock-workflow.real.test.ts
+  exit 0, no diagnostics.
+node node_modules/typescript/bin/tsc --project C:/Users/Admin/AppData/Local/hermes/cache/scratch/stock-in-atomic.typecheck.json --pretty false
+  exit 0, no diagnostics. Scratch config extends repo config, disables incremental
+  and Next plugins, includes only task source/tests/config and next-env plus their
+  import closure. No full build/typecheck or unrelated suite run.
+git diff --check -- src/lib/inventory/ledger.ts tests/stock-workflow-unit.test.ts tests/stock-workflow.real.test.ts
+  exit 0. Git only warned that existing LF will become CRLF when Git next touches it.
+
+Cleanup evidence
+Every real test deletes ONLY its exact generated orgId's fixture rows and reads
+those same targets back as [] (including the organization). No global reset/cleanup.
+After final suites, independent guarded Pool query reverified actual target:
+  { database: 'pro_erp_test', username: 'pro_erp_test' }
+Then read count(*) for org_id LIKE 'stock-in-atomic-%' (organizations.id for org row):
+  mutation_receipts 0; pdi_activities 0; pdi_inspections 0; order_activities 0;
+  order_items 0; orders 0; stock_ledger 0; organizations 0.
+The audit is read-only; all fixture cleanup was exact-tenant scoped.
+Local infrastructure intentionally left running for parent rerun; no maintenance.
+
+Remaining acceptance: parent independent focused rerun and scoped review before item 2.

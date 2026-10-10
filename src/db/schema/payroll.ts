@@ -103,6 +103,14 @@ export const payslips = pgTable(
     // three statutory settings are enabled (v1's exact prior behavior, unchanged for any
     // org that never opts in).
     netPay: numeric("net_pay").notNull().default("0"),
+    // How much of the configured statutory deductions (PF/ESI/TDS) could NOT be applied
+    // because grossPay was too small to cover them (generatePayrollRun()'s own
+    // capDeductionsToGrossPay() already computes this — see CLAUDE.md's OPS-02 entry and
+    // handoff/2026-10-09/third-ops02-payroll-shortfall-contention.txt). Added 2026-10-09 so
+    // the figure survives a reload (getPayrollRun()) and can be rendered in the payslip PDF;
+    // this is an arithmetic/policy-safety figure only — NOT a statutory filing or compliance
+    // determination (see buildDeductionShortfallNote()'s own doc comment).
+    deductionShortfall: numeric("deduction_shortfall").notNull().default("0"),
     pdfUrl: text("pdf_url").notNull().default(""),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
