@@ -2,7 +2,7 @@
   "schema_version": 1,
   "diagram_type": "architecture",
   "meta": {
-    "title": "Pro ERP — One Connected System",
+    "title": "Pro ERP \u2014 One Connected System",
     "output": "pro-erp-system-map-v2.html",
     "quality_profile": "showcase",
     "visual_preset": "signal-flow",
@@ -27,6 +27,9 @@
         },
         "messagebus": {
           "label": "Event-Driven Engine (FMS)"
+        },
+        "external": {
+          "label": "Outbound Integrations"
         }
       }
     }
@@ -38,7 +41,7 @@
       "label": "Platform",
       "sublabel": "Every org, usage metrics, error log",
       "pos": [
-        40,
+        20,
         40
       ],
       "size": [
@@ -53,7 +56,7 @@
       "label": "Admin",
       "sublabel": "Per-user module-access grants",
       "pos": [
-        320,
+        300,
         40
       ],
       "size": [
@@ -67,7 +70,7 @@
       "label": "Reports & Sharing",
       "sublabel": "Cross-module exports + Cmd-K search",
       "pos": [
-        520,
+        500,
         40
       ],
       "size": [
@@ -81,8 +84,8 @@
       "label": "Tasks",
       "sublabel": "Delegated tasks, MIS scored",
       "pos": [
-        40,
-        160
+        20,
+        260
       ],
       "size": [
         180,
@@ -95,8 +98,8 @@
       "label": "Leave",
       "sublabel": "Buddy approval reassigns Tasks",
       "pos": [
-        330,
-        160
+        310,
+        260
       ],
       "size": [
         200,
@@ -109,8 +112,8 @@
       "label": "Payroll",
       "sublabel": "Join-date proration (v1)",
       "pos": [
-        570,
-        160
+        550,
+        260
       ],
       "size": [
         170,
@@ -123,8 +126,8 @@
       "label": "Lead",
       "sublabel": "Qualify -> Negotiation -> Quotation",
       "pos": [
-        40,
-        320
+        20,
+        460
       ],
       "size": [
         260,
@@ -137,8 +140,8 @@
       "label": "Order",
       "sublabel": "Credit gate + live Free-stock reservation",
       "pos": [
-        40,
-        480
+        20,
+        630
       ],
       "size": [
         260,
@@ -151,8 +154,8 @@
       "label": "PDI",
       "sublabel": "Pass/Fail inspection before dispatch",
       "pos": [
-        40,
-        640
+        20,
+        790
       ],
       "size": [
         260,
@@ -165,8 +168,8 @@
       "label": "TMS",
       "sublabel": "Self or Party-arranged transport",
       "pos": [
-        40,
-        800
+        20,
+        950
       ],
       "size": [
         260,
@@ -179,8 +182,8 @@
       "label": "Dispatch",
       "sublabel": "Gate Pass + the one real stock-ledger Out",
       "pos": [
-        40,
-        960
+        20,
+        1110
       ],
       "size": [
         260,
@@ -193,8 +196,8 @@
       "label": "Inward & IQC",
       "sublabel": "Inward entry + quality check, TAT-aware",
       "pos": [
-        400,
-        320
+        380,
+        460
       ],
       "size": [
         190,
@@ -207,8 +210,8 @@
       "label": "Debit Notes",
       "sublabel": "Vendor-side adjustments, IQC failures",
       "pos": [
-        680,
-        320
+        640,
+        460
       ],
       "size": [
         200,
@@ -221,8 +224,8 @@
       "label": "Inventory & BOM",
       "sublabel": "Free = On-Hand minus Committed minus Reserved",
       "pos": [
-        400,
-        460
+        380,
+        610
       ],
       "size": [
         220,
@@ -233,13 +236,13 @@
       "id": "ppc",
       "type": "frontend",
       "label": "PPC",
-      "sublabel": "BOM-driven production plans",
+      "sublabel": "BOM-driven prod plans",
       "pos": [
-        740,
-        460
+        700,
+        610
       ],
       "size": [
-        180,
+        160,
         76
       ]
     },
@@ -249,8 +252,8 @@
       "label": "FMS Engine",
       "sublabel": "No-code: forms, TAT calendar, stock actions, branching",
       "pos": [
-        400,
-        600
+        380,
+        750
       ],
       "size": [
         440,
@@ -264,8 +267,8 @@
       "label": "Parties",
       "sublabel": "Vendor & customer master, bulk import",
       "pos": [
-        400,
-        780
+        380,
+        1080
       ],
       "size": [
         200,
@@ -278,8 +281,8 @@
       "label": "Purchase",
       "sublabel": "Indent -> PO -> Follow Up -> Received",
       "pos": [
-        710,
-        780
+        660,
+        1080
       ],
       "size": [
         200,
@@ -292,8 +295,8 @@
       "label": "Other Payments",
       "sublabel": "Additional payments outside Dispatch",
       "pos": [
-        400,
-        920
+        380,
+        1220
       ],
       "size": [
         210,
@@ -306,8 +309,8 @@
       "label": "Petty Cash",
       "sublabel": "Small cash disbursements",
       "pos": [
-        650,
-        920
+        630,
+        1220
       ],
       "size": [
         190,
@@ -320,8 +323,8 @@
       "label": "Credit Notes",
       "sublabel": "Customer-side adjustments",
       "pos": [
-        400,
-        1050
+        380,
+        1350
       ],
       "size": [
         200,
@@ -334,8 +337,8 @@
       "label": "Receivables",
       "sublabel": "Invoices, multi-invoice-per-order splitting",
       "pos": [
-        640,
-        1050
+        620,
+        1350
       ],
       "size": [
         210,
@@ -348,8 +351,8 @@
       "label": "Payables",
       "sublabel": "Bills, Input Tax Credit on GST",
       "pos": [
-        400,
-        1180
+        380,
+        1480
       ],
       "size": [
         200,
@@ -362,8 +365,8 @@
       "label": "Ledger",
       "sublabel": "Real double-entry GL: Trial Balance, P&L, Balance Sheet",
       "pos": [
-        400,
-        1320
+        380,
+        1620
       ],
       "size": [
         440,
@@ -377,8 +380,8 @@
       "label": "Aging",
       "sublabel": "Receivables aging buckets",
       "pos": [
-        400,
-        1460
+        380,
+        1760
       ],
       "size": [
         190,
@@ -391,12 +394,68 @@
       "label": "GST Report",
       "sublabel": "GSTR-shaped export for manual filing",
       "pos": [
-        640,
-        1460
+        620,
+        1760
       ],
       "size": [
         210,
         76
+      ]
+    },
+    {
+      "id": "chat_assistant",
+      "type": "frontend",
+      "label": "AI Chat Assistant",
+      "sublabel": "Tool-calling assistant across modules, per-org Gemini key",
+      "pos": [
+        500,
+        150
+      ],
+      "size": [
+        230,
+        64
+      ]
+    },
+    {
+      "id": "performance",
+      "type": "backend",
+      "label": "Performance",
+      "sublabel": "Doer MIS score (Tasks+FMS runs), export & scheduled send-reports",
+      "pos": [
+        550,
+        364
+      ],
+      "size": [
+        250,
+        64
+      ]
+    },
+    {
+      "id": "whatsapp_reminders",
+      "type": "external",
+      "label": "WhatsApp Reminders",
+      "sublabel": "Per-org token, cron-driven pending-task nudges",
+      "pos": [
+        20,
+        364
+      ],
+      "size": [
+        200,
+        64
+      ]
+    },
+    {
+      "id": "maintenance",
+      "type": "frontend",
+      "label": "Maintenance",
+      "sublabel": "Breakdown pauses the Production Line step until confirmed",
+      "pos": [
+        490,
+        900
+      ],
+      "size": [
+        220,
+        90
       ]
     }
   ],
@@ -407,9 +466,10 @@
       "wraps": [
         "platform",
         "admin",
-        "reports"
+        "reports",
+        "chat_assistant"
       ],
-      "pad": 18
+      "pad": 10
     },
     {
       "kind": "region",
@@ -417,9 +477,10 @@
       "wraps": [
         "tasks",
         "leave",
-        "payroll"
+        "payroll",
+        "performance"
       ],
-      "pad": 18
+      "pad": 10
     },
     {
       "kind": "region",
@@ -431,7 +492,7 @@
         "tms",
         "dispatch"
       ],
-      "pad": 20
+      "pad": 12
     },
     {
       "kind": "region",
@@ -440,9 +501,10 @@
         "inward",
         "inventory",
         "ppc",
-        "fms"
+        "fms",
+        "maintenance"
       ],
-      "pad": 20
+      "pad": 12
     },
     {
       "kind": "region",
@@ -451,7 +513,7 @@
         "parties",
         "purchase"
       ],
-      "pad": 18
+      "pad": 10
     },
     {
       "kind": "region",
@@ -467,7 +529,7 @@
         "aging",
         "gst_report"
       ],
-      "pad": 22
+      "pad": 14
     }
   ],
   "connections": [
@@ -593,6 +655,22 @@
       "id": "admin-platform",
       "from": "admin",
       "to": "platform"
+    },
+    {
+      "id": "tasks-whatsapp",
+      "from": "tasks",
+      "to": "whatsapp_reminders",
+      "variant": "dashed",
+      "fromSide": "bottom",
+      "toSide": "top"
+    },
+    {
+      "id": "fms-maintenance",
+      "from": "fms",
+      "to": "maintenance",
+      "variant": "dashed",
+      "fromSide": "bottom",
+      "toSide": "top"
     }
   ],
   "cards": [
@@ -616,7 +694,7 @@
     },
     {
       "dot": "violet",
-      "title": "FMS — No-Code Workflow Engine",
+      "title": "FMS \u2014 No-Code Workflow Engine",
       "items": [
         "An Admin builds any multi-step process as data: forms, lookups, a working-hours TAT calendar, branching, stock actions",
         "Listens for real business events from Inward (INWARD_ENTRY_CREATED), Production Line flows, and Purchase (INDENT_APPROVED)",
@@ -630,6 +708,16 @@
         "Multi-tenant: every table carries org_id, each signup is a fully isolated organization",
         "Admin grants gate access module-by-module, down to individual users",
         "Leave approvals auto-reassign a person's open Tasks to a named Buddy, with full audit trail"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "Data-Integrity Engineering",
+      "items": [
+        "runInTenantTransaction takes a per-org advisory lock before any read, so competing writes across modules (Orders, Dispatch, Payables...) cannot race each other",
+        "Idempotent mutations: a durable mutation_receipts table replays the same request key to the same result, so a retried payment or stock write is never double-applied",
+        "getStockAvailability is the single Free-stock engine every module (Order, PPC, FMS) reads; no module computes its own stale number",
+        "/api/health distinguishes schema-missing, schema-stale, and schema-divergent states without leaking connection or driver details"
       ]
     }
   ]

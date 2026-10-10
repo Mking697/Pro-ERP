@@ -5,16 +5,16 @@
   "status": "pass",
   "type": "architecture",
   "quality": "showcase",
-  "startedAt": "2026-10-07T09:26:01.583Z",
+  "startedAt": "2026-10-10T06:15:52.603Z",
   "specification": {
     "path": "G:\\Pro-ERP\\marketing\\analysis\\pro-erp-system-map-v2.candidate.json",
-    "sha256": "e9ed3bbe5febf3525ddb33037b98bf0c1d22de89f1304007f2e617089142d125",
-    "bytes": 13336
+    "sha256": "087a362340453b29e8b9dcf2015d9d53fd2a2da181909f61b5988c980d318426",
+    "bytes": 15762
   },
   "artifact": {
     "path": "G:\\Pro-ERP\\marketing\\analysis\\pro-erp-system-map-v2.html",
-    "sha256": "de6020c1d0f6ce76f38ae0ba2780f6849991b5d29b9e81a74b0ff810b6261a4b",
-    "bytes": 800750
+    "sha256": "12a1189342790df362d035844ccd02f2bd525941e2ba314ca42ed8b17dfae3e2",
+    "bytes": 809137
   },
   "stages": {
     "validate": {
@@ -38,8 +38,8 @@
         "ok": true,
         "command": "validate",
         "specification": {
-          "sha256": "e9ed3bbe5febf3525ddb33037b98bf0c1d22de89f1304007f2e617089142d125",
-          "bytes": 13336
+          "sha256": "087a362340453b29e8b9dcf2015d9d53fd2a2da181909f61b5988c980d318426",
+          "bytes": 15762
         },
         "validation": {
           "checksPassed": 9,
@@ -54,7 +54,7 @@
     "deliver": {
       "status": "pass",
       "exitCode": 0,
-      "durationMs": 2885,
+      "durationMs": 3165,
       "command": [
         "C:\\Users\\Admin\\AppData\\Local\\hermes\\tools\\node-26.7.0-win32-x64\\node.exe",
         "G:\\Pro-ERP\\.agents\\skills\\archify\\bin\\archify.mjs",
@@ -68,19 +68,19 @@
       ],
       "receipt": {
         "schemaVersion": 1,
-        "receiptId": "42d391aa-a79f-494b-abf2-741e35a0bde5",
+        "receiptId": "b3b662df-0340-4e02-915d-8dcc91745c57",
         "ok": true,
         "command": "deliver",
         "type": "architecture",
         "input": "G:\\Pro-ERP\\marketing\\analysis\\pro-erp-system-map-v2.candidate.json",
         "output": "G:\\Pro-ERP\\marketing\\analysis\\pro-erp-system-map-v2.html",
         "specification": {
-          "sha256": "e9ed3bbe5febf3525ddb33037b98bf0c1d22de89f1304007f2e617089142d125",
-          "bytes": 13336
+          "sha256": "087a362340453b29e8b9dcf2015d9d53fd2a2da181909f61b5988c980d318426",
+          "bytes": 15762
         },
         "artifact": {
-          "sha256": "de6020c1d0f6ce76f38ae0ba2780f6849991b5d29b9e81a74b0ff810b6261a4b",
-          "bytes": 800750
+          "sha256": "12a1189342790df362d035844ccd02f2bd525941e2ba314ca42ed8b17dfae3e2",
+          "bytes": 809137
         },
         "validation": {
           "checksPassed": 9,
@@ -106,7 +106,7 @@
     "check": {
       "status": "pass",
       "exitCode": 0,
-      "durationMs": 1767,
+      "durationMs": 330,
       "command": [
         "C:\\Users\\Admin\\AppData\\Local\\hermes\\tools\\node-26.7.0-win32-x64\\node.exe",
         "G:\\Pro-ERP\\.agents\\skills\\archify\\bin\\archify.mjs",
@@ -118,8 +118,8 @@
         "ok": true,
         "file": "G:\\Pro-ERP\\marketing\\analysis\\pro-erp-system-map-v2.html",
         "artifact": {
-          "sha256": "de6020c1d0f6ce76f38ae0ba2780f6849991b5d29b9e81a74b0ff810b6261a4b",
-          "bytes": 800750
+          "sha256": "12a1189342790df362d035844ccd02f2bd525941e2ba314ca42ed8b17dfae3e2",
+          "bytes": 809137
         },
         "checks": [
           {
@@ -189,15 +189,15 @@
             "minLabelRouteClearance": 11.4,
             "desktopReadabilityIssues": 0,
             "viewportHeightIssues": 0,
-            "minProjectedNodeTextPx": 6.83265306122449,
+            "minProjectedNodeTextPx": 6.1,
             "maxBends": 4,
             "routesOverSuggestedBends": 3,
-            "maxStretch": 1.384,
+            "maxStretch": 1.64,
             "routesOverSuggestedStretch": 1,
-            "minSegmentPx": 24,
-            "minInteriorSegmentPx": 41,
-            "shortSegmentCount": 0,
-            "shortEndpointSegmentCount": 0,
+            "minSegmentPx": 12,
+            "minInteriorSegmentPx": 16,
+            "shortSegmentCount": 2,
+            "shortEndpointSegmentCount": 2,
             "shortInteriorSegmentCount": 0,
             "microSegmentCount": 0
           },
@@ -224,18 +224,6 @@
               },
               {
                 "relationship": {
-                  "id": "ppc-fms",
-                  "from": "ppc",
-                  "to": "fms",
-                  "label": "Production Line flow",
-                  "collectionIndex": 8,
-                  "artifactIndex": 9
-                },
-                "bends": 4,
-                "stretch": 1.384
-              },
-              {
-                "relationship": {
                   "id": "purchase-payables",
                   "from": "purchase",
                   "to": "payables",
@@ -245,16 +233,28 @@
                 },
                 "bends": 3,
                 "stretch": 1
+              },
+              {
+                "relationship": {
+                  "id": "tasks-whatsapp",
+                  "from": "tasks",
+                  "to": "whatsapp_reminders",
+                  "label": "",
+                  "collectionIndex": 18,
+                  "artifactIndex": 19
+                },
+                "bends": 4,
+                "stretch": 1.64
               }
             ]
           },
           "leadingSpace": {
             "measured": true,
             "emptyTopPx": 16,
-            "emptyTopRatio": 0.01,
+            "emptyTopRatio": 0.008,
             "occupiedTop": 16,
             "viewBoxTop": 0,
-            "canvasHeight": 1646,
+            "canvasHeight": 1946,
             "typicalNodeHeight": 76,
             "reviewSuggested": false
           },
@@ -270,22 +270,22 @@
             "hardFloorMet": true,
             "minimumOwner": {
               "kind": "node",
-              "id": "platform"
+              "id": "maintenance"
             },
-            "minimumSourceTextPx": 7.2,
-            "minimumProjectedTextPx": 6.83265306122449,
-            "semanticTextCount": 74
+            "minimumSourceTextPx": 6.1,
+            "minimumProjectedTextPx": 6.1,
+            "semanticTextCount": 82
           },
           "issues": []
         },
         "provenance": "current",
-        "deliveryReceiptId": "42d391aa-a79f-494b-abf2-741e35a0bde5"
+        "deliveryReceiptId": "b3b662df-0340-4e02-915d-8dcc91745c57"
       }
     },
     "browser-check": {
       "status": "pass",
       "exitCode": 0,
-      "durationMs": 9508,
+      "durationMs": 4435,
       "command": [
         "C:\\Users\\Admin\\AppData\\Local\\hermes\\tools\\node-26.7.0-win32-x64\\node.exe",
         "G:\\Pro-ERP\\.agents\\skills\\archify\\bin\\archify.mjs",
@@ -303,11 +303,11 @@
         "status": "pass",
         "visualReview": "not-requested",
         "provenance": "current",
-        "deliveryReceiptId": "42d391aa-a79f-494b-abf2-741e35a0bde5",
+        "deliveryReceiptId": "b3b662df-0340-4e02-915d-8dcc91745c57",
         "artifact": {
           "path": "G:\\Pro-ERP\\marketing\\analysis\\pro-erp-system-map-v2.html",
-          "sha256": "de6020c1d0f6ce76f38ae0ba2780f6849991b5d29b9e81a74b0ff810b6261a4b",
-          "bytes": 800750
+          "sha256": "12a1189342790df362d035844ccd02f2bd525941e2ba314ca42ed8b17dfae3e2",
+          "bytes": 809137
         },
         "state": {
           "detail": "read",
@@ -329,7 +329,7 @@
               "innerWidth": 1440,
               "innerHeight": 900,
               "scrollWidth": 1440,
-              "scrollHeight": 1789,
+              "scrollHeight": 2104,
               "overflowX": false,
               "overflowY": true,
               "verticalScrollAccepted": true,
@@ -338,25 +338,25 @@
               "readerOverflow": "authored",
               "readerFit": "intrinsic-height",
               "ok": true,
-              "readerWidth": 1010,
-              "diagramWidth": 980,
+              "readerWidth": 960,
+              "diagramWidth": 912,
               "pageComposition": {
                 "bodyPaddingPx": 12,
-                "headerPx": 52,
+                "headerPx": 68,
                 "diagramChromePx": 78,
-                "svgPx": 1646,
+                "svgPx": 1946,
                 "cardsPx": 0,
-                "viewBoxHeight": 1646
+                "viewBoxHeight": 1946
               },
-              "viewBoxWidth": 980,
-              "minimumProjectedNodeTextPx": 7.2,
-              "minimumProjectedNonEdgeTextPx": 7.2,
+              "viewBoxWidth": 912,
+              "minimumProjectedNodeTextPx": 6.1,
+              "minimumProjectedNonEdgeTextPx": 6.1,
               "minimumProjectedEdgeTextPx": 8,
-              "minimumProjectedNodeText": "Every org, usage metrics, error log",
+              "minimumProjectedNodeText": "Breakdown pauses the Production Line step until confirmed",
               "minimumProjectedNodeTextDetail": "context",
               "minimumProjectedNodeTextOwner": {
                 "kind": "node",
-                "id": "platform"
+                "id": "maintenance"
               },
               "minimumRequiredNodeTextPx": 6,
               "readabilityOk": true,
@@ -379,7 +379,7 @@
               "innerWidth": 1600,
               "innerHeight": 1000,
               "scrollWidth": 1600,
-              "scrollHeight": 1855,
+              "scrollHeight": 2170,
               "overflowX": false,
               "overflowY": true,
               "verticalScrollAccepted": true,
@@ -388,25 +388,25 @@
               "readerOverflow": "authored",
               "readerFit": "intrinsic-height",
               "ok": true,
-              "readerWidth": 1010,
-              "diagramWidth": 980,
+              "readerWidth": 960,
+              "diagramWidth": 912,
               "pageComposition": {
                 "bodyPaddingPx": 64,
-                "headerPx": 60,
+                "headerPx": 76,
                 "diagramChromePx": 84,
-                "svgPx": 1646,
+                "svgPx": 1946,
                 "cardsPx": 0,
-                "viewBoxHeight": 1646
+                "viewBoxHeight": 1946
               },
-              "viewBoxWidth": 980,
-              "minimumProjectedNodeTextPx": 7.2,
-              "minimumProjectedNonEdgeTextPx": 7.2,
+              "viewBoxWidth": 912,
+              "minimumProjectedNodeTextPx": 6.1,
+              "minimumProjectedNonEdgeTextPx": 6.1,
               "minimumProjectedEdgeTextPx": 8,
-              "minimumProjectedNodeText": "Every org, usage metrics, error log",
+              "minimumProjectedNodeText": "Breakdown pauses the Production Line step until confirmed",
               "minimumProjectedNodeTextDetail": "context",
               "minimumProjectedNodeTextOwner": {
                 "kind": "node",
-                "id": "platform"
+                "id": "maintenance"
               },
               "minimumRequiredNodeTextPx": 6,
               "readabilityOk": true,
@@ -429,7 +429,7 @@
               "innerWidth": 1920,
               "innerHeight": 1080,
               "scrollWidth": 1920,
-              "scrollHeight": 1855,
+              "scrollHeight": 2170,
               "overflowX": false,
               "overflowY": true,
               "verticalScrollAccepted": true,
@@ -438,25 +438,25 @@
               "readerOverflow": "authored",
               "readerFit": "intrinsic-height",
               "ok": true,
-              "readerWidth": 1010,
-              "diagramWidth": 980,
+              "readerWidth": 960,
+              "diagramWidth": 912,
               "pageComposition": {
                 "bodyPaddingPx": 64,
-                "headerPx": 60,
+                "headerPx": 76,
                 "diagramChromePx": 84,
-                "svgPx": 1646,
+                "svgPx": 1946,
                 "cardsPx": 0,
-                "viewBoxHeight": 1646
+                "viewBoxHeight": 1946
               },
-              "viewBoxWidth": 980,
-              "minimumProjectedNodeTextPx": 7.2,
-              "minimumProjectedNonEdgeTextPx": 7.2,
+              "viewBoxWidth": 912,
+              "minimumProjectedNodeTextPx": 6.1,
+              "minimumProjectedNonEdgeTextPx": 6.1,
               "minimumProjectedEdgeTextPx": 8,
-              "minimumProjectedNodeText": "Every org, usage metrics, error log",
+              "minimumProjectedNodeText": "Breakdown pauses the Production Line step until confirmed",
               "minimumProjectedNodeTextDetail": "context",
               "minimumProjectedNodeTextOwner": {
                 "kind": "node",
-                "id": "platform"
+                "id": "maintenance"
               },
               "minimumRequiredNodeTextPx": 6,
               "readabilityOk": true,
@@ -479,7 +479,7 @@
               "innerWidth": 2048,
               "innerHeight": 1320,
               "scrollWidth": 2048,
-              "scrollHeight": 1873,
+              "scrollHeight": 2188,
               "overflowX": false,
               "overflowY": true,
               "verticalScrollAccepted": true,
@@ -488,25 +488,25 @@
               "readerOverflow": "authored",
               "readerFit": "intrinsic-height",
               "ok": true,
-              "readerWidth": 1030,
-              "diagramWidth": 980,
+              "readerWidth": 962,
+              "diagramWidth": 912,
               "pageComposition": {
                 "bodyPaddingPx": 64,
-                "headerPx": 68,
+                "headerPx": 84,
                 "diagramChromePx": 94,
-                "svgPx": 1646,
+                "svgPx": 1946,
                 "cardsPx": 0,
-                "viewBoxHeight": 1646
+                "viewBoxHeight": 1946
               },
-              "viewBoxWidth": 980,
-              "minimumProjectedNodeTextPx": 7.2,
-              "minimumProjectedNonEdgeTextPx": 7.2,
+              "viewBoxWidth": 912,
+              "minimumProjectedNodeTextPx": 6.1,
+              "minimumProjectedNonEdgeTextPx": 6.1,
               "minimumProjectedEdgeTextPx": 8,
-              "minimumProjectedNodeText": "Every org, usage metrics, error log",
+              "minimumProjectedNodeText": "Breakdown pauses the Production Line step until confirmed",
               "minimumProjectedNodeTextDetail": "context",
               "minimumProjectedNodeTextOwner": {
                 "kind": "node",
-                "id": "platform"
+                "id": "maintenance"
               },
               "minimumRequiredNodeTextPx": 6,
               "readabilityOk": true,
@@ -582,7 +582,7 @@
               "innerWidth": 1440,
               "innerHeight": 900,
               "scrollWidth": 1440,
-              "scrollHeight": 1789,
+              "scrollHeight": 2104,
               "overflowX": false,
               "overflowY": true,
               "verticalScrollAccepted": true,
@@ -591,25 +591,25 @@
               "readerOverflow": "authored",
               "readerFit": "intrinsic-height",
               "ok": true,
-              "readerWidth": 1010,
-              "diagramWidth": 980,
+              "readerWidth": 960,
+              "diagramWidth": 912,
               "pageComposition": {
                 "bodyPaddingPx": 12,
-                "headerPx": 52,
+                "headerPx": 68,
                 "diagramChromePx": 78,
-                "svgPx": 1646,
+                "svgPx": 1946,
                 "cardsPx": 0,
-                "viewBoxHeight": 1646
+                "viewBoxHeight": 1946
               },
-              "viewBoxWidth": 980,
-              "minimumProjectedNodeTextPx": 7.2,
-              "minimumProjectedNonEdgeTextPx": 7.2,
+              "viewBoxWidth": 912,
+              "minimumProjectedNodeTextPx": 6.1,
+              "minimumProjectedNonEdgeTextPx": 6.1,
               "minimumProjectedEdgeTextPx": 8,
-              "minimumProjectedNodeText": "Every org, usage metrics, error log",
+              "minimumProjectedNodeText": "Breakdown pauses the Production Line step until confirmed",
               "minimumProjectedNodeTextDetail": "context",
               "minimumProjectedNodeTextOwner": {
                 "kind": "node",
-                "id": "platform"
+                "id": "maintenance"
               },
               "minimumRequiredNodeTextPx": 6,
               "readabilityOk": true,
@@ -632,7 +632,7 @@
               "innerWidth": 1600,
               "innerHeight": 1000,
               "scrollWidth": 1600,
-              "scrollHeight": 1855,
+              "scrollHeight": 2170,
               "overflowX": false,
               "overflowY": true,
               "verticalScrollAccepted": true,
@@ -641,25 +641,25 @@
               "readerOverflow": "authored",
               "readerFit": "intrinsic-height",
               "ok": true,
-              "readerWidth": 1010,
-              "diagramWidth": 980,
+              "readerWidth": 960,
+              "diagramWidth": 912,
               "pageComposition": {
                 "bodyPaddingPx": 64,
-                "headerPx": 60,
+                "headerPx": 76,
                 "diagramChromePx": 84,
-                "svgPx": 1646,
+                "svgPx": 1946,
                 "cardsPx": 0,
-                "viewBoxHeight": 1646
+                "viewBoxHeight": 1946
               },
-              "viewBoxWidth": 980,
-              "minimumProjectedNodeTextPx": 7.2,
-              "minimumProjectedNonEdgeTextPx": 7.2,
+              "viewBoxWidth": 912,
+              "minimumProjectedNodeTextPx": 6.1,
+              "minimumProjectedNonEdgeTextPx": 6.1,
               "minimumProjectedEdgeTextPx": 8,
-              "minimumProjectedNodeText": "Every org, usage metrics, error log",
+              "minimumProjectedNodeText": "Breakdown pauses the Production Line step until confirmed",
               "minimumProjectedNodeTextDetail": "context",
               "minimumProjectedNodeTextOwner": {
                 "kind": "node",
-                "id": "platform"
+                "id": "maintenance"
               },
               "minimumRequiredNodeTextPx": 6,
               "readabilityOk": true,
@@ -682,7 +682,7 @@
               "innerWidth": 1920,
               "innerHeight": 1080,
               "scrollWidth": 1920,
-              "scrollHeight": 1855,
+              "scrollHeight": 2170,
               "overflowX": false,
               "overflowY": true,
               "verticalScrollAccepted": true,
@@ -691,25 +691,25 @@
               "readerOverflow": "authored",
               "readerFit": "intrinsic-height",
               "ok": true,
-              "readerWidth": 1010,
-              "diagramWidth": 980,
+              "readerWidth": 960,
+              "diagramWidth": 912,
               "pageComposition": {
                 "bodyPaddingPx": 64,
-                "headerPx": 60,
+                "headerPx": 76,
                 "diagramChromePx": 84,
-                "svgPx": 1646,
+                "svgPx": 1946,
                 "cardsPx": 0,
-                "viewBoxHeight": 1646
+                "viewBoxHeight": 1946
               },
-              "viewBoxWidth": 980,
-              "minimumProjectedNodeTextPx": 7.2,
-              "minimumProjectedNonEdgeTextPx": 7.2,
+              "viewBoxWidth": 912,
+              "minimumProjectedNodeTextPx": 6.1,
+              "minimumProjectedNonEdgeTextPx": 6.1,
               "minimumProjectedEdgeTextPx": 8,
-              "minimumProjectedNodeText": "Every org, usage metrics, error log",
+              "minimumProjectedNodeText": "Breakdown pauses the Production Line step until confirmed",
               "minimumProjectedNodeTextDetail": "context",
               "minimumProjectedNodeTextOwner": {
                 "kind": "node",
-                "id": "platform"
+                "id": "maintenance"
               },
               "minimumRequiredNodeTextPx": 6,
               "readabilityOk": true,
@@ -732,7 +732,7 @@
               "innerWidth": 2048,
               "innerHeight": 1320,
               "scrollWidth": 2048,
-              "scrollHeight": 1873,
+              "scrollHeight": 2188,
               "overflowX": false,
               "overflowY": true,
               "verticalScrollAccepted": true,
@@ -741,25 +741,25 @@
               "readerOverflow": "authored",
               "readerFit": "intrinsic-height",
               "ok": true,
-              "readerWidth": 1030,
-              "diagramWidth": 980,
+              "readerWidth": 962,
+              "diagramWidth": 912,
               "pageComposition": {
                 "bodyPaddingPx": 64,
-                "headerPx": 68,
+                "headerPx": 84,
                 "diagramChromePx": 94,
-                "svgPx": 1646,
+                "svgPx": 1946,
                 "cardsPx": 0,
-                "viewBoxHeight": 1646
+                "viewBoxHeight": 1946
               },
-              "viewBoxWidth": 980,
-              "minimumProjectedNodeTextPx": 7.2,
-              "minimumProjectedNonEdgeTextPx": 7.2,
+              "viewBoxWidth": 912,
+              "minimumProjectedNodeTextPx": 6.1,
+              "minimumProjectedNonEdgeTextPx": 6.1,
               "minimumProjectedEdgeTextPx": 8,
-              "minimumProjectedNodeText": "Every org, usage metrics, error log",
+              "minimumProjectedNodeText": "Breakdown pauses the Production Line step until confirmed",
               "minimumProjectedNodeTextDetail": "context",
               "minimumProjectedNodeTextOwner": {
                 "kind": "node",
-                "id": "platform"
+                "id": "maintenance"
               },
               "minimumRequiredNodeTextPx": 6,
               "readabilityOk": true,
@@ -787,7 +787,7 @@
               "innerWidth": 1440,
               "innerHeight": 900,
               "scrollWidth": 1440,
-              "scrollHeight": 1789,
+              "scrollHeight": 2104,
               "overflowX": false,
               "overflowY": true,
               "verticalScrollAccepted": true,
@@ -796,25 +796,25 @@
               "readerOverflow": "authored",
               "readerFit": "intrinsic-height",
               "ok": true,
-              "readerWidth": 1010,
-              "diagramWidth": 980,
+              "readerWidth": 960,
+              "diagramWidth": 912,
               "pageComposition": {
                 "bodyPaddingPx": 12,
-                "headerPx": 52,
+                "headerPx": 68,
                 "diagramChromePx": 78,
-                "svgPx": 1646,
+                "svgPx": 1946,
                 "cardsPx": 0,
-                "viewBoxHeight": 1646
+                "viewBoxHeight": 1946
               },
-              "viewBoxWidth": 980,
-              "minimumProjectedNodeTextPx": 7.2,
-              "minimumProjectedNonEdgeTextPx": 7.2,
+              "viewBoxWidth": 912,
+              "minimumProjectedNodeTextPx": 6.1,
+              "minimumProjectedNonEdgeTextPx": 6.1,
               "minimumProjectedEdgeTextPx": 8,
-              "minimumProjectedNodeText": "Every org, usage metrics, error log",
+              "minimumProjectedNodeText": "Breakdown pauses the Production Line step until confirmed",
               "minimumProjectedNodeTextDetail": "context",
               "minimumProjectedNodeTextOwner": {
                 "kind": "node",
-                "id": "platform"
+                "id": "maintenance"
               },
               "minimumRequiredNodeTextPx": 6,
               "readabilityOk": true,
@@ -837,7 +837,7 @@
               "innerWidth": 1600,
               "innerHeight": 1000,
               "scrollWidth": 1600,
-              "scrollHeight": 1855,
+              "scrollHeight": 2170,
               "overflowX": false,
               "overflowY": true,
               "verticalScrollAccepted": true,
@@ -846,25 +846,25 @@
               "readerOverflow": "authored",
               "readerFit": "intrinsic-height",
               "ok": true,
-              "readerWidth": 1010,
-              "diagramWidth": 980,
+              "readerWidth": 960,
+              "diagramWidth": 912,
               "pageComposition": {
                 "bodyPaddingPx": 64,
-                "headerPx": 60,
+                "headerPx": 76,
                 "diagramChromePx": 84,
-                "svgPx": 1646,
+                "svgPx": 1946,
                 "cardsPx": 0,
-                "viewBoxHeight": 1646
+                "viewBoxHeight": 1946
               },
-              "viewBoxWidth": 980,
-              "minimumProjectedNodeTextPx": 7.2,
-              "minimumProjectedNonEdgeTextPx": 7.2,
+              "viewBoxWidth": 912,
+              "minimumProjectedNodeTextPx": 6.1,
+              "minimumProjectedNonEdgeTextPx": 6.1,
               "minimumProjectedEdgeTextPx": 8,
-              "minimumProjectedNodeText": "Every org, usage metrics, error log",
+              "minimumProjectedNodeText": "Breakdown pauses the Production Line step until confirmed",
               "minimumProjectedNodeTextDetail": "context",
               "minimumProjectedNodeTextOwner": {
                 "kind": "node",
-                "id": "platform"
+                "id": "maintenance"
               },
               "minimumRequiredNodeTextPx": 6,
               "readabilityOk": true,
@@ -887,7 +887,7 @@
               "innerWidth": 1920,
               "innerHeight": 1080,
               "scrollWidth": 1920,
-              "scrollHeight": 1855,
+              "scrollHeight": 2170,
               "overflowX": false,
               "overflowY": true,
               "verticalScrollAccepted": true,
@@ -896,25 +896,25 @@
               "readerOverflow": "authored",
               "readerFit": "intrinsic-height",
               "ok": true,
-              "readerWidth": 1010,
-              "diagramWidth": 980,
+              "readerWidth": 960,
+              "diagramWidth": 912,
               "pageComposition": {
                 "bodyPaddingPx": 64,
-                "headerPx": 60,
+                "headerPx": 76,
                 "diagramChromePx": 84,
-                "svgPx": 1646,
+                "svgPx": 1946,
                 "cardsPx": 0,
-                "viewBoxHeight": 1646
+                "viewBoxHeight": 1946
               },
-              "viewBoxWidth": 980,
-              "minimumProjectedNodeTextPx": 7.2,
-              "minimumProjectedNonEdgeTextPx": 7.2,
+              "viewBoxWidth": 912,
+              "minimumProjectedNodeTextPx": 6.1,
+              "minimumProjectedNonEdgeTextPx": 6.1,
               "minimumProjectedEdgeTextPx": 8,
-              "minimumProjectedNodeText": "Every org, usage metrics, error log",
+              "minimumProjectedNodeText": "Breakdown pauses the Production Line step until confirmed",
               "minimumProjectedNodeTextDetail": "context",
               "minimumProjectedNodeTextOwner": {
                 "kind": "node",
-                "id": "platform"
+                "id": "maintenance"
               },
               "minimumRequiredNodeTextPx": 6,
               "readabilityOk": true,
@@ -937,7 +937,7 @@
               "innerWidth": 2048,
               "innerHeight": 1320,
               "scrollWidth": 2048,
-              "scrollHeight": 1873,
+              "scrollHeight": 2188,
               "overflowX": false,
               "overflowY": true,
               "verticalScrollAccepted": true,
@@ -946,25 +946,25 @@
               "readerOverflow": "authored",
               "readerFit": "intrinsic-height",
               "ok": true,
-              "readerWidth": 1030,
-              "diagramWidth": 980,
+              "readerWidth": 962,
+              "diagramWidth": 912,
               "pageComposition": {
                 "bodyPaddingPx": 64,
-                "headerPx": 68,
+                "headerPx": 84,
                 "diagramChromePx": 94,
-                "svgPx": 1646,
+                "svgPx": 1946,
                 "cardsPx": 0,
-                "viewBoxHeight": 1646
+                "viewBoxHeight": 1946
               },
-              "viewBoxWidth": 980,
-              "minimumProjectedNodeTextPx": 7.2,
-              "minimumProjectedNonEdgeTextPx": 7.2,
+              "viewBoxWidth": 912,
+              "minimumProjectedNodeTextPx": 6.1,
+              "minimumProjectedNonEdgeTextPx": 6.1,
               "minimumProjectedEdgeTextPx": 8,
-              "minimumProjectedNodeText": "Every org, usage metrics, error log",
+              "minimumProjectedNodeText": "Breakdown pauses the Production Line step until confirmed",
               "minimumProjectedNodeTextDetail": "context",
               "minimumProjectedNodeTextOwner": {
                 "kind": "node",
-                "id": "platform"
+                "id": "maintenance"
               },
               "minimumRequiredNodeTextPx": 6,
               "readabilityOk": true,
@@ -1001,14 +1001,14 @@
     "browserCheckReceipt": "G:\\Pro-ERP\\marketing\\analysis\\pro-erp-system-map-v2.browser-check.json"
   },
   "visualReview": "not-requested",
-  "finishedAt": "2026-10-07T09:26:20.820Z",
-  "durationMs": 19236,
+  "finishedAt": "2026-10-10T06:16:03.832Z",
+  "durationMs": 11228,
   "update": {
     "status": "current",
     "installedVersion": "3.0.1",
     "availableVersion": "3.0.1",
     "releaseNotes": null,
-    "checkedAt": "2026-10-07T09:13:13.140Z",
+    "checkedAt": "2026-10-10T06:07:46.009Z",
     "source": "cache",
     "noticeRequired": false,
     "noticeText": null
