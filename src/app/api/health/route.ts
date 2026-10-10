@@ -125,7 +125,7 @@ export async function GET() {
         database: Boolean(connectionString),
         jwtSecret: Boolean(process.env.JWT_SECRET),
         cronSecret: Boolean(process.env.CRON_SECRET),
-        blobStorage: Boolean(process.env.BLOB_READ_WRITE_TOKEN),
+        fileStorage: Boolean(process.env.UPLOADS_DIR),
         // Count only — the addresses themselves stay out of a public endpoint.
         platformAdmins: getPlatformAdminEmails().length,
       },

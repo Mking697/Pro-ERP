@@ -21,11 +21,12 @@ const CSP = [
   "default-src 'self'",
   "script-src 'self' 'unsafe-inline'",
   "style-src 'self' 'unsafe-inline'",
-  // Blob holds logos and attachments; Drive serves anything stored in an org's own folder.
-  "img-src 'self' data: blob: https://*.public.blob.vercel-storage.com https://drive.google.com https://*.googleusercontent.com",
+  // Attachments/logos are now served from this same origin under /uploads; Drive serves
+  // anything stored in an org's own folder.
+  "img-src 'self' data: blob: https://drive.google.com https://*.googleusercontent.com",
   // next/font self-hosts, so no external font origin is needed.
   "font-src 'self' data:",
-  "connect-src 'self' https://*.public.blob.vercel-storage.com",
+  "connect-src 'self'",
   "frame-ancestors 'none'",
   "object-src 'none'",
   "base-uri 'none'",

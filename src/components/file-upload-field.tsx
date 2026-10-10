@@ -1,7 +1,6 @@
 "use client";
 
 import { useId, useRef, useState, type ChangeEvent, type DragEvent } from "react";
-import { upload } from "@vercel/blob/client";
 import { toast } from "sonner";
 import { FileUp, Loader2, Paperclip, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -32,34 +31,21 @@ export default function FileUploadField({
   async function uploadFile(file: File) {
     setUploading(true);
     try {
-      // Uploads straight from the browser to Blob storage — the file never passes through
-      // this app's own serverless function, so there's no ~4.5MB Vercel body-size ceiling
-      // to hit. /api/blob/upload only ever hands out a scoped, one-time token; the real
-      // size/type limits it enforces live there (src/app/api/blob/upload/route.ts).
-      //
-      // The path is scoped under the caller's own orgId — the upload route only issues a
-      // token when the pathname's orgId segment matches the session's, so this first reads
-      // which org that session belongs to via /api/auth/me (the session cookie itself is
-      // httpOnly and can't be read directly from here). The upload route re-verifies the
-      // session itself, so a stale/wrong orgId read here would simply fail the upload, not
-      // grant access to anything.
-      const meRes = await fetch("/api/auth/me");
-      const { user } = (await meRes.json().catch(() => ({ user: null }))) as {
-        user: { orgId?: string } | null;
-      };
-      if (!user?.orgId) throw new Error(t("Session expire ho gaya. Dubara login karein."));
+      // Posted straight to this app's own /api/blob/upload route, which writes the file
+      // to local disk on this server (src/lib/storage.ts) — there's no serverless
+      // function body-size ceiling to work around on a self-hosted VPS, so the file goes
+      // straight through this server, scoped server-side to the caller's own session/org
+      // (never a client-supplied path).
+      const formData = new FormData();
+      formData.append("file", file);
 
-      const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_").slice(0, 100) || "file";
-      const pathname = `attachments/${user.orgId}/${crypto.randomUUID()}-${safeName}`;
+      const res = await fetch("/api/blob/upload", { method: "POST", body: formData });
+      const body = (await res.json().catch(() => ({}))) as { url?: string; error?: string };
+      if (!res.ok || !body.url) {
+        throw new Error(body.error || t("Upload nahi ho paya. Internet check karke dobara try karein."));
+      }
 
-      const blob = await upload(pathname, file, {
-        access: "public",
-        handleUploadUrl: "/api/blob/upload",
-        contentType: file.type,
-        clientPayload: file.type,
-      });
-
-      onChange(blob.url);
+      onChange(body.url);
       toast.success(t("File upload ho gayi."));
     } catch (err) {
       toast.error(
