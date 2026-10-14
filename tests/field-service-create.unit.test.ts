@@ -1,0 +1,18 @@
+import { beforeEach, expect, it, vi } from "vitest";
+const h=vi.hoisted(()=>({inTx:false, txCalls:0, inserted:[] as Record<string,unknown>[], active:true, failActivity:false}));
+vi.mock("@/db/client",()=>({db:{select:()=>({from:()=>({where:async()=>[{max:"9"}]})})},runInTenantTransaction:async(_org:string,fn:()=>Promise<unknown>)=>{h.txCalls++;h.inTx=true;const before=h.inserted.length;try{return await fn();}catch(e){h.inserted.length=before;throw e;}finally{h.inTx=false;}}}));
+vi.mock("@/db/repo",()=>({findById:async()=>({customerName:"Customer",status:h.active?"Active":"Inactive"}),insertRecord:async(_table:unknown,row:Record<string,unknown>)=>{expect(h.inTx).toBe(true);h.inserted.push(row);return {...row,currentCycle:1,createdAt:new Date()};},listByOrg:async()=>[]}));
+vi.mock("@/lib/tenant",()=>({getTenantOrgId:async()=>"org-a"}));
+vi.mock("@/lib/fieldService/assignments",()=>({attachAssignments:async()=>new Map(),getAssignedTaskIds:async()=>new Set()}));
+vi.mock("@/lib/fieldService/steps",()=>({getStep:async()=>null,attachSteps:async()=>new Map()}));
+vi.mock("@/lib/fieldService/reads",()=>({getBatchDetails:async()=>({customers:new Map([["c",{customerName:"Customer"}]]),assignments:new Map(),steps:new Map()})}));
+vi.mock("@/lib/fieldService/core",()=>({logFieldServiceActivity:async()=>{expect(h.inTx).toBe(true);if(h.failActivity)throw Error("activity failure");}}));
+import { createComplaint } from "@/lib/fieldService/complaints";
+import { createServiceJob } from "@/lib/fieldService/serviceJobs";
+import { createSiteVisit } from "@/lib/fieldService/siteVisits";
+beforeEach(()=>{h.inTx=false;h.txCalls=0;h.inserted=[];h.active=true;h.failActivity=false;});
+it("allocates complaint number numerically inside transaction and stamps creator",async()=>{await createComplaint({customerId:"c",issueDescription:"broken",warrantyStatus:"Out_Of_Warranty"},"staff");expect(h.inserted[0]).toMatchObject({complaintNo:10,createdBy:"staff",orgId:"org-a"});expect(h.txCalls).toBe(1);});
+it("allocates site visit number numerically inside transaction and stamps creator",async()=>{await createSiteVisit({customerId:"c",visitFor:"Other"},"staff");expect(h.inserted[0]).toMatchObject({serialNo:10,createdBy:"staff"});});
+it("creates service with creator inside transaction",async()=>{await createServiceJob({customerId:"c"},"staff");expect(h.inserted[0]).toMatchObject({createdBy:"staff"});});
+it("rejects inactive customer before insertion",async()=>{h.active=false;await expect(createServiceJob({customerId:"c"},"staff")).rejects.toThrow();expect(h.inserted).toEqual([]);});
+it("rolls back creation on activity failure without retrying arbitrary errors",async()=>{h.failActivity=true;await expect(createComplaint({customerId:"c",issueDescription:"broken",warrantyStatus:"Out_Of_Warranty"},"staff")).rejects.toThrow("activity failure");expect(h.inserted).toEqual([]);expect(h.txCalls).toBe(1);});

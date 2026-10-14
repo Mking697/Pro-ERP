@@ -1,4 +1,5 @@
 import { MODULE_ACCESS_KEYS, type ModuleAccessKey } from "@/lib/moduleAccess";
+import { translatorFor } from "@/lib/i18n";
 import type { Locale } from "@/lib/preferences";
 import { GUIDE_EN } from "@/lib/guide.en";
 
@@ -51,7 +52,43 @@ export interface GuideChapter {
   sections: GuideSection[];
 }
 
+const t = translatorFor("hi");
+
 export const GUIDE: GuideChapter[] = [
+  {
+    id: "field-service",
+    title: t("Services, Complaints aur Site Visits"),
+    description: t("Customer ke site par installation, repair aur inspection ka kaam."),
+    sections: [
+      {
+        id: "field-service-manage",
+        title: t("Service job banana"),
+        audience: "SERVICE_FMS",
+        summary: "Services me Customer Master se customer chunein, product aur site details bharein, phir ek ya zyada active user ko Doer assign karein.",
+        notes: ["Google Sheet sync ya public form nahi hai. Entries sirf signed-in staff banata hai.", "Fund advance har selected Doer ke liye work record hai; Accounts me automatic payment ya journal post nahi hota."],
+      },
+      {
+        id: "field-complaint-manage",
+        title: t("Complaint register karna"),
+        audience: "COMPLAINT_FMS",
+        summary: "Complaints me existing customer, issue aur warranty status bharein. Job/order reference aur problem attachments optional hain. Complaint number organization ke andar unique hai.",
+      },
+      {
+        id: "field-visit-manage",
+        title: t("Site Visit raise karna"),
+        audience: "SITE_VISIT_FMS",
+        summary: "Site Visits me customer aur visit purpose chunein. Site address, attendant aur map pin save karke Doer assign karein. Request ka site pin aur Doer ki actual GPS location alag records hain.",
+      },
+      {
+        id: "field-work-complete",
+        title: t("Doer ka 3-step completion"),
+        audience: "everyone",
+        summary: "Assigned Doer apna kaam Services, Complaints ya Site Visits me kholta hai. Management access nahi hai to sirf apne assigned records dikhte hain.",
+        steps: ["Step 1: site photo upload karein aur device GPS permission allow karein. Video optional hai.", "Step 2: Service/Complaint me work evidence upload karein; Site Visit me visit notes bharein. Site chart/calculation upload optional hai.", "Step 3: expense amount (zero bhi allowed), notes aur optional bills save karein. Kaam Completed ho jaata hai."],
+        notes: ["GPS device-reported location hai, tamper-proof attendance proof nahi.", "Completed kaam dobara assign karne par naya round banta hai. Purane round ka evidence aur expense history preserve hoti hai.", "Assignment aur step-completion WhatsApp alerts existing ChatXFlow settings use karte hain; notification fail hone par saved work undo nahi hota."],
+      },
+    ],
+  },
   {
     id: "basics",
     title: "Shuruaat",

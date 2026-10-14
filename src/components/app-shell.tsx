@@ -1,4 +1,5 @@
 import { getTenant, runWithTenant } from "@/lib/tenant";
+import { getT } from "@/lib/i18n/server";
 import type { SessionPayload } from "@/lib/auth/session";
 import type { NavEntry, NavItem } from "@/components/nav-links";
 import SidebarShell from "@/components/sidebar-shell";
@@ -24,6 +25,7 @@ export default async function AppShell({
   session: SessionPayload;
   children: React.ReactNode;
 }) {
+  const t = await getT();
   const tenant = await getTenant();
   if (tenant.orgId !== session.orgId) throw new Error("Tenant/session mismatch");
   const org = tenant.org;
@@ -57,6 +59,17 @@ export default async function AppShell({
   ];
   if (session.access.includes("PERFORMANCE_VIEW")) {
     mdoItems.push({ icon: "performance", href: "/performance", label: "Performance" });
+  }
+  // An assigned employee needs a destination even without the management grant.
+  // Each board/API scopes non-managers to their own assigned work.
+  if (!session.access.includes("SERVICE_FMS")) {
+    mdoItems.push({ icon: "fms", href: "/services", label: t("Service Jobs") });
+  }
+  if (!session.access.includes("COMPLAINT_FMS")) {
+    mdoItems.push({ icon: "fms", href: "/complaints", label: t("Complaints") });
+  }
+  if (!session.access.includes("SITE_VISIT_FMS")) {
+    mdoItems.push({ icon: "fms", href: "/site-visits", label: t("Site Visits") });
   }
   items.push({ icon: "mdo", label: "MDO", items: mdoItems });
 
@@ -121,6 +134,15 @@ export default async function AppShell({
   }
   if (session.access.includes("MAINTENANCE_FMS")) {
     fmsItems.push({ icon: "fms", href: "/maintenance", label: "Maintenance" });
+  }
+  if (session.access.includes("SERVICE_FMS")) {
+    fmsItems.push({ icon: "fms", href: "/services", label: t("Service Jobs") });
+  }
+  if (session.access.includes("COMPLAINT_FMS")) {
+    fmsItems.push({ icon: "fms", href: "/complaints", label: t("Complaints") });
+  }
+  if (session.access.includes("SITE_VISIT_FMS")) {
+    fmsItems.push({ icon: "fms", href: "/site-visits", label: t("Site Visits") });
   }
   for (const tpl of otherFmsTemplates) {
     fmsItems.push({ icon: "fms", href: `/fms/${tpl.templateId}`, label: tpl.templateName });

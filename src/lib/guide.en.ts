@@ -1,4 +1,7 @@
 import type { GuideChapter } from "@/lib/guide";
+import { translatorFor } from "@/lib/i18n";
+
+const t = translatorFor("en");
 
 /**
  * The guidebook in English.
@@ -10,6 +13,40 @@ import type { GuideChapter } from "@/lib/guide";
  * section ids, so a section added to one and forgotten in the other is reported.
  */
 export const GUIDE_EN: GuideChapter[] = [
+  {
+    id: "field-service",
+    title: t("Services, Complaints aur Site Visits"),
+    description: t("Customer ke site par installation, repair aur inspection ka kaam."),
+    sections: [
+      {
+        id: "field-service-manage",
+        title: t("Service job banana"),
+        audience: "SERVICE_FMS",
+        summary: "In Services, select a customer from Customer Master, enter product and site details, then assign one or more active users as Doers.",
+        notes: ["There is no Google Sheet sync or public form. Signed-in staff create the entries.", "Fund advances are work records for each selected Doer; they do not automatically post Accounts payments or journals."],
+      },
+      {
+        id: "field-complaint-manage",
+        title: t("Complaint register karna"),
+        audience: "COMPLAINT_FMS",
+        summary: "Select an existing customer and enter the issue and warranty status. Job/order reference and problem attachments are optional. Complaint numbers are unique within each organization.",
+      },
+      {
+        id: "field-visit-manage",
+        title: t("Site Visit raise karna"),
+        audience: "SITE_VISIT_FMS",
+        summary: "Select the customer and visit purpose, enter the address and attendant, and save a map pin before assigning Doers. The requested site pin and the Doer's actual GPS capture are separate records.",
+      },
+      {
+        id: "field-work-complete",
+        title: t("Doer ka 3-step completion"),
+        audience: "everyone",
+        summary: "Assigned Doers open their work in Services, Complaints or Site Visits. Users without management access see only their assigned records.",
+        steps: ["Step 1: upload a site photo and allow device GPS access. Video is optional.", "Step 2: upload work evidence for a Service/Complaint, or enter visit notes for a Site Visit. Uploading a site chart/calculation is optional.", "Step 3: save the expense amount (zero is allowed), notes and optional bills. The work becomes Completed."],
+        notes: ["GPS is device-reported location, not tamper-proof attendance evidence.", "Assigning completed work again starts a new round, preserving the old evidence and expense history.", "Assignment and step-completion WhatsApp alerts use existing ChatXFlow settings; failed notifications do not undo saved work."],
+      },
+    ],
+  },
   {
     id: "basics",
     title: "Getting started",

@@ -1,0 +1,10 @@
+import { beforeEach, expect, it, vi } from "vitest";
+import { fieldTaskAssignments } from "@/db/schema";
+const h=vi.hoisted(()=>({rows:[{id:"s1",taskType:"SERVICE",taskId:"t",cycle:1,step3At:new Date(),step1At:null,step2At:null,latitude:null,longitude:null,expenseAmount:"0"},{id:"s2",taskType:"SERVICE",taskId:"t",cycle:2,step3At:null,step1At:null,step2At:null,latitude:null,longitude:null,expenseAmount:null}],assignments:[{doerId:"u",doerName:"User",cycle:1,fundAmount:"0",fundNotes:""}],status:"Assigned"}));
+vi.mock("@/db/client",()=>({db:{select:()=>({from:(table:unknown)=>({where:async()=>table===fieldTaskAssignments?h.assignments:h.rows})})}}));
+vi.mock("@/lib/fieldService/core",()=>({getFieldTaskCore:async()=>({currentCycle:2,status:h.status})}));
+vi.mock("@/lib/chatxflow",()=>({sendWhatsAppMessage:vi.fn()}));
+import { getTaskHistory } from "@/lib/fieldService/steps";
+beforeEach(()=>{h.status="Assigned";});
+it("returns preserved completed rounds and not incomplete active work",async()=>{const history=await getTaskHistory("org-a","SERVICE","t");expect(history.map(r=>r.cycle)).toEqual([1]);expect(history[0].assignments[0]).toMatchObject({doerName:"User",fundAmount:0});});
+it("limits doer history to cycles assigned to that user",async()=>{expect(await getTaskHistory("org-a","SERVICE","t","foreign")).toEqual([]);expect((await getTaskHistory("org-a","SERVICE","t","u")).length).toBe(1);});

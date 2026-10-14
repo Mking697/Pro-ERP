@@ -11,6 +11,11 @@
  * meant promoting them. Now it is a checkbox.
  */
 
+import { translatorFor } from "@/lib/i18n";
+
+// Definition strings stay source keys; ModuleAccessPicker translates for the viewer.
+const t = translatorFor("hi");
+
 export const MODULE_ACCESS = [
   {
     key: "TASK_DELEGATE",
@@ -155,6 +160,24 @@ export const MODULE_ACCESS = [
     label: "Maintenance",
     description: "Breakdown aur maintenance requests handle kar sakta hai, Production Line ka pause/resume manage kar sakta hai",
     href: "/maintenance",
+  },
+  {
+    key: "SERVICE_FMS",
+    label: t("Service Jobs"),
+    description: t("Service/installation job punch kar sakta hai, Doer assign kar sakta hai aur unka 3-step completion dekh sakta hai"),
+    href: "/services",
+  },
+  {
+    key: "COMPLAINT_FMS",
+    label: t("Complaints"),
+    description: t("Customer complaint punch kar sakta hai, Doer assign kar sakta hai aur resolution track kar sakta hai"),
+    href: "/complaints",
+  },
+  {
+    key: "SITE_VISIT_FMS",
+    label: t("Site Visits"),
+    description: t("Site visit/inspection request raise kar sakta hai, Doer assign kar sakta hai aur visit report track kar sakta hai"),
+    href: "/site-visits",
   },
 ] as const;
 export type ModuleAccessKey = (typeof MODULE_ACCESS)[number]["key"];
