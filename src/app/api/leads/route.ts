@@ -23,7 +23,7 @@ export async function GET(request: Request) {
   const statusParam = url.searchParams.get("status");
   const status = STATUSES.includes(statusParam as LeadStatus) ? (statusParam as LeadStatus) : undefined;
 
-  const leads = await listLeads(status);
+  const leads = await listLeads(status, { role: guard.session.role, fullName: guard.session.fullName });
   return NextResponse.json({ leads });
 }
 

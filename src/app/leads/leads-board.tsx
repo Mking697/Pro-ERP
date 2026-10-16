@@ -102,7 +102,7 @@ export default function LeadsBoard({ initialLeads }: { initialLeads: LeadRow[] }
         {TABS.map((tb) => (
           <TabsContent key={tb.value} value={tb.value} className="mt-4">
             {loading ? (
-              <TableSkeleton columns={6} label={t("Leads load ho rahe hain")} />
+              <TableSkeleton columns={7} label={t("Leads load ho rahe hain")} />
             ) : filtered.length === 0 ? (
               <EmptyState
                 icon={<Users />}
@@ -119,6 +119,7 @@ export default function LeadsBoard({ initialLeads }: { initialLeads: LeadRow[] }
                       <TableHead>{t("Phone")}</TableHead>
                       <TableHead>{t("City")}</TableHead>
                       <TableHead>Status</TableHead>
+                      <TableHead>{t("Assigned To")}</TableHead>
                       <TableHead>{t("Agla Follow-up / Meeting")}</TableHead>
                       <TableHead className="w-10" />
                     </TableRow>
@@ -138,6 +139,7 @@ export default function LeadsBoard({ initialLeads }: { initialLeads: LeadRow[] }
                         <TableCell>
                           <Badge variant={statusVariant(lead.status)}>{t(LEAD_STATUS_LABEL[lead.status])}</Badge>
                         </TableCell>
+                        <TableCell className="text-muted-foreground">{lead.assignedTo || "—"}</TableCell>
                         <TableCell className="text-muted-foreground">
                           {(lead.nextFollowUpAt || lead.meetingAt)
                             ? new Date(lead.nextFollowUpAt || lead.meetingAt).toLocaleString("en-IN")

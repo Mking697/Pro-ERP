@@ -18,7 +18,7 @@ export default async function LeadsPage() {
   // Fetched here (server-rendered, same request the page itself needs) rather than left
   // for LeadsBoard's own client-side effect to fetch after hydration — removes the
   // always-shows-once loading skeleton a client-only fetch used to produce on first paint.
-  const initialLeads = await listLeads();
+  const initialLeads = await listLeads(undefined, { role: session.role, fullName: session.fullName });
 
   return (
     <AppShell session={session}>

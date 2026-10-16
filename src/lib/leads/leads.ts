@@ -129,12 +129,27 @@ export async function listSalesPersons(): Promise<SalesPersonOption[]> {
     .sort((a, b) => a.fullName.localeCompare(b.fullName));
 }
 
-export async function listLeads(status?: LeadStatus): Promise<LeadRecord[]> {
+export interface LeadViewer {
+  role: string;
+  fullName: string;
+}
+
+/**
+ * `viewer` scopes visibility: an Admin sees every lead in the org (and who it's assigned
+ * to); anyone else only sees leads assigned to them (`assignedTo` is stored as the sales
+ * person's full name — see create-lead-dialog.tsx/leads-board.tsx's assign dropdown — so
+ * the match is on fullName, not userId). Omitting `viewer` keeps the old unscoped
+ * behaviour for internal/background callers (chatbot tools, scripts) that already run
+ * with their own trust boundary.
+ */
+export async function listLeads(status?: LeadStatus, viewer?: LeadViewer): Promise<LeadRecord[]> {
   const orgId = await getTenantOrgId();
   const rows = status
     ? await db.select().from(leads).where(and(eq(leads.orgId, orgId), eq(leads.status, status)))
     : await listByOrg(leads, orgId);
-  return rows.map(rowToLead).sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
+  const scoped =
+    viewer && viewer.role !== "Admin" ? rows.filter((r) => r.assignedTo === viewer.fullName) : rows;
+  return scoped.map(rowToLead).sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
 }
 
 export async function listLeadActivities(leadId: string): Promise<LeadActivityRecord[]> {

@@ -167,7 +167,7 @@ export default async function DashboardPage({
 
         <ModuleQuickNav access={session.access} t={t} />
 
-        <AttentionStrip access={session.access} t={t} />
+        <AttentionStrip access={session.access} session={{ role: session.role, fullName: session.fullName }} t={t} />
 
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
           <StatCard

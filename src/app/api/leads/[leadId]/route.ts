@@ -12,6 +12,17 @@ import {
   scheduleMeeting,
 } from "@/lib/leads/leads";
 
+/** A non-Admin may only read/act on a lead assigned to them — mirrors listLeads()'s own
+ * viewer scoping (src/lib/leads/leads.ts), so a Doer can't reach another salesperson's
+ * lead just by guessing/sharing its leadId. Returns null (treated as 404) rather than a
+ * distinct 403 so this doesn't leak whether the leadId exists at all. */
+async function loadOwnedLead(leadId: string, session: { role: string; fullName: string }) {
+  const detail = await getLead(leadId);
+  if (!detail) return null;
+  if (session.role !== "Admin" && detail.lead.assignedTo !== session.fullName) return null;
+  return detail;
+}
+
 export async function GET(
   _request: Request,
   { params }: { params: Promise<{ leadId: string }> }
@@ -20,7 +31,7 @@ export async function GET(
   if (!guard.ok) return guard.response;
 
   const { leadId } = await params;
-  const detail = await getLead(leadId);
+  const detail = await loadOwnedLead(leadId, guard.session);
   if (!detail) {
     return NextResponse.json({ error: "Lead nahi mila." }, { status: 404 });
   }
@@ -80,6 +91,10 @@ export async function PATCH(
   }
 
   const actorId = guard.session.userId;
+  const owned = await loadOwnedLead(leadId, guard.session);
+  if (!owned) {
+    return NextResponse.json({ error: "Lead nahi mila." }, { status: 404 });
+  }
 
   try {
     switch (parsed.data.action) {

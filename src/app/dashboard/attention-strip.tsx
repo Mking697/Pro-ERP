@@ -62,9 +62,11 @@ function accentVarFor(accent: Tile["accent"]): string {
  */
 export default async function AttentionStrip({
   access,
+  session,
   t,
 }: {
   access: readonly string[];
+  session: { role: string; fullName: string };
   t: Translator;
 }) {
   const tiles: Tile[] = [];
@@ -86,7 +88,7 @@ export default async function AttentionStrip({
   }
 
   if (access.includes("LEAD_FMS")) {
-    const leads = await safe(() => listLeads());
+    const leads = await safe(() => listLeads(undefined, session));
     if (leads) {
       const open = leads.filter(
         (l) => !["Junk", "Order_Confirmed", "Lost"].includes(l.status)
