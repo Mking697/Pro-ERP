@@ -13,7 +13,7 @@ export async function GET() {
   if (!guard.ok) return guard.response;
 
   const csv = buildCsv([
-    ["Person Name", "Phone", "Email", "Company Name", "City", "State", "Product Interest", "Message"],
+    ["Person Name", "Phone", "Email", "Company Name", "City", "State", "Product Interest", "Message", "Assigned To"],
     [
       "EXAMPLE - delete this row before uploading",
       "9876543210",
@@ -23,6 +23,7 @@ export async function GET() {
       "Punjab",
       "Wall Panels",
       "Enquired at exhibition",
+      "Full name of the sales person (as in Users)",
     ],
   ]);
 

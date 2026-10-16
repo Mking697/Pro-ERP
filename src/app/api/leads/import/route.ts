@@ -37,6 +37,10 @@ const HEADER_ALIASES: Record<string, LeadField> = {
   message: "message",
   notes: "message",
   source: "source",
+  assignedto: "assignedTo",
+  assigned: "assignedTo",
+  salesperson: "assignedTo",
+  salesrep: "assignedTo",
 };
 
 export async function POST(request: Request) {
@@ -81,6 +85,7 @@ export async function POST(request: Request) {
         productInterest: fields.productInterest ?? "",
         message: fields.message ?? "",
         source: fields.source ?? "",
+        assignedTo: fields.assignedTo ?? "",
       })
     );
   } catch {

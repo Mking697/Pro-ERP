@@ -5,6 +5,8 @@ import { db } from "@/db/client";
 import { findById, insertRecord, listByOrg, updateById } from "@/db/repo";
 import { getTenantOrgId } from "@/lib/tenant";
 import { generateId } from "@/lib/id";
+import { listUsers } from "@/lib/auth/users";
+import { effectiveModuleAccess } from "@/lib/moduleAccess";
 
 /**
  * Lead FMS — lead capture through the pipeline (Qualify -> Follow-up -> Meeting ->
@@ -107,6 +109,24 @@ function rowToActivity(row: LeadActivityRow): LeadActivityRecord {
     actorId: row.actorId,
     createdAt: row.createdAt.toISOString(),
   };
+}
+
+export interface SalesPersonOption {
+  userId: string;
+  fullName: string;
+}
+
+/**
+ * Every Active user who holds LEAD_FMS (Admins implicitly included, via
+ * effectiveModuleAccess) — who a lead can actually be assigned to. Mirrors orders.ts's
+ * own (private, per-module) listUsersWithGrant() convention.
+ */
+export async function listSalesPersons(): Promise<SalesPersonOption[]> {
+  const all = await listUsers();
+  return all
+    .filter((u) => u.Status === "Active" && effectiveModuleAccess(u.Role, u.Module_Access).includes("LEAD_FMS"))
+    .map((u) => ({ userId: u.User_ID, fullName: u.Full_Name }))
+    .sort((a, b) => a.fullName.localeCompare(b.fullName));
 }
 
 export async function listLeads(status?: LeadStatus): Promise<LeadRecord[]> {

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { toast } from "sonner";
 import {
   Dialog,
@@ -15,6 +15,13 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { useT } from "@/components/preferences-provider";
 import type { LeadRow } from "./types";
 
@@ -27,7 +34,13 @@ const EMPTY = {
   state: "",
   productInterest: "",
   message: "",
+  assignedTo: "",
 };
+
+interface SalesPersonOption {
+  userId: string;
+  fullName: string;
+}
 
 /** Manual "+ Add" — only the person's name is actually required, matching how a lead can
  * arrive with nothing else known yet. */
@@ -36,6 +49,17 @@ export default function CreateLeadDialog({ onCreated }: { onCreated: (lead: Lead
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState(EMPTY);
   const [saving, setSaving] = useState(false);
+  const [salesPersons, setSalesPersons] = useState<SalesPersonOption[]>([]);
+
+  // Fetched once the dialog is actually opened — no point loading the list for a form
+  // nobody has opened yet.
+  useEffect(() => {
+    if (!open) return;
+    fetch("/api/leads/sales-persons-lookup")
+      .then((res) => res.json())
+      .then((data: { salesPersons?: SalesPersonOption[] }) => setSalesPersons(data.salesPersons ?? []))
+      .catch(() => setSalesPersons([]));
+  }, [open]);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -134,6 +158,25 @@ export default function CreateLeadDialog({ onCreated }: { onCreated: (lead: Lead
               value={form.productInterest}
               onChange={(e) => setForm((f) => ({ ...f, productInterest: e.target.value }))}
             />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="assignedTo">{t("Assign To (Sales Person)")}</Label>
+            <Select
+              value={form.assignedTo || "__unassigned__"}
+              onValueChange={(v) => setForm((f) => ({ ...f, assignedTo: !v || v === "__unassigned__" ? "" : v }))}
+            >
+              <SelectTrigger id="assignedTo" className="w-full">
+                <SelectValue placeholder={t("Sales person chunein")} />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__unassigned__">{t("Abhi assign na karein")}</SelectItem>
+                {salesPersons.map((sp) => (
+                  <SelectItem key={sp.userId} value={sp.fullName}>
+                    {sp.fullName}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
           <div className="space-y-2">
             <Label htmlFor="message">Message</Label>
