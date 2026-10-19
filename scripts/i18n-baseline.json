@@ -9001,6 +9001,54 @@
       "kind": "property:message",
       "text": "Transport Vendor ka naam zaroori hai.",
       "count": 1
+    },
+    {
+      "file": "src/lib/guide.ts",
+      "kind": "property:title",
+      "text": "Bina Lead ke seedha Quotation banana (Independent Quotation)",
+      "count": 1
+    },
+    {
+      "file": "src/lib/guide.ts",
+      "kind": "property:title",
+      "text": "General PO — raw material ke alawa kuch bhi kharidna",
+      "count": 1
+    },
+    {
+      "file": "src/lib/guide.ts",
+      "kind": "property:title",
+      "text": "Job Costing — ek Job ka pura kharch",
+      "count": 1
+    },
+    {
+      "file": "src/lib/guide.ts",
+      "kind": "property:title",
+      "text": "Saara Inventory Data Reset Karna (Admin)",
+      "count": 1
+    },
+    {
+      "file": "src/lib/guide.en.ts",
+      "kind": "property:title",
+      "text": "Creating a Quotation directly, without a Lead (Independent Quotation)",
+      "count": 1
+    },
+    {
+      "file": "src/lib/guide.en.ts",
+      "kind": "property:title",
+      "text": "General PO — buying anything besides raw material",
+      "count": 1
+    },
+    {
+      "file": "src/lib/guide.en.ts",
+      "kind": "property:title",
+      "text": "Job Costing — a Job's full spend",
+      "count": 1
+    },
+    {
+      "file": "src/lib/guide.en.ts",
+      "kind": "property:title",
+      "text": "Resetting all Inventory data (Admin)",
+      "count": 1
     }
   ],
   "untranslated": []

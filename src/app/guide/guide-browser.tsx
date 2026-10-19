@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Search, X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -29,23 +29,62 @@ function sectionHaystack(section: GuideSection): string {
 export default function GuideBrowser({ chapters }: { chapters: GuideChapter[] }) {
   const t = useT();
   const [query, setQuery] = useState("");
+  const [activeId, setActiveId] = useState<string | null>(null);
+  const [activeMatchPos, setActiveMatchPos] = useState(0);
+  const matchIndexRef = useRef(0);
+  const highlightTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const normalized = query.trim().toLowerCase();
 
-  const { filteredChapters, matchCount } = useMemo(() => {
-    if (!normalized) return { filteredChapters: chapters, matchCount: 0 };
+  const { filteredChapters, matchCount, matchedSectionIds } = useMemo(() => {
+    if (!normalized) return { filteredChapters: chapters, matchCount: 0, matchedSectionIds: [] as string[] };
     let count = 0;
+    const ids: string[] = [];
     const filtered = chapters
       .map((chapter) => {
         const sections = chapter.sections.filter((section) =>
           sectionHaystack(section).includes(normalized)
         );
+        for (const section of sections) ids.push(section.id);
         count += sections.length;
         return { ...chapter, sections };
       })
       .filter((chapter) => chapter.sections.length > 0);
-    return { filteredChapters: filtered, matchCount: count };
+    return { filteredChapters: filtered, matchCount: count, matchedSectionIds: ids };
   }, [chapters, normalized]);
+
+  // Every fresh query starts the "find" cursor back at the first match, so repeated
+  // Enter presses always begin from the top instead of resuming an old search's position.
+  function updateQuery(value: string) {
+    setQuery(value);
+    matchIndexRef.current = 0;
+    setActiveMatchPos(0);
+  }
+
+  useEffect(() => {
+    return () => {
+      if (highlightTimerRef.current) clearTimeout(highlightTimerRef.current);
+    };
+  }, []);
+
+  /** Find-in-page behaviour: Enter jumps to (and briefly highlights) the next matching
+   * section, wrapping back to the first once the last match is passed — the same cycle a
+   * browser's native Ctrl+F uses, since typing alone already filters the list below but
+   * doesn't move the page to the answer. */
+  function jumpToNextMatch() {
+    if (matchedSectionIds.length === 0) return;
+    const idx = matchIndexRef.current % matchedSectionIds.length;
+    const id = matchedSectionIds[idx];
+    matchIndexRef.current = idx + 1;
+    setActiveMatchPos(idx + 1);
+
+    const el = document.getElementById(id);
+    el?.scrollIntoView({ behavior: "smooth", block: "center" });
+
+    if (highlightTimerRef.current) clearTimeout(highlightTimerRef.current);
+    setActiveId(id);
+    highlightTimerRef.current = setTimeout(() => setActiveId(null), 2200);
+  }
 
   return (
     <div className="space-y-6">
@@ -57,7 +96,13 @@ export default function GuideBrowser({ chapters }: { chapters: GuideChapter[] })
         <Input
           type="search"
           value={query}
-          onChange={(e) => setQuery(e.target.value)}
+          onChange={(e) => updateQuery(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              jumpToNextMatch();
+            }
+          }}
           placeholder={t("Guide mein dhoondein... (jaise 'stock', 'payroll', 'approval')")}
           aria-label={t("Guidebook search")}
           className="pl-9"
@@ -65,7 +110,7 @@ export default function GuideBrowser({ chapters }: { chapters: GuideChapter[] })
         {query && (
           <button
             type="button"
-            onClick={() => setQuery("")}
+            onClick={() => updateQuery("")}
             aria-label={t("Search saaf karein")}
             className="absolute top-1/2 right-2 -translate-y-1/2 rounded-full p-1 text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
@@ -77,9 +122,17 @@ export default function GuideBrowser({ chapters }: { chapters: GuideChapter[] })
       {normalized && (
         <p className="text-sm text-muted-foreground" role="status">
           {matchCount > 0
-            ? t("{count} topic(s) mile \"{query}\" ke liye")
+            ? t("{count} topic(s) mile \"{query}\" ke liye — Enter dabayein seedha wahan jaane ke liye{pos}")
                 .replace("{count}", String(matchCount))
                 .replace("{query}", query)
+                .replace(
+                  "{pos}",
+                  activeMatchPos > 0
+                    ? t(" ({pos}/{total})")
+                        .replace("{pos}", String(activeMatchPos))
+                        .replace("{total}", String(matchCount))
+                    : ""
+                )
             : t("Koi topic nahi mila \"{query}\" ke liye").replace("{query}", query)}
         </p>
       )}
@@ -128,7 +181,15 @@ export default function GuideBrowser({ chapters }: { chapters: GuideChapter[] })
 
               <div className="mt-4 space-y-4">
                 {chapter.sections.map((section) => (
-                  <Card key={section.id} id={section.id} className="scroll-mt-32">
+                  <Card
+                    key={section.id}
+                    id={section.id}
+                    className={
+                      activeId === section.id
+                        ? "scroll-mt-32 ring-2 ring-primary ring-offset-2 transition-shadow duration-300"
+                        : "scroll-mt-32 transition-shadow duration-300"
+                    }
+                  >
                     <CardHeader className="pb-3">
                       <CardTitle className="flex flex-wrap items-center gap-2 text-base">
                         {section.title}

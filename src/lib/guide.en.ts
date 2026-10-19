@@ -612,6 +612,23 @@ export const GUIDE_EN: GuideChapter[] = [
           "The FG stock a completed production run creates (from PPC's 'ppc-start' step, or from an FMS Production Line's final-step Action) lands and shows up on this same FG board.",
         ],
       },
+      {
+        id: "inventory-reset",
+        title: "Resetting all Inventory data (Admin)",
+        audience: "admin",
+        summary:
+          "If a Bulk Import goes badly wrong (e.g. the entirely wrong file gets uploaded), both the item master and the ledger can be wiped completely together — so a correct re-upload can start clean.",
+        steps: [
+          "Open the Inventory page (the 'goods' board only, not the FG board).",
+          "Click 'Reset All Inventory Data'.",
+          "Type DELETE in the dialog to confirm.",
+        ],
+        notes: [
+          "This is visible only to the Admin role — no other role can see or run it.",
+          "It permanently deletes every Item and its entire Stock Ledger together — this cannot be undone. Use it only when a bulk-upload mistake is big enough that starting over is easier than fixing it.",
+          "There's no check against Reorder, Bulk Setup, or any plan/indent being linked — it clears everything outright, so be certain before resetting.",
+        ],
+      },
     ],
   },
 
@@ -755,6 +772,44 @@ export const GUIDE_EN: GuideChapter[] = [
           "A partial delivery leaves the PO 'Partially Received'; repeating this step once the rest arrives completes it.",
         ],
       },
+      {
+        id: "purchase-general-po",
+        title: "General PO — buying anything besides raw material",
+        audience: "PURCHASE_FMS",
+        summary:
+          "The Indent/Item-master-bound Purchase flow only covers raw material/consumables. For an asset, a service, or any one-off item from any vendor, use the 'General PO' tab instead.",
+        how: [
+          "This is a completely separate path from Indent Approve — no Indent is needed, and the item doesn't need to exist in the Inventory master. The full vendor list is shown, not just vendors linked to a specific SKU.",
+          "A General PO can optionally be tagged to a Job (Production Plan) — so this spend shows up against that Job in the Job Costing report later.",
+        ],
+        steps: [
+          "Purchase page → General PO tab → click '+ New General PO'.",
+          "Choose a Vendor. If this spend is for a specific Job (Production Plan), pick it too — picking a Job lets you fill the item lines from its own material list in one click.",
+          "Fill in Particular/Description/UOM/Qty/Rate and add as many lines as needed.",
+          "Enter Expected Delivery (days), GST%, and an attachment (quotation/PO copy), then click 'Issue PO'.",
+          "Later, mark Follow Up and then Material Received (per-item received quantity + invoice) on the same PO — the same three-step flow as the raw-material PO.",
+        ],
+        notes: [
+          "This never writes to stock_ledger — whatever is bought here doesn't have to be an Inventory SKU. It only keeps a record of what was ordered and what arrived.",
+          "Material Received can't be marked without Follow Up being done first — the same ordering rule the raw-material PO uses also applies here.",
+        ],
+      },
+      {
+        id: "purchase-job-costing",
+        title: "Job Costing — a Job's full spend",
+        audience: "PURCHASE_FMS",
+        summary:
+          "Pick a Production Plan (Job) and see how much raw material was spent against it (via Indent/PO) and how much via General PO — added together as a total cost.",
+        steps: [
+          "Purchase page → Job Costing tab.",
+          "Choose a Job (Production Plan) from the dropdown.",
+          "Raw Material Cost, General PO Cost, and Total Job Cost all show as cards, with a line-by-line list of every purchase below.",
+        ],
+        notes: [
+          "This is cost only, not profit/margin — because a Production Plan has no real link to a Sales Order in this system yet (Order No is just a free-text field).",
+          "The raw material cost is exactly the Indents whose 'Linked Plan' was set to this Job, and which have actually been received.",
+        ],
+      },
     ],
   },
 
@@ -839,6 +894,27 @@ export const GUIDE_EN: GuideChapter[] = [
         ],
         notes: [
           "The Organization Logo isn't set here — it comes from Settings' own Logo section, so there's no need to upload it twice.",
+        ],
+      },
+      {
+        id: "leads-quotation-independent",
+        title: "Creating a Quotation directly, without a Lead (Independent Quotation)",
+        audience: "LEAD_FMS",
+        summary:
+          "Every quotation doesn't have to come through the Lead pipeline — a repeat/recurring customer can be quoted directly from the Quotations tab.",
+        how: [
+          "Clicking '+ New Quotation' opens a dialog with three ways in: search and pick a Negotiation-stage Lead, or pick one of your own existing Customer Master records, or add a brand-new Customer and quote it right away.",
+          "Picking a Lead/Customer auto-fills name, phone, email, and address — nothing needs to be typed again.",
+          "Both the Lead list and the Existing Customer list are scoped to your own rows (what you created / are linked to), not the whole organization's.",
+        ],
+        steps: [
+          "Leads page → Quotations tab → click '+ New Quotation'.",
+          "Pick one of the three tabs — Lead, Existing Customer, or New Customer — and search/select the relevant record.",
+          "Click 'Start Quotation' to open the quotation builder, same as building any other quotation.",
+        ],
+        notes: [
+          "A quotation built against a Customer Master record now stays permanently linked to that customer — every one of a customer's quotations can be found in one place.",
+          "The Lead tab only shows Negotiation-stage Leads — the exact same business rule that applies when creating a quotation from a Lead's own detail page.",
         ],
       },
     ],

@@ -239,6 +239,13 @@
       "when": 1791954888094,
       "tag": "0033_flowery_forge",
       "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1792390854548,
+      "tag": "0034_sudden_supreme_intelligence",
+      "breakpoints": true
     }
   ]
 }

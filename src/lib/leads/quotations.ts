@@ -44,6 +44,7 @@ export interface QuotationRecord {
   quotationNo: string;
   status: QuotationStatus;
   leadId: string;
+  customerId: string;
   partyName: string;
   contactPerson: string;
   customerMobile: string;
@@ -107,6 +108,7 @@ function rowToQuotation(row: QuotationRow, items: QuotationItemRecord[]): Quotat
     quotationNo: row.quotationNo,
     status: row.status,
     leadId: row.leadId,
+    customerId: row.customerId,
     partyName: row.partyName,
     contactPerson: row.contactPerson,
     customerMobile: row.customerMobile,
@@ -154,6 +156,25 @@ export async function listQuotationsForLead(leadId: string): Promise<QuotationRe
     .select()
     .from(quotations)
     .where(and(eq(quotations.orgId, orgId), eq(quotations.leadId, leadId)));
+  const result: QuotationRecord[] = [];
+  for (const row of rows) {
+    result.push(rowToQuotation(row, await loadItems(orgId, row.id)));
+  }
+  return result.sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
+}
+
+/** Every quotation ever quoted to this real Customer Master row — the Independent
+ * Quotation feature's own payoff (2026-10-19): a recurring customer's full quotation
+ * history, found by a real `customer_id` match rather than guessing by partyName text. A
+ * quotation created before this column existed (customerId === "") never shows up here —
+ * that gap is permanent for old rows, same as any other backfill-less column addition in
+ * this codebase. */
+export async function listQuotationsForCustomer(customerId: string): Promise<QuotationRecord[]> {
+  const orgId = await getTenantOrgId();
+  const rows = await db
+    .select()
+    .from(quotations)
+    .where(and(eq(quotations.orgId, orgId), eq(quotations.customerId, customerId)));
   const result: QuotationRecord[] = [];
   for (const row of rows) {
     result.push(rowToQuotation(row, await loadItems(orgId, row.id)));
@@ -209,6 +230,7 @@ function isUniqueViolation(error: unknown, constraintName: string): boolean {
 
 interface QuotationSeed {
   leadId: string;
+  customerId: string;
   partyName: string;
   contactPerson: string;
   customerMobile: string;
@@ -245,6 +267,7 @@ async function insertQuotationRow(
         quotationNo,
         status: "Draft",
         leadId: seed.leadId,
+        customerId: seed.customerId,
         partyName: seed.partyName,
         contactPerson: seed.contactPerson,
         customerMobile: seed.customerMobile,
@@ -292,6 +315,7 @@ export async function createQuotation(leadId: string, createdBy: string): Promis
     orgId,
     {
       leadId,
+      customerId: "",
       partyName: leadRow.companyName || leadRow.personName,
       contactPerson: leadRow.personName,
       customerMobile: leadRow.phone,
@@ -383,6 +407,7 @@ export async function createWalkInQuotation(
     orgId,
     {
       leadId: "",
+      customerId,
       partyName: customerName,
       contactPerson: customerName,
       customerMobile: phone,

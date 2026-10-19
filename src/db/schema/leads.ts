@@ -135,6 +135,13 @@ export const quotations = pgTable(
   status: quotationStatusEnum("status").notNull().default("Draft"),
   // "" for a walk-in quoted without a lead behind it.
   leadId: text("lead_id").notNull().default(""),
+  // "" when quoted against a lead, or a walk-in whose party wasn't resolved to a real
+  // Customer Master row (plain text name only). Real link to `customers` (2026-10-19,
+  // Independent Quotation) — lets a recurring customer's quotation history be queried
+  // directly instead of guessing by partyName text match. Plain text, not FK-enforced,
+  // matching every other cross-entity reference in this schema (see parties.ts's
+  // vendorItems doc comment for why) — a customer can still be deleted independently.
+  customerId: text("customer_id").notNull().default(""),
   partyName: text("party_name").notNull(),
   contactPerson: text("contact_person").notNull().default(""),
   customerMobile: text("customer_mobile").notNull().default(""),

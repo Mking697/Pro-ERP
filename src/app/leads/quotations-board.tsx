@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import {
@@ -13,6 +13,7 @@ import {
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { TableSkeleton } from "@/components/loading-states";
 import EmptyState from "@/components/empty-state";
 import { Eye, FileText } from "lucide-react";
@@ -35,6 +36,7 @@ export default function QuotationsBoard() {
   const router = useRouter();
   const [quotations, setQuotations] = useState<QuotationRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState("");
 
   useEffect(() => {
     fetch("/api/leads/quotations")
@@ -44,18 +46,40 @@ export default function QuotationsBoard() {
       .finally(() => setLoading(false));
   }, [t]);
 
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return quotations;
+    return quotations.filter(
+      (row) =>
+        row.quotationNo.toLowerCase().includes(q) || row.partyName.toLowerCase().includes(q)
+    );
+  }, [quotations, search]);
+
   return (
     <div className="space-y-4">
-      <div className="flex justify-end">
-        <WalkInQuotationDialog />
+      <div className="flex flex-wrap items-center gap-2">
+        <Input
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder={t("Quotation No ya Customer naam se search karein...")}
+          aria-label={t("Quotation No ya Customer naam se search karein")}
+          className="h-9 max-w-xs"
+        />
+        <div className="ml-auto">
+          <WalkInQuotationDialog />
+        </div>
       </div>
 
       {loading ? (
         <TableSkeleton columns={5} label={t("Quotations load ho rahi hain")} />
-      ) : quotations.length === 0 ? (
+      ) : filtered.length === 0 ? (
         <EmptyState
           icon={<FileText />}
-          title={t("Abhi koi Quotation nahi hai")}
+          title={
+            quotations.length === 0
+              ? t("Abhi koi Quotation nahi hai")
+              : t("Is search se koi Quotation nahi mili")
+          }
           description={t("Kisi Lead ko Negotiation stage me le jaakar, ya seedha 'Nayi Quotation' se banayein.")}
         />
       ) : (
@@ -72,7 +96,7 @@ export default function QuotationsBoard() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {quotations.map((q, i) => (
+              {filtered.map((q, i) => (
                 <TableRow
                   key={q.id}
                   style={{ animationDelay: `${Math.min(i, 10) * 40}ms` }}

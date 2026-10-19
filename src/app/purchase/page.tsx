@@ -7,6 +7,8 @@ import { getT } from "@/lib/i18n/server";
 import PoIssueBoard from "./po-issue-board";
 import FollowUpBoard from "./follow-up-board";
 import MaterialReceivedBoard from "./material-received-board";
+import GeneralPoBoard from "./general-po-board";
+import JobCostingBoard from "./job-costing-board";
 
 export default async function PurchasePage() {
   const t = await getT();
@@ -21,7 +23,7 @@ export default async function PurchasePage() {
         <PageHeader
           title={t("Purchase")}
           description={t(
-            "Indent Approve ke baad ka flow — PO Issue, Follow Up, aur Material Received."
+            "Indent Approve ke baad ka flow — PO Issue, Follow Up, Material Received, aur raw material ke alawa kuch bhi order karne ke liye General PO."
           )}
         />
 
@@ -30,6 +32,8 @@ export default async function PurchasePage() {
             <TabsTrigger value="issue">{t("PO Issue")}</TabsTrigger>
             <TabsTrigger value="followup">{t("Follow Up")}</TabsTrigger>
             <TabsTrigger value="received">{t("Material Received")}</TabsTrigger>
+            <TabsTrigger value="general">{t("General PO")}</TabsTrigger>
+            <TabsTrigger value="job-costing">{t("Job Costing")}</TabsTrigger>
           </TabsList>
 
           <TabsContent value="issue" className="mt-4">
@@ -40,6 +44,12 @@ export default async function PurchasePage() {
           </TabsContent>
           <TabsContent value="received" className="mt-4">
             <MaterialReceivedBoard />
+          </TabsContent>
+          <TabsContent value="general" className="mt-4">
+            <GeneralPoBoard />
+          </TabsContent>
+          <TabsContent value="job-costing" className="mt-4">
+            <JobCostingBoard />
           </TabsContent>
         </Tabs>
       </div>

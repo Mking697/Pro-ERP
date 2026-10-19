@@ -654,6 +654,23 @@ export const GUIDE: GuideChapter[] = [
           "Production complete hone par jo FG stock banta hai (PPC ke 'ppc-start' section me, ya kisi FMS Production Line ke last step ki Action se), wo isi FG board par aa kar dikhta hai.",
         ],
       },
+      {
+        id: "inventory-reset",
+        title: "Saara Inventory Data Reset Karna (Admin)",
+        audience: "admin",
+        summary:
+          "Galat Bulk Import ho jaaye (jaise poori wrong file upload) to item master aur ledger dono ek saath, poori tarah se khali kiye ja sakte hain — taaki sahi data se dobara shuru kiya ja sake.",
+        steps: [
+          "Inventory page kholein (sirf 'goods' board par, FG board par nahi).",
+          "'Saara Inventory Data Reset Karein' button dabayein.",
+          "Dialog me DELETE type karke confirm karein.",
+        ],
+        notes: [
+          "Ye sirf Admin role ko dikhta hai — koi doosra role ise dekh ya chala nahi sakta.",
+          "Ye saare Items aur unki poori Stock Ledger, dono ek saath, poori tarah mita deta hai — ulta nahi kiya ja sakta. Isliye sirf tab istemaal karein jab bulk-upload galti itni badi ho ki shuru se dobara karna hi aasan ho.",
+          "Reorder, Bulk Setup ya kisi plan/indent se linked hone ki koi check nahi hoti — ye seedha saara data saaf kar deta hai, isliye reset se pehle pakka kar lein.",
+        ],
+      },
     ],
   },
 
@@ -797,6 +814,44 @@ export const GUIDE: GuideChapter[] = [
           "Adha maal aane par PO 'Partially Received' rehta hai, baaki maal aane par dobara yahi step karke poora kiya ja sakta hai.",
         ],
       },
+      {
+        id: "purchase-general-po",
+        title: "General PO — raw material ke alawa kuch bhi kharidna",
+        audience: "PURCHASE_FMS",
+        summary:
+          "Indent/Item master se bandhi Purchase flow sirf raw material/consumable ke liye hai. Asset, service ya koi bhi one-off cheez kisi bhi vendor se kharidni ho to 'General PO' tab se banayein.",
+        how: [
+          "Ye Indent Approve se bilkul alag rasta hai — na koi Indent chahiye, na item Inventory master me hona zaroori hai. Vendor list bhi poori dikhti hai, sirf un vendors tak seemit nahi jo kisi SKU se linked hain.",
+          "Chahe to is PO ko kisi Job (Production Plan) se tag kar sakte hain — taaki baad me Job Costing report me ye kharch us Job ke against jud jaaye.",
+        ],
+        steps: [
+          "Purchase page → General PO tab → '+ Nayi General PO' dabayein.",
+          "Vendor chunein. Agar ye kharch kisi specific Job (Production Plan) ke liye hai to use bhi chun lein — Job chunte hi uski material list se items ek click me bhar sakte hain.",
+          "Particular/Description/UOM/Qty/Rate daal kar jitne chahiye utni lines jodein.",
+          "Expected Delivery (din), GST% aur attachment (quotation/PO copy) daal kar 'PO Issue karein' dabayein.",
+          "Baad me usi PO par Follow Up aur phir Material Received (per-item received quantity + invoice) mark karein — bilkul raw-material PO jaisa hi teen-step flow.",
+        ],
+        notes: [
+          "Ye stock_ledger me kuch nahi likhta — kyunki yahan se kharidi gayi cheez zaroori nahi ki Inventory ka SKU ho. Sirf record rakhta hai ki kya order kiya, kya mila.",
+          "Follow-up complete kiye bina Material Received nahi kiya ja sakta — raw-material PO wala hi order yahan bhi lagu hota hai.",
+        ],
+      },
+      {
+        id: "purchase-job-costing",
+        title: "Job Costing — ek Job ka pura kharch",
+        audience: "PURCHASE_FMS",
+        summary:
+          "Ek Production Plan (Job) chun kar dekhein uske against kitna raw material kharch hua (Indent/PO se) aur kitna General PO se — dono jod kar total cost.",
+        steps: [
+          "Purchase page → Job Costing tab.",
+          "Dropdown se ek Job (Production Plan) chunein.",
+          "Raw Material Cost, General PO Cost aur Total Job Cost teeno cards me dikhte hain, neeche har ek kharidari ki line-by-line list bhi.",
+        ],
+        notes: [
+          "Ye sirf cost hai, profit/margin nahi — kyunki Production Plan ka koi real Sales Order se link abhi tak is system me nahi hai (Order No sirf free-text field hai).",
+          "Raw material cost wahi Indents hain jinka 'Linked Plan' is Job par set tha, aur jo actually receive ho chuki hain.",
+        ],
+      },
     ],
   },
 
@@ -881,6 +936,27 @@ export const GUIDE: GuideChapter[] = [
         ],
         notes: [
           "Organization Logo yahin se nahi, Settings ke Logo section se aata hai — do jagah alag se upload karne ki zaroorat nahi.",
+        ],
+      },
+      {
+        id: "leads-quotation-independent",
+        title: "Bina Lead ke seedha Quotation banana (Independent Quotation)",
+        audience: "LEAD_FMS",
+        summary:
+          "Har quotation ke liye Lead pipeline se guzarna zaroori nahi — ek repeat/recurring customer ke liye seedha Quotations tab se quotation shuru ki ja sakti hai.",
+        how: [
+          "'+ Nayi Quotation' dabane par ek dialog khulta hai jisme teen tareeke hain: ek Negotiation-stage Lead search karke chunein, ya apna koi purana Customer Master record chunein, ya ek naya Customer bana kar turant quote karein.",
+          "Customer/Lead chunte hi naam, phone, email, address jaise details apne aap bhar jaate hain — alag se type nahi karne padte.",
+          "Lead ya Existing Customer dono list sirf apni khud ki (jo aapne banayi/jisse aap jude hain) dikhti hai, poore organization ki nahi.",
+        ],
+        steps: [
+          "Leads page → Quotations tab → '+ Nayi Quotation' dabayein.",
+          "Teen tabs me se ek chunein — Lead, Existing Customer, ya New Customer — aur relevant record search/select karein.",
+          "'Quotation Shuru Karein' dabate hi quotation builder khul jaata hai, jaise normal quotation banate hain.",
+        ],
+        notes: [
+          "Customer Master se banayi gayi quotation ab us Customer ke record se permanently linked rehti hai — is customer ki saari quotations ek jagah dhoondhi ja sakti hain.",
+          "Lead tab me sirf Negotiation-stage Lead dikhte hain — yahi business rule hai jo Lead ke apne detail page se quotation banane par bhi lagu hota hai.",
         ],
       },
     ],

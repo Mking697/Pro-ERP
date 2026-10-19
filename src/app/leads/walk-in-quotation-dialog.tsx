@@ -29,6 +29,13 @@ interface CustomerOption {
   billingAddress: string;
 }
 
+interface NegotiationLeadOption {
+  id: string;
+  personName: string;
+  companyName: string;
+  phone: string;
+}
+
 const EMPTY_NEW = {
   customerName: "",
   phone: "",
@@ -40,17 +47,24 @@ const EMPTY_NEW = {
 };
 
 /**
- * A quotation with no Lead behind it — a repeat customer calling in directly. "Existing
- * Customer" is scoped to whoever is quoting's own Customer Master rows (see
- * /api/leads/customers-lookup), not the whole org's book — matches how the user described
- * it: a salesperson builds their own customer list over time. "New Customer" adds one to
- * the master on the spot (createdBy = whoever is quoting) and quotes it immediately.
+ * The one place a Quotation is started without drilling into a Lead's own detail dialog
+ * first (Independent Quotation, 2026-10-19) — one dialog, three ways in: a Negotiation-
+ * stage Lead (same business rule createQuotation() already enforces — Quotation sirf
+ * Negotiation stage se banti hai), an existing Customer Master row, or a brand-new
+ * Customer added on the spot. "Existing Customer"/the Lead list are both scoped to
+ * whoever is quoting's own rows (see /api/leads/customers-lookup and the Negotiation-
+ * filtered /api/leads call below), not the whole org's book — a salesperson works their
+ * own list.
  */
 export default function WalkInQuotationDialog() {
   const t = useT();
   const router = useRouter();
   const [open, setOpen] = useState(false);
-  const [mode, setMode] = useState<"existing" | "new">("existing");
+  const [mode, setMode] = useState<"lead" | "existing" | "new">("existing");
+  const [leadsList, setLeadsList] = useState<NegotiationLeadOption[]>([]);
+  const [loadingLeads, setLoadingLeads] = useState(true);
+  const [leadQuery, setLeadQuery] = useState("");
+  const [selectedLeadId, setSelectedLeadId] = useState("");
   const [customers, setCustomers] = useState<CustomerOption[]>([]);
   const [loadingCustomers, setLoadingCustomers] = useState(true);
   const [query, setQuery] = useState("");
@@ -65,13 +79,25 @@ export default function WalkInQuotationDialog() {
       .then((data: { customers?: CustomerOption[] }) => setCustomers(data.customers ?? []))
       .catch(() => toast.error(t("Customers load nahi ho paye.")))
       .finally(() => setLoadingCustomers(false));
+    fetch("/api/leads?status=Negotiation")
+      .then((res) => res.json())
+      .then((data: { leads?: NegotiationLeadOption[] }) => setLeadsList(data.leads ?? []))
+      .catch(() => toast.error(t("Leads load nahi ho paye.")))
+      .finally(() => setLoadingLeads(false));
   }, [open, t]);
 
-  const matches = customers.filter((c) =>
+  const customerMatches = customers.filter((c) =>
     `${c.name} ${c.phone}`.toLowerCase().includes(query.trim().toLowerCase())
+  );
+  const leadMatches = leadsList.filter((l) =>
+    `${l.personName} ${l.companyName} ${l.phone}`.toLowerCase().includes(leadQuery.trim().toLowerCase())
   );
 
   async function handleSubmit() {
+    if (mode === "lead" && !selectedLeadId) {
+      toast.error(t("Ek Lead chunein."));
+      return;
+    }
     if (mode === "existing" && !selectedId) {
       toast.error(t("Ek Customer chunein."));
       return;
@@ -83,13 +109,16 @@ export default function WalkInQuotationDialog() {
 
     setSaving(true);
     try {
-      const res = await fetch("/api/leads/quotations", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(
-          mode === "existing" ? { customerId: selectedId } : { newCustomer }
-        ),
-      });
+      const res =
+        mode === "lead"
+          ? await fetch(`/api/leads/${selectedLeadId}/quotations`, { method: "POST" })
+          : await fetch("/api/leads/quotations", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(
+                mode === "existing" ? { customerId: selectedId } : { newCustomer }
+              ),
+            });
       const data = await res.json().catch(() => null);
 
       if (!res.ok) {
@@ -100,6 +129,7 @@ export default function WalkInQuotationDialog() {
       toast.success(t("Quotation ban gaya."));
       setOpen(false);
       setSelectedId("");
+      setSelectedLeadId("");
       setNewCustomer(EMPTY_NEW);
       router.push(`/leads/quotations/${data.quotation.id}`);
     } finally {
@@ -109,20 +139,59 @@ export default function WalkInQuotationDialog() {
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger render={<Button variant="outline">{t("+ Nayi Quotation")}</Button>} />
+      <DialogTrigger render={<Button>{t("+ Nayi Quotation")}</Button>} />
       <DialogContent className="max-w-lg">
         <DialogHeader>
-          <DialogTitle>{t("Nayi Quotation (bina Lead ke)")}</DialogTitle>
+          <DialogTitle>{t("Nayi Quotation")}</DialogTitle>
           <DialogDescription>
-            {t("Koi purana Customer chunein, ya naya Customer bana kar seedha quotation shuru karein.")}
+            {t(
+              "Ek Negotiation-stage Lead chunein, ya ek purana Customer, ya naya Customer bana kar seedha quotation shuru karein."
+            )}
           </DialogDescription>
         </DialogHeader>
 
-        <Tabs value={mode} onValueChange={(v) => v && setMode(v as "existing" | "new")}>
+        <Tabs value={mode} onValueChange={(v) => v && setMode(v as "lead" | "existing" | "new")}>
           <TabsList>
+            <TabsTrigger value="lead">{t("Lead")}</TabsTrigger>
             <TabsTrigger value="existing">{t("Existing Customer")}</TabsTrigger>
             <TabsTrigger value="new">{t("New Customer")}</TabsTrigger>
           </TabsList>
+
+          <TabsContent value="lead" className="space-y-3 pt-3">
+            <Input
+              placeholder={t("Naam, company ya phone se search karein...")}
+              value={leadQuery}
+              onChange={(e) => setLeadQuery(e.target.value)}
+              autoComplete="off"
+            />
+            <div className="max-h-64 space-y-1 overflow-y-auto">
+              {loadingLeads ? (
+                <p className="p-2 text-sm text-muted-foreground">{t("Load ho raha hai...")}</p>
+              ) : leadMatches.length === 0 ? (
+                <p className="p-2 text-sm text-muted-foreground">
+                  {t(
+                    "Koi Negotiation-stage Lead nahi mila — Quotation sirf Negotiation stage ke Lead se ban sakti hai."
+                  )}
+                </p>
+              ) : (
+                leadMatches.map((l) => (
+                  <button
+                    key={l.id}
+                    type="button"
+                    onClick={() => setSelectedLeadId(l.id)}
+                    className={`w-full rounded-md border p-2 text-left text-sm transition-colors duration-150 hover:bg-muted ${
+                      selectedLeadId === l.id ? "border-primary bg-muted" : ""
+                    }`}
+                  >
+                    <span className="block font-medium">{l.companyName || l.personName}</span>
+                    <span className="block text-xs text-muted-foreground">
+                      {[l.companyName ? l.personName : "", l.phone].filter(Boolean).join(" · ") || "—"}
+                    </span>
+                  </button>
+                ))
+              )}
+            </div>
+          </TabsContent>
 
           <TabsContent value="existing" className="space-y-3 pt-3">
             <Input
@@ -134,12 +203,12 @@ export default function WalkInQuotationDialog() {
             <div className="max-h-64 space-y-1 overflow-y-auto">
               {loadingCustomers ? (
                 <p className="p-2 text-sm text-muted-foreground">{t("Load ho raha hai...")}</p>
-              ) : matches.length === 0 ? (
+              ) : customerMatches.length === 0 ? (
                 <p className="p-2 text-sm text-muted-foreground">
                   {t("Aapke naam se koi Customer nahi mila — New Customer tab try karein.")}
                 </p>
               ) : (
-                matches.map((c) => (
+                customerMatches.map((c) => (
                   <button
                     key={c.id}
                     type="button"
