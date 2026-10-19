@@ -988,6 +988,12 @@ export const EN: Record<string, string> = {
   "Koi match nahi mila.": "No matches found.",
   "Saare FMS Templates + Runs Reset Karein": "Reset All FMS Templates + Runs",
   "Saare FMS data reset karein?": "Reset all FMS data?",
+  "Saara Inventory Data Reset Karein": "Reset All Inventory Data",
+  "Saara inventory data reset karein?": "Reset all inventory data?",
+  "item(s) aur": "item(s) and",
+  "ledger entry/entries delete ho gayi.": "ledger entry/entries deleted.",
+  "Ye is organization ke SAARE Items (Raw Material, Consumable, Semi-FG aur Finished Goods — dono boards) aur unki saari Stock_Ledger movement history permanently delete kar dega. Ye wapas nahi aata. Naya bulk upload iske baad hi karein.":
+    "This will permanently delete ALL of this organization's Items (Raw Material, Consumable, Semi-FG and Finished Goods — both boards) and all of their Stock Ledger movement history. This cannot be undone. Do your fresh bulk upload only after this.",
   "Ye is organization ke SAARE FMS templates (jo bhi design kiye gaye hain), aur unke saare runs — pending tasks aur poori history — permanently delete kar dega. Ye wapas nahi aata.":
     "This will permanently delete ALL of this organization's FMS templates (however many have been designed), and all of their runs — pending tasks and the full history. This cannot be undone.",
   "Pakka karne ke liye likhein": "Type this to confirm",

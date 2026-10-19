@@ -31,6 +31,7 @@ export default async function InventoryPage() {
         <InventoryBoard
           canTransact={session.access.includes("INVENTORY_TXN")}
           canSetup={session.access.includes("INVENTORY_SETUP")}
+          isAdmin={session.role === "Admin"}
           initialItems={initialItems}
         />
       </div>

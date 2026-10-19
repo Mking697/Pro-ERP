@@ -24,6 +24,15 @@ import { qty, statusVariant, type ItemRow, type StockStatus } from "./types";
 import { TableSkeleton } from "@/components/loading-states";
 import { useT } from "@/components/preferences-provider";
 import type { ItemCategory } from "@/lib/inventory/constants";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
 
 const GOODS_CATEGORIES: ItemCategory[] = ["Raw Material", "Consumable", "Semi-FG"];
 const FG_CATEGORIES: ItemCategory[] = ["FG"];
@@ -47,11 +56,17 @@ const STATUS_FILTERS: (StockStatus | "All")[] = [
 export default function InventoryBoard({
   canTransact,
   canSetup,
+  isAdmin = false,
   scope = "goods",
   initialItems,
 }: {
   canTransact: boolean;
   canSetup: boolean;
+  /** Backend-enforced Admin-only (see requireRole(["Admin"]) in
+   * src/app/api/inventory/reset/route.ts) — an INVENTORY_SETUP holder who isn't an Admin
+   * must never see the full-wipe control the API will refuse anyway. Defaults to false
+   * so every existing caller of this component stays unaffected until it opts in. */
+  isAdmin?: boolean;
   /** "goods" (default, the main /inventory page) shows everything except Finished Goods
    * — FG gets its own board (scope="finished", /inventory/fg) so it never sits mixed in
    * with raw material/consumable/semi-FG stock. Both read the same live items+ledger
@@ -69,6 +84,10 @@ export default function InventoryBoard({
   const [status, setStatus] = useState<StockStatus | "All">("All");
   const [version, setVersion] = useState(0);
   const [boms, setBoms] = useState<BomProductRow[]>([]);
+  const [resetOpen, setResetOpen] = useState(false);
+  const [resetTyped, setResetTyped] = useState("");
+  const [resetting, setResetting] = useState(false);
+  const RESET_CONFIRM_WORD = "DELETE";
 
   useEffect(() => {
     if (version === 0) return;
@@ -87,6 +106,29 @@ export default function InventoryBoard({
   function refetch() {
     setLoading(true);
     setVersion((v) => v + 1);
+  }
+
+  async function handleResetAll() {
+    setResetting(true);
+    try {
+      const res = await fetch("/api/inventory/reset", { method: "POST" });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) {
+        toast.error(t(data?.error ?? "Reset nahi ho paya."));
+        return;
+      }
+      toast.success(
+        `${data.itemsDeleted} ` +
+          t("item(s) aur") +
+          ` ${data.ledgerEntriesDeleted} ` +
+          t("ledger entry/entries delete ho gayi.")
+      );
+      setResetOpen(false);
+      setResetTyped("");
+      refetch();
+    } finally {
+      setResetting(false);
+    }
   }
 
   // A product's Item is only auto-created going forward, the moment its BOM is next
@@ -363,6 +405,72 @@ export default function InventoryBoard({
           </TableBody>
         </Table>
       </div>
+
+      {/* Backend-enforced Admin-only (see requireRole(["Admin"]) in
+          src/app/api/inventory/reset/route.ts) — an INVENTORY_SETUP holder who isn't an
+          Admin reaches this board but must never see a destructive control the API will
+          refuse. Only shown on the main "goods" board (not /inventory/fg), even though
+          the action itself wipes every category org-wide — mirrors FMS reset's own
+          single-entry-point convention. */}
+      {isAdmin && scope === "goods" && items.length > 0 && (
+        <div className="flex justify-end border-t pt-4">
+          <Button variant="destructive" size="sm" onClick={() => setResetOpen(true)}>
+            {t("Saara Inventory Data Reset Karein")}
+          </Button>
+        </div>
+      )}
+
+      {/* Wipes every Item (every category — Raw Material/Consumable/Semi-FG/FG) and every
+          Stock_Ledger movement for the whole org. For the "client's first bulk upload was
+          wrong, start fresh before the real upload" case — asks for a typed word a stray
+          click cannot produce, same reasoning as FMS's own full reset. */}
+      {isAdmin && (
+        <Dialog
+          open={resetOpen}
+          onOpenChange={(v) => {
+            setResetOpen(v);
+            if (!v) setResetTyped("");
+          }}
+        >
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>{t("Saara inventory data reset karein?")}</DialogTitle>
+              <DialogDescription>
+                {t(
+                  "Ye is organization ke SAARE Items (Raw Material, Consumable, Semi-FG aur Finished Goods — dono boards) aur unki saari Stock_Ledger movement history permanently delete kar dega. Ye wapas nahi aata. Naya bulk upload iske baad hi karein."
+                )}
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="space-y-2">
+              <Label htmlFor="confirm-inventory-reset-word">
+                {t("Pakka karne ke liye likhein")}{" "}
+                <span className="font-mono">{RESET_CONFIRM_WORD}</span>
+              </Label>
+              <Input
+                id="confirm-inventory-reset-word"
+                value={resetTyped}
+                onChange={(e) => setResetTyped(e.target.value)}
+                placeholder={RESET_CONFIRM_WORD}
+                autoComplete="off"
+              />
+            </div>
+
+            <DialogFooter className="gap-2">
+              <Button variant="outline" onClick={() => setResetOpen(false)}>
+                {t("Rehne dein")}
+              </Button>
+              <Button
+                variant="destructive"
+                disabled={resetting || resetTyped.trim() !== RESET_CONFIRM_WORD}
+                onClick={handleResetAll}
+              >
+                {resetting ? t("Reset ho raha hai...") : t("Sab Delete Karein")}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
     </div>
   );
 }
