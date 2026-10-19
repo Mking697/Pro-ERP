@@ -990,6 +990,7 @@ export const EN: Record<string, string> = {
   "Saare FMS data reset karein?": "Reset all FMS data?",
   "Saara Inventory Data Reset Karein": "Reset All Inventory Data",
   "Saara inventory data reset karein?": "Reset all inventory data?",
+  "Items table": "Items table",
   "item(s) aur": "item(s) and",
   "ledger entry/entries delete ho gayi.": "ledger entry/entries deleted.",
   "Ye is organization ke SAARE Items (Raw Material, Consumable, Semi-FG aur Finished Goods — dono boards) aur unki saari Stock_Ledger movement history permanently delete kar dega. Ye wapas nahi aata. Naya bulk upload iske baad hi karein.":

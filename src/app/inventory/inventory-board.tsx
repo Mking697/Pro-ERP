@@ -301,21 +301,22 @@ export default function InventoryBoard({
         </p>
       )}
 
-      <div className="overflow-x-auto rounded-lg border">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Item</TableHead>
-              <TableHead>Category</TableHead>
-              <TableHead className="text-right">Free</TableHead>
-              <TableHead className="text-right">On Hand</TableHead>
-              <TableHead className="text-right">ADC</TableHead>
-              <TableHead className="text-right">ROP</TableHead>
-              <TableHead>Status</TableHead>
-              {canTransact && <TableHead className="text-right">Action</TableHead>}
-            </TableRow>
-          </TableHeader>
-          <TableBody>
+      <div className="overflow-hidden rounded-lg border">
+        <div className="max-h-[65vh] overflow-auto">
+          <Table label={t("Items table")}>
+            <TableHeader className="sticky top-0 z-10 bg-background">
+              <TableRow>
+                <TableHead>Item</TableHead>
+                <TableHead>Category</TableHead>
+                <TableHead className="text-right">Free</TableHead>
+                <TableHead className="text-right">On Hand</TableHead>
+                <TableHead className="text-right">ADC</TableHead>
+                <TableHead className="text-right">ROP</TableHead>
+                <TableHead>Status</TableHead>
+                {canTransact && <TableHead className="text-right">Action</TableHead>}
+              </TableRow>
+            </TableHeader>
+            <TableBody>
             {filtered.length === 0 && (
               <TableRow>
                 <TableCell colSpan={canTransact ? 8 : 7} className="p-0">
@@ -333,7 +334,7 @@ export default function InventoryBoard({
             )}
             {filtered.map((item) => (
               <TableRow key={item.SKU}>
-                <TableCell>
+                <TableCell className="max-w-[260px] min-w-[180px] whitespace-normal break-words">
                   <Link
                     href={`/inventory/${encodeURIComponent(item.SKU)}`}
                     className="font-medium hover:underline"
@@ -402,8 +403,9 @@ export default function InventoryBoard({
                 )}
               </TableRow>
             ))}
-          </TableBody>
-        </Table>
+            </TableBody>
+          </Table>
+        </div>
       </div>
 
       {/* Backend-enforced Admin-only (see requireRole(["Admin"]) in
