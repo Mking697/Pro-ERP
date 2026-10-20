@@ -166,6 +166,7 @@ export default async function AppShell({
   if (session.role === "Admin") {
     otherItems.push({ icon: "users", href: "/admin/users", label: "Users" });
     otherItems.push({ icon: "settings", href: "/admin/settings", label: "Settings" });
+    otherItems.push({ icon: "billing", href: "/billing", label: t("Billing") });
   }
   // Platform operator only — not an organization Admin.
   if (isPlatformAdmin(session.email)) {

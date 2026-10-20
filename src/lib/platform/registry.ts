@@ -1,6 +1,7 @@
 import { eq, type InferSelectModel } from "drizzle-orm";
 import { db } from "@/db/client";
 import {
+  billingPayments,
   billPayments,
   bills,
   bom,
@@ -273,6 +274,7 @@ export async function deleteOrganization(orgId: string): Promise<void> {
     db.delete(chatSessions).where(eq(chatSessions.orgId, orgId)),
     db.delete(users).where(eq(users.orgId, orgId)),
     db.delete(tenantUsageMetrics).where(eq(tenantUsageMetrics.orgId, orgId)),
+    db.delete(billingPayments).where(eq(billingPayments.orgId, orgId)),
     db.delete(organizations).where(eq(organizations.id, orgId)),
   ]);
 }
@@ -296,9 +298,9 @@ export async function createOrganization(
     slug = `${base}-${n++}`;
   }
 
-  // Every new org starts on a 14-day Trial (full feature set — see planLimits.ts) rather
+  // Every new org starts on a 30-day Trial (full feature set — see planLimits.ts) rather
   // than a permanent free tier, so every real signup is meant to convert to a paid plan.
-  const trialEndsAt = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000);
+  const trialEndsAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
 
   const [org] = await db
     .insert(organizations)

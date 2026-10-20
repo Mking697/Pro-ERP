@@ -11,6 +11,7 @@ import {
   CalendarOff,
   ChevronDown,
   ClipboardList,
+  CreditCard,
   Factory,
   Handshake,
   LayoutDashboard,
@@ -54,6 +55,7 @@ const ICONS = {
   leave: CalendarOff,
   payroll: Wallet,
   chatbot: Bot,
+  billing: CreditCard,
 } as const;
 
 export type NavIcon = keyof typeof ICONS;

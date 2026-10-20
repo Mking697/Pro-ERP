@@ -66,7 +66,7 @@ export async function tenantFromOrgId(orgId: string): Promise<TenantContext> {
   // again regardless of what `trialEndsAt` still holds.
   if (isTrialExpired(org)) {
     throw new TenantResolutionError(
-      `"${org.orgName}" ka 14-din trial khatm ho gaya hai. Jaari rakhne ke liye Admin se plan upgrade karwayein.`,
+      `"${org.orgName}" ka 30-din trial khatm ho gaya hai. Jaari rakhne ke liye Admin se plan upgrade karwayein.`,
       "TRIAL_EXPIRED"
     );
   }

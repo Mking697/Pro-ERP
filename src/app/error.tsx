@@ -47,7 +47,7 @@ export default function RootErrorBoundary({
       <ErrorCard
         title={t("Trial khatm ho gaya")}
         description={t(
-          "Aapke organization ka 14-din trial khatm ho chuka hai. Jaari rakhne ke liye apne Admin se plan upgrade karwayein."
+          "Aapke organization ka 30-din trial khatm ho chuka hai. Jaari rakhne ke liye apne Admin se plan upgrade karwayein, ya /billing se khud upgrade karein."
         )}
         onRetry={retry}
       />

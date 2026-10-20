@@ -22,15 +22,30 @@ export const organizations = pgTable("organizations", {
   // free text, not a pg enum, matching this column's own existing "an unknown value falls
   // back to a safe default" convention rather than a DB-level constraint. Every org used to
   // default to "Free" (2026-09-22's Free/Pro split); signup now starts every new org on a
-  // 14-day "Trial" instead (2026-09-25's paid-tiers plan) — see `trialEndsAt` below.
+  // 30-day "Trial" instead (2026-10-20's Razorpay billing plan) — see `trialEndsAt` below.
   plan: text("plan").notNull().default("Trial"),
   // Only meaningful while `plan === "Trial"` — null on every real paid plan. Set once at
-  // signup (`createOrganization()`, now + 14 days) and never touched again; a Platform
+  // signup (`createOrganization()`, now + 30 days) and never touched again; a Platform
   // Admin moving an org onto a real plan doesn't need to clear this, since
   // `isTrialExpired()` only ever consults it for a "Trial" plan in the first place.
   trialEndsAt: timestamp("trial_ends_at", { withTimezone: true }),
   status: orgStatusEnum("status").notNull().default("Active"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  // Razorpay subscription billing (src/lib/billing/**) — all three blank/null until the
+  // org's first successful self-serve payment via /billing. "" / null, never a magic
+  // string, so an org that has never paid is trivially distinguishable from one that has.
+  // `billingCycle`: "Monthly" | "Yearly" | "" (blank while on Trial or never paid).
+  billingCycle: text("billing_cycle").notNull().default(""),
+  // When the CURRENT paid cycle (the one the last successful payment bought) runs out —
+  // distinct from `trialEndsAt`, which only ever applies to plan === "Trial". Null until
+  // the first successful payment. Nothing auto-renews this today (Standard Checkout is a
+  // one-time order, not a Razorpay Subscription) — a future reminder/dunning job would
+  // read this to know when to prompt the org to pay again.
+  planRenewsAt: timestamp("plan_renews_at", { withTimezone: true }),
+  // Razorpay's own customer id (`cust_...`), set the first time this org pays — not used
+  // by today's Standard Checkout flow (which needs no saved customer), kept for a future
+  // Razorpay Subscriptions migration that would need it for recurring auto-debit.
+  razorpayCustomerId: text("razorpay_customer_id").notNull().default(""),
 });
 
 // Mirrors SheetUser.Status ("Active" | "Inactive") — a separate enum type from

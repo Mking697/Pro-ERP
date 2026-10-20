@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { toast } from "sonner";
 import {
   Card,
@@ -82,7 +83,9 @@ export default function PlanStatusCard() {
               {status.maxCompanies !== null && ` · Companies: up to ${status.maxCompanies}`}
             </p>
             <p className="text-xs text-muted-foreground">
-              {t("Plan badalne ke liye Pro ERP ke Platform Admin se sampark karein.")}
+              <Link href="/billing" className="underline hover:text-foreground">
+                {t("Plan upgrade/billing details")}
+              </Link>
             </p>
           </>
         )}

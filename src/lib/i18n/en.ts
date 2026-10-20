@@ -2022,8 +2022,8 @@ export const EN: Record<string, string> = {
 
   // --- plan tiers + trial (root error boundary, admin Settings plan card) ---------------
   "Trial khatm ho gaya": "Trial ended",
-  "Aapke organization ka 14-din trial khatm ho chuka hai. Jaari rakhne ke liye apne Admin se plan upgrade karwayein.":
-    "Your organization's 14-day trial has ended. Ask your Admin to upgrade the plan to keep using Pro ERP.",
+  "Aapke organization ka 30-din trial khatm ho chuka hai. Jaari rakhne ke liye apne Admin se plan upgrade karwayein, ya /billing se khud upgrade karein.":
+    "Your organization's 30-day trial has ended. Ask your Admin to upgrade the plan, or upgrade yourself from /billing, to keep using Pro ERP.",
   "Organization suspended hai": "Organization suspended",
   "Aapka organization abhi suspended hai. Madad ke liye apne Admin ya Pro ERP se sampark karein.":
     "Your organization is currently suspended. Contact your Admin or Pro ERP for help.",
@@ -2035,8 +2035,37 @@ export const EN: Record<string, string> = {
   "Aapke organization ka current plan.": "Your organization's current plan.",
   "Plan load ho raha hai": "Loading plan",
   "din baaki": "days left",
-  "Plan badalne ke liye Pro ERP ke Platform Admin se sampark karein.":
-    "Contact Pro ERP's Platform Admin to change the plan.",
+  "Plan upgrade/billing details": "Plan upgrade/billing details",
+
+  // --- Billing (/billing — Razorpay self-serve subscription checkout) --------------------
+  "Billing": "Billing",
+  "Apna plan dekhein aur Razorpay se seedhe pay karke upgrade karein.":
+    "View your plan and upgrade by paying directly via Razorpay.",
+  "Current Plan": "Current Plan",
+  "Aapke organization ka current plan aur status.": "Your organization's current plan and status.",
+  "Agla renewal": "Next renewal",
+  "Active users": "Active users",
+  "· Companies: up to": "· Companies: up to",
+  "Monthly": "Monthly",
+  "Yearly": "Yearly",
+  "~2 months free": "~2 months free",
+  "Current": "Current",
+  "active users tak": "active users",
+  "company tak": "company",
+  "Saare modules": "Every module",
+  "Unlimited users": "Unlimited users",
+  "Unlimited companies": "Unlimited companies",
+  "Upgrade karein": "Upgrade",
+  "Processing...": "Processing...",
+  "month": "month",
+  "year": "year",
+  "Payment gateway abhi load ho raha hai, thodi der mein dobara try karein.":
+    "Payment gateway is still loading — try again in a moment.",
+  "Order nahi ban paaya.": "Could not create the order.",
+  "Payment verify nahi ho paaya.": "Payment could not be verified.",
+  "Payment safal! Aapka plan upgrade ho gaya hai.": "Payment successful! Your plan has been upgraded.",
+  "Payment ho gaya hoga, lekin confirm nahi ho paaya — support se sampark karein.":
+    "The payment may have gone through but could not be confirmed — please contact support.",
 
   // --- Parties: Customer edit (Credit Limit/Days) -----------------------------------------
   "Customer Edit Karein": "Edit Customer",

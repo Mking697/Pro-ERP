@@ -1,25 +1,28 @@
 import type { ModuleAccessKey } from "@/lib/moduleAccess";
 
 /**
- * Plan tiers (2026-09-25 paid-tiers plan, replacing 2026-09-22's flat Free(5 users)/Pro
- * (unlimited) split) — still no payment gateway anywhere in this codebase; a Platform
- * Admin sets `organizations.plan` by hand from `/platform` (PATCH handler at
- * src/app/api/platform/organizations/[orgId]/route.ts). This file is the one place that
- * turns that plain string column into real limits and real module gating.
+ * Plan tiers (2026-10-20 Razorpay self-serve billing plan, replacing the earlier
+ * Trial/Growth/Scale/Enterprise split — see CLAUDE.md's billing section). Pricing
+ * recommendation is based on a quick market pass against Zoho One/Zoho ERP/Odoo
+ * Enterprise/Kylas (a full-ERP scope, priced flat-per-tier rather than strict per-seat, to
+ * stay simple for Indian SME self-serve checkout) — launch hypotheses to validate against
+ * real prospects, not to be re-derived or second-guessed here.
  *
- * Every new org starts on `Trial` (`createOrganization()`, 14 days, full feature set —
+ * Every new org starts on `Trial` (`createOrganization()`, 30 days, full feature set —
  * see `isTrialExpired()`/`tenantFromOrgId()` in src/lib/tenant.ts for where that actually
- * gets enforced). From there a Platform Admin moves it onto `Growth`, `Scale`, or
- * `Enterprise`.
- *
- * Pricing/limits below are the exact numbers approved in CLAUDE.md's "Paid plan tiers"
- * planning section (2026-09-25) — launch hypotheses to validate against real prospects,
- * not to be re-derived or second-guessed here.
+ * gets enforced). From there an org's own Admin self-serve-pays via `/billing`
+ * (src/lib/billing/**, Razorpay Standard Checkout) onto `Starter`, `Growth`, or
+ * `Enterprise` — a Platform Admin can still also set `organizations.plan` by hand from
+ * `/platform` for support/override cases.
  */
-export const PLAN_TIERS = ["Trial", "Growth", "Scale", "Enterprise"] as const;
+export const PLAN_TIERS = ["Trial", "Starter", "Growth", "Enterprise"] as const;
 export type PlanTier = (typeof PLAN_TIERS)[number];
 
 export const PLAN_NAMES: string[] = [...PLAN_TIERS];
+
+/** Billing cycle a paid plan was bought on — "" only for Trial/never-paid orgs. */
+export const BILLING_CYCLES = ["Monthly", "Yearly"] as const;
+export type BillingCycle = (typeof BILLING_CYCLES)[number];
 
 /** Higher ranks a plan onto being at least as capable as a lower one. Trial is ranked 0
  * but is NEVER compared by rank for module access — see `moduleAllowedForPlan()` below,
@@ -27,8 +30,8 @@ export const PLAN_NAMES: string[] = [...PLAN_TIERS];
  * three real paid tiers against each other. */
 const PLAN_RANK: Record<PlanTier, number> = {
   Trial: 0,
-  Growth: 1,
-  Scale: 2,
+  Starter: 1,
+  Growth: 2,
   Enterprise: 3,
 };
 
@@ -36,14 +39,14 @@ const PLAN_RANK: Record<PlanTier, number> = {
  * An org's `plan` column is plain text with no DB-level constraint (see platform.ts's own
  * comment on that column) — a typo, a value from before this tier scheme existed, or a
  * future tier this file hasn't learned about yet must never be silently trusted. Unknown
- * values fall back to `Growth` (the lowest REAL paid tier), deliberately NOT `Trial` — a
+ * values fall back to `Starter` (the lowest REAL paid tier), deliberately NOT `Trial` — a
  * corrupted/unrecognized plan value must never accidentally become time-limited via
  * `isTrialExpired()`, which only ever inspects an org whose plan is exactly `"Trial"`.
  */
 export function normalizePlanTier(plan: string | null | undefined): PlanTier {
   return (PLAN_TIERS as readonly string[]).includes(plan ?? "")
     ? (plan as PlanTier)
-    : "Growth";
+    : "Starter";
 }
 
 export interface PlanLimit {
@@ -58,25 +61,37 @@ export interface PlanLimit {
   maxCompanies: number | null;
   /** Only set for Trial. */
   trialDays: number | null;
+  /** Razorpay order amount in paise. `null` on Trial (never purchasable). */
+  monthlyPricePaise: number | null;
+  /** Razorpay order amount in paise for a Yearly purchase — already discounted (~17% off,
+   * i.e. "2 months free" vs. paying monthly for 12 months), not `monthlyPricePaise * 12`. */
+  yearlyPricePaise: number | null;
 }
 
 export const PLAN_LIMITS: Record<PlanTier, PlanLimit> = {
-  // 14-day free trial, full feature set, no user/company cap — chosen over a permanent
+  // 30-day free trial, full feature set, no user/company cap — chosen over a permanent
   // free tier so every real account is meant to convert to a paid plan.
-  Trial: { maxActiveUsers: null, maxCompanies: null, trialDays: 14 },
-  // ₹3,999/month launch price (rising to ₹5,999/month after an introductory period —
-  // pricing/billing mechanics, not enforced here), up to 20 users then ₹249/extra
-  // user/month, 1 company, every module.
-  Growth: { maxActiveUsers: 20, maxCompanies: 1, trialDays: null },
-  // ₹14,999/month, unlimited users, up to 3 companies then ₹4,999/extra company/month.
-  Scale: { maxActiveUsers: null, maxCompanies: 3, trialDays: null },
-  // Custom pricing, unlimited everything, priced for once the app is off Vercel/Neon onto
-  // dedicated infra.
-  Enterprise: { maxActiveUsers: null, maxCompanies: null, trialDays: null },
+  Trial: { maxActiveUsers: null, maxCompanies: null, trialDays: 30, monthlyPricePaise: null, yearlyPricePaise: null },
+  // ₹2,999/month, up to 10 users, 1 company, every module.
+  Starter: { maxActiveUsers: 10, maxCompanies: 1, trialDays: null, monthlyPricePaise: 299_900, yearlyPricePaise: 2_999_000 },
+  // ₹7,999/month, up to 30 users, 1 company, every module.
+  Growth: { maxActiveUsers: 30, maxCompanies: 1, trialDays: null, monthlyPricePaise: 799_900, yearlyPricePaise: 7_999_000 },
+  // ₹19,999/month, unlimited users, up to 3 companies, every module, dedicated support.
+  Enterprise: { maxActiveUsers: null, maxCompanies: 3, trialDays: null, monthlyPricePaise: 1_999_900, yearlyPricePaise: 19_999_000 },
 };
 
 export function getPlanLimit(plan: string): PlanLimit {
   return PLAN_LIMITS[normalizePlanTier(plan)];
+}
+
+/** The Razorpay order amount (paise) for a real paid tier + cycle, or `null` when the
+ * tier/cycle combination isn't purchasable (Trial has no price at all). Used by
+ * `src/lib/billing/billing.ts` to compute what to actually charge server-side — the
+ * client's own request only ever names a plan/cycle, never an amount, so a tampered
+ * client request can't under-charge itself. */
+export function getPlanPricePaise(plan: PlanTier, cycle: BillingCycle): number | null {
+  const limit = PLAN_LIMITS[plan];
+  return cycle === "Yearly" ? limit.yearlyPricePaise : limit.monthlyPricePaise;
 }
 
 /**
@@ -97,18 +112,17 @@ export function isTrialExpired(org: {
 /**
  * Which tier a module first becomes available at.
  *
- * CLAUDE.md's own approved plan describes `Growth` — the LOWEST real paid tier — as
- * already including "every module," with Scale/Enterprise described purely as bigger
- * user/company allowances on top ("unlimited everything"), not as unlocking anything
- * Growth doesn't have. So every existing module key defaults to `Growth` here: there is
- * no approved Scale-or-Enterprise-exclusive module to encode, and inventing one would
- * contradict the already-approved pricing copy. This map exists so a FUTURE
- * tier-exclusive module is a one-line change, not a re-plumb — see `moduleAllowedForPlan`.
+ * Every real paid tier is approved to include "every module" — Growth/Enterprise are
+ * purely bigger user/company allowances on top of Starter, not extra modules — so every
+ * existing module key defaults to `Starter` here: there is no approved tier-exclusive
+ * module to encode, and inventing one would contradict the already-approved pricing copy.
+ * This map exists so a FUTURE tier-exclusive module is a one-line change, not a re-plumb —
+ * see `moduleAllowedForPlan`.
  */
 const MODULE_MIN_TIER: Partial<Record<ModuleAccessKey, PlanTier>> = {};
 
 function minTierFor(moduleKey: ModuleAccessKey): PlanTier {
-  return MODULE_MIN_TIER[moduleKey] ?? "Growth";
+  return MODULE_MIN_TIER[moduleKey] ?? "Starter";
 }
 
 /**
@@ -116,9 +130,9 @@ function minTierFor(moduleKey: ModuleAccessKey): PlanTier {
  * asking USER holds the grant for it (that's `moduleAccess.ts`'s job; both must pass).
  *
  * Trial bypasses the tier ranking entirely and always returns true — a trial is explicitly
- * "full feature set," not "Growth-equivalent," and ranking Trial below Growth would
+ * "full feature set," not "Starter-equivalent," and ranking Trial below Starter would
  * otherwise wrongly block a trial org from a module some future session marks
- * Scale-or-above.
+ * Growth-or-above.
  */
 export function moduleAllowedForPlan(plan: string, moduleKey: ModuleAccessKey): boolean {
   const tier = normalizePlanTier(plan);
