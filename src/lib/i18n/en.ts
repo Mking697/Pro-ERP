@@ -2336,4 +2336,27 @@ export const EN: Record<string, string> = {
   "Credit Hold Approve Karein -> Stock_Check": "Approve Credit Hold -> Stock_Check",
   "Stock Check Chalayein -> Dispatch_Pending": "Run Stock Check -> Dispatch_Pending",
   "Dispatch Commit Karein -> Ready_For_PDI": "Commit Dispatch -> Ready_For_PDI",
+  "Builder ke baare me madad": "Help about this builder",
+  "FMS Template Builder kaise kaam karta hai": "How the FMS Template Builder works",
+  "Ek multi-step process ko ek baar define karna — phir wo baar-baar chal sakta hai.":
+    "Define a multi-step process once — it can then run as many times as needed.",
+  "Steps: naam, Assigned To, TAT": "Steps: name, Assigned To, TAT",
+  "Har step ka naam, kise assign hoga, aur TAT (Minutes, Hours ya Days me) bharein — yahi decide karta hai kaam kiske paas jaayega aur kab tak.":
+    "Fill in each step's name, who it's assigned to, and its TAT (in Minutes, Hours, or Days) — this decides who the work goes to and by when.",
+  "Outcome Type aur Next Step": "Outcome Type and Next Step",
+  "Step ka Outcome Type chunein — Done, Pass aur Fail, Pass/Fail/Scrap Qty, Number, Text, Attachment, ya Custom (khud outcomes typing karein). Phir har outcome ke aage decide karein agla kaunsa step chalega, ya FMS yahin khatam ho.":
+    "Choose the step's Outcome Type — Done, Pass and Fail, Pass/Fail/Scrap Qty, Number, Text, Attachment, or Custom (type your own outcomes). Then choose which step runs next for each outcome, or that the FMS ends there.",
+  "Trigger — MANUAL ya automatic": "Trigger — MANUAL or automatic",
+  "Trigger \"MANUAL\" rakhne par FMS sirf haath se start hota hai. Iski jagah kisi module ka event key (jaise INWARD_ENTRY_CREATED) ya kisi doosre FMS template ka outcome key dene se wo FMS uske hote hi khud shuru ho jaata hai — koi loop na bane iska dhyan template banate waqt khud rakhna hai.":
+    "Leaving the trigger as \"MANUAL\" means the FMS only starts by hand. Giving it a module's event key instead (e.g. INWARD_ENTRY_CREATED), or another FMS template's outcome key, starts it automatically when that happens — avoiding a trigger loop is on whoever builds the template.",
+  "Deadline kisi pehle step ke field se": "Deadline from an earlier step's field",
+  "Kisi bhi step ki deadline TAT box me fix number likhne ke bajaye kisi pehle step ke field se bhi nikal sakti hai — \"Deadline pichle step ke field se nikaale\" tick karke us step aur field ko chunein, aur ek offset (+/-) daalein.":
+    "Any step's deadline can be sourced from an earlier step's own field instead of a fixed TAT number — tick \"Take the deadline from an earlier step's field\", pick that step and field, and give an offset (+/-).",
+  "Form fields aur Existing FMS data": "Form fields and Existing FMS data",
+  "Ek step apna khud ka Form bhar sakta hai, ya kisi doosre module/step se reference data khinch sakta hai (Existing FMS) — dono independent hain, ek step dono ek saath bhi use kar sakta hai.":
+    "A step can fill in its own Form, or pull reference data from another module/step (Existing FMS) — the two are independent, a step can use both at once.",
+  "Archive aur Delete": "Archive and Delete",
+  "Template Archive karne se uske purane chal rahe steps par asar nahi padta, sirf naye instance us se nahi bante. Ek Archived template jise koi step abhi chala hi nahi raha, use Templates list se permanently Delete bhi kiya ja sakta hai.":
+    "Archiving a template doesn't affect its steps already in progress — only new instances stop being created from it. An Archived template that no step is currently running can also be permanently deleted from the Templates list.",
+  "Samajh gaya": "Got it",
 };

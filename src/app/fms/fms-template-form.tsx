@@ -23,6 +23,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useT } from "@/components/preferences-provider";
+import FmsBuilderHelp from "@/components/fms-builder-help";
 import { parseNextStepMap, parseOutcomeOptions } from "./template-format";
 import { slugify } from "@/lib/id";
 import {
@@ -539,7 +540,10 @@ export default function FmsTemplateForm({
       />
       <DialogContent className="max-h-[85vh] max-w-3xl overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>{editing ? t("Template Edit karein") : t("Naya FMS Template")}</DialogTitle>
+          <DialogTitle className="flex items-center gap-2">
+            {editing ? t("Template Edit karein") : t("Naya FMS Template")}
+            <FmsBuilderHelp />
+          </DialogTitle>
           <DialogDescription>
             {editing
               ? t(
