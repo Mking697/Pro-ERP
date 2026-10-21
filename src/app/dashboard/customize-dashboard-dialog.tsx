@@ -119,7 +119,7 @@ export default function CustomizeDashboardDialog({
                   size="icon-sm"
                   onClick={() => move(i, -1)}
                   disabled={i === 0 || saving}
-                  aria-label={t("Upar le jayein")}
+                  aria-label={`${t(LABEL_BY_KEY[pref.key])} — ${t("Upar le jayein")}`}
                 >
                   <ChevronUp />
                 </Button>
@@ -128,7 +128,7 @@ export default function CustomizeDashboardDialog({
                   size="icon-sm"
                   onClick={() => move(i, 1)}
                   disabled={i === prefs.length - 1 || saving}
-                  aria-label={t("Neeche le jayein")}
+                  aria-label={`${t(LABEL_BY_KEY[pref.key])} — ${t("Neeche le jayein")}`}
                 >
                   <ChevronDown />
                 </Button>
@@ -136,7 +136,7 @@ export default function CustomizeDashboardDialog({
                   checked={pref.visible}
                   onCheckedChange={() => toggleVisible(pref.key)}
                   disabled={saving}
-                  aria-label={t("Dikhayein ya chhupayein")}
+                  aria-label={`${t(LABEL_BY_KEY[pref.key])} — ${t("Dikhayein ya chhupayein")}`}
                 />
               </div>
             </div>

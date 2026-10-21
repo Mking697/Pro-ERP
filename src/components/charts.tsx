@@ -137,7 +137,7 @@ export function BarChart({
             layout="vertical"
             margin={{ top: 0, right: 16, bottom: 0, left: 0 }}
             barCategoryGap={8}
-            accessibilityLayer
+            accessibilityLayer={false}
           >
             <XAxis type="number" hide domain={[0, "auto"]} />
             <YAxis
@@ -214,7 +214,7 @@ export function DonutChart({
       <div className="relative flex justify-center" aria-hidden="true">
         <div className="h-40 w-40">
           <ResponsiveContainer width="100%" height="100%">
-            <PieChart>
+            <PieChart accessibilityLayer={false}>
               <Pie
                 data={withPct}
                 dataKey="value"
@@ -310,7 +310,7 @@ export function TimelineChart({
           <AreaChart
             data={points}
             margin={{ top: 12, right: 8, bottom: 0, left: 0 }}
-            accessibilityLayer
+            accessibilityLayer={false}
           >
             <defs>
               <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">

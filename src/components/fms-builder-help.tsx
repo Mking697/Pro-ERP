@@ -1,6 +1,6 @@
 "use client";
 
-import { useSyncExternalStore } from "react";
+import { useRef, useSyncExternalStore } from "react";
 import { HelpCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -71,6 +71,7 @@ function markSeen() {
  */
 export default function FmsBuilderHelp() {
   const t = useT();
+  const triggerRef = useRef<HTMLButtonElement>(null);
   const seen = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
   // `undefined` is the not-yet-hydrated snapshot — stay closed until the real, client-only
   // value arrives, so this never force-opens during SSR/first paint.
@@ -84,6 +85,9 @@ export default function FmsBuilderHelp() {
     <>
       <Button
         type="button"
+        ref={triggerRef}
+        aria-haspopup="dialog"
+        aria-expanded={open}
         variant="ghost"
         size="icon-sm"
         aria-label={t("Builder ke baare me madad")}
@@ -92,11 +96,11 @@ export default function FmsBuilderHelp() {
           for (const listener of listeners) listener();
         }}
       >
-        <HelpCircle />
+        <HelpCircle aria-hidden="true" />
       </Button>
 
       <Dialog open={open === true} onOpenChange={(v) => { if (!v) close(); }}>
-        <DialogContent className="max-h-[80vh] max-w-lg overflow-y-auto">
+        <DialogContent finalFocus={triggerRef} className="max-h-[80vh] max-w-lg overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{t("FMS Template Builder kaise kaam karta hai")}</DialogTitle>
             <DialogDescription>

@@ -60,7 +60,7 @@
   --secondary: oklch(0.97 0 0);
   --secondary-foreground: oklch(0.205 0 0);
   --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
+  --muted-foreground: oklch(0.53 0 0);
   --accent: oklch(0.97 0 0);
   --accent-foreground: oklch(0.205 0 0);
   --destructive: oklch(0.577 0.245 27.325);
@@ -154,6 +154,10 @@
   --chart-series-3: #1baf7a;
   --chart-grid: oklch(0.922 0 0);
   --chart-axis: oklch(0.556 0 0);
+  /* Badge text needs 4.5:1 against the composited tint, not just white.
+     Keep chart fills unchanged; see tests/accessibility-contrast.test.mjs. */
+  --badge-success-foreground: #086b08;
+  --badge-destructive-foreground: oklch(0.47 0.20 27.325);
 }
 
 .dark {
@@ -167,6 +171,9 @@
   --chart-series-3: #199e70;
   --chart-grid: oklch(1 0 0 / 12%);
   --chart-axis: oklch(0.708 0 0);
+  /* Brighter foregrounds also clear the tinted muted surface in dark mode. */
+  --badge-success-foreground: #20bd20;
+  --badge-destructive-foreground: oklch(0.80 0.13 22.216);
 }
 
 /**

@@ -90,6 +90,7 @@ export default function OnboardingChecklist({ steps }: { steps: OnboardingStep[]
             <div className="min-w-0">
               <p className={`font-medium ${step.done ? "text-muted-foreground line-through" : ""}`}>
                 {t(step.label)}
+                <span className="sr-only">{step.done ? ` — ${t("Completed")}` : ` — ${t("Pending")}`}</span>
               </p>
               <p className="mt-0.5 text-xs text-muted-foreground">{t(step.description)}</p>
             </div>

@@ -15,7 +15,7 @@ const badgeVariants = cva(
         secondary:
           "bg-secondary text-secondary-foreground [a]:hover:bg-secondary/80",
         destructive:
-          "bg-destructive/10 text-destructive focus-visible:ring-destructive/20 dark:bg-destructive/20 dark:focus-visible:ring-destructive/40 [a]:hover:bg-destructive/20",
+          "bg-destructive/10 text-[color:var(--badge-destructive-foreground)] focus-visible:ring-destructive/20 dark:bg-destructive/20 dark:focus-visible:ring-destructive/40 [a]:hover:bg-destructive/20",
         outline:
           "border-border text-foreground [a]:hover:bg-muted [a]:hover:text-muted-foreground",
         ghost:
@@ -25,8 +25,10 @@ const badgeVariants = cva(
         // badge that means a genuinely positive outcome (Done on Time, Active, Approved)
         // rather than just "the default/brand color". Never replaces `default`; existing
         // call sites that already pass `default`/`secondary`/etc. are untouched.
+        // Dedicated text tokens clear 4.5:1 on the badge's actual tinted background,
+        // including muted surfaces; chart colors remain independent.
         success:
-          "bg-[color-mix(in_oklch,var(--chart-good),transparent_88%)] text-[color:var(--chart-good)] [a]:hover:bg-[color-mix(in_oklch,var(--chart-good),transparent_78%)]",
+          "bg-[color-mix(in_oklch,var(--chart-good),transparent_88%)] text-[color:var(--badge-success-foreground)] [a]:hover:bg-[color-mix(in_oklch,var(--chart-good),transparent_78%)]",
       },
     },
     defaultVariants: {

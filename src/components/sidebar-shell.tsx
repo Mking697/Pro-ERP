@@ -14,6 +14,7 @@ import SettingsMenu from "@/components/settings-menu";
 import ChangelogMenu from "@/components/changelog-menu";
 import NotificationBell from "@/components/notification-bell";
 import ChatWidget from "@/components/chat-widget";
+import { useT } from "@/components/preferences-provider";
 
 const COLLAPSE_KEY = "pro-erp:sidebar-collapsed";
 
@@ -88,6 +89,7 @@ export default function SidebarShell({
   showChatWidget?: boolean;
   children: React.ReactNode;
 }) {
+  const t = useT();
   const collapsed = useSyncExternalStore(
     subscribeCollapsed,
     getCollapsedSnapshot,
@@ -103,6 +105,9 @@ export default function SidebarShell({
 
   return (
     <div className="flex min-h-dvh bg-muted/30">
+      <a href="#main-content" className="sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-[100] focus:rounded-md focus:bg-background focus:px-4 focus:py-2 focus:text-foreground focus:ring-2 focus:ring-ring">
+        {t("Main content par jayein")}
+      </a>
       {/* Desktop sidebar */}
       <aside
         className={cn(
@@ -113,6 +118,7 @@ export default function SidebarShell({
         <div className={cn("flex h-14 shrink-0 items-center gap-2.5 border-b px-4", collapsed && "justify-center px-0")}>
           <Link
             href="/dashboard"
+            aria-label={`${orgName} — ${t("Dashboard")}`}
             className="flex min-w-0 items-center gap-2.5 rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
             <OrgLogo url={logoUrl} name={orgName} />
@@ -161,6 +167,8 @@ export default function SidebarShell({
               type="button"
               onClick={toggleCollapsed}
               title={`${fullName} — ${role}`}
+              aria-label={`${t("Sidebar kholen")} — ${fullName} — ${role}`}
+              aria-expanded={!collapsed}
               className="flex w-full items-center justify-center rounded-xl py-1.5 text-xs font-semibold text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
               <span className="flex size-7 items-center justify-center rounded-full bg-muted">
@@ -176,6 +184,7 @@ export default function SidebarShell({
             onClick={toggleCollapsed}
             className="flex w-full items-center justify-center gap-2 rounded-xl px-2.5 py-2 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             aria-label={collapsed ? "Sidebar kholen" : "Sidebar sikoden"}
+            aria-expanded={!collapsed}
           >
             {collapsed ? (
               <PanelLeftOpen className="size-4" aria-hidden="true" />
@@ -216,7 +225,7 @@ export default function SidebarShell({
           </div>
         </header>
 
-        <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-6 sm:px-6">{children}</main>
+        <main id="main-content" tabIndex={-1} className="mx-auto w-full max-w-6xl flex-1 px-4 py-6 sm:px-6">{children}</main>
       </div>
 
       {/* Base UI owns modal focus, background inertness and stacked Escape dismissal. */}

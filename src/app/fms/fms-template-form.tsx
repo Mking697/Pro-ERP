@@ -688,7 +688,7 @@ export default function FmsTemplateForm({
                               setStep(step.id, { tatSourceStepNo: value, tatSourceFieldKey: "" })
                             }
                           >
-                            <SelectTrigger className="w-full">
+                            <SelectTrigger aria-label={`${t("Step")} ${index + 1} — ${t("Kaunsa step")}`} className="w-full">
                               <SelectValue placeholder={t("Kaunsa step")} />
                             </SelectTrigger>
                             <SelectContent>
@@ -708,7 +708,7 @@ export default function FmsTemplateForm({
                               })
                             }
                           >
-                            <SelectTrigger className="w-full">
+                            <SelectTrigger aria-label={`${t("Step")} ${index + 1} — ${t("Kaunsa field")}`} className="w-full">
                               <SelectValue placeholder={t("Kaunsa field")} />
                             </SelectTrigger>
                             <SelectContent>
@@ -724,6 +724,7 @@ export default function FmsTemplateForm({
                             </SelectContent>
                           </Select>
                           <Input
+                            aria-label={`${t("Step")} ${index + 1} — ${t("Offset (+/-)")}`}
                             type="number"
                             step="any"
                             value={step.tatOffset}
@@ -763,6 +764,7 @@ export default function FmsTemplateForm({
                     </Select>
                     {step.outcomeType === "" && (
                       <Input
+                        aria-label={`${t("Step")} ${index + 1} — ${t("Custom (khud likhein)")}`}
                         value={step.outcomesText}
                         onChange={(e) => setStepOutcomes(step.id, e.target.value)}
                         placeholder="Pass,Fail"
@@ -797,7 +799,7 @@ export default function FmsTemplateForm({
                               })
                             }
                           >
-                            <SelectTrigger className="w-full">
+                            <SelectTrigger aria-label={`${t("Step")} ${index + 1} — ${outcome} — ${t("Har outcome ke baad agla step")}`} className="w-full">
                               <SelectValue />
                             </SelectTrigger>
                             <SelectContent>
@@ -856,6 +858,7 @@ export default function FmsTemplateForm({
                             <div key={field.id} className="space-y-2 rounded-md bg-muted/40 p-2">
                               <div className="grid gap-2 sm:grid-cols-[1fr_9rem_auto]">
                                 <Input
+                                  aria-label={`${t("Step")} ${index + 1} — ${t("Question ka naam")} ${field.id}`}
                                   value={field.label}
                                   onChange={(e) =>
                                     setFormField(step.id, field.id, { label: e.target.value })
@@ -869,7 +872,7 @@ export default function FmsTemplateForm({
                                     setFormField(step.id, field.id, { type: value as FormFieldType })
                                   }
                                 >
-                                  <SelectTrigger className="w-full">
+                                  <SelectTrigger aria-label={`${t("Step")} ${index + 1} — ${field.label || field.id} — ${t("Type")}`} className="w-full">
                                     <SelectValue />
                                   </SelectTrigger>
                                   <SelectContent>
@@ -896,6 +899,7 @@ export default function FmsTemplateForm({
                               </div>
                               {field.type === "dropdown" && (
                                 <Input
+                                  aria-label={`${t("Step")} ${index + 1} — ${field.label || field.id} — ${t("Options (comma se alag)")}`}
                                   value={field.optionsText}
                                   onChange={(e) =>
                                     setFormField(step.id, field.id, { optionsText: e.target.value })
@@ -916,7 +920,7 @@ export default function FmsTemplateForm({
                                       })
                                     }
                                   >
-                                    <SelectTrigger className="w-full">
+                                    <SelectTrigger aria-label={`${t("Step")} ${index + 1} — ${field.label || field.id} — ${t("Kaunsa module")}`} className="w-full">
                                       <SelectValue placeholder={t("Kaunsa module")} />
                                     </SelectTrigger>
                                     <SelectContent>
@@ -935,7 +939,7 @@ export default function FmsTemplateForm({
                                         value && setFormField(step.id, field.id, { lookupDisplayField: value })
                                       }
                                     >
-                                      <SelectTrigger className="w-full">
+                                      <SelectTrigger aria-label={`${t("Step")} ${index + 1} — ${field.label || field.id} — ${t("Naam/label wala column")}`} className="w-full">
                                         <SelectValue placeholder={t("Naam/label wala column")} />
                                       </SelectTrigger>
                                       <SelectContent>
@@ -970,7 +974,7 @@ export default function FmsTemplateForm({
                                                 })
                                               }
                                             >
-                                              <SelectTrigger className="w-full">
+                                              <SelectTrigger aria-label={`${t("Step")} ${index + 1} — ${field.label || field.id} — ${other.label}`} className="w-full">
                                                 <SelectValue placeholder={t("None")} />
                                               </SelectTrigger>
                                               <SelectContent>
@@ -1031,7 +1035,7 @@ export default function FmsTemplateForm({
                             setStep(step.id, { existingSourceModule: value, existingColumns: [] })
                           }
                         >
-                          <SelectTrigger className="w-full">
+                          <SelectTrigger aria-label={`${t("Step")} ${index + 1} — ${t("Source chunein")}`} className="w-full">
                             <SelectValue placeholder={t("Source chunein")} />
                           </SelectTrigger>
                           <SelectContent>
@@ -1056,7 +1060,7 @@ export default function FmsTemplateForm({
                               setStep(step.id, { existingSourceStepNo: value, existingColumns: [] })
                             }
                           >
-                            <SelectTrigger className="w-full">
+                            <SelectTrigger aria-label={`${t("Step")} ${index + 1} — ${t("Kaunsa step")}`} className="w-full">
                               <SelectValue placeholder={t("Kaunsa step")} />
                             </SelectTrigger>
                             <SelectContent>
@@ -1158,7 +1162,7 @@ export default function FmsTemplateForm({
                                     value={a.direction}
                                     onValueChange={(v) => v && updateAction({ direction: v as "In" | "Out" })}
                                   >
-                                    <SelectTrigger className="w-full">
+                                    <SelectTrigger aria-label={`${t("Step")} ${index + 1} — ${outcome} — ${t("Direction")}`} className="w-full">
                                       <SelectValue />
                                     </SelectTrigger>
                                     <SelectContent>
@@ -1170,7 +1174,7 @@ export default function FmsTemplateForm({
                                     value={a.skuField || "NONE"}
                                     onValueChange={(v) => v && updateAction({ skuField: v === "NONE" ? "" : v })}
                                   >
-                                    <SelectTrigger className="w-full">
+                                    <SelectTrigger aria-label={`${t("Step")} ${index + 1} — ${outcome} — ${t("SKU field")}`} className="w-full">
                                       <SelectValue placeholder={t("SKU field")} />
                                     </SelectTrigger>
                                     <SelectContent>
@@ -1186,7 +1190,7 @@ export default function FmsTemplateForm({
                                     value={a.qtyField || "NONE"}
                                     onValueChange={(v) => v && updateAction({ qtyField: v === "NONE" ? "" : v })}
                                   >
-                                    <SelectTrigger className="w-full">
+                                    <SelectTrigger aria-label={`${t("Step")} ${index + 1} — ${outcome} — ${t("Qty field")}`} className="w-full">
                                       <SelectValue placeholder={t("Qty field")} />
                                     </SelectTrigger>
                                     <SelectContent>
@@ -1202,7 +1206,7 @@ export default function FmsTemplateForm({
                                     value={a.uomField || "NONE"}
                                     onValueChange={(v) => v && updateAction({ uomField: v === "NONE" ? "" : v })}
                                   >
-                                    <SelectTrigger className="w-full">
+                                    <SelectTrigger aria-label={`${t("Step")} ${index + 1} — ${outcome} — ${t("UOM field (optional)")}`} className="w-full">
                                       <SelectValue placeholder={t("UOM field (optional)")} />
                                     </SelectTrigger>
                                     <SelectContent>

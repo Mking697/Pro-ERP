@@ -10,6 +10,13 @@
  */
 export const EN: Record<string, string> = {
   "Notifications": "Notifications",
+  "Completed": "Completed",
+  "Pending": "Pending",
+  "Direction": "Direction",
+  "Sidebar kholen": "Expand sidebar",
+  "Main content par jayein": "Skip to main content",
+  "Dashboard": "Dashboard",
+  "unread": "unread",
   "Sab read karein": "Mark all read",
   "Koi notification nahi hai.": "No notifications yet.",
   "Naya Task Assign Hua": "New task assigned",

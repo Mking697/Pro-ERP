@@ -265,8 +265,8 @@ function StageAction({
           <p className="text-sm font-medium">{t("Dispatch Commit Date")}</p>
           <div className="flex flex-wrap items-end gap-2">
             <div className="space-y-2">
-              <Label>{t("Date")}</Label>
-              <Input type="date" value={dispatchDate} onChange={(e) => setDispatchDate(e.target.value)} />
+              <Label htmlFor="order-dispatch-date">{t("Date")}</Label>
+              <Input id="order-dispatch-date" type="date" value={dispatchDate} onChange={(e) => setDispatchDate(e.target.value)} />
             </div>
             <Button
               size="sm"
@@ -303,7 +303,9 @@ function StageAction({
             </Button>
           ) : (
             <div className="space-y-2">
+              <Label htmlFor="order-cancel-reason" className="sr-only">{t("Reason (optional)")}</Label>
               <Textarea
+                id="order-cancel-reason"
                 rows={2}
                 placeholder={t("Reason (optional)")}
                 value={cancelReason}
@@ -399,8 +401,9 @@ function PaymentSection({
       <div className="grid gap-2 sm:grid-cols-[1fr_1fr_1fr_auto] sm:items-end">
         {recordInForeignCurrency ? (
           <div className="space-y-2">
-            <Label>{t("Face amount received")} ({displayCurrency})</Label>
+            <Label htmlFor="order-payment-face-amount">{t("Face amount received")} ({displayCurrency})</Label>
             <Input
+              id="order-payment-face-amount"
               type="number"
               step="any"
               min="0"
@@ -410,14 +413,14 @@ function PaymentSection({
           </div>
         ) : (
           <div className="space-y-2">
-            <Label>Amount</Label>
-            <Input type="number" step="any" min="0" value={amount} onChange={(e) => setAmount(e.target.value)} />
+            <Label htmlFor="order-payment-amount">Amount</Label>
+            <Input id="order-payment-amount" type="number" step="any" min="0" value={amount} onChange={(e) => setAmount(e.target.value)} />
           </div>
         )}
         <div className="space-y-2">
-          <Label>Mode</Label>
+          <Label htmlFor="order-payment-mode">Mode</Label>
           <Select value={mode} onValueChange={(v) => v && setMode(v as (typeof PAYMENT_MODES)[number])}>
-            <SelectTrigger className="w-full">
+            <SelectTrigger id="order-payment-mode" className="w-full">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -430,8 +433,8 @@ function PaymentSection({
           </Select>
         </div>
         <div className="space-y-2">
-          <Label>{t("Reference")}</Label>
-          <Input value={reference} onChange={(e) => setReference(e.target.value)} />
+          <Label htmlFor="order-payment-reference">{t("Reference")}</Label>
+          <Input id="order-payment-reference" value={reference} onChange={(e) => setReference(e.target.value)} />
         </div>
         <Button
           size="sm"

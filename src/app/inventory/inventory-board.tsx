@@ -271,6 +271,9 @@ export default function InventoryBoard({
 
   return (
     <div className="space-y-4">
+      <p role="status" aria-live="polite" aria-atomic="true" className="sr-only">
+        {selectedItems.length} {t("item(s) selected")}
+      </p>
       <div className="flex flex-wrap items-center gap-2">
         <Input
           value={search}
@@ -362,6 +365,7 @@ export default function InventoryBoard({
             key={s}
             size="sm"
             variant={status === s ? "default" : "outline"}
+            aria-pressed={status === s}
             onClick={() => setStatus(s)}
           >
             {s}
@@ -402,6 +406,7 @@ export default function InventoryBoard({
                   <Checkbox
                     aria-label={t("Sab select karein")}
                     checked={filtered.length > 0 && filtered.every((i) => selectedSkus.has(i.SKU))}
+                    indeterminate={filtered.some((i) => selectedSkus.has(i.SKU)) && !filtered.every((i) => selectedSkus.has(i.SKU))}
                     onCheckedChange={(checked) => toggleAllVisible(Boolean(checked))}
                   />
                 </TableHead>

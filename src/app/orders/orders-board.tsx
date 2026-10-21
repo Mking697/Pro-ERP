@@ -370,6 +370,9 @@ export default function OrdersBoard() {
 
   return (
     <div className="space-y-4">
+      <p role="status" aria-live="polite" aria-atomic="true" className="sr-only">
+        {selectedOrders.length} {t("order(s) selected")}
+      </p>
       <div className="flex flex-wrap items-center justify-end gap-2">
         <SavedViewsBar<OrdersFilters>
           module="orders"
@@ -486,7 +489,7 @@ export default function OrdersBoard() {
                             if (v) setBulkActionKey(v);
                           }}
                         >
-                          <SelectTrigger className="w-auto min-w-48">
+                          <SelectTrigger aria-label={t("Bulk status action chunein")} className="w-auto min-w-48">
                             <SelectValue placeholder={t("Bulk status action chunein")} />
                           </SelectTrigger>
                           <SelectContent>
@@ -502,6 +505,7 @@ export default function OrdersBoard() {
                           <>
                             {advanceAction.needsDate && (
                               <Input
+                                aria-label={t("Dispatch Commit Date")}
                                 type="date"
                                 value={bulkDispatchDate}
                                 onChange={(e) => setBulkDispatchDate(e.target.value)}
@@ -521,6 +525,7 @@ export default function OrdersBoard() {
                         {effectiveBulkActionKey === "cancel" && (
                           <>
                             <Textarea
+                              aria-label={t("Reason (optional)")}
                               rows={1}
                               placeholder={t("Reason (optional)")}
                               value={bulkCancelReason}
@@ -550,6 +555,7 @@ export default function OrdersBoard() {
                           <Checkbox
                             aria-label={t("Sab select karein")}
                             checked={orders.length > 0 && orders.every((o) => selectedIds.has(o.id))}
+                            indeterminate={orders.some((o) => selectedIds.has(o.id)) && !orders.every((o) => selectedIds.has(o.id))}
                             onCheckedChange={(checked) => toggleAllVisible(Boolean(checked))}
                           />
                         </TableHead>

@@ -10,6 +10,7 @@ import {
   DropdownMenuContent,
   DropdownMenuGroup,
   DropdownMenuLabel,
+  DropdownMenuItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
@@ -129,15 +130,26 @@ export default function NotificationBell() {
 
   return (
     <DropdownMenu open={open} onOpenChange={(next) => void handleOpenChange(next)}>
+      <span role="status" aria-live="polite" aria-atomic="true" className="sr-only">
+        {t("Notifications")}: {unreadCount} {t("unread")}
+      </span>
       <DropdownMenuTrigger
         render={
           <Button
             variant="ghost"
             size="icon-sm"
-            aria-label={t("Notifications")}
+            // The accessible name carries the unread count too, not just "Notifications" —
+            // the visual Badge number next to the bell is otherwise sighted-only: a screen
+            // reader user tabbing to this button would hear just "Notifications, button"
+            // with no idea anything is unread, let alone how many.
+            aria-label={
+              unreadCount > 0
+                ? `${t("Notifications")} (${unreadCount} ${t("unread")})`
+                : t("Notifications")
+            }
             className="relative"
           >
-            <Bell />
+            <Bell aria-hidden="true" />
             {unreadCount > 0 && (
               <>
                 <span
@@ -146,6 +158,7 @@ export default function NotificationBell() {
                 />
                 <Badge
                   variant="default"
+                  aria-hidden="true"
                   className="absolute -right-1 -top-1 h-4 min-w-4 justify-center rounded-full px-1 text-[10px] leading-none"
                 >
                   {unreadCount > 9 ? "9+" : unreadCount}
@@ -157,18 +170,12 @@ export default function NotificationBell() {
       />
       <DropdownMenuContent align="end" className="w-80">
         <DropdownMenuGroup>
-          <DropdownMenuLabel className="flex items-center justify-between gap-2">
-            <span>{t("Notifications")}</span>
-            {unreadCount > 0 && (
-              <button
-                type="button"
-                onClick={() => void handleMarkAllRead()}
-                className="text-xs font-normal text-primary hover:underline"
-              >
-                {t("Sab read karein")}
-              </button>
-            )}
-          </DropdownMenuLabel>
+          <DropdownMenuLabel>{t("Notifications")}</DropdownMenuLabel>
+          {unreadCount > 0 && (
+            <DropdownMenuItem closeOnClick={false} onClick={() => void handleMarkAllRead()}>
+              {t("Sab read karein")}
+            </DropdownMenuItem>
+          )}
         </DropdownMenuGroup>
         <DropdownMenuSeparator />
         <div className="flex max-h-80 flex-col gap-0.5 overflow-y-auto px-1.5 py-1">
@@ -178,11 +185,11 @@ export default function NotificationBell() {
             </p>
           )}
           {items.map((item) => (
-            <button
-              type="button"
+            <DropdownMenuItem
               key={item.id}
               onClick={() => void handleItemClick(item)}
               className={cn(
+                "block",
                 "w-full rounded-md px-1.5 py-1.5 text-left transition-colors hover:bg-muted",
                 !item.isRead && "bg-primary/5"
               )}
@@ -193,13 +200,14 @@ export default function NotificationBell() {
                     <span aria-hidden="true" className="size-1.5 shrink-0 rounded-full bg-primary" />
                   )}
                   {t(item.title)}
+                  {!item.isRead && <span className="sr-only"> — {t("unread")}</span>}
                 </span>
                 <span className="shrink-0 text-xs text-muted-foreground">
                   {relativeTime(item.createdAt)}
                 </span>
               </div>
               <p className="mt-0.5 text-xs text-muted-foreground">{item.body}</p>
-            </button>
+            </DropdownMenuItem>
           ))}
         </div>
       </DropdownMenuContent>
