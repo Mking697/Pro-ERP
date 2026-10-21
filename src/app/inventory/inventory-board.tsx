@@ -5,6 +5,7 @@ import Link from "next/link";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import {
   Table,
@@ -15,7 +16,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
-import { PackageSearch } from "lucide-react";
+import { Download, PackageSearch } from "lucide-react";
 import EmptyState from "@/components/empty-state";
 import CreateItemDialog from "./create-item-dialog";
 import BulkImportDialog from "./bulk-import-dialog";
@@ -24,6 +25,7 @@ import { qty, statusVariant, type InventoryFilters, type ItemRow, type StockStat
 import { TableSkeleton } from "@/components/loading-states";
 import { useT } from "@/components/preferences-provider";
 import SavedViewsBar from "@/components/saved-views-bar";
+import { downloadCsvClientSide } from "@/lib/csv-download";
 import type { ItemCategory } from "@/lib/inventory/constants";
 import {
   Dialog,
@@ -98,6 +100,12 @@ export default function InventoryBoard({
     null
   );
 
+  // Bulk selection — row checkboxes + the selection-count toolbar. Cleared on every
+  // refetch() (filters/search narrowing the table don't clear it, matching how a person
+  // would expect "select some rows, then narrow the search to find the rest" to behave;
+  // a selected SKU simply won't render a checked row while it's filtered out of view).
+  const [selectedSkus, setSelectedSkus] = useState<Set<string>>(new Set());
+
   function handleScan(value: string) {
     const matched = matchSkuByScan(items.map((i) => i.SKU), value);
     const item = matched ? items.find((i) => i.SKU === matched) : undefined;
@@ -127,6 +135,7 @@ export default function InventoryBoard({
   function refetch() {
     setLoading(true);
     setVersion((v) => v + 1);
+    setSelectedSkus(new Set());
   }
 
   async function handleResetAll() {
@@ -219,6 +228,42 @@ export default function InventoryBoard({
   }, [scoped]);
 
   const needsSetup = scoped.filter((i) => i.missingFields.length > 0).length;
+
+  const selectedItems = useMemo(
+    () => filtered.filter((i) => selectedSkus.has(i.SKU)),
+    [filtered, selectedSkus]
+  );
+
+  function toggleRow(sku: string, checked: boolean) {
+    setSelectedSkus((prev) => {
+      const next = new Set(prev);
+      if (checked) next.add(sku);
+      else next.delete(sku);
+      return next;
+    });
+  }
+
+  function toggleAllVisible(checked: boolean) {
+    setSelectedSkus(checked ? new Set(filtered.map((i) => i.SKU)) : new Set());
+  }
+
+  function exportSelectedCsv() {
+    const header = ["Item", "SKU", "Category", "Free", "On Hand", "ADC", "ROP", "Status"];
+    const rows: (string | number)[][] = [
+      header,
+      ...selectedItems.map((i) => [
+        i.Item_Name,
+        i.SKU,
+        i.Category,
+        i.free,
+        i.onHand,
+        i.adc ?? "",
+        i.rop ?? "",
+        i.status,
+      ]),
+    ];
+    downloadCsvClientSide(`inventory-export-${new Date().toISOString().slice(0, 10)}.csv`, rows);
+  }
 
   if (loading) {
     return <TableSkeleton columns={6} label={t("Items load ho rahe hain")} />;
@@ -333,11 +378,33 @@ export default function InventoryBoard({
         </p>
       )}
 
+      {selectedItems.length > 0 && (
+        <div className="flex flex-wrap items-center gap-2 rounded-lg border bg-muted/40 p-2.5">
+          <span className="text-sm font-medium">
+            {selectedItems.length} {t("item(s) selected")}
+          </span>
+          <Button size="sm" variant="ghost" onClick={() => setSelectedSkus(new Set())}>
+            {t("Clear karein")}
+          </Button>
+          <Button size="sm" variant="outline" onClick={exportSelectedCsv}>
+            <Download />
+            {t("CSV Export Karein")}
+          </Button>
+        </div>
+      )}
+
       <div className="overflow-hidden rounded-lg border">
         <div className="max-h-[65vh] overflow-auto">
           <Table label={t("Items table")}>
             <TableHeader className="sticky top-0 z-10 bg-background">
               <TableRow>
+                <TableHead className="w-10">
+                  <Checkbox
+                    aria-label={t("Sab select karein")}
+                    checked={filtered.length > 0 && filtered.every((i) => selectedSkus.has(i.SKU))}
+                    onCheckedChange={(checked) => toggleAllVisible(Boolean(checked))}
+                  />
+                </TableHead>
                 <TableHead>Item</TableHead>
                 <TableHead>Category</TableHead>
                 <TableHead className="text-right">Free</TableHead>
@@ -351,7 +418,7 @@ export default function InventoryBoard({
             <TableBody>
             {filtered.length === 0 && (
               <TableRow>
-                <TableCell colSpan={canTransact ? 8 : 7} className="p-0">
+                <TableCell colSpan={canTransact ? 9 : 8} className="p-0">
                   <EmptyState
                     icon={<PackageSearch />}
                     title={
@@ -366,6 +433,13 @@ export default function InventoryBoard({
             )}
             {filtered.map((item) => (
               <TableRow key={item.SKU}>
+                <TableCell onClick={(e) => e.stopPropagation()}>
+                  <Checkbox
+                    aria-label={`${item.SKU} ${t("select karein")}`}
+                    checked={selectedSkus.has(item.SKU)}
+                    onCheckedChange={(checked) => toggleRow(item.SKU, Boolean(checked))}
+                  />
+                </TableCell>
                 <TableCell className="max-w-[260px] min-w-[180px] whitespace-normal break-words">
                   <Link
                     href={`/inventory/${encodeURIComponent(item.SKU)}`}
