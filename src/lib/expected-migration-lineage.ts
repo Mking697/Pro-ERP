@@ -160,5 +160,9 @@ export const expectedMigrationLineage = [
   {
     "hash": "d27ab3a4e0f399d151f910e9aae3f3be60dab03d613e4f0b4875cbf4e4efc1f6",
     "folderMillis": 1792515924809
+  },
+  {
+    "hash": "5c544a1cb2cd07cc7b08633d0ad5db377eb6803bb655d797a4f732b2f8605469",
+    "folderMillis": 1792561699874
   }
 ];
