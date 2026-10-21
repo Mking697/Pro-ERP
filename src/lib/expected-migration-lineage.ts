@@ -164,5 +164,14 @@ export const expectedMigrationLineage = [
   {
     "hash": "5c544a1cb2cd07cc7b08633d0ad5db377eb6803bb655d797a4f732b2f8605469",
     "folderMillis": 1792561699874
+  },
+  {
+    "hash": "6c935fff4c559d3fede919a06a4c9c7fa490413d3aec7eb776115187775bcc42",
+    "folderMillis": 1792567767797
+  },
+  {
+    // Release 0038: standard migrator journal timestamp; confirm against production on deploy.
+    "hash": "d031beb4ace1cd0c21f4e98fe3ac1050f2cf8d5fe5689013a49554b51d3f44e5",
+    "folderMillis": 1792573342669
   }
 ];

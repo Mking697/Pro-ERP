@@ -1,9 +1,10 @@
 import { NextResponse } from "next/server";
+import { and, count, eq } from "drizzle-orm";
+import { db } from "@/db/client";
+import { users } from "@/db/schema";
 import { requireRole } from "@/lib/auth/guard";
-import { getTenantOrgId } from "@/lib/tenant";
 import { getOrganization } from "@/lib/platform/registry";
 import { getPlanLimit, PLAN_LIMITS } from "@/lib/platform/planLimits";
-import { listUsers } from "@/lib/auth/users";
 
 /**
  * Read-only: the signed-in org's own Admin's current plan/trial/renewal state plus the
@@ -15,14 +16,17 @@ export async function GET() {
   const guard = await requireRole(["Admin"]);
   if (!guard.ok) return guard.response;
 
-  const orgId = await getTenantOrgId();
+  // Billing remains reachable after trial/paid entitlement expires. Ownership still
+  // comes solely from the live Admin session, never a request-supplied organization.
+  const orgId = guard.session.orgId;
   const org = await getOrganization(orgId);
   if (!org) {
     return NextResponse.json({ error: "Organization nahi mila." }, { status: 404 });
   }
 
   const limit = getPlanLimit(org.plan);
-  const activeUserCount = (await listUsers()).filter((u) => u.Status === "Active").length;
+  const [{ count: activeUserCount }] = await db.select({ count: count() }).from(users)
+    .where(and(eq(users.orgId, orgId), eq(users.status, "Active")));
 
   return NextResponse.json({
     plan: org.plan,
@@ -34,5 +38,7 @@ export async function GET() {
     activeUserCount,
     tiers: PLAN_LIMITS,
     subscriptionStatus: org.subscriptionStatus,
+    subscriptionsEnabled: process.env.RAZORPAY_SUBSCRIPTIONS_ENABLED === "true" &&
+      Boolean(process.env.RAZORPAY_WEBHOOK_SECRET && process.env.RAZORPAY_KEY_ID && process.env.RAZORPAY_KEY_SECRET),
   });
 }

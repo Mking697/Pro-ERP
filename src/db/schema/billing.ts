@@ -1,4 +1,5 @@
-import { index, numeric, pgEnum, pgTable, text, timestamp } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
+import { check, index, integer, numeric, pgEnum, pgTable, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
 import { organizations } from "./platform";
 
 /**
@@ -55,3 +56,34 @@ export const billingPayments = pgTable(
     index("billing_payments_org_id_idx").on(table.orgId),
   ]
 );
+
+/** Durable reservation BEFORE any billable provider creation. Never delete/retry a
+ * reserved attempt after an ambiguous failure: reconcile using notes.attemptId.
+ * Closed rows retain historical subscription ownership for delayed webhooks. */
+export const billingSubscriptionAttempts = pgTable("billing_subscription_attempts", {
+  id: text("id").primaryKey(),
+  orgId: text("org_id").notNull().references(() => organizations.id),
+  plan: text("plan").notNull(),
+  cycle: text("cycle").notNull(),
+  amountPaise: integer("amount_paise").notNull(),
+  currency: text("currency").notNull(),
+  keyId: text("key_id").notNull(),
+  providerPlanId: text("provider_plan_id"),
+  providerId: text("provider_id").unique(),
+  status: text("status").notNull().default("reserved"),
+  closedAt: timestamp("closed_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, t => [
+  uniqueIndex("billing_subscription_one_open_org").on(t.orgId).where(sql`${t.closedAt} is null`),
+  index("billing_subscription_attempt_org_idx").on(t.orgId),
+  check("billing_subscription_positive_amount", sql`${t.amountPaise} > 0`),
+]);
+
+/** Payment identity is globally unique; receipt + payment history + entitlement
+ * are committed together under the tenant transaction, never a pre-read dedupe. */
+export const billingSubscriptionCharges = pgTable("billing_subscription_charges", {
+  paymentId: text("payment_id").primaryKey(),
+  attemptId: text("attempt_id").notNull().references(() => billingSubscriptionAttempts.id),
+  paidThrough: timestamp("paid_through", { withTimezone: true }).notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});

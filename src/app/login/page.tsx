@@ -42,7 +42,7 @@ export default function LoginPage() {
       }
 
       toast.success(`Welcome back, ${data.user.fullName}`);
-      router.push("/dashboard");
+      router.push(data.redirectTo === "/billing" ? "/billing" : "/dashboard");
       router.refresh();
     } catch {
       toast.error("Something went wrong. Please try again.");

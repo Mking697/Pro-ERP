@@ -3,14 +3,14 @@ import { z } from "zod";
 import { requireRole } from "@/lib/auth/guard";
 import { BILLING_CYCLES, PLAN_TIERS } from "@/lib/platform/planLimits";
 import { startPlanSubscription, BillingError } from "@/lib/billing/billing";
+import { assertSubscriptionsReady } from "@/lib/billing/razorpay";
+import { SubscriptionError } from "@/lib/billing/subscriptions";
 
 /**
  * Starts a real Razorpay Subscription (auto-recurring billing, roadmap item #10) for the
- * signed-in org's own Admin — the `/billing` page's "Subscribe" flow, replacing
- * `/api/billing/create-order`'s one-time-order flow for any org using it from this point
- * on. Returns just enough for the frontend to open Checkout.js in subscription mode: the
- * subscription id and the PUBLIC key id. The actual plan change only happens later, via
- * the `subscription.activated`/`subscription.charged` webhook — never from this route.
+ * signed-in org's own Admin. Standard Checkout remains available separately.
+ * Returns the durable pending subscription id and PUBLIC Checkout key.
+ * Only a provider-verified subscription.charged grants the target plan, never activation.
  */
 
 const bodySchema = z.object({
@@ -39,15 +39,16 @@ export async function POST(request: Request) {
   }
 
   try {
-    const result = await startPlanSubscription(parsed.data.plan, parsed.data.cycle);
+    assertSubscriptionsReady();
+    const result = await startPlanSubscription(parsed.data.plan, parsed.data.cycle, guard.session.orgId);
     return NextResponse.json(result);
   } catch (error) {
+    if (error instanceof SubscriptionError) return NextResponse.json({ error: error.message }, { status: error.status });
     if (error instanceof BillingError) {
       return NextResponse.json({ error: error.message }, { status: 400 });
     }
-    console.error("billing/create-subscription failed:", error);
     return NextResponse.json(
-      { error: "Subscription nahi ban paayi. Thodi der baad dobara try karein." },
+      { error: "Subscription unresolved. Naya subscription banane se pehle support se sampark karein." },
       { status: 500 }
     );
   }

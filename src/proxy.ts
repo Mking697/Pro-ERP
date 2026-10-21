@@ -7,7 +7,7 @@ import { recordTenantRequest } from "@/lib/platform/usageMetrics";
 //
 // /share/<token> is deliberately here: the token is the credential, and the page resolves
 // its tenant from that token alone rather than from any session cookie.
-const PUBLIC_PATHS = ["/login", "/signup", "/share"];
+const PUBLIC_PATHS = ["/login", "/signup", "/share", "/portal"];
 
 /**
  * Public pages that a signed-in person has no business seeing — they get sent home.
@@ -33,6 +33,8 @@ export async function proxy(request: NextRequest, event: NextFetchEvent) {
     pathname.startsWith("/api/signup") ||
     pathname.startsWith("/api/health") ||
     pathname.startsWith("/api/cron") ||
+    // Razorpay authenticates this exact endpoint with a raw-body HMAC, not a staff cookie.
+    pathname === "/api/webhooks/razorpay" ||
     pathname.startsWith("/api/whatsapp/send-reminders")
   ) {
     return NextResponse.next();

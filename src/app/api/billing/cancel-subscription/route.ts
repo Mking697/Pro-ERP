@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { requireRole } from "@/lib/auth/guard";
 import { cancelPlanSubscription, BillingError } from "@/lib/billing/billing";
+import { assertSubscriptionsReady } from "@/lib/billing/razorpay";
+import { SubscriptionError } from "@/lib/billing/subscriptions";
 
 /**
  * Cancels the signed-in org's own Admin's active Razorpay Subscription — keeps access
@@ -14,13 +16,14 @@ export async function POST() {
   if (!guard.ok) return guard.response;
 
   try {
-    const result = await cancelPlanSubscription();
+    assertSubscriptionsReady();
+    const result = await cancelPlanSubscription(guard.session.orgId);
     return NextResponse.json(result);
   } catch (error) {
+    if (error instanceof SubscriptionError) return NextResponse.json({ error: error.message }, { status: error.status });
     if (error instanceof BillingError) {
       return NextResponse.json({ error: error.message }, { status: 400 });
     }
-    console.error("billing/cancel-subscription failed:", error);
     return NextResponse.json(
       { error: "Subscription cancel nahi ho paayi. Support se sampark karein." },
       { status: 500 }

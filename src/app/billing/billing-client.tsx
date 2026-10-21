@@ -12,11 +12,13 @@ import {
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { useConfirm } from "@/components/confirm-dialog";
 import { FormSkeleton } from "@/components/loading-states";
 import { useT } from "@/components/preferences-provider";
 import { formatDueDisplay } from "@/lib/formatDate";
 import { cn } from "@/lib/utils";
 import { PLAN_LIMITS, type BillingCycle, type PlanTier } from "@/lib/platform/planLimits";
+import { billingCheckoutMode, hasOpenSubscription } from "@/lib/billing/checkout-mode";
 
 declare global {
   interface Window {
@@ -33,6 +35,7 @@ interface BillingStatus {
   maxCompanies: number | null;
   activeUserCount: number;
   subscriptionStatus: string;
+  subscriptionsEnabled: boolean;
 }
 
 const PAID_TIERS: PlanTier[] = ["Starter", "Growth", "Enterprise"];
@@ -51,6 +54,7 @@ function trialDaysLeft(status: BillingStatus | null): number | null {
 
 export default function BillingClient() {
   const t = useT();
+  const confirm = useConfirm();
   const [status, setStatus] = useState<BillingStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [cycle, setCycle] = useState<BillingCycle>("Monthly");
@@ -96,33 +100,51 @@ export default function BillingClient() {
     }
     setPayingPlan(plan);
     try {
-      const subRes = await fetch("/api/billing/create-subscription", {
+      const recurring = billingCheckoutMode(status) === "subscription";
+      const subRes = await fetch(recurring ? "/api/billing/create-subscription" : "/api/billing/create-order", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ plan, cycle }),
       });
       const subData = await subRes.json();
       if (!subRes.ok) {
-        toast.error(subData.error ?? t("Subscription nahi ban paayi."));
+        toast.error(subData.error ?? (recurring ? t("Subscription nahi ban paayi.") : t("Order nahi ban paaya.")));
         setPayingPlan(null);
         return;
       }
 
       const razorpay = new window.Razorpay({
         key: subData.razorpayKeyId,
-        subscription_id: subData.subscriptionId,
+        ...(recurring
+          ? { subscription_id: subData.subscriptionId }
+          : { order_id: subData.razorpayOrderId, amount: subData.amountPaise, currency: subData.currency }),
         name: "Pro ERP",
-        description: `${plan} — ${cycle} (${t("auto-renew")})`,
-        // The plan change itself is applied server-side only once Razorpay's own
-        // subscription.activated/charged webhook confirms the authorization payment went
-        // through — this handler never flips the plan itself, it just lets the Admin know
-        // what to expect while that webhook is in flight (usually a few seconds).
-        handler: () => {
-          toast.success(
-            t("Payment ho gaya! Subscription activate hone mein thodi der lag sakti hai.")
-          );
-          setTimeout(loadStatus, 3000);
-          setPayingPlan(null);
+        description: recurring ? `${plan} — ${cycle} (${t("auto-renew")})` : `${plan} — ${cycle}`,
+        handler: async (response: Record<string, string>) => {
+          try {
+            if (recurring) {
+              // The signed webhook, not this browser callback, establishes paid access.
+              toast.success(t("Payment ho gaya! Subscription activate hone mein thodi der lag sakti hai."));
+              setTimeout(loadStatus, 3000);
+            } else {
+              const result = await fetch("/api/billing/verify-payment", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(response),
+              });
+              const data = await result.json();
+              if (!result.ok) {
+                toast.error(data.error ?? t("Payment verify nahi ho paaya."));
+                return;
+              }
+              toast.success(t("Payment safal! Aapka plan upgrade ho gaya hai."));
+              loadStatus();
+            }
+          } catch {
+            toast.error(t("Payment ho gaya hoga, lekin confirm nahi ho paaya — support se sampark karein."));
+          } finally {
+            setPayingPlan(null);
+          }
         },
         modal: {
           ondismiss: () => setPayingPlan(null),
@@ -136,10 +158,9 @@ export default function BillingClient() {
     }
   }
 
-  const subscriptionIsLive =
-    status?.subscriptionStatus === "active" ||
-    status?.subscriptionStatus === "authenticated" ||
-    status?.subscriptionStatus === "created";
+  const subscriptionIsLive = hasOpenSubscription(status?.subscriptionStatus);
+  const canStartCheckout = !subscriptionIsLive ||
+    (billingCheckoutMode(status) === "subscription" && status?.subscriptionStatus === "created");
 
   async function handleCancelSubscription() {
     setCancelling(true);
@@ -154,6 +175,8 @@ export default function BillingClient() {
         t("Subscription cancel ho gayi — current cycle khatm hone tak access chalta rahega.")
       );
       loadStatus();
+    } catch {
+      toast.error(t("Subscription cancel nahi ho paayi."));
     } finally {
       setCancelling(false);
     }
@@ -206,7 +229,11 @@ export default function BillingClient() {
                   size="sm"
                   variant="outline"
                   disabled={cancelling}
-                  onClick={handleCancelSubscription}
+                  onClick={() => confirm.ask({
+                    title: t("Subscription cancel karein"),
+                    description: t("Auto-renew band hoga. Paid period ke baad access ruk jayega."),
+                    onConfirm: handleCancelSubscription,
+                  })}
                 >
                   {cancelling ? t("Cancel ho raha hai...") : t("Subscription cancel karein")}
                 </Button>
@@ -216,6 +243,11 @@ export default function BillingClient() {
         </CardContent>
       </Card>
 
+      <p className="text-sm text-muted-foreground">
+        {billingCheckoutMode(status) === "subscription"
+          ? t("Auto-renew subscription: har cycle payment automatic katega. Cancel kabhi bhi karein.")
+          : t("One-time payment: auto-debit nahi hoga.")}
+      </p>
       <div className="flex items-center gap-2">
         <Button
           size="sm"
@@ -272,13 +304,13 @@ export default function BillingClient() {
                 </ul>
                 <Button
                   className="w-full"
-                  disabled={isCurrent || payingPlan !== null || !scriptReady}
+                  disabled={loading || !status || !canStartCheckout || payingPlan !== null || !scriptReady}
                   onClick={() => handleBuy(plan)}
                 >
-                  {isCurrent
-                    ? t("Current Plan")
-                    : payingPlan === plan
-                      ? t("Processing...")
+                  {payingPlan === plan
+                    ? t("Processing...")
+                    : billingCheckoutMode(status) === "subscription"
+                      ? t("Subscribe karein")
                       : t("Upgrade karein")}
                 </Button>
               </CardContent>
@@ -286,6 +318,7 @@ export default function BillingClient() {
           );
         })}
       </div>
+      {confirm.dialog}
     </>
   );
 }

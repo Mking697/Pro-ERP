@@ -54,6 +54,16 @@ export default function RootErrorBoundary({
     );
   }
 
+  if (error.digest === "BILLING_EXPIRED") {
+    return (
+      <ErrorCard
+        title={t("Subscription ka paid period khatm ho gaya")}
+        description={t("Admin /billing se payment renew karein. Data delete nahi hua hai.")}
+        onRetry={retry}
+      />
+    );
+  }
+
   if (error.digest === "ORG_SUSPENDED") {
     return (
       <ErrorCard

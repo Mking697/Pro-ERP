@@ -1,9 +1,9 @@
-import { and, eq } from "drizzle-orm";
-import { billingPayments, organizations } from "@/db/schema";
+import { and, eq, isNull } from "drizzle-orm";
+import { billingPayments, billingSubscriptionAttempts, billingSubscriptionCharges, organizations } from "@/db/schema";
 import { db, runInTenantTransaction } from "@/db/client";
 import { insertRecord, updateById } from "@/db/repo";
 import { generateId } from "@/lib/id";
-import { getTenantOrgId } from "@/lib/tenant";
+import { getLiveSession } from "@/lib/auth/live-session";
 import {
   getPlanPricePaise,
   type BillingCycle,
@@ -17,7 +17,8 @@ import {
   razorpayPublicKeyId,
   verifyRazorpaySignature,
 } from "@/lib/billing/razorpay";
-import { getOrganization, updateOrganization } from "@/lib/platform/registry";
+import { createSubscriptionService, SubscriptionError, type SubscriptionStore } from "./subscriptions";
+import { assertSubscriptionsReady, fetchRazorpaySubscription, fetchRazorpayPayment, fetchRazorpayInvoice } from "./razorpay";
 
 /**
  * Self-serve plan purchase via Razorpay Standard Checkout — one order per billing cycle,
@@ -43,6 +44,17 @@ function cycleDays(cycle: BillingCycle): number {
   return cycle === "Yearly" ? 365 : 30;
 }
 
+async function admitManualCheckout(orgId: string, requireActive: boolean) {
+  const [org] = await db.select().from(organizations).where(eq(organizations.id, orgId)).limit(1);
+  if (!org || (requireActive && org.status !== "Active")) throw new BillingError("Organization abhi active nahi hai.");
+  const [attempt] = await db.select().from(billingSubscriptionAttempts)
+    .where(and(eq(billingSubscriptionAttempts.orgId, orgId), isNull(billingSubscriptionAttempts.closedAt))).limit(1);
+  if (attempt || (org.razorpaySubscriptionId && !["cancelled", "completed", "expired"].includes(org.subscriptionStatus))) {
+    throw new BillingError("Existing subscription ko pehle cancel/reconcile karein. Doosra payment abhi allowed nahi hai.");
+  }
+  return org;
+}
+
 export async function startPlanCheckout(
   plan: PlanTier,
   cycle: BillingCycle
@@ -55,8 +67,10 @@ export async function startPlanCheckout(
     throw new BillingError("Is plan/billing-cycle ke liye price set nahi hai.");
   }
 
-  const orgId = await getTenantOrgId();
+  const orgId = await billingOwner();
   const paymentId = generateId("PAY");
+  return runInTenantTransaction(orgId, async () => {
+    await admitManualCheckout(orgId, true);
 
   const order = await createRazorpayOrder({
     amountPaise,
@@ -84,6 +98,7 @@ export async function startPlanCheckout(
     currency: order.currency,
     razorpayKeyId: razorpayPublicKeyId(),
   };
+  });
 }
 
 export interface VerifyPaymentInput {
@@ -106,7 +121,7 @@ export interface VerifyPaymentInput {
 export async function verifyAndApplyBillingPayment(
   input: VerifyPaymentInput
 ): Promise<{ plan: string; billingCycle: string; planRenewsAt: Date }> {
-  const orgId = await getTenantOrgId();
+  const orgId = await billingOwner();
 
   const signatureOk = verifyRazorpaySignature(
     input.razorpayOrderId,
@@ -117,6 +132,7 @@ export async function verifyAndApplyBillingPayment(
     throw new BillingError("Payment signature match nahi hua — payment verify nahi ho saka.");
   }
 
+  return runInTenantTransaction(orgId, async () => {
   const [row] = await db
     .select()
     .from(billingPayments)
@@ -132,9 +148,10 @@ export async function verifyAndApplyBillingPayment(
     throw new BillingError("Ye order is organization ka nahi mila.");
   }
 
-  const renewsAt = row.paidAt
-    ? new Date(row.paidAt)
-    : new Date(Date.now() + cycleDays(row.billingCycle as BillingCycle) * 24 * 60 * 60 * 1000);
+  const renewsAt = new Date(
+    (row.paidAt ? new Date(row.paidAt).getTime() : Date.now()) +
+    cycleDays(row.billingCycle as BillingCycle) * 24 * 60 * 60 * 1000
+  );
 
   if (row.status === "Paid") {
     // Replayed verification of an already-applied payment — report the existing state,
@@ -142,7 +159,7 @@ export async function verifyAndApplyBillingPayment(
     return { plan: row.plan, billingCycle: row.billingCycle, planRenewsAt: renewsAt };
   }
 
-  await runInTenantTransaction(orgId, async () => {
+  await admitManualCheckout(orgId, false);
     await updateById(billingPayments, orgId, row.id, {
       status: "Paid",
       razorpayPaymentId: input.razorpayPaymentId,
@@ -155,174 +172,61 @@ export async function verifyAndApplyBillingPayment(
         billingCycle: row.billingCycle,
         trialEndsAt: null,
         planRenewsAt: renewsAt,
-        status: "Active",
       })
       .where(eq(organizations.id, orgId));
+
+    return { plan: row.plan, billingCycle: row.billingCycle, planRenewsAt: renewsAt };
   });
-
-  return { plan: row.plan, billingCycle: row.billingCycle, planRenewsAt: renewsAt };
 }
 
-export interface StartSubscriptionResult {
-  subscriptionId: string;
-  razorpayKeyId: string;
-}
+export interface StartSubscriptionResult { subscriptionId: string; razorpayKeyId: string }
 
-/**
- * Starts a real Razorpay Subscription (auto-recurring billing) for the caller's own org —
- * the `/billing` page's "Subscribe" flow. Unlike `startPlanCheckout` above, this doesn't
- * wait for a payment to record anything: `razorpaySubscriptionId`/`subscriptionStatus`
- * are written to the org row IMMEDIATELY (status `"created"`, matching Razorpay's own
- * value for a not-yet-authorized subscription), so the webhook handler always has a row
- * to update by id, with no race between "subscription object exists" and "first webhook
- * event arrives." The actual plan/cycle change only happens later, when the
- * `subscription.activated`/`subscription.charged` webhook confirms a real payment went
- * through — never from this function, and never from the browser's own "Checkout closed
- * successfully" callback.
- */
-export async function startPlanSubscription(
-  plan: PlanTier,
-  cycle: BillingCycle
-): Promise<StartSubscriptionResult> {
-  if (plan === "Trial") {
-    throw new BillingError("Trial plan ke liye subscription nahi banta.");
-  }
-  if (!getPlanPricePaise(plan, cycle)) {
-    throw new BillingError("Is plan/billing-cycle ke liye price set nahi hai.");
-  }
-
-  const orgId = await getTenantOrgId();
-  const planId = await getOrCreateRazorpayPlanId(plan, cycle);
-  const subscription = await createRazorpaySubscription({
-    planId,
-    notes: { orgId, plan, cycle },
-  });
-
-  await updateOrganization(orgId, {
-    razorpaySubscriptionId: subscription.id,
-    subscriptionStatus: subscription.status,
-  });
-
-  return { subscriptionId: subscription.id, razorpayKeyId: razorpayPublicKeyId() };
-}
-
-/**
- * Cancels the caller's own org's active Razorpay subscription — scoped to the caller's
- * own org via `getTenantOrgId()` (never trusts a subscription id from the request body),
- * same "an org can only ever touch its own billing" rule as every other function here.
- * `cancelAtCycleEnd = true`: the org keeps access through the cycle it already paid for;
- * Razorpay simply stops charging it again afterwards. The org row's own `plan` is left
- * untouched here — it only changes when the `subscription.cancelled`/`.completed` webhook
- * actually confirms the cycle has ended, same "webhook is the one source of truth, never
- * an optimistic client-driven write" discipline as every other state change in this file.
- */
-export async function cancelPlanSubscription(): Promise<{ status: string }> {
-  const orgId = await getTenantOrgId();
-  const org = await getOrganization(orgId);
-  if (!org?.razorpaySubscriptionId) {
-    throw new BillingError("Is organization ka koi active subscription nahi mila.");
-  }
-
-  const result = await cancelRazorpaySubscription(org.razorpaySubscriptionId, true);
-  await updateOrganization(orgId, { subscriptionStatus: result.status });
-  return { status: result.status };
-}
-
-export interface SubscriptionWebhookPayload {
-  event: string;
-  subscriptionId: string;
-  status: string;
-  /** From the Razorpay subscription entity's own `notes.plan`/`notes.cycle` (set once at
-   * `startPlanSubscription()`-time) — the TARGET plan/cycle this subscription is actually
-   * for. Never read from the org row's current `plan`/`billingCycle`, which still holds
-   * whatever the org was on BEFORE this subscription (Trial, or an older paid plan) right
-   * up until this webhook applies the change. */
-  plan?: string;
-  billingCycle?: string;
-  /** Unix seconds — Razorpay's `current_end` on the subscription entity. Present on every
-   * event this handler cares about except a brand-new `subscription.created` (ignored
-   * below, nothing to apply yet). */
-  currentEndUnix?: number;
-  /** Only present on a `subscription.charged` event's bundled payment entity — used to
-   * write a `billing_payments` receipt row, same historical-trail purpose as every
-   * Standard Checkout row, so `/billing`'s own payment history (if ever built) has one
-   * consistent table to read regardless of which flow paid. */
-  paymentId?: string;
-  orderId?: string;
-  amountPaise?: number;
-}
-
-/**
- * Applies ONE already-signature-verified Razorpay webhook event — the one place a
- * subscription's real-world state (an actual successful/failed/cancelled charge) ever
- * changes an org's `plan`/`subscriptionStatus`/`planRenewsAt`. Looked up by
- * `razorpaySubscriptionId` alone (there is no session/org context on an incoming
- * webhook) — `startPlanSubscription` guarantees that id exists on the org row from the
- * moment the subscription was created, before any webhook could possibly arrive.
- *
- * Deliberately does NOT revoke/downgrade an org's plan on `cancelled`/`halted`/
- * `completed`/`expired` — it only records the status. This matches every other billing
- * flow in this codebase today (Standard Checkout's `planRenewsAt` already isn't enforced
- * as a hard cutoff anywhere either) — building real access-revocation on a payment
- * failure is a deliberately separate, higher-stakes decision for a future session, not
- * something to slip in as a side effect of this webhook handler.
- *
- * Idempotent the same way `verifyAndApplyBillingPayment` is: Razorpay retries a webhook
- * delivery on anything other than a 2xx response, so a duplicate `subscription.charged`
- * for an already-recorded `paymentId` must be a safe no-op, not a double-applied renewal.
- */
-export async function applySubscriptionWebhookEvent(payload: SubscriptionWebhookPayload): Promise<void> {
-  const [org] = await db
-    .select()
-    .from(organizations)
-    .where(eq(organizations.razorpaySubscriptionId, payload.subscriptionId))
-    .limit(1);
-  if (!org) {
-    // A subscription this platform never created (or already deleted the org for) —
-    // nothing to apply. Not an error: Razorpay doesn't care whether we recognize it.
-    return;
-  }
-
-  if (payload.paymentId) {
-    const [existing] = await db
-      .select()
-      .from(billingPayments)
-      .where(eq(billingPayments.razorpayPaymentId, payload.paymentId))
-      .limit(1);
-    if (existing) return; // Already applied this exact charge — duplicate webhook delivery.
-  }
-
-  const renewsAt = payload.currentEndUnix ? new Date(payload.currentEndUnix * 1000) : org.planRenewsAt;
-
-  await runInTenantTransaction(org.id, async () => {
-    const isActivation = payload.event === "subscription.activated" || payload.event === "subscription.charged";
-
-    await updateOrganization(org.id, {
-      subscriptionStatus: payload.status,
-      ...(isActivation
-        ? {
-            status: "Active" as const,
-            trialEndsAt: null,
-            planRenewsAt: renewsAt ?? undefined,
-            ...(payload.plan ? { plan: payload.plan } : {}),
-            ...(payload.billingCycle ? { billingCycle: payload.billingCycle } : {}),
-          }
-        : {}),
-    });
-
-    if (payload.event === "subscription.charged" && payload.paymentId && payload.plan && payload.billingCycle) {
-      await insertRecord(billingPayments, {
-        id: generateId("PAY"),
-        orgId: org.id,
-        plan: payload.plan,
-        billingCycle: payload.billingCycle,
-        amount: payload.amountPaise ? (payload.amountPaise / 100).toFixed(2) : "0",
-        currency: "INR",
-        razorpayOrderId: payload.orderId || `sub_charge_${payload.paymentId}`,
-        razorpayPaymentId: payload.paymentId,
-        status: "Paid",
-        paidAt: new Date(),
-      });
+// db is the adapter proxy: every query constructed inside lock() uses the same
+// transaction connection after the per-org advisory lock (no callback tx argument).
+const subscriptionStore: SubscriptionStore = {
+  lock: (orgId, work) => runInTenantTransaction(orgId, work),
+  org: async orgId => (await db.select().from(organizations).where(eq(organizations.id, orgId)).limit(1))[0],
+  openAttempt: async orgId => (await db.select().from(billingSubscriptionAttempts).where(and(eq(billingSubscriptionAttempts.orgId, orgId), isNull(billingSubscriptionAttempts.closedAt))).limit(1))[0],
+  attempt: async id => (await db.select().from(billingSubscriptionAttempts).where(eq(billingSubscriptionAttempts.id, id)).limit(1))[0],
+  byProvider: async id => (await db.select().from(billingSubscriptionAttempts).where(eq(billingSubscriptionAttempts.providerId, id)).limit(1))[0],
+  insert: async attempt => { await db.insert(billingSubscriptionAttempts).values(attempt); },
+  update: async (id, patch) => { await db.update(billingSubscriptionAttempts).set(patch).where(eq(billingSubscriptionAttempts.id, id)); },
+  updateOrg: async (orgId, patch) => { await db.update(organizations).set(patch).where(eq(organizations.id, orgId)); },
+  receipt: async (attempt, payment) => {
+    const inserted = await db.insert(billingSubscriptionCharges).values({ paymentId: payment.id, attemptId: attempt.id, paidThrough: payment.paidThrough }).onConflictDoNothing().returning({ id: billingSubscriptionCharges.paymentId });
+    if (!inserted.length) {
+      const [existing] = await db.select().from(billingSubscriptionCharges).where(eq(billingSubscriptionCharges.paymentId, payment.id)).limit(1);
+      if (!existing || existing.attemptId !== attempt.id) throw new SubscriptionError("Payment already bound to another subscription.");
+      return false;
     }
-  });
+    await db.insert(billingPayments).values({ id: generateId("PAY"), orgId: attempt.orgId, plan: attempt.plan, billingCycle: attempt.cycle, amount: (attempt.amountPaise / 100).toFixed(2), currency: attempt.currency, razorpayOrderId: payment.orderId, razorpayPaymentId: payment.id, status: "Paid", paidAt: new Date() });
+    return true;
+  },
+};
+const subscriptions = createSubscriptionService(subscriptionStore, {
+  ready: assertSubscriptionsReady, keyId: razorpayPublicKeyId, plan: getOrCreateRazorpayPlanId,
+  create: createRazorpaySubscription, subscription: fetchRazorpaySubscription,
+  payment: fetchRazorpayPayment, invoice: fetchRazorpayInvoice, cancel: cancelRazorpaySubscription,
+}, () => generateId("SUB"));
+
+/** Explicit org arguments are server-only, taken from requireRole's live Admin session.
+ * Legacy internal callers without an argument still resolve a live Admin, never
+ * getTenantOrgId (which deliberately refuses an expired trial). */
+async function billingOwner(explicitOrgId?: string): Promise<string> {
+  if (explicitOrgId) return explicitOrgId;
+  const session = await getLiveSession();
+  if (!session || session.role !== "Admin") throw new SubscriptionError("Admin session required.", 403);
+  return session.orgId;
+}
+export async function startPlanSubscription(plan: PlanTier, cycle: BillingCycle, orgId?: string): Promise<StartSubscriptionResult> {
+  assertSubscriptionsReady();
+  return subscriptions.start(await billingOwner(orgId), plan, cycle);
+}
+export async function cancelPlanSubscription(orgId?: string): Promise<{ status: string }> {
+  assertSubscriptionsReady();
+  return subscriptions.cancel(await billingOwner(orgId));
+}
+export interface SubscriptionWebhookPayload { event: string; subscriptionId: string; paymentId?: string }
+export async function applySubscriptionWebhookEvent(payload: SubscriptionWebhookPayload): Promise<void> {
+  await subscriptions.webhook(payload);
 }

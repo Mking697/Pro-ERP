@@ -5,6 +5,7 @@ import { SESSION_COOKIE } from "@/lib/auth/session";
 import { getLiveSessionFromToken } from "@/lib/auth/live-session";
 import { getOrganization, type Organization } from "@/lib/platform/registry";
 import { isTrialExpired } from "@/lib/platform/planLimits";
+import { isSubscriptionAccessExpired } from "@/lib/billing/subscription-access";
 
 export interface TenantContext {
   orgId: string;
@@ -40,9 +41,9 @@ export function runWithTenant<T>(ctx: TenantContext, fn: () => Promise<T>): Prom
  * any thrown error for `error_logs`.
  */
 export class TenantResolutionError extends Error {
-  digest?: "TRIAL_EXPIRED" | "ORG_SUSPENDED";
+  digest?: "TRIAL_EXPIRED" | "ORG_SUSPENDED" | "BILLING_EXPIRED";
 
-  constructor(message: string, digest?: "TRIAL_EXPIRED" | "ORG_SUSPENDED") {
+  constructor(message: string, digest?: "TRIAL_EXPIRED" | "ORG_SUSPENDED" | "BILLING_EXPIRED") {
     super(message);
     this.digest = digest;
   }
@@ -68,6 +69,12 @@ export async function tenantFromOrgId(orgId: string): Promise<TenantContext> {
     throw new TenantResolutionError(
       `"${org.orgName}" ka 30-din trial khatm ho gaya hai. Jaari rakhne ke liye Admin se plan upgrade karwayein.`,
       "TRIAL_EXPIRED"
+    );
+  }
+  if (isSubscriptionAccessExpired(org)) {
+    throw new TenantResolutionError(
+      "Subscription ka paid period khatm ho gaya hai. Admin /billing se renew karein.",
+      "BILLING_EXPIRED"
     );
   }
   return { orgId: org.id, org };

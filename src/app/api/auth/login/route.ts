@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { findUserByEmail, verifyPassword } from "@/lib/auth/users";
 import { signSession, SESSION_COOKIE } from "@/lib/auth/session";
-import { lookupUserOrg } from "@/lib/platform/registry";
+import { getOrganization, lookupUserOrg } from "@/lib/platform/registry";
 import { tenantFromOrgId, runWithTenant, TenantResolutionError } from "@/lib/tenant";
 import { effectiveModuleAccess } from "@/lib/moduleAccess";
 import { checkRateLimit, clientIp } from "@/lib/rateLimit";
@@ -56,13 +56,22 @@ export async function POST(request: Request) {
   }
 
   let tenant;
+  let billingRecovery = false;
   try {
     tenant = await tenantFromOrgId(indexed.orgId);
   } catch (error) {
-    if (error instanceof TenantResolutionError) {
+    if (!(error instanceof TenantResolutionError)) throw error;
+    if (error.digest !== "TRIAL_EXPIRED" && error.digest !== "BILLING_EXPIRED") {
       return NextResponse.json({ error: error.message }, { status: 403 });
     }
-    throw error;
+    const org = await getOrganization(indexed.orgId);
+    if (!org || org.status !== "Active") {
+      return NextResponse.json({ error: "Organization abhi active nahi hai." }, { status: 403 });
+    }
+    // Only the credential lookup is allowed in this explicit scope. The resulting
+    // session cannot bypass ordinary module/tenant admission after login.
+    tenant = { orgId: org.id, org };
+    billingRecovery = true;
   }
 
   const user = await runWithTenant(tenant, () => findUserByEmail(email));
@@ -73,6 +82,10 @@ export async function POST(request: Request) {
   const passwordOk = await verifyPassword(password, user.Password_Hash);
   if (!passwordOk) {
     return invalid;
+  }
+
+  if (billingRecovery && user.Role !== "Admin") {
+    return NextResponse.json({ error: "Paid period khatm ho gaya hai. Admin se renewal karwayein." }, { status: 403 });
   }
 
   // Resolved once at login so every later guard is a token check, not a database read.
@@ -89,6 +102,7 @@ export async function POST(request: Request) {
   });
 
   const response = NextResponse.json({
+    redirectTo: billingRecovery ? "/billing" : "/dashboard",
     user: {
       userId: user.User_ID,
       fullName: user.Full_Name,

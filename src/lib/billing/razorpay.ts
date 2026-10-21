@@ -1,6 +1,7 @@
 import Razorpay from "razorpay";
-import { createHmac, timingSafeEqual } from "node:crypto";
+import { createHash, createHmac, timingSafeEqual } from "node:crypto";
 import { eq } from "drizzle-orm";
+import { SubscriptionError } from "./subscriptions";
 import { db } from "@/db/client";
 import { razorpayPlanCache } from "@/db/schema";
 import { getPlanPricePaise, type BillingCycle, type PlanTier } from "@/lib/platform/planLimits";
@@ -20,14 +21,23 @@ function requiredEnv(name: string): string {
   return value;
 }
 
+export function assertSubscriptionsReady(): void {
+  if (process.env.RAZORPAY_SUBSCRIPTIONS_ENABLED !== "true" ||
+      !["RAZORPAY_KEY_ID", "RAZORPAY_KEY_SECRET", "RAZORPAY_WEBHOOK_SECRET"].every(k => process.env[k]?.trim())) {
+    throw new SubscriptionError("Subscriptions are not configured/enabled.", 503);
+  }
+}
+
 let cachedClient: Razorpay | null = null;
+let clientBinding = "";
 
 function razorpayClient(): Razorpay {
-  if (!cachedClient) {
-    cachedClient = new Razorpay({
-      key_id: requiredEnv("RAZORPAY_KEY_ID"),
-      key_secret: requiredEnv("RAZORPAY_KEY_SECRET"),
-    });
+  const keyId = requiredEnv("RAZORPAY_KEY_ID");
+  const keySecret = requiredEnv("RAZORPAY_KEY_SECRET");
+  const binding = createHash("sha256").update(JSON.stringify([keyId, keySecret])).digest("hex");
+  if (!cachedClient || binding !== clientBinding) {
+    cachedClient = new Razorpay({ key_id: keyId, key_secret: keySecret });
+    clientBinding = binding;
   }
   return cachedClient;
 }
@@ -103,7 +113,10 @@ export function verifyRazorpaySignature(
  * monthly charges, so the Plan itself must be a single yearly charge.
  */
 export async function getOrCreateRazorpayPlanId(plan: PlanTier, cycle: BillingCycle): Promise<string> {
-  const cacheId = `${plan}_${cycle}`;
+  assertSubscriptionsReady();
+  const amountPaise = getPlanPricePaise(plan, cycle);
+  if (!amountPaise) throw new Error("Invalid plan price.");
+  const cacheId = razorpayPlanCacheKey(razorpayPublicKeyId(), plan, cycle, amountPaise);
 
   const [cached] = await db
     .select()
@@ -111,11 +124,6 @@ export async function getOrCreateRazorpayPlanId(plan: PlanTier, cycle: BillingCy
     .where(eq(razorpayPlanCache.id, cacheId))
     .limit(1);
   if (cached) return cached.razorpayPlanId;
-
-  const amountPaise = getPlanPricePaise(plan, cycle);
-  if (!amountPaise) {
-    throw new Error(`${plan}/${cycle} ke liye price set nahi hai.`);
-  }
 
   const razorpayPlan = await razorpayClient().plans.create({
     period: cycle === "Yearly" ? "yearly" : "monthly",
@@ -158,6 +166,7 @@ export interface RazorpaySubscriptionResult {
 export async function createRazorpaySubscription(
   input: CreateSubscriptionInput
 ): Promise<RazorpaySubscriptionResult> {
+  assertSubscriptionsReady();
   const subscription = await razorpayClient().subscriptions.create({
     plan_id: input.planId,
     total_count: input.totalCount ?? 100,
@@ -174,25 +183,29 @@ export async function cancelRazorpaySubscription(
   subscriptionId: string,
   cancelAtCycleEnd = true
 ): Promise<RazorpaySubscriptionResult> {
+  assertSubscriptionsReady();
   const subscription = await razorpayClient().subscriptions.cancel(subscriptionId, cancelAtCycleEnd);
   return { id: subscription.id, status: subscription.status };
 }
 
-/**
- * Razorpay webhook signature check — HMAC-SHA256 of the EXACT raw request body (never the
- * re-parsed/re-stringified JSON, which can byte-mismatch the original and silently break
- * verification) against `x-razorpay-signature`, using `RAZORPAY_WEBHOOK_SECRET` (set once
- * when the webhook endpoint is registered — see `scripts/setup-razorpay-webhook.ts`, the
- * one-time setup script that both creates the Dashboard webhook and prints this value).
- * Same timing-safe-compare discipline as `verifyRazorpaySignature` above.
- */
-export function verifyRazorpayWebhookSignature(rawBody: string, signature: string): boolean {
-  const expected = createHmac("sha256", requiredEnv("RAZORPAY_WEBHOOK_SECRET"))
-    .update(rawBody)
-    .digest("hex");
+/** HMAC of the EXACT raw body. Missing configuration is checked by the route (503). */
+export function verifyRazorpayWebhookSignature(rawBody: string | Buffer, signature: string): boolean {
+  const secret = process.env.RAZORPAY_WEBHOOK_SECRET;
+  if (!secret || !/^[a-f0-9]{64}$/i.test(signature)) return false;
+  const expected = createHmac("sha256", secret).update(rawBody).digest();
+  return timingSafeEqual(expected, Buffer.from(signature, "hex"));
+}
 
-  const expectedBuf = Buffer.from(expected, "utf8");
-  const actualBuf = Buffer.from(signature, "utf8");
-  if (expectedBuf.length !== actualBuf.length) return false;
-  return timingSafeEqual(expectedBuf, actualBuf);
+export function razorpayPlanCacheKey(keyId: string, plan: PlanTier, cycle: BillingCycle, amountPaise: number): string {
+  return `v2_${createHash("sha256").update(JSON.stringify([keyId, plan, cycle, amountPaise, "INR"])).digest("hex")}`;
+}
+
+export async function fetchRazorpaySubscription(id: string): Promise<unknown> {
+  assertSubscriptionsReady(); return razorpayClient().subscriptions.fetch(id);
+}
+export async function fetchRazorpayPayment(id: string): Promise<unknown> {
+  assertSubscriptionsReady(); return razorpayClient().payments.fetch(id);
+}
+export async function fetchRazorpayInvoice(id: string): Promise<unknown> {
+  assertSubscriptionsReady(); return razorpayClient().invoices.fetch(id);
 }

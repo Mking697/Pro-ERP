@@ -2095,6 +2095,12 @@ export const EN: Record<string, string> = {
   "Cancel ho raha hai...": "Cancelling...",
   "Subscription cancel karein": "Cancel subscription",
   "auto-renew": "auto-renew",
+  "Subscribe karein": "Subscribe",
+  "Auto-renew band hoga. Paid period ke baad access ruk jayega.": "Auto-renew will stop. Access ends after the paid period.",
+  "Auto-renew subscription: har cycle payment automatic katega. Cancel kabhi bhi karein.": "Auto-renew subscription: payment is charged automatically each cycle. Cancel at any time.",
+  "One-time payment: auto-debit nahi hoga.": "One-time payment: no automatic debit.",
+  "Subscription ka paid period khatm ho gaya": "Subscription paid period has ended",
+  "Admin /billing se payment renew karein. Data delete nahi hua hai.": "Ask your Admin to renew through /billing. Your data has not been deleted.",
   "Payment gateway abhi load ho raha hai, thodi der mein dobara try karein.":
     "Payment gateway is still loading — try again in a moment.",
   "Order nahi ban paaya.": "Could not create the order.",
