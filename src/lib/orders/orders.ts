@@ -18,7 +18,8 @@ import { findItem } from "@/lib/inventory/items";
 import { getStockAvailability } from "@/lib/inventory/availability";
 import { round2, round3, lineAmount } from "@/lib/leads/quotationMath";
 import { createCustomer } from "@/lib/parties/customers";
-import { resolveDisplayCurrency } from "@/lib/currency/currency";
+import { resolveDisplayCurrency, getLatestExchangeRate } from "@/lib/currency/currency";
+import type { PostJournalLineInput } from "@/lib/accounts/ledger";
 import { startFmsInstance } from "@/lib/fms/engine";
 import { listFmsTemplates } from "@/lib/fms/templates";
 import { createTask } from "@/lib/tasks";
@@ -933,6 +934,20 @@ export interface RecordPaymentInput {
   reference?: string;
   /** ISO instant — defaults to now. */
   receivedAt?: string;
+  /**
+   * Foreign-currency forex posting (Phase C) — optional, additive. The actual
+   * foreign-currency face amount the customer paid (e.g. 500 for "$500"), ONLY when the
+   * recorder explicitly chooses to record this payment in the order's own
+   * `displayCurrency` instead of a plain INR amount. Omitted (every existing caller, and
+   * every ordinary INR payment) leaves `amount` as the sole input and the GL posting
+   * byte-identical to before this field existed — see recordPaymentInTransaction()'s own
+   * comment for the full forex model. Requires the order's `displayCurrency` to be a real
+   * foreign code with its own order-time `displayExchangeRate` snapshot, and today's
+   * exchange rate for that currency to be configured (src/lib/currency/currency.ts's
+   * getLatestExchangeRate()) — rejected otherwise, never silently falling back to the
+   * order's own snapshotted rate for "today's" side of the calculation.
+   */
+  faceAmountReceived?: number;
 }
 
 export async function recordPayment(
@@ -951,17 +966,26 @@ export async function recordPayment(
   if (!Number.isFinite(input.amount) || !Number.isFinite(amount) || !(amount > 0)) {
     throw new OrderError("Amount finite aur rounding ke baad 0 se zyada hona chahiye.");
   }
+  let faceAmountReceived: number | undefined;
+  if (input.faceAmountReceived !== undefined) {
+    faceAmountReceived = input.faceAmountReceived;
+    if (!Number.isFinite(faceAmountReceived) || !(faceAmountReceived > 0)) {
+      throw new OrderError("Face amount received finite aur 0 se zyada hona chahiye.");
+    }
+  }
   const receivedAt = input.receivedAt ? new Date(input.receivedAt) : null;
   if (receivedAt && !Number.isFinite(receivedAt.getTime())) throw new OrderError("Payment date samajh nahi aayi.");
   const parsed: RecordPaymentInput = { amount, mode: input.mode, reference: input.reference?.trim() ?? "",
-    ...(receivedAt ? { receivedAt: receivedAt.toISOString() } : {}) };
+    ...(receivedAt ? { receivedAt: receivedAt.toISOString() } : {}),
+    ...(faceAmountReceived !== undefined ? { faceAmountReceived } : {}) };
   const orgId = await getTenantOrgId();
   const work = () => recordPaymentInTransaction(orderId, parsed, actorId);
   if (key === undefined) return runInTenantTransaction(orgId, work);
   const result = await runIdempotentTenantMutation(orgId, {
     operation: "orders.recordPayment.v1", actorId, key,
     payload: { orderId, amount: parsed.amount, mode: parsed.mode,
-      reference: parsed.reference ?? "", receivedAt: parsed.receivedAt ?? null },
+      reference: parsed.reference ?? "", receivedAt: parsed.receivedAt ?? null,
+      ...(parsed.faceAmountReceived !== undefined ? { faceAmountReceived: parsed.faceAmountReceived } : {}) },
   }, async () => {
     const order = await work();
     return { ...order, items: order.items.map((line) => ({ ...line })) };
@@ -988,12 +1012,54 @@ async function recordPaymentInTransaction(
     throw new OrderError("Cancelled order par payment record nahi ho sakta.");
   }
 
+  // Forex gain/loss GL posting (Phase C) — ONLY when the recorder explicitly supplied
+  // `faceAmountReceived`. Every ordinary payment (faceAmountReceived undefined) skips this
+  // whole block and keeps `storedAmount`/`debitAmount`/`creditAmount` all equal to `amount`
+  // and `forexDelta` at 0 — byte-identical to the pre-forex code path.
+  //
+  // Model: `expectedInr` (= faceAmountReceived * the order's own ORDER-TIME snapshotted
+  // displayExchangeRate) is what AR actually clears by and what gets stored in
+  // order_payments.amount — every existing reader that sums order_payments.amount against
+  // orders.orderValue (computeCreditPosition() above, invoicedSoFar() in accounts.ts) stays
+  // consistent, since orderValue itself was computed from displayAmount * the SAME
+  // order-time rate at order-creation. `actualInr` (= faceAmountReceived * TODAY's
+  // configured rate) is the real cash that actually hit the bank. The difference
+  // (forexDelta) is the realized forex gain/loss, posted as a 3rd journal line so the
+  // 2-line Cash/AR entry still balances on its own at `actualInr` debit vs `expectedInr`
+  // credit plus the gain/loss leg.
+  let storedAmount = amount;
+  let debitAmount = amount;
+  let creditAmount = amount;
+  let forexDelta = 0;
+  if (input.faceAmountReceived !== undefined) {
+    const faceAmountReceived = input.faceAmountReceived;
+    const displayCurrency = typeof order.displayCurrency === "string" ? order.displayCurrency : "";
+    const orderRateRaw = order.displayExchangeRate;
+    const orderRate = orderRateRaw !== null && orderRateRaw !== undefined ? Number(orderRateRaw) : NaN;
+    if (!displayCurrency || displayCurrency === "INR" || !Number.isFinite(orderRate) || !(orderRate > 0)) {
+      throw new OrderError("Ye order foreign-currency payment ke liye eligible nahi hai — faceAmountReceived sirf display currency wale order par chalega.");
+    }
+    const currentRate = await getLatestExchangeRate(displayCurrency);
+    if (!currentRate) {
+      throw new OrderError(`"${displayCurrency}" ke liye abhi koi exchange rate set nahi hai.`);
+    }
+    const expectedInr = round2(faceAmountReceived * orderRate);
+    const actualInr = round2(faceAmountReceived * currentRate.rateToInr);
+    if (!(expectedInr > 0) || !(actualInr > 0)) {
+      throw new OrderError("Forex conversion ke baad amount 0 se zyada hona chahiye.");
+    }
+    forexDelta = round2(actualInr - expectedInr);
+    storedAmount = expectedInr;
+    debitAmount = actualInr;
+    creditAmount = expectedInr;
+  }
+
   const paymentId = generateId("OPY");
   await insertRecord(orderPayments, {
     id: paymentId,
     orgId,
     orderId,
-    amount: String(amount),
+    amount: String(storedAmount),
     mode: input.mode,
     reference: input.reference?.trim() ?? "",
     receivedAt,
@@ -1004,24 +1070,30 @@ async function recordPaymentInTransaction(
     orgId,
     orderId,
     "Payment",
-    `Payment record kiya gaya — ₹${amount} (${input.mode}).${input.reference ? ` Ref: ${input.reference}` : ""}`,
+    `Payment record kiya gaya — ₹${storedAmount} (${input.mode}).${input.reference ? ` Ref: ${input.reference}` : ""}`,
     actorId
   );
 
   // Accounting is part of the payment, not a best-effort notification. The stable
   // payment event ID distinguishes two genuine equal-amount installments.
   const { postJournalEntry, SYSTEM_ACCOUNT_CODES } = await import("@/lib/accounts/ledger");
+  const lines: PostJournalLineInput[] = [
+    { accountCode: input.mode === "Credit_Note"
+      ? SYSTEM_ACCOUNT_CODES.CUSTOMER_CREDIT_BALANCE : SYSTEM_ACCOUNT_CODES.CASH_BANK, debit: debitAmount },
+    { accountCode: SYSTEM_ACCOUNT_CODES.ACCOUNTS_RECEIVABLE, credit: creditAmount },
+  ];
+  if (forexDelta > 0) {
+    lines.push({ accountCode: SYSTEM_ACCOUNT_CODES.FOREX_GAIN, credit: forexDelta });
+  } else if (forexDelta < 0) {
+    lines.push({ accountCode: SYSTEM_ACCOUNT_CODES.FOREX_LOSS, debit: -forexDelta });
+  }
   await postJournalEntry({
     orgId,
     description: `Payment received — Order ${orderId}`,
     sourceType: "ReceivablePayment",
     sourceId: paymentId,
     createdBy: actorId,
-    lines: [
-      { accountCode: input.mode === "Credit_Note"
-        ? SYSTEM_ACCOUNT_CODES.CUSTOMER_CREDIT_BALANCE : SYSTEM_ACCOUNT_CODES.CASH_BANK, debit: amount },
-      { accountCode: SYSTEM_ACCOUNT_CODES.ACCOUNTS_RECEIVABLE, credit: amount },
-    ],
+    lines,
   });
 
   const updated = await getOrder(orderId);

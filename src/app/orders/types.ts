@@ -46,6 +46,11 @@ export interface OrderRow {
   poAttachmentUrl: string;
   status: OrderStatus;
   orderValue: number;
+  // Multi-currency DISPLAY/REFERENCE layer (Phase C) — "INR"/null for every order that
+  // never used a foreign currency (every order today, and every order created without
+  // one tomorrow too). See src/db/schema/orders.ts's own comment.
+  displayCurrency: string;
+  displayExchangeRate: number | null;
   creditApprovedBy: string;
   creditApprovedAt: string;
   dispatchCommitDate: string;

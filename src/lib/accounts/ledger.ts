@@ -96,6 +96,12 @@ export const SYSTEM_ACCOUNT_CODES = {
   UTILITIES_EXPENSE: "5300",
   MISC_EXPENSE: "5400",
   TRANSIT_LOSS_EXPENSE: "5500",
+  // Phase C forex posting (orders.ts's recordPayment()) — the INR gain/loss between a
+  // foreign-currency order's own order-time snapshotted rate and the rate actually in
+  // force on the day a payment against it is received. Never touched by an ordinary
+  // INR-only payment (that path posts only CASH_BANK/ACCOUNTS_RECEIVABLE, unchanged).
+  FOREX_GAIN: "4100",
+  FOREX_LOSS: "5600",
 } as const;
 
 const DEFAULT_ACCOUNTS: { code: string; name: string; type: AccountType }[] = [
@@ -122,6 +128,8 @@ const DEFAULT_ACCOUNTS: { code: string; name: string; type: AccountType }[] = [
   { code: SYSTEM_ACCOUNT_CODES.UTILITIES_EXPENSE, name: "Utilities Expense", type: "Expense" },
   { code: SYSTEM_ACCOUNT_CODES.MISC_EXPENSE, name: "Miscellaneous Expense", type: "Expense" },
   { code: SYSTEM_ACCOUNT_CODES.TRANSIT_LOSS_EXPENSE, name: "Transit Loss Expense", type: "Expense" },
+  { code: SYSTEM_ACCOUNT_CODES.FOREX_GAIN, name: "Forex Gain", type: "Income" },
+  { code: SYSTEM_ACCOUNT_CODES.FOREX_LOSS, name: "Forex Loss", type: "Expense" },
 ];
 
 export interface ChartOfAccountRecord {

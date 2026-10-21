@@ -162,6 +162,8 @@ export default function OrderDetailDialog({
               totalPaid={totalPaid}
               orderValue={order.orderValue}
               payments={payments}
+              displayCurrency={order.displayCurrency}
+              displayExchangeRate={order.displayExchangeRate}
               onAction={callAction}
             />
 
@@ -332,6 +334,8 @@ function PaymentSection({
   totalPaid,
   orderValue,
   payments,
+  displayCurrency,
+  displayExchangeRate,
   onAction,
 }: {
   orderId: string;
@@ -339,12 +343,20 @@ function PaymentSection({
   totalPaid: number;
   orderValue: number;
   payments: OrderPaymentRow[];
+  displayCurrency: string;
+  displayExchangeRate: number | null;
   onAction: (url: string, body?: Record<string, unknown>) => Promise<boolean>;
 }) {
   const t = useT();
   const [amount, setAmount] = useState("");
   const [mode, setMode] = useState<(typeof PAYMENT_MODES)[number]>("Bank_Transfer");
   const [reference, setReference] = useState("");
+  // Forex gain/loss posting (Phase C) — only reachable when this order's own
+  // displayCurrency is a real foreign code with its own order-time rate snapshot. Zero
+  // visual change for the vast majority of orders (plain INR, isForeignOrder === false).
+  const isForeignOrder = displayCurrency !== "INR" && displayExchangeRate !== null;
+  const [recordInForeignCurrency, setRecordInForeignCurrency] = useState(false);
+  const [faceAmountReceived, setFaceAmountReceived] = useState("");
 
   return (
     <div className="space-y-3">
@@ -369,11 +381,39 @@ function PaymentSection({
         </div>
       )}
 
+      {isForeignOrder && (
+        <label className="flex items-center gap-2 text-xs text-muted-foreground">
+          <input
+            type="checkbox"
+            checked={recordInForeignCurrency}
+            onChange={(e) => {
+              setRecordInForeignCurrency(e.target.checked);
+              setAmount("");
+              setFaceAmountReceived("");
+            }}
+          />
+          {t("Foreign currency mein payment received hui")}
+        </label>
+      )}
+
       <div className="grid gap-2 sm:grid-cols-[1fr_1fr_1fr_auto] sm:items-end">
-        <div className="space-y-2">
-          <Label>Amount</Label>
-          <Input type="number" step="any" min="0" value={amount} onChange={(e) => setAmount(e.target.value)} />
-        </div>
+        {recordInForeignCurrency ? (
+          <div className="space-y-2">
+            <Label>{t("Face amount received")} ({displayCurrency})</Label>
+            <Input
+              type="number"
+              step="any"
+              min="0"
+              value={faceAmountReceived}
+              onChange={(e) => setFaceAmountReceived(e.target.value)}
+            />
+          </div>
+        ) : (
+          <div className="space-y-2">
+            <Label>Amount</Label>
+            <Input type="number" step="any" min="0" value={amount} onChange={(e) => setAmount(e.target.value)} />
+          </div>
+        )}
         <div className="space-y-2">
           <Label>Mode</Label>
           <Select value={mode} onValueChange={(v) => v && setMode(v as (typeof PAYMENT_MODES)[number])}>
@@ -395,15 +435,18 @@ function PaymentSection({
         </div>
         <Button
           size="sm"
-          disabled={busy || !(Number(amount) > 0)}
+          disabled={
+            busy ||
+            (recordInForeignCurrency ? !(Number(faceAmountReceived) > 0) : !(Number(amount) > 0))
+          }
           onClick={async () => {
-            const ok = await onAction(`/api/orders/${orderId}/payment`, {
-              amount: Number(amount),
-              mode,
-              reference,
-            });
+            const body = recordInForeignCurrency
+              ? { amount: Number(faceAmountReceived), mode, reference, faceAmountReceived: Number(faceAmountReceived) }
+              : { amount: Number(amount), mode, reference };
+            const ok = await onAction(`/api/orders/${orderId}/payment`, body);
             if (ok) {
               setAmount("");
+              setFaceAmountReceived("");
               setReference("");
             }
           }}

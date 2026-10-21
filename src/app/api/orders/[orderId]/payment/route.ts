@@ -9,6 +9,10 @@ const bodySchema = z.object({
   mode: z.enum(["Cash", "UPI", "Bank_Transfer", "Cheque", "Card", "Other"]),
   reference: z.string().trim().optional(),
   receivedAt: z.string().trim().optional(),
+  // Forex gain/loss posting (Phase C) — optional, additive. Only meaningful (and only
+  // accepted downstream) for an order whose own displayCurrency is a real foreign code;
+  // see recordPayment()'s own validation in src/lib/orders/orders.ts.
+  faceAmountReceived: z.coerce.number().positive("Face amount received 0 se zyada hona chahiye.").optional(),
 });
 
 /** Record Payment — available at any (non-Cancelled) status, not just Payment_Review. */
