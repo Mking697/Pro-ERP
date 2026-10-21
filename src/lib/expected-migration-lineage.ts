@@ -194,5 +194,13 @@ export const expectedMigrationLineage = [
     // production hash+timestamp confirmed the same way, same deploy.
     "hash": "3400e7449fcd64fcbbc6ee9f124787be1f5ed052d1bbbf36de0ee43bb7788e4a",
     "folderMillis": 1792596631516
+  },
+  {
+    // Release 0042: currencies, org_enabled_currencies, exchange_rates (Phase C,
+    // multi-currency display layer) — real production hash+timestamp confirmed via a
+    // direct query against drizzle.__drizzle_migrations on the VPS after applying this
+    // migration there on 2026-10-21.
+    "hash": "c660bdf2b45377809bc2fbe0a413cf7e738b1d63c1ae35f4c8196a2049b92fb9",
+    "folderMillis": 1792601466694
   }
 ];
