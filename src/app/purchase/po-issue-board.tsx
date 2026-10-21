@@ -67,6 +67,12 @@ export default function PoIssueBoard() {
   const [saving, setSaving] = useState(false);
   const [generatingPdf, setGeneratingPdf] = useState(false);
   const [version, setVersion] = useState(0);
+  // Multi-currency DISPLAY/REFERENCE layer (Phase C) — optional, defaults to INR (no UI
+  // shown) when the org has zero enabled foreign currencies. Every line's own
+  // oldPrice/newPrice stays INR-only either way — see src/lib/currency/currency.ts.
+  const [usableCurrencies, setUsableCurrencies] = useState<{ code: string; name: string; symbol: string }[]>([]);
+  const [currency, setCurrency] = useState("INR");
+  const [displayAmount, setDisplayAmount] = useState("");
 
   useEffect(() => {
     fetch("/api/purchase/candidates")
@@ -93,6 +99,15 @@ export default function PoIssueBoard() {
       .catch(() => {
         // Non-fatal — the fields just stay at their component defaults, still editable.
       });
+  }, []);
+
+  useEffect(() => {
+    fetch("/api/currencies")
+      .then((res) => res.json())
+      .then((data: { currencies?: { code: string; name: string; symbol: string }[] }) =>
+        setUsableCurrencies((data.currencies ?? []).filter((c) => c.code !== "INR"))
+      )
+      .catch(() => {});
   }, []);
 
   const vendorOptions = useMemo(() => {
@@ -174,6 +189,10 @@ export default function PoIssueBoard() {
       toast.error(t("PO attachment zaroori hai."));
       return;
     }
+    if (currency !== "INR" && !(Number(displayAmount) > 0)) {
+      toast.error(t("Foreign currency chuni hai to face amount 0 se zyada dena zaroori hai."));
+      return;
+    }
 
     setSaving(true);
     try {
@@ -190,6 +209,7 @@ export default function PoIssueBoard() {
           gstPercent,
           termsAndConditions,
           note,
+          ...(currency !== "INR" ? { currency, displayAmount: Number(displayAmount) } : {}),
         }),
       });
       const data = await res.json().catch(() => null);
@@ -207,6 +227,8 @@ export default function PoIssueBoard() {
       setGstPercent(defaults.gstPercent);
       setTermsAndConditions(defaults.termsAndConditions);
       setNote(defaults.note);
+      setCurrency("INR");
+      setDisplayAmount("");
       setVersion((v) => v + 1);
     } finally {
       setSaving(false);
@@ -346,6 +368,45 @@ export default function PoIssueBoard() {
               />
             </div>
           </div>
+
+          {usableCurrencies.length > 0 && (
+            <div className="grid gap-3 rounded-lg border p-3 sm:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="po-currency">{t("Foreign Currency (optional)")}</Label>
+                <Select value={currency} onValueChange={(v) => v && setCurrency(v)}>
+                  <SelectTrigger id="po-currency" className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="INR">{t("INR (Default)")}</SelectItem>
+                    {usableCurrencies.map((c) => (
+                      <SelectItem key={c.code} value={c.code}>
+                        {c.symbol} {c.code}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              {currency !== "INR" && (
+                <div className="space-y-2">
+                  <Label htmlFor="po-display-amount">{t("Face Amount")}</Label>
+                  <Input
+                    id="po-display-amount"
+                    type="number"
+                    step="any"
+                    min="0"
+                    value={displayAmount}
+                    onChange={(e) => setDisplayAmount(e.target.value)}
+                  />
+                  {Number(displayAmount) > 0 && (
+                    <p className="text-xs text-muted-foreground">
+                      {t("Note: asli INR amount Admin ke latest exchange rate se calculate hoga.")}
+                    </p>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
           <div className="space-y-2">
             <Label htmlFor="po-note">{t("Note")}</Label>
             <Textarea id="po-note" rows={2} value={note} onChange={(e) => setNote(e.target.value)} />

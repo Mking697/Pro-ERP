@@ -42,6 +42,12 @@ const bodySchema = z.object({
   gstPercent: z.coerce.number().min(0).max(100).optional(),
   termsAndConditions: z.string().optional(),
   note: z.string().optional(),
+  // Multi-currency DISPLAY/REFERENCE layer (Phase C) — optional, see
+  // src/lib/currency/currency.ts's resolveDisplayCurrency(). Every line's own
+  // oldPrice/newPrice stays INR-only either way; these two are only consulted when
+  // currency is a real foreign code (not "INR"/absent).
+  currency: z.string().trim().optional(),
+  displayAmount: z.coerce.number().positive().optional(),
 });
 
 export async function POST(request: Request) {
@@ -67,6 +73,8 @@ export async function POST(request: Request) {
       gstPercent: parsed.data.gstPercent,
       termsAndConditions: parsed.data.termsAndConditions,
       note: parsed.data.note,
+      currency: parsed.data.currency,
+      displayAmount: parsed.data.displayAmount,
     }, getMutationKey(request));
     return NextResponse.json({ order });
   } catch (err) {

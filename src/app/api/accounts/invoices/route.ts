@@ -28,6 +28,12 @@ const bodySchema = z.object({
   ewayBillAttachmentUrl: z.string().trim().optional(),
   extraDocumentUrl: z.string().trim().optional(),
   finalValue: z.coerce.number().nonnegative(),
+  // Multi-currency DISPLAY/REFERENCE layer (Phase C) — optional, see
+  // src/lib/currency/currency.ts's resolveDisplayCurrency(). finalValue above stays the
+  // authoritative INR figure either way; these two are only consulted when currency is a
+  // real foreign code (not "INR"/absent).
+  currency: z.string().trim().optional(),
+  displayAmount: z.coerce.number().positive().optional(),
 });
 
 export async function POST(request: Request) {
