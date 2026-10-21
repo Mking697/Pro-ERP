@@ -33,5 +33,6 @@ export async function GET() {
     maxCompanies: limit.maxCompanies,
     activeUserCount,
     tiers: PLAN_LIMITS,
+    subscriptionStatus: org.subscriptionStatus,
   });
 }

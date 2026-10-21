@@ -2086,6 +2086,15 @@ export const EN: Record<string, string> = {
   "Processing...": "Processing...",
   "month": "month",
   "year": "year",
+  "Subscription nahi ban paayi.": "Couldn't start subscription.",
+  "Payment ho gaya! Subscription activate hone mein thodi der lag sakti hai.":
+    "Payment done! Your subscription may take a moment to activate.",
+  "Subscription cancel nahi ho paayi.": "Couldn't cancel the subscription.",
+  "Subscription cancel ho gayi — current cycle khatm hone tak access chalta rahega.":
+    "Subscription cancelled — you'll keep access until the current cycle ends.",
+  "Cancel ho raha hai...": "Cancelling...",
+  "Subscription cancel karein": "Cancel subscription",
+  "auto-renew": "auto-renew",
   "Payment gateway abhi load ho raha hai, thodi der mein dobara try karein.":
     "Payment gateway is still loading — try again in a moment.",
   "Order nahi ban paaya.": "Could not create the order.",

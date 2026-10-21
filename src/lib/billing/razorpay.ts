@@ -1,5 +1,9 @@
 import Razorpay from "razorpay";
 import { createHmac, timingSafeEqual } from "node:crypto";
+import { eq } from "drizzle-orm";
+import { db } from "@/db/client";
+import { razorpayPlanCache } from "@/db/schema";
+import { getPlanPricePaise, type BillingCycle, type PlanTier } from "@/lib/platform/planLimits";
 
 /**
  * Thin wrapper around the `razorpay` SDK + raw HMAC signature verification — the only
@@ -82,6 +86,109 @@ export function verifyRazorpaySignature(
 ): boolean {
   const expected = createHmac("sha256", requiredEnv("RAZORPAY_KEY_SECRET"))
     .update(`${orderId}|${paymentId}`)
+    .digest("hex");
+
+  const expectedBuf = Buffer.from(expected, "utf8");
+  const actualBuf = Buffer.from(signature, "utf8");
+  if (expectedBuf.length !== actualBuf.length) return false;
+  return timingSafeEqual(expectedBuf, actualBuf);
+}
+
+/**
+ * Looks up (or, on first use, creates) the Razorpay Plan id for a tier+cycle combination
+ * — see `razorpay_plan_cache`'s own schema comment for why this is cached rather than
+ * re-created per subscription. `period`/`interval` for "Yearly" is `yearly`/`1`, not
+ * `monthly`/`12` — Razorpay bills `interval` repetitions of `period`, and this codebase's
+ * own Yearly price is already a real discounted lump sum (~2 months free), not 12
+ * monthly charges, so the Plan itself must be a single yearly charge.
+ */
+export async function getOrCreateRazorpayPlanId(plan: PlanTier, cycle: BillingCycle): Promise<string> {
+  const cacheId = `${plan}_${cycle}`;
+
+  const [cached] = await db
+    .select()
+    .from(razorpayPlanCache)
+    .where(eq(razorpayPlanCache.id, cacheId))
+    .limit(1);
+  if (cached) return cached.razorpayPlanId;
+
+  const amountPaise = getPlanPricePaise(plan, cycle);
+  if (!amountPaise) {
+    throw new Error(`${plan}/${cycle} ke liye price set nahi hai.`);
+  }
+
+  const razorpayPlan = await razorpayClient().plans.create({
+    period: cycle === "Yearly" ? "yearly" : "monthly",
+    interval: 1,
+    item: {
+      name: `Pro ERP — ${plan} (${cycle})`,
+      amount: amountPaise,
+      currency: "INR",
+    },
+    notes: { plan, cycle },
+  });
+
+  // onConflictDoNothing guards a benign race: two requests both missing the cache at the
+  // same instant would each create a Razorpay Plan (harmless — Razorpay allows duplicate
+  // Plans, this just means one of the two created rows "wins" the cache and the other
+  // Plan object sits unused on Razorpay's side forever, not a correctness problem) and
+  // then both try to insert the same cache row; the loser's insert is a no-op, not a crash.
+  await db
+    .insert(razorpayPlanCache)
+    .values({ id: cacheId, razorpayPlanId: razorpayPlan.id })
+    .onConflictDoNothing();
+
+  return razorpayPlan.id;
+}
+
+export interface CreateSubscriptionInput {
+  planId: string;
+  /** Razorpay requires a finite total_count even for an "indefinite" subscription — 100
+   * cycles (100 months, or 100 years on a Yearly plan) is a practical "forever" that an
+   * org can still cancel any time well before it would ever be reached. */
+  totalCount?: number;
+  notes?: Record<string, string>;
+}
+
+export interface RazorpaySubscriptionResult {
+  id: string;
+  status: string;
+}
+
+export async function createRazorpaySubscription(
+  input: CreateSubscriptionInput
+): Promise<RazorpaySubscriptionResult> {
+  const subscription = await razorpayClient().subscriptions.create({
+    plan_id: input.planId,
+    total_count: input.totalCount ?? 100,
+    customer_notify: 1,
+    notes: input.notes,
+  });
+  return { id: subscription.id, status: subscription.status };
+}
+
+/** `cancelAtCycleEnd = true` (the default here) keeps the org's access through the
+ * already-paid-for current cycle, matching standard SaaS cancel UX — Razorpay just stops
+ * charging again after `current_end`, rather than revoking immediately. */
+export async function cancelRazorpaySubscription(
+  subscriptionId: string,
+  cancelAtCycleEnd = true
+): Promise<RazorpaySubscriptionResult> {
+  const subscription = await razorpayClient().subscriptions.cancel(subscriptionId, cancelAtCycleEnd);
+  return { id: subscription.id, status: subscription.status };
+}
+
+/**
+ * Razorpay webhook signature check — HMAC-SHA256 of the EXACT raw request body (never the
+ * re-parsed/re-stringified JSON, which can byte-mismatch the original and silently break
+ * verification) against `x-razorpay-signature`, using `RAZORPAY_WEBHOOK_SECRET` (set once
+ * when the webhook endpoint is registered — see `scripts/setup-razorpay-webhook.ts`, the
+ * one-time setup script that both creates the Dashboard webhook and prints this value).
+ * Same timing-safe-compare discipline as `verifyRazorpaySignature` above.
+ */
+export function verifyRazorpayWebhookSignature(rawBody: string, signature: string): boolean {
+  const expected = createHmac("sha256", requiredEnv("RAZORPAY_WEBHOOK_SECRET"))
+    .update(rawBody)
     .digest("hex");
 
   const expectedBuf = Buffer.from(expected, "utf8");

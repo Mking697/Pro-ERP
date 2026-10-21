@@ -46,6 +46,21 @@ export const organizations = pgTable("organizations", {
   // by today's Standard Checkout flow (which needs no saved customer), kept for a future
   // Razorpay Subscriptions migration that would need it for recurring auto-debit.
   razorpayCustomerId: text("razorpay_customer_id").notNull().default(""),
+  // Razorpay Subscriptions (roadmap item #10, built 2026-10-21) — true auto-recurring
+  // billing, replacing the manual "pay every cycle via Standard Checkout" flow above for
+  // any org that starts a subscription from this point on (existing Standard-Checkout
+  // orgs keep working exactly as before; `billingPayments` rows and `planRenewsAt` still
+  // mean what they always meant for them). `razorpaySubscriptionId` ("sub_...") is set the
+  // moment `/api/billing/create-subscription` creates it — BEFORE the customer has even
+  // authorized a payment method — so the webhook handler always has a row to match
+  // against by id alone, with no race between "subscription created" and "first webhook
+  // arrives." `subscriptionStatus` mirrors Razorpay's own subscription.status values
+  // verbatim ("created" | "authenticated" | "active" | "pending" | "halted" | "cancelled"
+  // | "completed" | "expired") — plain text, not a pg enum, same "unrecognized/future
+  // value falls back safely, never trusted blindly" convention as `plan` above. Blank/null
+  // until an org's first subscription attempt.
+  razorpaySubscriptionId: text("razorpay_subscription_id").notNull().default(""),
+  subscriptionStatus: text("subscription_status").notNull().default(""),
 });
 
 // Mirrors SheetUser.Status ("Active" | "Inactive") — a separate enum type from
@@ -225,3 +240,27 @@ export const customerPortalLinks = pgTable(
     unique("customer_portal_links_org_id_customer_id_unique").on(table.orgId, table.customerId),
   ]
 );
+
+/**
+ * Razorpay Plan id cache (roadmap item #10, Razorpay Subscriptions, built 2026-10-21) —
+ * platform-wide, not per-org: a Razorpay "Plan" (`plan_...`) is a property of THIS
+ * platform's own Razorpay account/pricing, created once per (tier, billing cycle)
+ * combination and reused by every org that subscribes to that tier+cycle afterwards.
+ * `src/lib/billing/razorpay.ts`'s `getOrCreateRazorpayPlanId()` is the only reader/writer:
+ * on a cache miss it creates the Plan via the Razorpay API itself (no manual Dashboard
+ * step needed) and inserts the row here, so the very first org to buy any given tier+cycle
+ * combination pays the one-time Plan-creation latency, every org after that doesn't.
+ *
+ * `id` is `${tier}_${cycle}` (e.g. "Starter_Monthly") directly as the primary key — the
+ * natural unique key already exists, a surrogate `generateId()` id would just be one more
+ * thing to look up by. Switching Razorpay key pairs (test-mode to live-mode, or a key
+ * rotation) invalidates every cached id here since Plan ids are account-scoped — this
+ * table would need a one-time manual clear in that event (documented in CLAUDE.md's
+ * billing section, not automated — a key-pair switch is itself already a manual,
+ * deliberate, rare event, not something this table needs to detect on its own).
+ */
+export const razorpayPlanCache = pgTable("razorpay_plan_cache", {
+  id: text("id").primaryKey(),
+  razorpayPlanId: text("razorpay_plan_id").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});

@@ -32,6 +32,7 @@ interface BillingStatus {
   maxActiveUsers: number | null;
   maxCompanies: number | null;
   activeUserCount: number;
+  subscriptionStatus: string;
 }
 
 const PAID_TIERS: PlanTier[] = ["Starter", "Growth", "Enterprise"];
@@ -55,6 +56,7 @@ export default function BillingClient() {
   const [cycle, setCycle] = useState<BillingCycle>("Monthly");
   const [payingPlan, setPayingPlan] = useState<PlanTier | null>(null);
   const [scriptReady, setScriptReady] = useState(false);
+  const [cancelling, setCancelling] = useState(false);
 
   // Named so handleBuy() can reuse it after a successful payment; the initial mount load
   // below calls the equivalent fetch chain inline (not through this reference) because
@@ -94,53 +96,35 @@ export default function BillingClient() {
     }
     setPayingPlan(plan);
     try {
-      const orderRes = await fetch("/api/billing/create-order", {
+      const subRes = await fetch("/api/billing/create-subscription", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ plan, cycle }),
       });
-      const orderData = await orderRes.json();
-      if (!orderRes.ok) {
-        toast.error(orderData.error ?? t("Order nahi ban paaya."));
+      const subData = await subRes.json();
+      if (!subRes.ok) {
+        toast.error(subData.error ?? t("Subscription nahi ban paayi."));
         setPayingPlan(null);
         return;
       }
 
       const razorpay = new window.Razorpay({
-        key: orderData.razorpayKeyId,
-        amount: orderData.amountPaise,
-        currency: orderData.currency,
+        key: subData.razorpayKeyId,
+        subscription_id: subData.subscriptionId,
         name: "Pro ERP",
-        description: `${plan} — ${cycle}`,
-        order_id: orderData.razorpayOrderId,
-        handler: async (response: {
-          razorpay_order_id: string;
-          razorpay_payment_id: string;
-          razorpay_signature: string;
-        }) => {
-          try {
-            const verifyRes = await fetch("/api/billing/verify-payment", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify(response),
-            });
-            const verifyData = await verifyRes.json();
-            if (!verifyRes.ok) {
-              toast.error(verifyData.error ?? t("Payment verify nahi ho paaya."));
-              return;
-            }
-            toast.success(t("Payment safal! Aapka plan upgrade ho gaya hai."));
-            loadStatus();
-          } catch {
-            toast.error(
-              t("Payment ho gaya hoga, lekin confirm nahi ho paaya — support se sampark karein.")
-            );
-          } finally {
-            setPayingPlan(null);
-          }
+        description: `${plan} — ${cycle} (${t("auto-renew")})`,
+        // The plan change itself is applied server-side only once Razorpay's own
+        // subscription.activated/charged webhook confirms the authorization payment went
+        // through — this handler never flips the plan itself, it just lets the Admin know
+        // what to expect while that webhook is in flight (usually a few seconds).
+        handler: () => {
+          toast.success(
+            t("Payment ho gaya! Subscription activate hone mein thodi der lag sakti hai.")
+          );
+          setTimeout(loadStatus, 3000);
+          setPayingPlan(null);
         },
         modal: {
-          // User closed the Checkout modal without paying — a cancellation, not a failure.
           ondismiss: () => setPayingPlan(null),
         },
         theme: { color: "#000000" },
@@ -149,6 +133,29 @@ export default function BillingClient() {
     } catch {
       toast.error(t("Kuch galat ho gaya. Dobara try karein."));
       setPayingPlan(null);
+    }
+  }
+
+  const subscriptionIsLive =
+    status?.subscriptionStatus === "active" ||
+    status?.subscriptionStatus === "authenticated" ||
+    status?.subscriptionStatus === "created";
+
+  async function handleCancelSubscription() {
+    setCancelling(true);
+    try {
+      const res = await fetch("/api/billing/cancel-subscription", { method: "POST" });
+      const data = await res.json();
+      if (!res.ok) {
+        toast.error(data.error ?? t("Subscription cancel nahi ho paayi."));
+        return;
+      }
+      toast.success(
+        t("Subscription cancel ho gayi — current cycle khatm hone tak access chalta rahega.")
+      );
+      loadStatus();
+    } finally {
+      setCancelling(false);
     }
   }
 
@@ -194,6 +201,16 @@ export default function BillingClient() {
                 {status.maxCompanies !== null &&
                   ` ${t("· Companies: up to")} ${status.maxCompanies}`}
               </p>
+              {subscriptionIsLive && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={cancelling}
+                  onClick={handleCancelSubscription}
+                >
+                  {cancelling ? t("Cancel ho raha hai...") : t("Subscription cancel karein")}
+                </Button>
+              )}
             </>
           )}
         </CardContent>
