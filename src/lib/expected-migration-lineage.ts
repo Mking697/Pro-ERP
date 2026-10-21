@@ -180,5 +180,19 @@ export const expectedMigrationLineage = [
     // drizzle.__drizzle_migrations order by created_at desc limit 1;"`) on 2026-10-21.
     "hash": "60652b868fef57295b4d162b831dca46c9e7ee0d077c4244cb0dddc8b19a2928",
     "folderMillis": 1792583915936
+  },
+  {
+    // Release 0040: api_keys, webhook_subscriptions, webhook_deliveries (Phase B item 1,
+    // read-only v1 REST API + webhooks) — real production hash+timestamp confirmed via a
+    // direct query against drizzle.__drizzle_migrations on the VPS after applying this
+    // migration there on 2026-10-21.
+    "hash": "09b6019ca37e4cec192360bf0c344a0ca810d7856c9d84bba19f50345ea24936",
+    "folderMillis": 1792593734164
+  },
+  {
+    // Release 0041: notifications (Phase B item 2, in-app notification center) — real
+    // production hash+timestamp confirmed the same way, same deploy.
+    "hash": "3400e7449fcd64fcbbc6ee9f124787be1f5ed052d1bbbf36de0ee43bb7788e4a",
+    "folderMillis": 1792596631516
   }
 ];
