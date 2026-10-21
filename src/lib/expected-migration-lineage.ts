@@ -173,5 +173,12 @@ export const expectedMigrationLineage = [
     // Release 0038: standard migrator journal timestamp; confirm against production on deploy.
     "hash": "d031beb4ace1cd0c21f4e98fe3ac1050f2cf8d5fe5689013a49554b51d3f44e5",
     "folderMillis": 1792573342669
+  },
+  {
+    // Release 0039: user_settings, saved_views, domain_events (additive) — confirmed against
+    // production (`sudo -u postgres psql -d pro_erp -c "select hash, created_at from
+    // drizzle.__drizzle_migrations order by created_at desc limit 1;"`) on 2026-10-21.
+    "hash": "60652b868fef57295b4d162b831dca46c9e7ee0d077c4244cb0dddc8b19a2928",
+    "folderMillis": 1792583915936
   }
 ];
