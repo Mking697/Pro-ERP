@@ -33,6 +33,8 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
+import BarcodeScanButton from "@/components/barcode-scan-button";
+import { matchSkuByScan } from "@/lib/scan/match";
 
 const GOODS_CATEGORIES: ItemCategory[] = ["Raw Material", "Consumable", "Semi-FG"];
 const FG_CATEGORIES: ItemCategory[] = ["FG"];
@@ -88,6 +90,24 @@ export default function InventoryBoard({
   const [resetTyped, setResetTyped] = useState("");
   const [resetting, setResetting] = useState(false);
   const RESET_CONFIRM_WORD = "DELETE";
+  // Scan-to-jump: a matched SKU opens this same item's Stock Movement dialog directly
+  // (via StockMovementDialog's controlled `open` prop) instead of making the operator
+  // scroll/search for it, and narrows the visible table to that one row too.
+  const [scanTarget, setScanTarget] = useState<{ item: ItemRow; direction: "In" | "Out" } | null>(
+    null
+  );
+
+  function handleScan(value: string) {
+    const matched = matchSkuByScan(items.map((i) => i.SKU), value);
+    const item = matched ? items.find((i) => i.SKU === matched) : undefined;
+    if (!item) {
+      toast.error(t("Ye SKU kisi item se match nahi hua."));
+      return;
+    }
+    setSearch(item.SKU);
+    setScanTarget({ item, direction: "In" });
+    toast.success(`${t("Mila")}: ${item.Item_Name}`);
+  }
 
   useEffect(() => {
     if (version === 0) return;
@@ -213,6 +233,9 @@ export default function InventoryBoard({
           placeholder={t("Item ya SKU search karein...")}
           className="h-9 max-w-xs"
         />
+        {canTransact && (
+          <BarcodeScanButton onScan={handleScan} label={t("SKU Scan Karein")} />
+        )}
         {scope === "goods" && (
           <div className="ml-auto flex gap-2">
             <Button
@@ -472,6 +495,22 @@ export default function InventoryBoard({
             </DialogFooter>
           </DialogContent>
         </Dialog>
+      )}
+
+      {scanTarget && (
+        <StockMovementDialog
+          item={scanTarget.item}
+          direction={scanTarget.direction}
+          showTrigger={false}
+          open={scanTarget !== null}
+          onOpenChange={(v) => {
+            if (!v) setScanTarget(null);
+          }}
+          onDone={() => {
+            setScanTarget(null);
+            refetch();
+          }}
+        />
       )}
     </div>
   );

@@ -13,6 +13,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Select,
   SelectContent,
@@ -21,6 +22,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import FileUploadField from "@/components/file-upload-field";
+import BarcodeScanButton from "@/components/barcode-scan-button";
+import { isChecklistComplete, matchSkuByScan, uniqueSkus } from "@/lib/scan/match";
 import { useT } from "@/components/preferences-provider";
 import type { DispatchCandidateRow, UserOption } from "./types";
 
@@ -51,6 +54,31 @@ export default function ConfirmDispatchDialog({
   const [tatUnit, setTatUnit] = useState<(typeof TAT_UNITS)[number]>("Hours");
   const [gatePassAttachmentUrl, setGatePassAttachmentUrl] = useState("");
   const [saving, setSaving] = useState(false);
+  // Scan-to-verify: every distinct SKU in the shipment must be scanned or manually
+  // ticked before Confirm unlocks — catches a wrong-item pick before the Gate Pass
+  // (and the real stock_ledger "Out") is issued. Manual ticking stays available for
+  // desktops/warehouses with no camera so the flow never gets stuck.
+  const requiredSkus = uniqueSkus(candidate.shipment.items.map((i) => i.sku));
+  const [verifiedSkus, setVerifiedSkus] = useState<Set<string>>(new Set());
+  const allVerified = isChecklistComplete(requiredSkus, verifiedSkus);
+
+  function markVerified(sku: string) {
+    setVerifiedSkus((prev) => {
+      const next = new Set(prev);
+      next.add(sku);
+      return next;
+    });
+  }
+
+  function handleScan(value: string) {
+    const matched = matchSkuByScan(requiredSkus, value);
+    if (!matched) {
+      toast.error(t("Ye SKU is shipment me nahi hai — galat item scan hua."));
+      return;
+    }
+    markVerified(matched);
+    toast.success(`${t("Verify ho gaya")}: ${matched}`);
+  }
 
   useEffect(() => {
     fetch("/api/users/directory")
@@ -112,14 +140,33 @@ export default function ConfirmDispatchDialog({
           )}
 
           <div className="rounded-lg border p-3">
-            <p className="mb-2 text-sm font-medium">{t("Shipment Items")}</p>
-            <ul className="list-inside list-disc text-sm text-muted-foreground">
-              {candidate.shipment.items.map((i) => (
-                <li key={i.lineNo}>
-                  {i.itemName}: {i.qty} {i.uom}
-                </li>
-              ))}
+            <div className="mb-2 flex items-center justify-between gap-2">
+              <p className="text-sm font-medium">{t("Shipment Items — Scan Verify")}</p>
+              <BarcodeScanButton onScan={handleScan} size="icon-sm" label="" />
+            </div>
+            <ul className="space-y-1 text-sm">
+              {requiredSkus.map((sku) => {
+                const line = candidate.shipment.items.find((i) => i.sku === sku);
+                const checked = verifiedSkus.has(sku);
+                return (
+                  <li key={sku} className="flex items-center gap-2">
+                    <Checkbox
+                      checked={checked}
+                      onCheckedChange={(v) => (v === true ? markVerified(sku) : undefined)}
+                      aria-label={`${line?.itemName ?? sku} — ${t("Verify karein")}`}
+                    />
+                    <span className={checked ? "text-muted-foreground line-through" : ""}>
+                      {line?.itemName ?? sku} ({sku}): {line?.qty} {line?.uom}
+                    </span>
+                  </li>
+                );
+              })}
             </ul>
+            {!allVerified && (
+              <p className="mt-2 text-xs text-muted-foreground">
+                {t("Confirm karne se pehle har item scan ya manually tick karein.")}
+              </p>
+            )}
           </div>
 
           <div className="space-y-2">
@@ -174,7 +221,10 @@ export default function ConfirmDispatchDialog({
         </div>
 
         <DialogFooter>
-          <Button onClick={handleSubmit} disabled={saving || !candidate.invoiceIssued}>
+          <Button
+            onClick={handleSubmit}
+            disabled={saving || !candidate.invoiceIssued || !allVerified}
+          >
             {saving ? t("Saving...") : t("Gate Pass Issue Karein — Dispatch Confirm Karein")}
           </Button>
         </DialogFooter>

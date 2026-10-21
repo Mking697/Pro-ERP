@@ -36,6 +36,9 @@ import { TableSkeleton } from "@/components/loading-states";
 import EmptyState from "@/components/empty-state";
 import { FileText, Trash2 } from "lucide-react";
 import { useT } from "@/components/preferences-provider";
+import BarcodeScanButton from "@/components/barcode-scan-button";
+import { matchRowByScan, type ScannableRow } from "@/lib/scan/match";
+import { cn } from "@/lib/utils";
 
 interface VendorOption {
   id: string;
@@ -141,6 +144,11 @@ export default function GeneralPoBoard() {
   const [receiveQtyDraft, setReceiveQtyDraft] = useState<Record<string, string>>({});
   const [receiveInvoiceUrl, setReceiveInvoiceUrl] = useState("");
   const [receiveSaving, setReceiveSaving] = useState(false);
+  // Scan-to-highlight: a General PO line has no real SKU field (see generalOrders.ts's
+  // own comment) — a scanned value is matched against whichever of `description`
+  // (holds the SKU when the line was pulled from a Job's material list) or
+  // `particular` it equals, so staff don't have to scroll/search a long PO by eye.
+  const [highlightedLineId, setHighlightedLineId] = useState<string>("");
 
   function load() {
     fetch("/api/purchase/general")
@@ -283,6 +291,26 @@ export default function GeneralPoBoard() {
       Object.fromEntries(po.lines.map((l) => [l.id, String(l.receivedQty ?? l.qty)]))
     );
     setReceiveInvoiceUrl(po.invoiceUrl);
+    setHighlightedLineId("");
+  }
+
+  function handleReceiveScan(value: string) {
+    if (!receiveTarget) return;
+    const rows: ScannableRow[] = receiveTarget.lines.map((l) => ({
+      id: l.id,
+      candidates: [l.description, l.particular].filter(Boolean),
+    }));
+    const matched = matchRowByScan(rows, value);
+    if (!matched) {
+      toast.error(t("Ye SKU is PO ki kisi line se match nahi hua."));
+      return;
+    }
+    setHighlightedLineId(matched.id);
+    const line = receiveTarget.lines.find((l) => l.id === matched.id);
+    toast.success(`${t("Mili")}: ${line?.particular ?? matched.id}`);
+    document
+      .getElementById(`gpo-receive-qty-${matched.id}`)
+      ?.focus({ preventScroll: false });
   }
 
   async function handleReceive() {
@@ -650,9 +678,18 @@ export default function GeneralPoBoard() {
             <DialogTitle>{t("Material Received")}</DialogTitle>
             <DialogDescription>{receiveTarget?.id}</DialogDescription>
           </DialogHeader>
+          <div className="flex justify-end">
+            <BarcodeScanButton onScan={handleReceiveScan} label={t("SKU Scan Karein")} />
+          </div>
           <div className="space-y-2">
             {receiveTarget?.lines.map((line) => (
-              <div key={line.id} className="flex items-center justify-between gap-2">
+              <div
+                key={line.id}
+                className={cn(
+                  "flex items-center justify-between gap-2 rounded-md p-1.5",
+                  highlightedLineId === line.id && "bg-primary/10 ring-1 ring-primary/40"
+                )}
+              >
                 <span className="text-sm">
                   {line.particular}{" "}
                   <span className="text-xs text-muted-foreground">
@@ -660,6 +697,7 @@ export default function GeneralPoBoard() {
                   </span>
                 </span>
                 <Input
+                  id={`gpo-receive-qty-${line.id}`}
                   type="number"
                   step="any"
                   min="0"

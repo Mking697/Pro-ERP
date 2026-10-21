@@ -30,13 +30,26 @@ export default function StockMovementDialog({
   item,
   direction,
   onDone,
+  open: openProp,
+  onOpenChange: onOpenChangeProp,
+  showTrigger = true,
 }: {
   item: ItemRow;
   direction: "In" | "Out";
   onDone: () => void;
+  /** Controlled open state — used by the scan-to-jump flow in inventory-board.tsx to
+   * pop this same dialog straight open after a matched SKU scan, instead of duplicating
+   * the form. Omit for the normal uncontrolled In/Out button behaviour. */
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+  /** False for the scan-triggered instance: it has no visible In/Out button of its
+   * own, only the Dialog governed by the controlled `open` prop above. */
+  showTrigger?: boolean;
 }) {
   const t = useT();
-  const [open, setOpen] = useState(false);
+  const [internalOpen, setInternalOpen] = useState(false);
+  const open = openProp ?? internalOpen;
+  const setOpen = onOpenChangeProp ?? setInternalOpen;
   const [quantity, setQuantity] = useState("");
   const [issuedTo, setIssuedTo] = useState("");
   const [remark, setRemark] = useState("");
@@ -87,17 +100,19 @@ export default function StockMovementDialog({
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger
-        render={
-          <Button
-            variant={isOut ? "outline" : "default"}
-            size="sm"
-            className="pointer-coarse:min-h-11 pointer-coarse:min-w-11"
-          >
-            {isOut ? "Out" : "In"}
-          </Button>
-        }
-      />
+      {showTrigger && (
+        <DialogTrigger
+          render={
+            <Button
+              variant={isOut ? "outline" : "default"}
+              size="sm"
+              className="pointer-coarse:min-h-11 pointer-coarse:min-w-11"
+            >
+              {isOut ? "Out" : "In"}
+            </Button>
+          }
+        />
+      )}
       <DialogContent>
         <DialogHeader>
           <DialogTitle>

@@ -2184,4 +2184,27 @@ export const EN: Record<string, string> = {
   "{sent} log ko report bhej di gayi.": "{sent} people were sent their report.",
   "{failed} fail ho gaye.": "{failed} failed.",
   "{skipped} skip ho gaye (phone number ya score nahi).": "{skipped} skipped (no phone number or nothing evaluated).",
+
+  // --- camera barcode/QR scan (Inventory, Dispatch, Purchase General PO Receive) ----
+  "Scan": "Scan",
+  "Barcode / QR Scan Karein": "Scan Barcode / QR",
+  "SKU label ko camera ke saamne rakhein — pehla code detect hote hi apne aap band ho jaayega.":
+    "Hold the SKU label up to the camera — it closes automatically as soon as the first code is detected.",
+  "Camera start ho raha hai...": "Starting camera...",
+  "Camera ki permission nahi mili. Browser settings me camera allow karein.":
+    "Camera permission was denied. Allow camera access in your browser settings.",
+  "Is device par koi camera nahi mila.": "No camera was found on this device.",
+  "Camera start nahi ho paya.": "Could not start the camera.",
+  "SKU Scan Karein": "Scan SKU",
+  "Ye SKU kisi item se match nahi hua.": "This SKU did not match any item.",
+  "Mila": "Found",
+  "Shipment Items — Scan Verify": "Shipment Items — Scan Verify",
+  "Confirm karne se pehle har item scan ya manually tick karein.":
+    "Scan or manually tick every item before confirming.",
+  "Ye SKU is shipment me nahi hai — galat item scan hua.":
+    "This SKU is not in this shipment — the wrong item was scanned.",
+  "Verify ho gaya": "Verified",
+  "Verify karein": "Verify",
+  "Ye SKU is PO ki kisi line se match nahi hua.": "This SKU did not match any line on this PO.",
+  "Mili": "Found",
 };
