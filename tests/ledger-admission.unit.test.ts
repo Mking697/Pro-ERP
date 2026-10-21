@@ -108,7 +108,7 @@ const writes = () => s.events.filter((e) => e.operation !== "select");
 
 beforeEach(() => {
   s.orgId = "org-a"; s.events = []; s.transactions = 0; s.inTx = false; s.fail = "";
-  s.rows = { items: [item("OWN"), item("FOREIGN", "org-b")], stock_ledger: [] };
+  s.rows = { items: [item("OWN"), item("FOREIGN", "org-b")], stock_ledger: [], domain_events: [] };
   vi.mocked(assertStockAvailable).mockClear().mockResolvedValue({} as never);
   vi.mocked(assertStockAvailableMany).mockClear().mockResolvedValue({} as never);
 });

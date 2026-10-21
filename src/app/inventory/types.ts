@@ -38,3 +38,13 @@ export function qty(value: number | null): string {
   if (value === null || !Number.isFinite(value)) return "—";
   return Number(value.toFixed(3)).toString();
 }
+
+/** The entirety of InventoryBoard's own filter state today — the free-text search box
+ * plus the status-chip filter (scope/"goods" vs "finished" is a route-level split, not a
+ * user-chosen filter, so it is deliberately not part of this). Named so
+ * src/components/saved-views-bar.tsx's generic `TFilters` has a concrete shape to
+ * serialize/restore for the "inventory" module. */
+export interface InventoryFilters {
+  search: string;
+  status: StockStatus | "All";
+}

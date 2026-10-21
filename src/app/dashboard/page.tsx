@@ -1,3 +1,4 @@
+import { Fragment } from "react";
 import type { CSSProperties, ReactNode } from "react";
 import { redirect } from "next/navigation";
 import Link from "next/link";
@@ -31,6 +32,9 @@ import AttentionStrip from "./attention-strip";
 import RecentActivityCard from "./recent-activity-card";
 import OnboardingChecklist from "./onboarding-checklist";
 import { getOnboardingStatus } from "@/lib/onboarding";
+import CustomizeDashboardDialog from "./customize-dashboard-dialog";
+import { getDashboardWidgetPrefs } from "@/lib/dashboardWidgetsStore";
+import type { DashboardWidgetKey } from "@/lib/dashboardWidgets";
 import { getT } from "@/lib/i18n/server";
 import { reportsFor } from "@/lib/reports";
 
@@ -158,28 +162,29 @@ export default async function DashboardPage({
   const onboarding = session.role === "Admin" ? await getOnboardingStatus() : null;
   const showOnboarding = onboarding !== null && !onboarding.dismissed && !onboarding.allDone;
 
-  return (
-    <AppShell session={session}>
-      <div className="space-y-6">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">
-            Namaste, {session.fullName}
-          </h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            {pending.length === 0
-              ? t("Aapke paas koi pending task nahi hai.")
-              : `${pending.length} task pending${overdueCount > 0 ? `, ${overdueCount} overdue` : ""}.`}
-          </p>
-        </div>
+  // Simple per-user dashboard customization (show/hide + up/down reorder, no
+  // drag-and-drop) — see src/lib/dashboardWidgets.ts for the five widget boundaries and
+  // why they match these exact top-level siblings. A first-time user gets back the same
+  // visible=true, same order as always, so nothing here changes for anyone who has
+  // never opened "Customize dashboard".
+  const widgetPrefs = await getDashboardWidgetPrefs(session.userId);
 
-        {showOnboarding && <OnboardingChecklist steps={onboarding.steps} />}
-
-        <ModuleQuickNav access={session.access} t={t} />
-
-        <AttentionStrip access={session.access} session={{ role: session.role, fullName: session.fullName }} t={t} />
-
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-          <StatCard
+  // Each widget's actual JSX, built once; `onboarding`'s own admin/dismissed/allDone gate
+  // still applies underneath the user's own visibility toggle — turning the toggle back
+  // on never resurrects an already-dismissed or fully-done checklist.
+  const widgetNodes: Record<DashboardWidgetKey, ReactNode> = {
+    onboarding: showOnboarding ? <OnboardingChecklist steps={onboarding.steps} /> : null,
+    quickNav: <ModuleQuickNav access={session.access} t={t} />,
+    attention: (
+      <AttentionStrip
+        access={session.access}
+        session={{ role: session.role, fullName: session.fullName }}
+        t={t}
+      />
+    ),
+    stats: (
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+        <StatCard
             label="Pending Tasks"
             value={String(pending.length)}
             icon={<ListTodo />}
@@ -212,14 +217,13 @@ export default async function DashboardPage({
             }
           />
         </div>
-
-        {/*
-          Two things live here: an overview of your own work, and the way in to the
-          reports. The operational boards used to be duplicated as tabs, so Tasks and
-          Inward each existed in two places; they stay in the nav where they were already
-          reachable, and each one now has a report of its own instead.
-        */}
-        <Tabs defaultValue={one("tab") ?? "overview"}>
+    ),
+    // Two things live here: an overview of your own work, and the way in to the
+    // reports. The operational boards used to be duplicated as tabs, so Tasks and
+    // Inward each existed in two places; they stay in the nav where they were already
+    // reachable, and each one now has a report of its own instead.
+    tabs: (
+      <Tabs defaultValue={one("tab") ?? "overview"}>
           <TabsList>
             <TabsTrigger value="overview">Overview</TabsTrigger>
             <TabsTrigger value="analytics">{t("Reports")}</TabsTrigger>
@@ -391,6 +395,31 @@ export default async function DashboardPage({
             </Card>
           </TabsContent>
         </Tabs>
+    ),
+  };
+
+  return (
+    <AppShell session={session}>
+      <div className="space-y-6">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">
+              Namaste, {session.fullName}
+            </h1>
+            <p className="mt-1 text-sm text-muted-foreground">
+              {pending.length === 0
+                ? t("Aapke paas koi pending task nahi hai.")
+                : `${pending.length} task pending${overdueCount > 0 ? `, ${overdueCount} overdue` : ""}.`}
+            </p>
+          </div>
+          <CustomizeDashboardDialog initialPrefs={widgetPrefs} />
+        </div>
+
+        {widgetPrefs
+          .filter((pref) => pref.visible)
+          .map((pref) => (
+            <Fragment key={pref.key}>{widgetNodes[pref.key]}</Fragment>
+          ))}
       </div>
     </AppShell>
   );

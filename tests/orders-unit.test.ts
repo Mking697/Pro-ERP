@@ -79,6 +79,7 @@ vi.mock("@/lib/moduleAccess", () => ({ effectiveModuleAccess: () => ["PPC_PLAN"]
 vi.mock("@/lib/orders/settings", () => ({ getOrderSetup: async () => ({ creditHoldApprover: "actor" }) }));
 vi.mock("@/lib/accounts/ledger", () => ({ postJournalEntry: h.journal, SYSTEM_ACCOUNT_CODES: { CASH_BANK: "CASH", ACCOUNTS_RECEIVABLE: "AR", CUSTOMER_CREDIT_BALANCE: "CC" } }));
 vi.mock("@/lib/pdi/pdi", () => ({ noteStockAvailable: h.pdi }));
+vi.mock("@/lib/events/emit", () => ({ emitDomainEvent: h.event }));
 import { cancelOrder, runStockCheck, recordPayment, orderReservedBySku, recheckShortfallForSku, commitDispatch, workPaymentReview, approveCreditHold, createDirectOrder, createOrderFromQuotation, setTransportArrangedBy } from "@/lib/orders/orders";
 
 it("payment review admits status writer before reading the order", async () => {

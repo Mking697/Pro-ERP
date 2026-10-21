@@ -12,6 +12,7 @@ import type { Direction, LedgerSource, StockStatus } from "@/lib/inventory/const
 // rule costs this module no extra dependency.
 import { round3 } from "@/lib/inventory/allocation";
 import { stampMs } from "@/lib/timestamp";
+import { emitDomainEvent } from "@/lib/events/emit";
 
 export {
   DIRECTIONS,
@@ -400,6 +401,16 @@ export async function recordMovement(
     // Required reservation/activity writes share the movement's tenant lock and rollback.
     await recheckReceivedSkus([input.sku]);
   }
+  await emitDomainEvent(orgId, "stock.movement_recorded", {
+    sku: input.sku,
+    direction: input.direction,
+    quantity: row.quantity,
+    uom: input.uom,
+    source: input.source,
+    referenceId: input.referenceId ?? "",
+    location: input.location ?? "",
+    userId: input.userId,
+  });
   return rowToRecord(row);
   });
 }
@@ -466,5 +477,18 @@ export async function recordMovementsBulk(inputs: BulkMovementInput[]): Promise<
   // Required Order/PDI DB successors run before commit, once per received SKU.
   const inSkus = Array.from(new Set(inputs.filter((i) => i.direction === "In" && i.sku).map((i) => i.sku)));
   if (inSkus.length) await recheckReceivedSkus(inSkus);
+
+  for (const row of rows) {
+    await emitDomainEvent(orgId, "stock.movement_recorded", {
+      sku: row.sku,
+      direction: row.direction,
+      quantity: row.quantity,
+      uom: row.uom,
+      source: row.source,
+      referenceId: row.referenceId,
+      location: row.location,
+      userId: row.userId,
+    });
+  }
   });
 }

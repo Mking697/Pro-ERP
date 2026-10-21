@@ -151,6 +151,7 @@ vi.mock("@/lib/fms/calendar", () => ({
 }));
 vi.mock("@/lib/auth/users", () => ({ getUserById: async () => ({ Full_Name: "Doer", Phone_Number: "test-phone" }) }));
 vi.mock("@/lib/chatxflow", () => ({ sendWhatsAppMessage: state.send }));
+vi.mock("@/lib/events/emit", () => ({ emitDomainEvent: vi.fn(async () => {}) }));
 
 import { recordMovement, recordMovementsBulk } from "@/lib/inventory/ledger";
 import { committedBySku, createPlans, reallocatePlan, cancelPlan, startProduction, completePlan } from "@/lib/inventory/plans";

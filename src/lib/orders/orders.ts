@@ -25,6 +25,7 @@ import { sendWhatsAppMessage } from "@/lib/chatxflow";
 import { listUsers } from "@/lib/auth/users";
 import { effectiveModuleAccess, type ModuleAccessKey } from "@/lib/moduleAccess";
 import { getOrderSetup } from "@/lib/orders/settings";
+import { emitDomainEvent } from "@/lib/events/emit";
 
 /**
  * Order FMS — leg 2 of the Sales chain (Lead -> Order -> PDI -> Dispatch). Built as its own
@@ -1119,6 +1120,12 @@ async function workPaymentReviewInTransaction(orderId: string, actorId: string):
       `Advance payment (₹${totalPaid}) mil chuka hai — Stock_Check me aage badha.`,
       actorId
     );
+    await emitDomainEvent(orgId, "order.status_changed", {
+      orderId,
+      fromStatus: order.status,
+      toStatus: "Stock_Check",
+      customerId: order.customerId,
+    });
     const updated = await getOrder(orderId);
     if (!updated) throw new OrderError("Order update ho gaya lekin load nahi ho paya.");
     return updated;
@@ -1128,6 +1135,12 @@ async function workPaymentReviewInTransaction(orderId: string, actorId: string):
   if (hold) {
     await updateById(orders, orgId, orderId, { status: "Credit_Hold" });
     await logOrderActivity(orgId, orderId, "Credit_Hold", reason || "Credit check fail ho gaya.", actorId);
+    await emitDomainEvent(orgId, "order.status_changed", {
+      orderId,
+      fromStatus: order.status,
+      toStatus: "Credit_Hold",
+      customerId: order.customerId,
+    });
   } else {
     await updateById(orders, orgId, orderId, { status: "Stock_Check" });
     await logOrderActivity(
@@ -1137,6 +1150,12 @@ async function workPaymentReviewInTransaction(orderId: string, actorId: string):
       "Credit check pass ho gaya — Stock_Check me aage badha.",
       actorId
     );
+    await emitDomainEvent(orgId, "order.status_changed", {
+      orderId,
+      fromStatus: order.status,
+      toStatus: "Stock_Check",
+      customerId: order.customerId,
+    });
   }
 
   const updated = await getOrder(orderId);
@@ -1189,6 +1208,12 @@ async function approveCreditHoldInTransaction(
     "Credit Hold clear kiya gaya — Stock_Check me aage badha.",
     actor.userId
   );
+  await emitDomainEvent(orgId, "order.status_changed", {
+    orderId,
+    fromStatus: "Credit_Hold",
+    toStatus: "Stock_Check",
+    customerId: order.customerId,
+  });
 
   const updated = await getOrder(orderId);
   if (!updated) throw new OrderError("Order update ho gaya lekin load nahi ho paya.");
@@ -1359,6 +1384,13 @@ async function runStockCheckInTransaction(orderId: string, actorId: string): Pro
     await notifyShortage(orgId, orderId, order, shortLines);
   }
 
+  await emitDomainEvent(orgId, "order.status_changed", {
+    orderId,
+    fromStatus: "Stock_Check",
+    toStatus: "Dispatch_Pending",
+    customerId: order.customerId,
+  });
+
   const updated = await getOrder(orderId);
   if (!updated) throw new OrderError("Order update ho gaya lekin load nahi ho paya.");
   return updated;
@@ -1410,6 +1442,13 @@ async function commitDispatchInTransaction(
     if (Number(step.Step_No) !== 1 || step.Trigger_Event !== "ORDER_READY_FOR_PDI" || step.Status !== "Active") continue;
     await startFmsInstance({ templateId: step.Template_ID, contextRef: `ORDERS:${orderId}`, startedBy: "SYSTEM" });
   }
+
+  await emitDomainEvent(orgId, "order.status_changed", {
+    orderId,
+    fromStatus: "Dispatch_Pending",
+    toStatus: "Ready_For_PDI",
+    customerId: order.customerId,
+  });
 
   const updated = await getOrder(orderId);
   if (!updated) throw new OrderError("Order update ho gaya lekin load nahi ho paya.");
@@ -1629,6 +1668,12 @@ async function cancelOrderInTransaction(orderId: string, reason: string, actorId
     `Order cancel kiya gaya.${reason.trim() ? ` (${reason.trim()})` : ""}`,
     actorId
   );
+  await emitDomainEvent(orgId, "order.status_changed", {
+    orderId,
+    fromStatus: order.status,
+    toStatus: "Cancelled",
+    customerId: order.customerId,
+  });
 
   const updated = await getOrder(orderId);
   if (!updated) throw new OrderError("Order cancel ho gaya lekin load nahi ho paya.");

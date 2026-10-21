@@ -111,3 +111,11 @@ export const ORDER_STATUS_LABEL: Record<OrderStatus, string> = {
   Ready_For_PDI: "Ready For PDI",
   Cancelled: "Cancelled",
 };
+
+/** The entirety of OrdersBoard's own filter state today — just which tab is selected
+ * (there is no search box or column sort on this board yet). Kept as its own named type,
+ * rather than inlined, so src/components/saved-views-bar.tsx's generic `TFilters` has a
+ * concrete shape to serialize/restore for the "orders" module. */
+export interface OrdersFilters {
+  tab: string;
+}

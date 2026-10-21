@@ -20,7 +20,8 @@ import { useT } from "@/components/preferences-provider";
 import NewOrderDialog from "./new-order-dialog";
 import IntakeMapDialog from "./intake-map-dialog";
 import OrderDetailDialog from "./order-detail-dialog";
-import { ORDER_STATUS_LABEL, type IntakeCandidate, type OrderRow, type OrderStatus } from "./types";
+import SavedViewsBar from "@/components/saved-views-bar";
+import { ORDER_STATUS_LABEL, type IntakeCandidate, type OrderRow, type OrderStatus, type OrdersFilters } from "./types";
 
 // BEGIN request guard (pure logic, exercised by isolated tests)
 class ResponseNotOkError extends Error {
@@ -161,9 +162,22 @@ export default function OrdersBoard() {
     setVersion((v) => v + 1);
   }
 
+  // Programmatic tab changes (e.g. applying a saved view) need the same refresh the
+  // Tabs component's own onValueChange already triggers below — both go through this
+  // one function so the two paths can never drift apart.
+  function setTabAndRefresh(nextTab: string) {
+    refresh();
+    setTab(nextTab);
+  }
+
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-end gap-2">
+        <SavedViewsBar<OrdersFilters>
+          module="orders"
+          currentFilters={{ tab }}
+          onApply={(filters) => setTabAndRefresh(filters.tab)}
+        />
         <NewOrderDialog onCreated={refresh} />
       </div>
 
@@ -179,7 +193,7 @@ export default function OrdersBoard() {
         </div>
       )}
 
-      <Tabs value={tab} onValueChange={(v) => { if (v) { refresh(); setTab(v); } }}>
+      <Tabs value={tab} onValueChange={(v) => { if (v) { setTabAndRefresh(v); } }}>
         <TabsList className="flex-wrap">
           {TABS.map((tb) => (
             <TabsTrigger key={tb.value} value={tb.value}>

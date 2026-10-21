@@ -20,9 +20,10 @@ import EmptyState from "@/components/empty-state";
 import CreateItemDialog from "./create-item-dialog";
 import BulkImportDialog from "./bulk-import-dialog";
 import StockMovementDialog from "./stock-movement-dialog";
-import { qty, statusVariant, type ItemRow, type StockStatus } from "./types";
+import { qty, statusVariant, type InventoryFilters, type ItemRow, type StockStatus } from "./types";
 import { TableSkeleton } from "@/components/loading-states";
 import { useT } from "@/components/preferences-provider";
+import SavedViewsBar from "@/components/saved-views-bar";
 import type { ItemCategory } from "@/lib/inventory/constants";
 import {
   Dialog,
@@ -236,6 +237,14 @@ export default function InventoryBoard({
         {canTransact && (
           <BarcodeScanButton onScan={handleScan} label={t("SKU Scan Karein")} />
         )}
+        <SavedViewsBar<InventoryFilters>
+          module={scope === "finished" ? "inventory-fg" : "inventory"}
+          currentFilters={{ search, status }}
+          onApply={(filters) => {
+            setSearch(filters.search);
+            setStatus(filters.status);
+          }}
+        />
         {scope === "goods" && (
           <div className="ml-auto flex gap-2">
             <Button

@@ -27,3 +27,5 @@ export * from "./fieldService";
 export * from "./generalPurchase";
 export * from "./mutations";
 export * from "./billing";
+export * from "./savedViews";
+export * from "./events";
