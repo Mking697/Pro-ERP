@@ -8,6 +8,7 @@ import { generateId } from "@/lib/id";
 import { getOrder, listOrderPayments, type OrderRecord } from "@/lib/orders/orders";
 import { round2 } from "@/lib/leads/quotationMath";
 import { postJournalEntry, SYSTEM_ACCOUNT_CODES } from "@/lib/accounts/ledger";
+import { resolveDisplayCurrency } from "@/lib/currency/currency";
 import { endOfIstDay, startOfIstDay } from "@/lib/timestamp";
 import type { DateRange } from "@/lib/accounts/ledger";
 
@@ -40,6 +41,12 @@ export interface InvoiceRecord {
    * comment). Booked to the GST Payable liability account at Issue time instead of Sales
    * Revenue. */
   gstAmount: number;
+  // Multi-currency DISPLAY/REFERENCE layer (Phase C) — pure display, see
+  // src/db/schema/accounts.ts's own comment. "INR"/null/null for every invoice that never
+  // used a foreign currency.
+  displayCurrency: string;
+  displayExchangeRate: number | null;
+  displayAmount: number | null;
   status: InvoiceStatus;
   issuedBy: string;
   issuedAt: string;
@@ -60,6 +67,9 @@ function rowToInvoice(row: InvoiceRow): InvoiceRecord {
     extraDocumentUrl: row.extraDocumentUrl,
     finalValue: Number(row.finalValue) || 0,
     gstAmount: Number(row.gstAmount) || 0,
+    displayCurrency: row.displayCurrency,
+    displayExchangeRate: row.displayExchangeRate !== null ? Number(row.displayExchangeRate) : null,
+    displayAmount: row.displayAmount !== null ? Number(row.displayAmount) : null,
     status: row.status,
     issuedBy: row.issuedBy,
     issuedAt: row.issuedAt ? row.issuedAt.toISOString() : "",
@@ -248,6 +258,14 @@ export interface CreateInvoiceInput {
   /** The Doer sees a suggested value (getInvoiceSuggestion) but can adjust it before
    * saving — never silently locked, see CLAUDE.md's Accounts section. */
   finalValue: number;
+  /** Multi-currency DISPLAY/REFERENCE layer (Phase C) — optional, additive. Omitted
+   * (every existing caller) leaves finalValue/displayCurrency exactly as always. Supplying
+   * both just snapshots the foreign-currency face amount alongside the (caller-supplied,
+   * still authoritative) finalValue — unlike Orders/POs, finalValue here is NOT recomputed
+   * from displayAmount, since the Doer already enters/adjusts it directly (see this
+   * interface's own `finalValue` comment above). */
+  currency?: string;
+  displayAmount?: number;
 }
 
 /**
@@ -317,6 +335,7 @@ async function createInvoiceInTransaction(input: CreateInvoiceInput, createdBy: 
       : 0;
 
   const invoiceId = generateId("INV");
+  const resolved = await resolveDisplayCurrency(input.currency, input.displayAmount);
   const row = await insertRecord(invoices, {
     id: invoiceId,
     orgId,
@@ -328,6 +347,13 @@ async function createInvoiceInTransaction(input: CreateInvoiceInput, createdBy: 
     extraDocumentUrl: input.extraDocumentUrl?.trim() ?? "",
     finalValue: String(finalValue),
     gstAmount: String(gstAmount),
+    ...(resolved
+      ? {
+          displayCurrency: resolved.displayCurrency,
+          displayExchangeRate: String(resolved.displayExchangeRate),
+          displayAmount: String(resolved.displayAmount),
+        }
+      : {}),
     status: "Draft",
     createdBy,
   });

@@ -69,6 +69,14 @@ export const invoices = pgTable(
   // account (GST Payable) instead of folding it into Sales Revenue. "0" for an invoice
   // created before GST tracking existed, which keeps posting it the old way.
   gstAmount: numeric("gst_amount").notNull().default("0"),
+  // Multi-currency DISPLAY/REFERENCE layer (Phase C) — same pure-additive shape as
+  // orders.displayCurrency/displayExchangeRate/displayAmount (src/db/schema/orders.ts's own
+  // comment on those columns). finalValue (INR) stays authoritative and unchanged; these
+  // three only let the invoice document additionally show the foreign-currency face amount
+  // it was actually billed in.
+  displayCurrency: text("display_currency").notNull().default("INR"),
+  displayExchangeRate: numeric("display_exchange_rate"),
+  displayAmount: numeric("display_amount"),
   status: invoiceStatusEnum("status").notNull().default("Draft"),
   issuedBy: text("issued_by").notNull().default(""),
   issuedAt: timestamp("issued_at", { withTimezone: true }),

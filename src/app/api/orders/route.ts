@@ -49,6 +49,8 @@ const bodySchema = z
     poAttachmentUrl: z.string().trim().optional(),
     transportArrangedBy: z.enum(["Self", "Party"]),
     gstPercent: z.coerce.number().min(0).max(100).optional(),
+    currency: z.string().trim().toUpperCase().optional(),
+    displayAmount: z.coerce.number().positive().optional(),
   })
   .refine((v) => v.customerId || v.newCustomer, {
     message: "Ek Customer chunein ya naya Customer ka naam bharein.",
@@ -76,6 +78,8 @@ export async function POST(request: Request) {
         poAttachmentUrl: parsed.data.poAttachmentUrl,
         transportArrangedBy: parsed.data.transportArrangedBy,
         gstPercent: parsed.data.gstPercent,
+        currency: parsed.data.currency,
+        displayAmount: parsed.data.displayAmount,
       },
       guard.session.userId
     );

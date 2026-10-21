@@ -14,6 +14,7 @@ import { getSetting } from "@/lib/settings";
 import { uploadAttachment } from "@/lib/storage";
 import { getQuotationSetup } from "@/lib/leads/quotationSetup";
 import { round2 } from "@/lib/leads/quotationMath";
+import { resolveDisplayCurrency } from "@/lib/currency/currency";
 
 export class PurchaseOrderError extends Error {}
 
@@ -87,6 +88,12 @@ export interface PurchaseOrder {
   gstPercent: number;
   termsAndConditions: string;
   note: string;
+  // Multi-currency DISPLAY/REFERENCE layer (Phase C) — header-level only, pure display,
+  // see src/db/schema/purchase.ts's own comment. "INR"/null/null for every PO that never
+  // used a foreign currency.
+  displayCurrency: string;
+  displayExchangeRate: number | null;
+  displayAmount: number | null;
   lines: PurchaseOrderLine[];
 }
 
@@ -110,6 +117,9 @@ function rowToPo(row: PurchaseOrderRow, vendorName: string, lines: PurchaseOrder
     gstPercent: Number(row.gstPercent) || 0,
     termsAndConditions: row.termsAndConditions,
     note: row.note,
+    displayCurrency: row.displayCurrency,
+    displayExchangeRate: row.displayExchangeRate !== null ? Number(row.displayExchangeRate) : null,
+    displayAmount: row.displayAmount !== null ? Number(row.displayAmount) : null,
     lines,
   };
 }
@@ -257,6 +267,13 @@ export interface CreatePurchaseOrderInput {
   gstPercent?: number;
   termsAndConditions?: string;
   note?: string;
+  /** Multi-currency DISPLAY/REFERENCE layer (Phase C) — optional, additive, header-level
+   * only (one currency per PO). Omitted (every existing caller) leaves displayCurrency
+   * defaulted to "INR" and nothing else changes — oldPrice/newPrice/every line stays
+   * INR-only exactly as always; this is pure reference, not a recomputation of line
+   * pricing. */
+  currency?: string;
+  displayAmount?: number;
 }
 
 interface ResolvedPoLine {
@@ -352,6 +369,8 @@ export async function createPurchaseOrder(input: CreatePurchaseOrderInput, key?:
       ...(input.gstPercent !== undefined ? { gstPercent: input.gstPercent } : {}),
       ...(input.termsAndConditions !== undefined ? { termsAndConditions: input.termsAndConditions } : {}),
       ...(input.note !== undefined ? { note: input.note } : {}),
+      ...(input.currency !== undefined ? { currency: input.currency } : {}),
+      ...(input.displayAmount !== undefined ? { displayAmount: input.displayAmount } : {}),
     },
   }, work);
 }
@@ -382,6 +401,7 @@ async function createPurchaseOrderInTransaction(input: CreatePurchaseOrderInput)
     : await computeDefaultTatDeadline(issuedAt, maxLeadDays, "Days");
 
   const poId = generateId("PO");
+  const fxResolved = await resolveDisplayCurrency(input.currency, input.displayAmount);
   await insertRecord(purchaseOrders, {
     id: poId,
     orgId,
@@ -395,6 +415,13 @@ async function createPurchaseOrderInTransaction(input: CreatePurchaseOrderInput)
     gstPercent: String(input.gstPercent ?? purchaseSetup.gstPercentDefault),
     termsAndConditions: input.termsAndConditions ?? purchaseSetup.defaultTerms,
     note: input.note ?? purchaseSetup.defaultNote,
+    ...(fxResolved
+      ? {
+          displayCurrency: fxResolved.displayCurrency,
+          displayExchangeRate: String(fxResolved.displayExchangeRate),
+          displayAmount: String(fxResolved.displayAmount),
+        }
+      : {}),
   });
 
   // Sequential, not db.batch(): each line's own insert plus its indent's status flip is

@@ -12,6 +12,7 @@ import LeaveApprovalSetupForm from "./leave-approval-setup-form";
 import LeaveQuotaSetupForm from "./leave-quota-setup-form";
 import QuotationSetupForm from "./quotation-setup-form";
 import OrderSetupForm from "./order-setup-form";
+import CurrencySettingsForm from "./currency-settings-form";
 import ChatbotForm from "./chatbot-form";
 import PayrollComplianceForm from "./payroll-compliance-form";
 import ApiKeysForm from "./api-keys-form";
@@ -39,6 +40,7 @@ export default async function AdminSettingsPage() {
       <PurchaseSetupForm />
       <QuotationSetupForm />
       <OrderSetupForm />
+      <CurrencySettingsForm />
       <LeaveApprovalSetupForm />
       <LeaveQuotaSetupForm />
       <ChatbotForm />

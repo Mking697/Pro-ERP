@@ -18,6 +18,7 @@ import { findItem } from "@/lib/inventory/items";
 import { getStockAvailability } from "@/lib/inventory/availability";
 import { round2, round3, lineAmount } from "@/lib/leads/quotationMath";
 import { createCustomer } from "@/lib/parties/customers";
+import { resolveDisplayCurrency } from "@/lib/currency/currency";
 import { startFmsInstance } from "@/lib/fms/engine";
 import { listFmsTemplates } from "@/lib/fms/templates";
 import { createTask } from "@/lib/tasks";
@@ -150,6 +151,13 @@ export interface OrderRecord {
    * GST collected to its own liability account instead of folding it into Sales Revenue). */
   gstPercent: number;
   gstAmount: number;
+  // Multi-currency DISPLAY/REFERENCE layer (Phase C) — pure display, see
+  // src/db/schema/orders.ts's own comment. "INR"/null/null for every order that never
+  // used a foreign currency (every order today, and every order created without one
+  // tomorrow too — the default path never sets these).
+  displayCurrency: string;
+  displayExchangeRate: number | null;
+  displayAmount: number | null;
   creditApprovedBy: string;
   creditApprovedAt: string;
   dispatchCommitDate: string;
@@ -226,6 +234,9 @@ function rowToOrder(row: OrderRow, items: OrderItemRecord[]): OrderRecord {
     orderValue: Number(row.orderValue) || 0,
     gstPercent: Number(row.gstPercent) || 0,
     gstAmount: Number(row.gstAmount) || 0,
+    displayCurrency: row.displayCurrency,
+    displayExchangeRate: row.displayExchangeRate !== null ? Number(row.displayExchangeRate) : null,
+    displayAmount: row.displayAmount !== null ? Number(row.displayAmount) : null,
     creditApprovedBy: row.creditApprovedBy,
     creditApprovedAt: row.creditApprovedAt ? row.creditApprovedAt.toISOString() : "",
     dispatchCommitDate: row.dispatchCommitDate ? row.dispatchCommitDate.toISOString() : "",
@@ -765,6 +776,13 @@ export interface CreateDirectOrderInput {
    * src/db/schema/orders.ts's own comment on gstPercent/gstAmount for why that was a real
    * gap (GST collected was invisible to Accounts' invoice posting). */
   gstPercent?: number;
+  /** Multi-currency DISPLAY/REFERENCE layer (Phase C) — optional, additive. Omitted (every
+   * existing caller, and every new caller that doesn't need it) leaves orderValue computed
+   * from `items`+`gstPercent` exactly as always. Supplying both resolves the latest
+   * exchange rate for `currency` and OVERRIDES orderValue with the converted INR amount —
+   * see src/lib/currency/currency.ts's resolveDisplayCurrency()/convertToInr(). */
+  currency?: string;
+  displayAmount?: number;
 }
 
 /** No Lead/Quotation behind it — a salesperson's own Order Form. Starts straight at
@@ -827,8 +845,17 @@ async function createDirectOrderInTransaction(
   const subTotal = round2(lines.reduce((sum, l) => sum + l.amount, 0));
   const gstPercent = Math.max(0, Math.min(100, input.gstPercent ?? 18));
   const gstAmount = round2((subTotal * gstPercent) / 100);
-  const orderValue = round2(subTotal + gstAmount);
+  let orderValue = round2(subTotal + gstAmount);
   const orderId = generateId("ORD");
+
+  // Multi-currency DISPLAY/REFERENCE layer (Phase C) — only runs when a caller explicitly
+  // supplies a foreign currency; every existing caller (currency undefined) gets `resolved
+  // === null` and orderValue/displayCurrency stay exactly as computed above / defaulted by
+  // the schema. See resolveDisplayCurrency()'s own doc comment.
+  const resolved = await resolveDisplayCurrency(input.currency, input.displayAmount);
+  if (resolved) {
+    orderValue = resolved.inrAmount;
+  }
 
   await insertRecord(orders, {
     id: orderId,
@@ -858,6 +885,13 @@ async function createDirectOrderInTransaction(
     orderValue: String(orderValue),
     gstPercent: String(gstPercent),
     gstAmount: String(gstAmount),
+    ...(resolved
+      ? {
+          displayCurrency: resolved.displayCurrency,
+          displayExchangeRate: String(resolved.displayExchangeRate),
+          displayAmount: String(resolved.displayAmount),
+        }
+      : {}),
     createdBy,
   });
 

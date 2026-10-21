@@ -2294,4 +2294,25 @@ export const EN: Record<string, string> = {
   "Ye webhook ko aage events deliver nahi honge. Ye action undo nahi ho sakta.":
     "No more events will be delivered to this webhook. This action cannot be undone.",
   "Webhook delete ho gaya.": "Webhook deleted.",
+  "Currency": "Currency",
+  "Currency list load nahi ho payi.": "Could not load the currency list.",
+  "Currency settings load ho rahi hain": "Loading currency settings",
+  "Enabled": "Enabled",
+  "Face Amount": "Face Amount",
+  "Foreign Currency (optional)": "Foreign Currency (optional)",
+  "Foreign currency chuni hai to face amount 0 se zyada dena zaroori hai.":
+    "When a foreign currency is chosen, the face amount must be greater than 0.",
+  "INR (Default)": "INR (Default)",
+  "Multi-Currency": "Multi-Currency",
+  "Naya Rate (1 unit = ? INR)": "New Rate (1 unit = ? INR)",
+  "Note:": "Note:",
+  "Note: asli INR amount Admin ke latest exchange rate se calculate hoga.":
+    "Note: the real INR amount will be calculated using the Admin's latest exchange rate.",
+  "Orders/Invoices/PO par ek foreign currency ka face amount dikhayein — asli INR value (order value/final value) hamesha jaisi hai waisi hi rehti hai, sirf iske saath ek reference amount dikhta hai.":
+    "Show a foreign-currency face amount alongside Orders/Invoices/POs — the real INR value (order value/final value) always stays exactly as it is; this just shows a reference amount next to it.",
+  "Rate 0 se zyada hona chahiye.": "Rate must be greater than 0.",
+  "Rate Update Karein": "Update Rate",
+  "Rate hamesha history me add hota hai — purane orders/invoices/POs apna hi snapshot rate dikhate rehte hain, naya rate add karne se unki value nahi badalti.":
+    "A rate is always added to history — existing orders/invoices/POs keep showing their own snapshotted rate, adding a new rate never changes their value.",
+  "Rate save ho gaya.": "Rate saved.",
 };

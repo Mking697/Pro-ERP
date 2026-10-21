@@ -92,6 +92,16 @@ export const orders = pgTable(
   // Revenue, which overstates income/profit by the tax portion.
   gstPercent: numeric("gst_percent").notNull().default("18"),
   gstAmount: numeric("gst_amount").notNull().default("0"),
+  // Multi-currency DISPLAY/REFERENCE layer (Phase C) — pure additive, never read by
+  // computeCreditPosition()/GL posting/reports, which keep using orderValue/gstAmount
+  // exactly as before. "INR"/null/null for every order created before this existed, and for
+  // every order created without an explicit foreign currency afterwards too — the default
+  // path is untouched. When a foreign currency IS chosen at creation time, orderValue
+  // (INR) is computed once as `displayAmount * displayExchangeRate` and these three are
+  // snapshotted alongside it — see src/lib/currency/currency.ts's convertToInr().
+  displayCurrency: text("display_currency").notNull().default("INR"),
+  displayExchangeRate: numeric("display_exchange_rate"),
+  displayAmount: numeric("display_amount"),
   // Who/when cleared a Credit_Hold — a flat convenience column alongside the full
   // order_activities trail, same coexistence as fms_runs.completedBy/completedAt next to
   // its own chaining history.

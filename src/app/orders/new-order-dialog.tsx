@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import {
   Dialog,
@@ -29,6 +29,12 @@ import { computeTotals } from "@/lib/leads/quotationMath";
 import CustomerPicker, { EMPTY_NEW_CUSTOMER, type NewCustomerDraft } from "./customer-picker";
 import type { OrderRow } from "./types";
 
+interface UsableCurrency {
+  code: string;
+  name: string;
+  symbol: string;
+}
+
 interface DraftLine {
   key: number;
   item: PickerItem | null;
@@ -55,6 +61,12 @@ export default function NewOrderDialog({ onCreated }: { onCreated: (order: Order
   // a Direct order used to charge no GST at all (see CLAUDE.md's Accounts section).
   const [gstPercent, setGstPercent] = useState("18");
   const [saving, setSaving] = useState(false);
+  // Multi-currency DISPLAY/REFERENCE layer (Phase C) — optional, defaults to INR (no UI
+  // shown at all) when the org has zero enabled foreign currencies, so an existing org
+  // sees zero change. See src/lib/currency/currency.ts's resolveDisplayCurrency().
+  const [usableCurrencies, setUsableCurrencies] = useState<UsableCurrency[]>([]);
+  const [currency, setCurrency] = useState<string>("INR");
+  const [displayAmount, setDisplayAmount] = useState("");
   // Tracks whether a submit was attempted so each line's own Qty field can announce its
   // own validation error (aria-invalid + aria-describedby) instead of only a generic toast —
   // a screen-reader user hitting Tab through five line items otherwise hears "Quantity" five
@@ -70,8 +82,19 @@ export default function NewOrderDialog({ onCreated }: { onCreated: (order: Order
     setPoAttachmentUrl("");
     setTransportArrangedBy("Self");
     setGstPercent("18");
+    setCurrency("INR");
+    setDisplayAmount("");
     setSubmitAttempted(false);
   }
+
+  useEffect(() => {
+    fetch("/api/currencies")
+      .then((res) => res.json())
+      .then((data: { currencies?: UsableCurrency[] }) =>
+        setUsableCurrencies((data.currencies ?? []).filter((c) => c.code !== "INR"))
+      )
+      .catch(() => {});
+  }, []);
 
   // No freight concept on a Direct order (unlike a quotation's own computeTotals() call in
   // quotation-builder.tsx, which this mirrors) — passed as 0.
@@ -102,6 +125,10 @@ export default function NewOrderDialog({ onCreated }: { onCreated: (order: Order
       toast.error(t("Har item ki quantity 0 se zyada honi chahiye."));
       return;
     }
+    if (currency !== "INR" && !(Number(displayAmount) > 0)) {
+      toast.error(t("Foreign currency chuni hai to face amount 0 se zyada dena zaroori hai."));
+      return;
+    }
 
     setSaving(true);
     try {
@@ -113,6 +140,7 @@ export default function NewOrderDialog({ onCreated }: { onCreated: (order: Order
           poAttachmentUrl,
           transportArrangedBy,
           gstPercent: Number(gstPercent) || 0,
+          ...(currency !== "INR" ? { currency, displayAmount: Number(displayAmount) } : {}),
           ...(mode === "existing" ? { customerId: selectedId } : { newCustomer }),
         }),
       });
@@ -275,6 +303,44 @@ export default function NewOrderDialog({ onCreated }: { onCreated: (order: Order
               />
             </div>
           </div>
+          {usableCurrencies.length > 0 && (
+            <div className="grid gap-3 rounded-lg border p-3 sm:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="order-currency">{t("Foreign Currency (optional)")}</Label>
+                <Select value={currency} onValueChange={(v) => v && setCurrency(v)}>
+                  <SelectTrigger id="order-currency" className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="INR">{t("INR (Default)")}</SelectItem>
+                    {usableCurrencies.map((c) => (
+                      <SelectItem key={c.code} value={c.code}>
+                        {c.symbol} {c.code}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              {currency !== "INR" && (
+                <div className="space-y-2">
+                  <Label htmlFor="order-display-amount">{t("Face Amount")}</Label>
+                  <Input
+                    id="order-display-amount"
+                    type="number"
+                    step="any"
+                    min="0"
+                    value={displayAmount}
+                    onChange={(e) => setDisplayAmount(e.target.value)}
+                  />
+                  {Number(displayAmount) > 0 && (
+                    <p className="text-xs text-muted-foreground">
+                      {t("Note: asli INR amount Admin ke latest exchange rate se calculate hoga.")}
+                    </p>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
           <div className="space-y-1 text-sm">
             <div className="flex justify-between">
               <span>{t("Sub Total")}</span>

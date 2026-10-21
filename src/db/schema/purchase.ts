@@ -46,6 +46,13 @@ export const purchaseOrders = pgTable(
   gstPercent: numeric("gst_percent").notNull().default("0"),
   termsAndConditions: text("terms_and_conditions").notNull().default(""),
   note: text("note").notNull().default(""),
+  // Multi-currency DISPLAY/REFERENCE layer (Phase C), header-level only (one currency per
+  // PO, matching this file's own "a PO always binds to one Vendor" simplicity principle
+  // above) — same pure-additive shape as orders.displayCurrency/displayExchangeRate/
+  // displayAmount. purchaseOrderLines.oldPrice/newPrice stay INR-only, unchanged.
+  displayCurrency: text("display_currency").notNull().default("INR"),
+  displayExchangeRate: numeric("display_exchange_rate"),
+  displayAmount: numeric("display_amount"),
   },
   (table) => [index("purchase_orders_org_id_idx").on(table.orgId)]
 );
