@@ -6,7 +6,13 @@ import path from "node:path";
 const local = readMigrationFiles({ migrationsFolder: path.resolve(__dirname, "../drizzle") });
 // Raw rows as the @neondatabase/serverless `neon()` query function returns them
 // by default (a plain array of row objects — fullResults/arrayMode both false).
-const appliedRows = () => local.map((m) => ({ hash: m.hash, created_at: String(m.folderMillis) }));
+// Built FROM expectedMigrationLineage (production's own recorded apply order/
+// timestamps), not from `local`'s file-timestamp order — those two legitimately
+// diverge for 2 historically out-of-order-applied migrations (see
+// expected-migration-lineage.ts's own header comment), and these fixtures must
+// simulate a healthy, non-divergent database returning exactly what production
+// really recorded, not what the local drizzle/ file names would imply.
+const appliedRows = () => expectedMigrationLineage.map((m) => ({ hash: m.hash, created_at: String(m.folderMillis) }));
 
 const h = vi.hoisted(() => ({ query: vi.fn(), neonCalls: vi.fn() }));
 vi.mock("@/lib/platform/admin", () => ({ getPlatformAdminEmails: () => [] }));
@@ -193,8 +199,11 @@ it("does not start the schema-lineage query after the reachability probe itself 
   expect(vi.getTimerCount()).toBe(0);
 });
 
-it("packages exactly the current SQL hashes and ordered journal timestamps", () => {
-  expect(expectedMigrationLineage).toEqual(local.map(({ hash, folderMillis }) => ({ hash, folderMillis })));
+it("contains exactly the current SQL file hashes (order/timestamps come from production's own recorded apply history, not local file order)", () => {
+  const expectedHashSet = new Set(expectedMigrationLineage.map((m) => m.hash));
+  const localHashSet = new Set(local.map((m) => m.hash));
+  expect(expectedHashSet).toEqual(localHashSet);
+  expect(expectedMigrationLineage.length).toBe(local.length);
 });
 
 it("bounds migration query rows while retaining one extra row to detect newer schemas", async () => {

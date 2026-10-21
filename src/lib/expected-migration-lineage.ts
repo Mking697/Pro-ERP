@@ -1,11 +1,20 @@
-// Generated from drizzle SQL/journal using drizzle-orm/migrator.readMigrationFiles.
-// Regenerate by hand after any drizzle/ SQL or journal change: read every file in
-// drizzle/meta/_journal.json's order with readMigrationFiles({ migrationsFolder: "drizzle" })
-// and paste its {hash, folderMillis} pairs here, in order. Freshness gate (DB-free,
-// no live DB needed): tests/health-readiness.unit.test.ts's
-// "packages exactly the current SQL hashes and ordered journal timestamps" test fails
-// loudly the moment this file drifts from drizzle/ — see
-// handoff/2026-10-09/third-qa03-qa04-health-lineage-complete.txt for the exact command.
+// Generated from PRODUCTION's own recorded migration history, not from local file
+// timestamps. Regenerate by running, on the live VPS, against the real database:
+//   sudo -u postgres psql -d pro_erp -c \
+//     "SELECT hash, created_at FROM drizzle.__drizzle_migrations ORDER BY created_at, id;"
+// and pasting the rows below in that exact order, as {hash, folderMillis: Number(created_at)}.
+//
+// Why NOT `drizzle-orm/migrator.readMigrationFiles()` (file-timestamp order): two
+// migrations in this project's history were applied to production out of their file-name
+// order and with real apply timestamps that differ from their file names' own encoded
+// timestamp (see CLAUDE.md's 2026-10-10 INCIDENT section) — `/api/health`'s
+// SCHEMA_DIVERGENT check compares by exact (hash, created_at) at each row position, so this
+// constant must reflect what production actually recorded, not what the local drizzle/
+// folder's file names would imply. The DB-free freshness test
+// (tests/health-readiness.unit.test.ts, "contains exactly the current SQL file hashes")
+// only asserts the HASH SET matches the local drizzle/ folder 1:1 — it deliberately does
+// NOT assert order/timestamps equal local file values, since those can legitimately diverge
+// from this real production history without indicating any actual schema problem.
 // Static TS is bundled by Next; no runtime filesystem or dotenv/database imports.
 export const expectedMigrationLineage = [
   {
@@ -97,12 +106,12 @@ export const expectedMigrationLineage = [
     "folderMillis": 1790311697012
   },
   {
-    "hash": "bdd2286ba695b96fa7db5b66865310f2b86648e41d46b783800d7d7149674d6c",
-    "folderMillis": 1790509661484
+    "hash": "e31960ccd3a0df3629177e59ccf0aeaae3248aaffcebbbc4761a19ddbf0c8cf5",
+    "folderMillis": 1790505232931
   },
   {
-    "hash": "e31960ccd3a0df3629177e59ccf0aeaae3248aaffcebbbc4761a19ddbf0c8cf5",
-    "folderMillis": 1790526393385
+    "hash": "bdd2286ba695b96fa7db5b66865310f2b86648e41d46b783800d7d7149674d6c",
+    "folderMillis": 1790509661484
   },
   {
     "hash": "7b3d536e12b208ce654f4bd1e5f43683559f69909cb980f88fa50c69c83cb506",
@@ -147,5 +156,9 @@ export const expectedMigrationLineage = [
   {
     "hash": "384bb0bb33f9214d052e05895d6ddcc810b7ed1eb39105712446ac8aae9ac505",
     "folderMillis": 1792390854548
+  },
+  {
+    "hash": "d27ab3a4e0f399d151f910e9aae3f3be60dab03d613e4f0b4875cbf4e4efc1f6",
+    "folderMillis": 1792515924809
   }
 ];
