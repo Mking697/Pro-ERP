@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Check, Copy, Link2, RefreshCw, Send } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -35,34 +35,37 @@ export default function PortalLinkDialog({
   const t = useT();
   const confirm = useConfirm();
   const [url, setUrl] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
   const [sending, setSending] = useState(false);
   const [regenerating, setRegenerating] = useState(false);
   const [copied, setCopied] = useState(false);
 
-  function reset() {
-    setUrl(null);
-    setCopied(false);
-  }
-
-  async function ensureLink() {
-    if (!customer || url) return;
-    setLoading(true);
-    try {
-      const res = await fetch(
-        `/api/parties/customers/${encodeURIComponent(customer.Customer_ID)}/portal-link`,
-        { method: "POST" }
-      );
-      const data = await res.json();
-      if (!res.ok) {
-        toast.error(t(data.error ?? "Link nahi ban paya."));
-        return;
-      }
-      setUrl(data.url);
-    } finally {
-      setLoading(false);
-    }
-  }
+  // Fetches/creates the link the moment the dialog opens for a customer — mirrors
+  // share-report.tsx's own `useEffect(() => { if (!open) return; fetch(...) }, [open])`
+  // shape. The `open` prop here is set externally (CustomersBoard sets `portalCustomer`
+  // directly on a button click), so `Dialog`'s own `onOpenChange` never fires for THIS
+  // open — it only fires when the Dialog itself requests a close (overlay/Escape/X) — so
+  // this effect, not onOpenChange, is the only reliable "just opened" signal. No separate
+  // `loading` flag: "still loading" is simply `open && !url`, computed in JSX below,
+  // rather than a second piece of state that could drift out of sync with the fetch.
+  useEffect(() => {
+    if (!open || !customer) return;
+    let cancelled = false;
+    fetch(`/api/parties/customers/${encodeURIComponent(customer.Customer_ID)}/portal-link`, {
+      method: "POST",
+    })
+      .then((res) => res.json().then((data) => ({ res, data })))
+      .then(({ res, data }) => {
+        if (cancelled) return;
+        if (!res.ok) {
+          toast.error(t(data.error ?? "Link nahi ban paya."));
+          return;
+        }
+        setUrl(data.url);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [open, customer, t]);
 
   async function handleCopy() {
     if (!url) return;
@@ -121,8 +124,10 @@ export default function PortalLinkDialog({
     <Dialog
       open={open}
       onOpenChange={(next) => {
-        if (next) void ensureLink();
-        else reset();
+        if (!next) {
+          setUrl(null);
+          setCopied(false);
+        }
         onOpenChange(next);
       }}
     >
@@ -137,7 +142,7 @@ export default function PortalLinkDialog({
           </DialogDescription>
         </DialogHeader>
 
-        {loading && <p className="text-sm text-muted-foreground">{t("Link ban raha hai...")}</p>}
+        {open && !url && <p className="text-sm text-muted-foreground">{t("Link ban raha hai...")}</p>}
 
         {url && (
           <div className="space-y-4">
