@@ -9,6 +9,12 @@
  * (SKU, UOM, ADC, ROP, PCS) are deliberately absent: they read the same either way.
  */
 export const EN: Record<string, string> = {
+  "Notifications": "Notifications",
+  "Sab read karein": "Mark all read",
+  "Koi notification nahi hai.": "No notifications yet.",
+  "Naya Task Assign Hua": "New task assigned",
+  "Leave Approval Pending": "Leave approval pending",
+  "Order Status Update": "Order status update",
   "Dashboard customize karein": "Customize dashboard",
   "Widgets dikhayein/chhupayein, aur arrows se unka order badlein.":
     "Show or hide widgets, and use the arrows to change their order.",

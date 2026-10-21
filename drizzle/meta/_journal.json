@@ -288,6 +288,13 @@
       "when": 1792593734164,
       "tag": "0040_aspiring_iron_fist",
       "breakpoints": true
+    },
+    {
+      "idx": 41,
+      "version": "7",
+      "when": 1792596631516,
+      "tag": "0041_melodic_klaw",
+      "breakpoints": true
     }
   ]
 }

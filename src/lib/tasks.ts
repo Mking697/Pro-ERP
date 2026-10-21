@@ -4,6 +4,7 @@ import { findById, insertRecord, listByOrg, updateById } from "@/db/repo";
 import { getTenantOrgId } from "@/lib/tenant";
 import { generateId } from "@/lib/id";
 import { parseStamp } from "@/lib/timestamp";
+import { emitDomainEvent } from "@/lib/events/emit";
 
 /**
  * Mirrors the pre-Postgres sheet row shape exactly (same field names, same PascalCase
@@ -132,6 +133,11 @@ export async function createTask(input: CreateTaskInput): Promise<TaskRecord> {
     delayCount: 0,
     recurringId: "",
   });
+  await emitDomainEvent(orgId, "task.assigned", {
+    taskId: row.id,
+    assignedTo: input.assignedTo,
+    title: input.title,
+  });
   return rowToRecord(row);
 }
 
@@ -172,6 +178,11 @@ export async function createRecurringOccurrence(
     delayCount: 0,
     recurringId: input.recurringId,
     naturalCycleStartDate: input.naturalCycleStartDate,
+  });
+  await emitDomainEvent(orgId, "task.assigned", {
+    taskId: row.id,
+    assignedTo: input.assignedTo,
+    title: input.title,
   });
   return rowToRecord(row);
 }

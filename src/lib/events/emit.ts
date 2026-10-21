@@ -23,14 +23,18 @@ import { generateId } from "@/lib/id";
  * Known `type` values emitted so far (see call sites):
  *   - "order.status_changed"   payload: { orderId, fromStatus, toStatus, customerId? }
  *   - "stock.movement_recorded" payload: { sku, direction, quantity, uom, source, referenceId?, location?, userId? }
+ *   - "task.assigned"          payload: { taskId, assignedTo, title } — src/lib/tasks.ts
+ *     (createTask(), createRecurringOccurrence()), consumed by the in-app notification
+ *     center (src/lib/notifications/dispatch.ts).
+ *   - "approval.pending"       payload: { leaveId, approverId, stepNo, requesterName } —
+ *     src/lib/leave/leaves.ts (createLeave()'s step-1 approver, decideLeaveStep()'s
+ *     advance to the next step's approver), consumed by the same notification center.
  *
  * This primitive is intentionally type-agnostic — `emitDomainEvent()`'s signature
- * accepts any `type` string and any JSON-shaped payload. Task-assignment
- * ("task.assigned") and approval-pending ("approval.pending") events are NOT wired by
- * this change; a later agent building the notification center should call
- * `emitDomainEvent()` directly from wherever a task is assigned / an approval becomes
- * pending, choosing its own payload shape and documenting it in a comment at that call
- * site (or by extending the list above) — no change to this file is needed to do that.
+ * accepts any `type` string and any JSON-shaped payload. Any future event type still
+ * needs no change to this file — a caller just calls `emitDomainEvent()` directly from
+ * wherever the new "something happened" occurs, choosing its own payload shape and
+ * documenting it in a comment at that call site (or by extending the list above).
  */
 
 /**

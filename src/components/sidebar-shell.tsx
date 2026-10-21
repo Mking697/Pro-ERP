@@ -12,6 +12,7 @@ import LogoutButton from "@/app/dashboard/logout-button";
 import { OrgLogo } from "@/components/logo-picker";
 import SettingsMenu from "@/components/settings-menu";
 import ChangelogMenu from "@/components/changelog-menu";
+import NotificationBell from "@/components/notification-bell";
 import ChatWidget from "@/components/chat-widget";
 
 const COLLAPSE_KEY = "pro-erp:sidebar-collapsed";
@@ -144,6 +145,7 @@ export default function SidebarShell({
             </div>
             <div className="mt-2.5 flex items-center justify-between gap-1">
               <div className="flex items-center gap-1">
+                <NotificationBell />
                 <ChangelogMenu />
                 <SettingsMenu />
               </div>
@@ -208,6 +210,7 @@ export default function SidebarShell({
           </Link>
           <div className="ml-auto flex shrink-0 items-center gap-1">
             <CommandPalette iconOnly />
+            <NotificationBell />
             <ChangelogMenu />
             <SettingsMenu />
           </div>

@@ -10,6 +10,7 @@ import { listLeaveApprovalSteps } from "@/lib/leave/approvalSetup";
 import { activateLeave } from "@/lib/leave/reassignment";
 import { todayIST } from "@/lib/dateUtil";
 import { daysBetween, getLeaveQuotas, getUsedDaysThisYear } from "@/lib/leave/quotas";
+import { emitDomainEvent } from "@/lib/events/emit";
 
 export const LEAVE_TYPES = ["Casual", "Sick", "Earned", "Other"] as const;
 export type LeaveType = (typeof LEAVE_TYPES)[number];
@@ -199,6 +200,22 @@ export async function createLeave(input: CreateLeaveInput): Promise<LeaveRecord>
     });
   }
 
+  // Notification-center trigger (Phase B item #2) — one "approval.pending" domain event
+  // per step-1 approver, so whoever has to act first is told right away. Steps beyond 1
+  // are notified later, as decideLeaveStep() advances currentStepNo past them.
+  const step1ApproverIds = approverIds.length > 0 ? [approverIds[0]] : [];
+  if (step1ApproverIds.length > 0) {
+    const requesterName = await userName(input.doerId);
+    for (const approverId of step1ApproverIds) {
+      await emitDomainEvent(orgId, "approval.pending", {
+        leaveId: id,
+        approverId,
+        stepNo: 1,
+        requesterName,
+      });
+    }
+  }
+
   if (approverIds.length === 0) {
     const today = todayIST();
     if (input.startDate <= today && today <= input.endDate) {
@@ -320,6 +337,30 @@ export async function decideLeaveStep(
       }
     } else {
       await updateById(leaves, orgId, leaveId, { currentStepNo: leave.currentStepNo + 1 });
+      // Notification-center trigger — the NEXT step's approver(s) are now the ones
+      // waiting on a decision, so they get told, same as step-1's approver was at
+      // createLeave() time. Not emitted on rejection, and not on the final approval
+      // (there's no "next step" to notify in either case).
+      const nextStepNo = leave.currentStepNo + 1;
+      const nextStepApprovals = await db
+        .select()
+        .from(leaveApprovals)
+        .where(
+          and(
+            eq(leaveApprovals.orgId, orgId),
+            eq(leaveApprovals.leaveId, leaveId),
+            eq(leaveApprovals.stepNo, nextStepNo)
+          )
+        );
+      const requesterName = await userName(leave.doerId);
+      for (const nextApproval of nextStepApprovals) {
+        await emitDomainEvent(orgId, "approval.pending", {
+          leaveId,
+          approverId: nextApproval.approverId,
+          stepNo: nextStepNo,
+          requesterName,
+        });
+      }
     }
   }
 

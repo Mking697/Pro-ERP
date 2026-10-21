@@ -50,6 +50,7 @@ import {
   fieldTaskSteps,
   fieldServiceActivities,
   mutationReceipts,
+  notifications,
   orderActivities,
   orderItems,
   orderPayments,
@@ -296,6 +297,7 @@ export async function deleteOrganization(orgId: string): Promise<void> {
     db.delete(domainEvents).where(eq(domainEvents.orgId, orgId)),
     db.delete(webhookDeliveries).where(eq(webhookDeliveries.orgId, orgId)),
     db.delete(webhookSubscriptions).where(eq(webhookSubscriptions.orgId, orgId)),
+    db.delete(notifications).where(eq(notifications.orgId, orgId)),
     db.delete(apiKeys).where(eq(apiKeys.orgId, orgId)),
     db.delete(organizations).where(eq(organizations.id, orgId)),
   ]);
