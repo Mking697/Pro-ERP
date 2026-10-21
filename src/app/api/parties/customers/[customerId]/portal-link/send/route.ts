@@ -4,6 +4,7 @@ import { getOrCreatePortalLink } from "@/lib/parties/customerPortal";
 import { findById } from "@/db/repo";
 import { customers } from "@/db/schema";
 import { sendWhatsAppMessage } from "@/lib/chatxflow";
+import { publicOriginFrom } from "@/lib/publicOrigin";
 
 /** Sends the customer their own Portal link over WhatsApp (ChatXFlow) — reuses the exact
  * same send primitive every other module already uses, no new integration. Staff-triggered
@@ -26,7 +27,7 @@ export async function POST(
   }
 
   const token = await getOrCreatePortalLink(id, guard.session.userId);
-  const url = `${new URL(request.url).origin}/portal/${token}`;
+  const url = `${publicOriginFrom(request)}/portal/${token}`;
   const message = `Namaste ${customer.customerName}, aap apne orders aur invoices yahan dekh sakte hain: ${url}`;
 
   const result = await sendWhatsAppMessage(customer.phone, message);
