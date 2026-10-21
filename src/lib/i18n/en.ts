@@ -9,6 +9,18 @@
  * (SKU, UOM, ADC, ROP, PCS) are deliberately absent: they read the same either way.
  */
 export const EN: Record<string, string> = {
+  "Shuru karein": "Get started",
+  "{done}/{total} steps pure hue — Pro ERP set up karne ke liye yeh steps follow karein.": "{done}/{total} steps complete — follow these to set up Pro ERP.",
+  "Checklist band karein": "Dismiss checklist",
+  "Dismiss nahi ho paya.": "Could not dismiss.",
+  "Apna pehla Item add karein": "Add your first Item",
+  "Inventory me kya stock karna hai — raw material, consumable ya finished good.": "What to stock in Inventory — raw material, consumable or finished good.",
+  "Vendor ya Customer add karein": "Add a Vendor or Customer",
+  "Jin se aap khareedte/bechte hain unka record banayein.": "Create a record for who you buy from or sell to.",
+  "Pehla Order banayein": "Create your first Order",
+  "Ek customer order punch karein aur pipeline dekhein.": "Punch a customer order and see the pipeline.",
+  "Apni team invite karein": "Invite your team",
+  "Doosre users add karein taaki kaam baant sakein.": "Add other users so you can share the work.",
   "Services, Complaints aur Site Visits": "Services, Complaints and Site Visits",
   "Customer ke site par installation, repair aur inspection ka kaam.": "Customer-site installation, repair and inspection work.",
   "Service job banana": "Create a service job",

@@ -29,6 +29,8 @@ import ReportsQuickAccess from "./reports-quick-access";
 import ModuleQuickNav from "./module-quick-nav";
 import AttentionStrip from "./attention-strip";
 import RecentActivityCard from "./recent-activity-card";
+import OnboardingChecklist from "./onboarding-checklist";
+import { getOnboardingStatus } from "@/lib/onboarding";
 import { getT } from "@/lib/i18n/server";
 import { reportsFor } from "@/lib/reports";
 
@@ -151,6 +153,11 @@ export default async function DashboardPage({
   // Whatever an Admin granted this person shows up here as somewhere they can go.
   const myModules = MODULE_ACCESS.filter((m) => session.access.includes(m.key));
 
+  // First-run onboarding checklist — Admin-only, and only while unfinished/undismissed.
+  // See src/lib/onboarding.ts for the four steps and why they're cheap EXISTS checks.
+  const onboarding = session.role === "Admin" ? await getOnboardingStatus() : null;
+  const showOnboarding = onboarding !== null && !onboarding.dismissed && !onboarding.allDone;
+
   return (
     <AppShell session={session}>
       <div className="space-y-6">
@@ -164,6 +171,8 @@ export default async function DashboardPage({
               : `${pending.length} task pending${overdueCount > 0 ? `, ${overdueCount} overdue` : ""}.`}
           </p>
         </div>
+
+        {showOnboarding && <OnboardingChecklist steps={onboarding.steps} />}
 
         <ModuleQuickNav access={session.access} t={t} />
 

@@ -1623,6 +1623,54 @@
       "count": 1
     },
     {
+      "file": "src/lib/onboarding.ts",
+      "kind": "property:label",
+      "text": "Apna pehla Item add karein",
+      "count": 1
+    },
+    {
+      "file": "src/lib/onboarding.ts",
+      "kind": "property:description",
+      "text": "Inventory me kya stock karna hai — raw material, consumable ya finished good.",
+      "count": 1
+    },
+    {
+      "file": "src/lib/onboarding.ts",
+      "kind": "property:label",
+      "text": "Vendor ya Customer add karein",
+      "count": 1
+    },
+    {
+      "file": "src/lib/onboarding.ts",
+      "kind": "property:description",
+      "text": "Jin se aap khareedte/bechte hain unka record banayein.",
+      "count": 1
+    },
+    {
+      "file": "src/lib/onboarding.ts",
+      "kind": "property:label",
+      "text": "Pehla Order banayein",
+      "count": 1
+    },
+    {
+      "file": "src/lib/onboarding.ts",
+      "kind": "property:description",
+      "text": "Ek customer order punch karein aur pipeline dekhein.",
+      "count": 1
+    },
+    {
+      "file": "src/lib/onboarding.ts",
+      "kind": "property:label",
+      "text": "Apni team invite karein",
+      "count": 1
+    },
+    {
+      "file": "src/lib/onboarding.ts",
+      "kind": "property:description",
+      "text": "Doosre users add karein taaki kaam baant sakein.",
+      "count": 1
+    },
+    {
       "file": "src/app/dashboard/module-quick-nav.tsx",
       "kind": "property:description",
       "text": "Enquiries & Orders",
