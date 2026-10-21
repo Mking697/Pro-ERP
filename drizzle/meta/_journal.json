@@ -253,6 +253,13 @@
       "when": 1792515924809,
       "tag": "0035_busy_bloodaxe",
       "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1792561699874,
+      "tag": "0036_glamorous_the_fury",
+      "breakpoints": true
     }
   ]
 }

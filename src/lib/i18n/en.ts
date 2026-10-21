@@ -9,6 +9,21 @@
  * (SKU, UOM, ADC, ROP, PCS) are deliberately absent: they read the same either way.
  */
 export const EN: Record<string, string> = {
+  "Aapke orders — sirf padhne ke liye": "Your orders — read only",
+  "Abhi koi order nahi hai.": "No orders yet.",
+  "Customer Portal Link": "Customer Portal Link",
+  "Is customer ka phone number save nahi hai — Copy karke manually bhej sakte hain.": "This customer has no phone number saved — copy the link and send it manually.",
+  "Is link se {name} apne saare orders aur invoices dekh sakte hain — koi login/password nahi chahiye.": "{name} can see all their orders and invoices from this link — no login/password needed.",
+  "Link ban raha hai...": "Creating link...",
+  "Link copy karein": "Copy link",
+  "Link regenerate karein?": "Regenerate link?",
+  "Naya link ban gaya — purana ab kaam nahi karega.": "A new link was created — the old one no longer works.",
+  "Portal link WhatsApp par bhej diya.": "Portal link sent via WhatsApp.",
+  "Purana link turant kaam karna band kar dega — agar leak ho gaya ho tabhi regenerate karein.": "The old link stops working immediately — only regenerate if it has leaked.",
+  "Regenerate ho raha hai...": "Regenerating...",
+  "Regenerate karein": "Regenerate",
+  "WhatsApp par bhejein": "Send via WhatsApp",
+  "Ye page live hai — refresh karne par taaza data aata hai.": "This page is live — refresh for the latest data.",
   "Shuru karein": "Get started",
   "{done}/{total} steps pure hue — Pro ERP set up karne ke liye yeh steps follow karein.": "{done}/{total} steps complete — follow these to set up Pro ERP.",
   "Checklist band karein": "Dismiss checklist",

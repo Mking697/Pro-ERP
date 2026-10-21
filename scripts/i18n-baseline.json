@@ -3832,6 +3832,24 @@
     },
     {
       "file": "src/app/parties/customers-board.tsx",
+      "kind": "attribute:aria-label",
+      "text": "ka Portal Link",
+      "count": 1
+    },
+    {
+      "file": "src/app/portal/[token]/page.tsx",
+      "kind": "jsx-text",
+      "text": "Pro ERP",
+      "count": 1
+    },
+    {
+      "file": "src/app/portal/[token]/page.tsx",
+      "kind": "jsx-text",
+      "text": "Jisne ye link bheja tha, unse naya link maangein.",
+      "count": 1
+    },
+    {
+      "file": "src/app/parties/customers-board.tsx",
       "kind": "jsx-expression",
       "text": "Active",
       "count": 1

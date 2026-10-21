@@ -1,4 +1,4 @@
-import { date, index, integer, numeric, pgEnum, pgTable, text, timestamp } from "drizzle-orm/pg-core";
+import { date, index, integer, numeric, pgEnum, pgTable, text, timestamp, unique } from "drizzle-orm/pg-core";
 
 /**
  * The platform registry — mirrors src/lib/platform/registry.ts's two Google Sheets tabs
@@ -192,5 +192,36 @@ export const tenantUsageMetrics = pgTable(
   (table) => [
     index("tenant_usage_metrics_org_id_idx").on(table.orgId),
     index("tenant_usage_metrics_metric_date_idx").on(table.metricDate),
+  ]
+);
+
+/**
+ * Customer Portal magic links (roadmap Phase 2 item #4, built 2026-10-21) — a public,
+ * read-only, permanent-until-revoked link per Customer, so a customer never needs a
+ * username/password to check their own Orders/Invoices. Lives alongside `reportShares`
+ * in the platform registry for the exact same reason: a visitor arrives holding nothing
+ * but the token, so resolving it from a per-organization `customers` table would mean
+ * scanning every organization's data to find the owner — this is the one global map.
+ *
+ * `token` is the real primary key, same reasoning as `reportShares.token` — it is already
+ * the credential a visitor holds. One row per Customer (not per order): `customerId` is
+ * unique, so "get or create" is a real upsert target, and a customer with repeat orders
+ * keeps the same link across all of them instead of a fresh one per purchase. Revoking
+ * (regenerating) deletes the row and inserts a fresh token — same "row exists = Active"
+ * convention as `reportShares`, no separate status column to drift out of sync.
+ */
+export const customerPortalLinks = pgTable(
+  "customer_portal_links",
+  {
+    token: text("token").primaryKey(),
+    orgId: text("org_id")
+      .notNull()
+      .references(() => organizations.id),
+    customerId: text("customer_id").notNull(),
+    createdBy: text("created_by").notNull().default(""),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    unique("customer_portal_links_org_id_customer_id_unique").on(table.orgId, table.customerId),
   ]
 );

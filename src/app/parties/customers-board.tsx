@@ -12,12 +12,13 @@ import {
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Pencil } from "lucide-react";
+import { Pencil, Link2 } from "lucide-react";
 import { TableSkeleton } from "@/components/loading-states";
 import { useT } from "@/components/preferences-provider";
 import CreateCustomerDialog from "./create-customer-dialog";
 import EditCustomerDialog from "./edit-customer-dialog";
 import PartyImportDialog from "./party-import-dialog";
+import PortalLinkDialog from "./portal-link-dialog";
 import type { CustomerRow } from "./types";
 
 export default function CustomersBoard() {
@@ -26,6 +27,7 @@ export default function CustomersBoard() {
   const [loading, setLoading] = useState(true);
   const [version, setVersion] = useState(0);
   const [editing, setEditing] = useState<CustomerRow | null>(null);
+  const [portalCustomer, setPortalCustomer] = useState<CustomerRow | null>(null);
 
   useEffect(() => {
     fetch("/api/parties/customers")
@@ -99,15 +101,26 @@ export default function CustomersBoard() {
                   </Badge>
                 </TableCell>
                 <TableCell>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon-sm"
-                    aria-label={`${c.Customer_Name} edit karein`}
-                    onClick={() => setEditing(c)}
-                  >
-                    <Pencil />
-                  </Button>
+                  <div className="flex items-center justify-end gap-1">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon-sm"
+                      aria-label={`${c.Customer_Name} ka Portal Link`}
+                      onClick={() => setPortalCustomer(c)}
+                    >
+                      <Link2 />
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon-sm"
+                      aria-label={`${c.Customer_Name} edit karein`}
+                      onClick={() => setEditing(c)}
+                    >
+                      <Pencil />
+                    </Button>
+                  </div>
                 </TableCell>
               </TableRow>
             ))}
@@ -121,6 +134,13 @@ export default function CustomersBoard() {
         open={editing !== null}
         onOpenChange={(open) => !open && setEditing(null)}
         onUpdated={handleUpdated}
+      />
+
+      <PortalLinkDialog
+        key={portalCustomer?.Customer_ID ?? "closed-portal"}
+        customer={portalCustomer}
+        open={portalCustomer !== null}
+        onOpenChange={(open) => !open && setPortalCustomer(null)}
       />
     </div>
   );
