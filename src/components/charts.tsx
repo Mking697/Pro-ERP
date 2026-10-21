@@ -1,17 +1,49 @@
+"use client";
+
 import { cn } from "@/lib/utils";
+import {
+  Area,
+  AreaChart,
+  Bar,
+  BarChart as RBarChart,
+  CartesianGrid,
+  Cell,
+  Pie,
+  PieChart,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from "recharts";
 
 /**
- * Hand-rolled SVG charts.
+ * Recharts-based dashboard charts.
  *
- * No charting library: these three forms are simple enough to draw directly, and doing
- * so keeps them server-rendered with no client bundle — which matters on a dashboard
- * that shows six of them at once.
+ * These were hand-rolled SVG for a long time (server-rendered, zero client JS) because
+ * three simple chart forms didn't seem worth a library. The team decided the premium,
+ * polished look a real charting library gives (smooth tooltips, consistent animation,
+ * proper hit-testing) is worth it even though it means this module — and every page
+ * that renders it — now ships client JS instead of staying server-rendered. That is a
+ * deliberate, approved tradeoff, not an oversight: these components were always leaves
+ * in the tree (no children composition that needs to stay server-side), so making them
+ * client components costs bundle size but nothing else in the app's architecture.
+ *
+ * The exported API (prop names and shapes) is unchanged from the SVG version on purpose,
+ * so callers (dashboard/analytics.tsx, inventory/[sku]/page.tsx) needed zero edits: they
+ * still render these as ordinary JSX from server components, which Next.js allows as
+ * long as the props crossing the boundary are serializable — which Slice[]/TimelinePoint[]
+ * always were.
  *
  * Every chart here carries direct labels and, for more than one series, a legend. That
  * is not decoration: the status palette's warning step sits below 3:1 on a light
  * surface by design, so colour is never allowed to be the only thing distinguishing a
- * value. Tooltips use SVG <title>, which the browser reads natively and screen readers
- * announce, so hover works without shipping JavaScript.
+ * value. Recharts' tooltips replace the old SVG <title> hover text; each chart also
+ * keeps an sr-only text summary so the same information that used to be announced via
+ * <title> is still available to screen readers even though Recharts' own internal SVG
+ * nodes aren't natively announced the way <title> was. This is the closest achievable
+ * parity: Recharts has no per-shape accessible-name equivalent to SVG <title>, so a
+ * sr-only text block carries that job instead; the visual chart is marked aria-hidden
+ * so the two descriptions are not read twice.
  */
 
 export interface Slice {
@@ -25,6 +57,11 @@ function EmptyChart({ message }: { message: string }) {
   return (
     <p className="py-10 text-center text-sm text-muted-foreground">{message}</p>
   );
+}
+
+/** Screen-reader-only text summary, replacing the old per-shape SVG <title> hovers. */
+function SrSummary({ text }: { text: string }) {
+  return <span className="sr-only">{text}</span>;
 }
 
 function Legend({ items }: { items: Slice[] }) {
@@ -46,6 +83,28 @@ function Legend({ items }: { items: Slice[] }) {
   );
 }
 
+function BarTooltip({
+  active,
+  payload,
+  valueSuffix,
+}: {
+  active?: boolean;
+  payload?: Array<{ payload: Slice }>;
+  valueSuffix: string;
+}) {
+  if (!active || !payload?.length) return null;
+  const row = payload[0].payload;
+  return (
+    <div className="rounded-md border bg-card px-2.5 py-1.5 text-xs shadow-md">
+      <p className="font-medium">{row.label}</p>
+      <p className="tabular-nums text-muted-foreground">
+        {row.value}
+        {valueSuffix}
+      </p>
+    </div>
+  );
+}
+
 /**
  * Horizontal bars — labels read left-to-right at any length, which vertical bars
  * cannot do without rotating text.
@@ -63,51 +122,68 @@ export function BarChart({
   const rows = data.filter((d) => Number.isFinite(d.value));
   if (rows.length === 0) return <EmptyChart message={emptyMessage} />;
 
-  const max = Math.max(...rows.map((r) => Math.abs(r.value)), 1);
+  const rowHeight = 32;
+  const height = Math.max(rows.length * rowHeight, 64);
 
   return (
-    <div className="space-y-2.5">
-      {rows.map((row, i) => {
-        const pct = (Math.abs(row.value) / max) * 100;
-        return (
-          <div
-            key={row.label}
-            style={{ animationDelay: `${i * 50}ms` }}
-            className="grid animate-in grid-cols-[minmax(0,7rem)_1fr_auto] items-center gap-3 fade-in-0 fill-mode-both duration-500"
+    <div>
+      <SrSummary
+        text={rows.map((r) => `${r.label}: ${r.value}${valueSuffix}`).join(", ")}
+      />
+      <div style={{ height }} aria-hidden="true">
+        <ResponsiveContainer width="100%" height="100%">
+          <RBarChart
+            data={rows}
+            layout="vertical"
+            margin={{ top: 0, right: 16, bottom: 0, left: 0 }}
+            barCategoryGap={8}
+            accessibilityLayer
           >
-            <span className="truncate text-xs text-muted-foreground" title={row.label}>
-              {row.label}
-            </span>
-            <div className="h-5 overflow-hidden rounded-full bg-muted">
-              <div
-                className="h-full rounded-full shadow-sm transition-[width] duration-700 ease-out"
-                style={{
-                  width: `${Math.max(pct, 1.5)}%`,
-                  background: `linear-gradient(90deg, color-mix(in oklch, ${row.color}, white 18%), ${row.color})`,
-                }}
-                title={`${row.label}: ${row.value}${valueSuffix}`}
-              />
-            </div>
-            <span className="w-12 text-right text-xs font-medium tabular-nums">
-              {row.value}
-              {valueSuffix}
-            </span>
-          </div>
-        );
-      })}
+            <XAxis type="number" hide domain={[0, "auto"]} />
+            <YAxis
+              type="category"
+              dataKey="label"
+              width={112}
+              tickLine={false}
+              axisLine={false}
+              tick={{ fontSize: 12, fill: "var(--muted-foreground)" }}
+              tickFormatter={(label: string) =>
+                label.length > 14 ? `${label.slice(0, 13)}…` : label
+              }
+            />
+            <Tooltip
+              cursor={{ fill: "var(--muted)" }}
+              content={<BarTooltip valueSuffix={valueSuffix} />}
+            />
+            <Bar dataKey="value" radius={[4, 4, 4, 4]} maxBarSize={20} animationDuration={500}>
+              {rows.map((row) => (
+                <Cell key={row.label} fill={row.color} />
+              ))}
+            </Bar>
+          </RBarChart>
+        </ResponsiveContainer>
+      </div>
     </div>
   );
 }
 
-function arc(cx: number, cy: number, r: number, from: number, to: number): string {
-  const p = (angle: number) => {
-    const rad = ((angle - 90) * Math.PI) / 180;
-    return [cx + r * Math.cos(rad), cy + r * Math.sin(rad)];
-  };
-  const [x1, y1] = p(from);
-  const [x2, y2] = p(to);
-  const large = to - from > 180 ? 1 : 0;
-  return `M ${x1} ${y1} A ${r} ${r} 0 ${large} 1 ${x2} ${y2}`;
+function DonutTooltip({
+  active,
+  payload,
+}: {
+  active?: boolean;
+  payload?: Array<{ payload: Slice & { pct: number } }>;
+}) {
+  if (!active || !payload?.length) return null;
+  const row = payload[0].payload;
+  return (
+    <div className="rounded-md border bg-card px-2.5 py-1.5 text-xs shadow-md">
+      <p className="font-medium">{row.label}</p>
+      <p className="tabular-nums text-muted-foreground">
+        {row.value} ({row.pct}%)
+      </p>
+    </div>
+  );
 }
 
 /**
@@ -130,90 +206,50 @@ export function DonutChart({
   const total = slices.reduce((sum, s) => sum + s.value, 0);
   if (total === 0) return <EmptyChart message={emptyMessage} />;
 
-  const size = 160;
-  const cx = size / 2;
-  const cy = size / 2;
-  const r = 62;
-  const stroke = 22;
-
-  // Angles resolved up front, without mutating anything: a slice's start is just the
-  // sum of the sweeps before it. At most five slices, so the repeated sum costs nothing.
-  const gap = slices.length > 1 ? 1.5 : 0;
-  const sweeps = slices.map((s) => (s.value / total) * 360);
-  const segments = slices.map((slice, i) => {
-    const start = sweeps.slice(0, i).reduce((a, b) => a + b, 0);
-    const from = start + gap / 2;
-    return {
-      slice,
-      from,
-      to: Math.max(start + sweeps[i] - gap / 2, from + 0.5),
-      pct: Math.round((slice.value / total) * 100),
-    };
-  });
+  const withPct = slices.map((s) => ({ ...s, pct: Math.round((s.value / total) * 100) }));
 
   return (
     <div>
-      <div className="flex justify-center">
-        <svg
-          viewBox={`0 0 ${size} ${size}`}
-          className="h-40 w-40 drop-shadow-sm"
-          role="img"
-          aria-label={slices
-            .map((s) => `${s.label}: ${s.value}`)
-            .join(", ")}
-        >
-          {segments.map(({ slice, from, to, pct }) =>
-            // A single full-circle slice cannot be drawn as an arc.
-            segments.length === 1 ? (
-              <circle
-                key={slice.label}
-                cx={cx}
-                cy={cy}
-                r={r}
-                fill="none"
-                stroke={slice.color}
-                strokeWidth={stroke}
-                strokeLinecap="round"
-                className="transition-[stroke-width] duration-300"
+      <SrSummary text={slices.map((s) => `${s.label}: ${s.value}`).join(", ")} />
+      <div className="relative flex justify-center" aria-hidden="true">
+        <div className="h-40 w-40">
+          <ResponsiveContainer width="100%" height="100%">
+            <PieChart>
+              <Pie
+                data={withPct}
+                dataKey="value"
+                nameKey="label"
+                cx="50%"
+                cy="50%"
+                innerRadius={48}
+                outerRadius={70}
+                paddingAngle={slices.length > 1 ? 2 : 0}
+                startAngle={90}
+                endAngle={-270}
+                stroke="none"
+                animationDuration={400}
               >
-                <title>{`${slice.label}: ${slice.value}`}</title>
-              </circle>
-            ) : (
-              <path
-                key={slice.label}
-                d={arc(cx, cy, r, from, to)}
-                fill="none"
-                stroke={slice.color}
-                strokeWidth={stroke}
-                strokeLinecap="round"
-              >
-                <title>{`${slice.label}: ${slice.value} (${pct}%)`}</title>
-              </path>
-            )
-          )}
+                {withPct.map((slice) => (
+                  <Cell key={slice.label} fill={slice.color} />
+                ))}
+              </Pie>
+              <Tooltip content={<DonutTooltip />} />
+            </PieChart>
+          </ResponsiveContainer>
+        </div>
 
-          {centerValue && (
-            <text
-              x={cx}
-              y={cy - 2}
-              textAnchor="middle"
-              className="fill-foreground text-[20px] font-semibold"
-              style={{ fontVariantNumeric: "tabular-nums" }}
-            >
-              {centerValue}
-            </text>
-          )}
-          {centerLabel && (
-            <text
-              x={cx}
-              y={cy + 15}
-              textAnchor="middle"
-              className="fill-muted-foreground text-[9px]"
-            >
-              {centerLabel}
-            </text>
-          )}
-        </svg>
+        {(centerValue || centerLabel) && (
+          <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
+            {centerValue && (
+              <span className="text-[20px] font-semibold tabular-nums text-foreground">
+                {centerValue}
+              </span>
+            )}
+            {centerLabel && (
+              <span className="text-[9px] text-muted-foreground">{centerLabel}</span>
+            )}
+          </div>
+        )}
       </div>
       <Legend items={slices} />
     </div>
@@ -224,6 +260,23 @@ export interface TimelinePoint {
   /** Axis label, e.g. "12 Aug". */
   label: string;
   value: number;
+}
+
+function TimelineTooltip({
+  active,
+  payload,
+}: {
+  active?: boolean;
+  payload?: Array<{ payload: TimelinePoint }>;
+}) {
+  if (!active || !payload?.length) return null;
+  const point = payload[0].payload;
+  return (
+    <div className="rounded-md border bg-card px-2.5 py-1.5 text-xs shadow-md">
+      <p className="font-medium">{point.label}</p>
+      <p className="tabular-nums text-muted-foreground">{point.value}</p>
+    </div>
+  );
 }
 
 /** Change over time. One series, so it needs no legend — the card title names it. */
@@ -239,96 +292,56 @@ export function TimelineChart({
 }) {
   if (points.length === 0) return <EmptyChart message={emptyMessage} />;
 
-  // SVG `<defs>` ids must be unique per page, but this chart is deliberately a plain
-  // server component (no client bundle) so React's `useId()` isn't an option here.
-  // Derived from the data itself — stable across re-renders, distinct enough that two
-  // timeline charts with different data/colors on the same page never collide.
+  // Gradient ids must be unique per page when more than one timeline chart renders at
+  // once; derived from the data itself so two charts with different data/colors on the
+  // same page never collide.
   const gradientId = `timeline-fill-${color.replace(/[^a-zA-Z0-9]/g, "")}-${points[0].label.replace(/[^a-zA-Z0-9]/g, "")}-${points.length}`;
-
-  const w = 560;
-  const h = 160;
-  const pad = { top: 12, right: 8, bottom: 24, left: 28 };
-  const plotW = w - pad.left - pad.right;
-  const plotH = h - pad.top - pad.bottom;
-
-  const max = Math.max(...points.map((p) => p.value), 1);
-  const stepX = points.length > 1 ? plotW / (points.length - 1) : 0;
-
-  const xy = points.map((p, i) => ({
-    x: pad.left + (points.length > 1 ? i * stepX : plotW / 2),
-    y: pad.top + plotH - (p.value / max) * plotH,
-    ...p,
-  }));
-
-  const line = xy.map((p, i) => `${i === 0 ? "M" : "L"} ${p.x} ${p.y}`).join(" ");
-  const area = `${line} L ${xy[xy.length - 1].x} ${pad.top + plotH} L ${xy[0].x} ${pad.top + plotH} Z`;
 
   // At most six labels, so ticks never collide on a narrow card.
   const labelEvery = Math.max(1, Math.ceil(points.length / 6));
 
   return (
-    <svg
-      viewBox={`0 0 ${w} ${h}`}
-      className="h-40 w-full"
-      role="img"
-      aria-label={`Timeline: ${points.map((p) => `${p.label} ${p.value}`).join(", ")}`}
-    >
-      <defs>
-        <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor={color} stopOpacity={0.35} />
-          <stop offset="100%" stopColor={color} stopOpacity={0} />
-        </linearGradient>
-      </defs>
-
-      {[0, 0.5, 1].map((f) => (
-        <line
-          key={f}
-          x1={pad.left}
-          x2={w - pad.right}
-          y1={pad.top + plotH * f}
-          y2={pad.top + plotH * f}
-          stroke="var(--chart-grid)"
-          strokeWidth={1}
-        />
-      ))}
-
-      <text x={2} y={pad.top + 4} className="fill-muted-foreground text-[9px]">
-        {max}
-      </text>
-      <text x={2} y={pad.top + plotH + 3} className="fill-muted-foreground text-[9px]">
-        0
-      </text>
-
-      <path d={area} fill={`url(#${gradientId})`} />
-      <path
-        d={line}
-        fill="none"
-        stroke={color}
-        strokeWidth={2.5}
-        strokeLinejoin="round"
-        strokeLinecap="round"
+    <div>
+      <SrSummary
+        text={`Timeline: ${points.map((p) => `${p.label} ${p.value}`).join(", ")}`}
       />
-
-      {xy.map((p) => (
-        <circle key={p.label} cx={p.x} cy={p.y} r={4} fill="var(--card)" stroke={color} strokeWidth={2.5}>
-          <title>{`${p.label}: ${p.value}`}</title>
-        </circle>
-      ))}
-
-      {xy.map((p, i) =>
-        i % labelEvery === 0 || i === xy.length - 1 ? (
-          <text
-            key={`l-${p.label}`}
-            x={p.x}
-            y={h - 6}
-            textAnchor="middle"
-            className="fill-muted-foreground text-[9px]"
+      <div className="h-40 w-full" aria-hidden="true">
+        <ResponsiveContainer width="100%" height="100%">
+          <AreaChart
+            data={points}
+            margin={{ top: 12, right: 8, bottom: 0, left: 0 }}
+            accessibilityLayer
           >
-            {p.label}
-          </text>
-        ) : null
-      )}
-    </svg>
+            <defs>
+              <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor={color} stopOpacity={0.35} />
+                <stop offset="100%" stopColor={color} stopOpacity={0} />
+              </linearGradient>
+            </defs>
+            <CartesianGrid vertical={false} stroke="var(--chart-grid)" />
+            <XAxis
+              dataKey="label"
+              tickLine={false}
+              axisLine={false}
+              interval={labelEvery - 1}
+              tick={{ fontSize: 9, fill: "var(--muted-foreground)" }}
+            />
+            <YAxis hide domain={[0, "auto"]} />
+            <Tooltip content={<TimelineTooltip />} cursor={{ stroke: "var(--chart-grid)" }} />
+            <Area
+              type="monotone"
+              dataKey="value"
+              stroke={color}
+              strokeWidth={2.5}
+              fill={`url(#${gradientId})`}
+              dot={{ r: 4, fill: "var(--card)", stroke: color, strokeWidth: 2.5 }}
+              activeDot={{ r: 5 }}
+              animationDuration={500}
+            />
+          </AreaChart>
+        </ResponsiveContainer>
+      </div>
+    </div>
   );
 }
 

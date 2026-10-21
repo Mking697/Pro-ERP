@@ -9,6 +9,18 @@
  * (SKU, UOM, ADC, ROP, PCS) are deliberately absent: they read the same either way.
  */
 export const EN: Record<string, string> = {
+  "Chuni gayi date range ke liye General Ledger ko Tally-compatible XML (Masters + Vouchers) ke roop me download karein.": "Download the General Ledger for the selected date range as Tally-compatible XML (Masters + Vouchers).",
+  "Do files download hongi — Tally me pehle Masters import karein, uske baad Vouchers.": "Two files will download — import Masters into Tally first, then Vouchers.",
+  "Download Karein": "Download",
+  "Export ho raha hai...": "Exporting...",
+  "Export to Tally": "Export to Tally",
+  "From": "From",
+  "From aur To date dono zaroori hain.": "Both From and To dates are required.",
+  "From date, To date se pehle hona chahiye.": "The From date must be before the To date.",
+  "Masters aur Vouchers XML download ho gaye. Tally me Masters pehle import karein, phir Vouchers.": "Masters and Vouchers XML downloaded. Import Masters into Tally first, then Vouchers.",
+  "Tally Export": "Tally Export",
+  "Tally export fail ho gaya.": "Tally export failed.",
+  "To": "To",
   "Aapke orders — sirf padhne ke liye": "Your orders — read only",
   "Abhi koi order nahi hai.": "No orders yet.",
   "Customer Portal Link": "Customer Portal Link",

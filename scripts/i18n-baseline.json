@@ -5295,12 +5295,6 @@
       "count": 1
     },
     {
-      "file": "src/components/charts.tsx",
-      "kind": "attribute:aria-label",
-      "text": "Timeline:",
-      "count": 1
-    },
-    {
       "file": "src/components/command-palette.tsx",
       "kind": "attribute:aria-label",
       "text": "Global search kholen",
