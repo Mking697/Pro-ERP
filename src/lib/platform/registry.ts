@@ -1,6 +1,7 @@
 import { eq, inArray, type InferSelectModel } from "drizzle-orm";
 import { db } from "@/db/client";
 import {
+  apiKeys,
   billingPayments,
   billingSubscriptionAttempts,
   billingSubscriptionCharges,
@@ -84,6 +85,8 @@ import {
   usersIndex,
   vendorItems,
   vendors,
+  webhookDeliveries,
+  webhookSubscriptions,
 } from "@/db/schema";
 import { generateId, slugify } from "@/lib/id";
 
@@ -291,6 +294,9 @@ export async function deleteOrganization(orgId: string): Promise<void> {
     db.delete(billingSubscriptionAttempts).where(eq(billingSubscriptionAttempts.orgId, orgId)),
     db.delete(billingPayments).where(eq(billingPayments.orgId, orgId)),
     db.delete(domainEvents).where(eq(domainEvents.orgId, orgId)),
+    db.delete(webhookDeliveries).where(eq(webhookDeliveries.orgId, orgId)),
+    db.delete(webhookSubscriptions).where(eq(webhookSubscriptions.orgId, orgId)),
+    db.delete(apiKeys).where(eq(apiKeys.orgId, orgId)),
     db.delete(organizations).where(eq(organizations.id, orgId)),
   ]);
 }

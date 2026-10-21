@@ -2239,4 +2239,53 @@ export const EN: Record<string, string> = {
   "Verify karein": "Verify",
   "Ye SKU is PO ki kisi line se match nahi hua.": "This SKU did not match any line on this PO.",
   "Mili": "Found",
+
+  // Phase B item #1 — API Keys + Webhooks admin settings section.
+  "API Keys": "API Keys",
+  "API keys load ho rahi hain": "Loading API keys",
+  "API keys load nahi ho payi.": "Could not load API keys.",
+  "Server-to-server integrations ke liye read-only API keys — Orders, Invoices, Stock, Customers, Vendors aur Dispatches /api/v1 se padhne ke liye.":
+    "Read-only API keys for server-to-server integrations — read Orders, Invoices, Stock, Customers, Vendors and Dispatches via /api/v1.",
+  "Ye key sirf ek baar dikhti hai — abhi copy kar lein.": "This key is shown only once — copy it now.",
+  "Copy karein": "Copy",
+  "Copy ho gayi.": "Copied.",
+  "Label (jaise: Tally Sync)": "Label (e.g. Tally Sync)",
+  "Nayi key banayein": "Create new key",
+  "Ban rahi hai...": "Creating...",
+  "Key ka label dein.": "Give the key a label.",
+  "Abhi tak koi API key nahi hai.": "No API keys yet.",
+  "Bana:": "Created:",
+  "Last used:": "Last used:",
+  "Kabhi use nahi hui": "Never used",
+  "Active": "Active",
+  "Revoked": "Revoked",
+  "Revoke": "Revoke",
+  "Key revoke karein?": "Revoke this key?",
+  "Ye key is API se aage access nahi kar payegi. Ye action undo nahi ho sakta.":
+    "This key will no longer be able to access the API. This action cannot be undone.",
+  "Haan, revoke karein": "Yes, revoke it",
+  "Key revoke ho gayi.": "Key revoked.",
+
+  "Webhooks": "Webhooks",
+  "Webhooks load ho rahe hain": "Loading webhooks",
+  "Webhooks load nahi ho paye.": "Could not load webhooks.",
+  "Order status badalne ya stock movement hone par apne system ko real-time notify karwayein.":
+    "Get your own system notified in real time when an order's status changes or a stock movement is recorded.",
+  "Ye signing secret sirf ek baar dikhta hai — abhi copy kar lein.":
+    "This signing secret is shown only once — copy it now.",
+  "Receiver URL": "Receiver URL",
+  "https://example.com/webhooks/pro-erp": "https://example.com/webhooks/pro-erp",
+  "URL aur kam se kam ek event type chunein.": "Choose a URL and at least one event type.",
+  "Webhook add karein": "Add webhook",
+  "Webhook create nahi ho paya.": "Could not create webhook.",
+  "Abhi tak koi webhook nahi hai.": "No webhooks yet.",
+  "Inactive": "Inactive",
+  "Test ping": "Test ping",
+  "Test ping bhej diya.": "Test ping sent.",
+  "Receiver se koi success response nahi mila.": "The receiver did not return a success response.",
+  "Test ping bhej nahi paye.": "Could not send the test ping.",
+  "Webhook delete karein?": "Delete this webhook?",
+  "Ye webhook ko aage events deliver nahi honge. Ye action undo nahi ho sakta.":
+    "No more events will be delivered to this webhook. This action cannot be undone.",
+  "Webhook delete ho gaya.": "Webhook deleted.",
 };

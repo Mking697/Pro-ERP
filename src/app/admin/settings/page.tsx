@@ -14,6 +14,8 @@ import QuotationSetupForm from "./quotation-setup-form";
 import OrderSetupForm from "./order-setup-form";
 import ChatbotForm from "./chatbot-form";
 import PayrollComplianceForm from "./payroll-compliance-form";
+import ApiKeysForm from "./api-keys-form";
+import WebhooksForm from "./webhooks-form";
 import { getT } from "@/lib/i18n/server";
 
 export default async function AdminSettingsPage() {
@@ -41,6 +43,8 @@ export default async function AdminSettingsPage() {
       <LeaveQuotaSetupForm />
       <ChatbotForm />
       <PayrollComplianceForm />
+      <ApiKeysForm />
+      <WebhooksForm />
     </div>
   );
 }

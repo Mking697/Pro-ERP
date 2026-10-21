@@ -281,6 +281,13 @@
       "when": 1792583915936,
       "tag": "0039_smiling_wrecker",
       "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "7",
+      "when": 1792593734164,
+      "tag": "0040_aspiring_iron_fist",
+      "breakpoints": true
     }
   ]
 }
