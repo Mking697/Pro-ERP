@@ -20,6 +20,7 @@ import { BookOpen } from "lucide-react";
 import { useT } from "@/components/preferences-provider";
 import AddAccountDialog from "./add-account-dialog";
 import NewJournalEntryDialog from "./new-journal-entry-dialog";
+import ExportTallyDialog from "./export-tally-dialog";
 import type {
   BalanceSheetRow,
   ChartOfAccountRow,
@@ -115,6 +116,7 @@ export default function LedgerBoard() {
               onCreated={() => setVersion((v) => v + 1)}
             />
             <AddAccountDialog onCreated={() => setVersion((v) => v + 1)} />
+            <ExportTallyDialog />
           </div>
           {loading ? (
             <TableSkeleton columns={4} label={t("Load ho raha hai")} />
