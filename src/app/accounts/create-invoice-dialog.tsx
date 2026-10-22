@@ -164,7 +164,7 @@ export default function CreateInvoiceDialog({
           </div>
 
           {usableCurrencies.length > 0 && (
-            <div className="grid gap-3 rounded-lg border p-3 sm:grid-cols-2">
+            <div className="grid gap-4 rounded-xl border border-primary/15 bg-primary/5 p-4 sm:grid-cols-2">
               <div className="space-y-2">
                 <Label htmlFor="invoice-currency">{t("Foreign Currency (optional)")}</Label>
                 <Select value={currency} onValueChange={(v) => v && setCurrency(v)}>
@@ -175,7 +175,8 @@ export default function CreateInvoiceDialog({
                     <SelectItem value="INR">{t("INR (Default)")}</SelectItem>
                     {usableCurrencies.map((c) => (
                       <SelectItem key={c.code} value={c.code}>
-                        {c.symbol} {c.code}
+                        <span className="font-mono text-xs tabular-nums">{c.code}</span>
+                        <span className="text-muted-foreground">{c.symbol} · {t(c.name)}</span>
                       </SelectItem>
                     ))}
                   </SelectContent>

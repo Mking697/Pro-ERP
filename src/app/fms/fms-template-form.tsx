@@ -2,6 +2,7 @@
 
 import { useEffect, useState, type FormEvent } from "react";
 import { toast } from "sonner";
+import { Database, MessageCircle, Workflow } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -538,7 +539,7 @@ export default function FmsTemplateForm({
           )
         }
       />
-      <DialogContent className="max-h-[85vh] max-w-3xl overflow-y-auto">
+      <DialogContent className="max-h-[90dvh] max-w-3xl overflow-y-auto scroll-py-6">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             {editing ? t("Template Edit karein") : t("Naya FMS Template")}
@@ -583,10 +584,11 @@ export default function FmsTemplateForm({
             {steps.map((step, index) => {
               const outcomes = parseOutcomeOptions(step.outcomesText);
               return (
-                <div key={step.id} className="space-y-3 rounded-lg border p-3">
-                  <div className="flex items-center justify-between">
-                    <p className="text-sm font-medium">
-                      {t("Step")} {index + 1}
+                <div key={step.id} className="space-y-4 rounded-xl border bg-card p-4 shadow-sm sm:p-5">
+                  <div className="flex items-center justify-between gap-3 border-b pb-3">
+                    <p className="flex min-w-0 items-center gap-2.5 text-sm font-semibold tracking-tight">
+                      <span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-semibold text-primary">{index + 1}</span>
+                      <span className="truncate">{step.stepName || t("Step")}</span>
                     </p>
                     {steps.length > 1 && (
                       <Button
@@ -665,7 +667,7 @@ export default function FmsTemplateForm({
                   </div>
 
                   {index > 0 && (
-                    <div className="space-y-2 rounded-md border p-2">
+                    <div className="space-y-3 rounded-lg border bg-muted/10 p-3">
                       <label className="flex items-center gap-2 text-sm">
                         <Checkbox
                           checked={step.tatSourceStepNo !== ""}
@@ -816,8 +818,8 @@ export default function FmsTemplateForm({
                     </div>
                   )}
 
-                  <div className="space-y-2 rounded-md border p-2">
-                    <Label>{t("Data Source")}</Label>
+                  <div className="space-y-3 rounded-lg border bg-muted/10 p-3">
+                    <Label className="flex items-center gap-2"><Database aria-hidden="true" className="size-4 text-muted-foreground" />{t("Data Source")}</Label>
                     <p className="text-xs text-muted-foreground">
                       {t("Dono ek saath chuna ja sakta hai — jaise ek step apna Pass/Fail khud type kare, aur saath me pichle step ka data bhi dekhe.")}
                     </p>
@@ -908,7 +910,7 @@ export default function FmsTemplateForm({
                                 />
                               )}
                               {field.type === "lookup" && (
-                                <div className="space-y-2 rounded-md border p-2">
+                                <div className="space-y-3 rounded-lg border bg-muted/10 p-3">
                                   <Select
                                     value={field.lookupSourceModule ?? ""}
                                     onValueChange={(value) =>
@@ -1114,8 +1116,8 @@ export default function FmsTemplateForm({
                     )}
                   </div>
 
-                  <div className="space-y-2 rounded-md border p-2">
-                    <Label htmlFor={`step-action-${step.id}`}>{t("Action")}</Label>
+                  <div className="space-y-3 rounded-lg border bg-muted/10 p-3">
+                    <Label htmlFor={`step-action-${step.id}`} className="flex items-center gap-2"><Workflow aria-hidden="true" className="size-4 text-muted-foreground" />{t("Action")}</Label>
                     <Select
                       value={step.actionType || "NONE"}
                       onValueChange={(value) =>
@@ -1227,8 +1229,8 @@ export default function FmsTemplateForm({
                     )}
                   </div>
 
-                  <div className="space-y-2 rounded-md border p-2">
-                    <Label>{t("Notify via WhatsApp")}</Label>
+                  <div className="space-y-3 rounded-lg border bg-muted/10 p-3">
+                    <Label className="flex items-center gap-2"><MessageCircle aria-hidden="true" className="size-4 text-muted-foreground" />{t("Notify via WhatsApp")}</Label>
                     <p className="text-xs text-muted-foreground">
                       {t(
                         "Step complete hote hi in logon ko WhatsApp message jaayega — chahe wo is flow ka hissa na hon (jaise ek supervisor jo bas jaan na chahta hai)."
@@ -1267,7 +1269,7 @@ export default function FmsTemplateForm({
             </Button>
           </div>
 
-          <DialogFooter>
+          <DialogFooter className="sticky -bottom-4 z-10 border-t bg-background/95 backdrop-blur">
             <Button type="submit" disabled={saving}>
               {saving ? "Saving..." : editing ? t("Naya version save karein") : t("Template banayein")}
             </Button>

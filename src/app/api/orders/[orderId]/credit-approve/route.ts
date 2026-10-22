@@ -1,11 +1,12 @@
 import { NextResponse } from "next/server";
+import { getMutationKey, MutationConflictError } from "@/lib/mutations";
 import { requireModule } from "@/lib/auth/guard";
 import { approveCreditHold, OrderError } from "@/lib/orders/orders";
 
 /** Clears a Credit_Hold — enforced inside approveCreditHold() itself: only the org's
  * configured Credit-Hold Approver (Order Setup) or an Admin. */
 export async function POST(
-  _request: Request,
+  request: Request,
   { params }: { params: Promise<{ orderId: string }> }
 ) {
   const guard = await requireModule("ORDER_FMS");
@@ -17,10 +18,10 @@ export async function POST(
     const order = await approveCreditHold(orderId, {
       userId: guard.session.userId,
       role: guard.session.role,
-    });
+    }, getMutationKey(request));
     return NextResponse.json({ order });
   } catch (err) {
     const message = err instanceof OrderError || err instanceof Error ? err.message : "Credit Hold clear nahi ho paya.";
-    return NextResponse.json({ error: message }, { status: 400 });
+    return NextResponse.json({ error: message }, { status: err instanceof MutationConflictError ? 409 : 400 });
   }
 }

@@ -25,13 +25,14 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { TableSkeleton } from "@/components/loading-states";
 import EmptyState from "@/components/empty-state";
-import { AlertTriangle, ClipboardList, Download, Eye, PackageSearch } from "lucide-react";
+import { AlertTriangle, CheckSquare, ClipboardList, Download, Eye, PackageSearch } from "lucide-react";
 import { useT } from "@/components/preferences-provider";
 import NewOrderDialog from "./new-order-dialog";
 import IntakeMapDialog from "./intake-map-dialog";
 import OrderDetailDialog from "./order-detail-dialog";
 import SavedViewsBar from "@/components/saved-views-bar";
 import { downloadCsvClientSide } from "@/lib/csv-download";
+import { ClientMutationKeys } from "@/lib/client-idempotency";
 import { ORDER_STATUS_LABEL, type IntakeCandidate, type OrderRow, type OrderStatus, type OrdersFilters } from "./types";
 
 // BEGIN request guard (pure logic, exercised by isolated tests)
@@ -185,6 +186,8 @@ export default function OrdersBoard() {
   // tab/dataset must never silently carry over into a bulk action on the new one.
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkBusy, setBulkBusy] = useState(false);
+  const bulkInFlight = useRef(false);
+  const bulkKeys = useRef(new ClientMutationKeys());
   const [bulkActionKey, setBulkActionKey] = useState(""); // "" | an advance action's key | "cancel"
   const [bulkDispatchDate, setBulkDispatchDate] = useState("");
   const [bulkCancelReason, setBulkCancelReason] = useState("");
@@ -239,62 +242,78 @@ export default function OrdersBoard() {
    * selected order (sequential, bounded by the selection size) — never a shortcut that
    * bypasses that endpoint's own tenant-scoped validation/auth just to "batch" the write.
    * Reports real success/failure counts rather than assuming every row succeeded. */
+  async function postBulkRow(url: string, payload: Record<string, unknown>): Promise<boolean> {
+    const body = JSON.stringify(payload);
+    const key = bulkKeys.current.keyFor(url, body);
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Idempotency-Key": key },
+      body,
+    });
+    const data = await res.json().catch(() => null);
+    if (!res.ok || !data?.order) return false;
+    bulkKeys.current.complete(url, key);
+    return true;
+  }
+
   async function runBulkAdvance() {
-    if (!advanceAction) return;
+    if (bulkInFlight.current || !advanceAction || selectedOrders.length === 0) return;
     if (advanceAction.needsDate && !bulkDispatchDate) return;
+    bulkInFlight.current = true; // State updates do not guard two clicks in the same tick.
     setBulkBusy(true);
     let ok = 0;
-    let fail = 0;
-    for (const o of selectedOrders) {
-      try {
-        const res = await fetch(advanceAction.path(o.id), {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(
-            advanceAction.needsDate
-              ? { dispatchCommitDate: new Date(bulkDispatchDate).toISOString() }
-              : {}
-          ),
-        });
-        if (res.ok) ok += 1;
-        else fail += 1;
-      } catch {
-        fail += 1;
+    const failed = new Set<string>();
+    try {
+      for (const o of selectedOrders) {
+        try {
+          const payload = advanceAction.needsDate
+            ? { dispatchCommitDate: new Date(bulkDispatchDate).toISOString() } : {};
+          if (await postBulkRow(advanceAction.path(o.id), payload)) ok += 1;
+          else failed.add(o.id);
+        } catch { failed.add(o.id); }
       }
+      setSelectedIds(failed);
+      if (failed.size === 0) {
+        setBulkActionKey("");
+        setBulkDispatchDate("");
+        toast.success(`${ok} ${t("order(s) advance ho gaye.")}`);
+      } else {
+        // Preserve failed rows, payload and keys: a lost response may already have committed.
+        toast.error(`${ok} ${t("order(s) advance ho gaye")}, ${failed.size} ${t("fail ho gaye — dobara koshish karein.")}`);
+      }
+      if (failed.size === 0) refresh();
+    } finally {
+      bulkInFlight.current = false;
+      setBulkBusy(false);
     }
-    setBulkBusy(false);
-    setBulkActionKey("");
-    setBulkDispatchDate("");
-    setSelectedIds(new Set());
-    if (fail === 0) toast.success(`${ok} ${t("order(s) advance ho gaye.")}`);
-    else toast.error(`${ok} ${t("order(s) advance ho gaye")}, ${fail} ${t("fail ho gaye — dobara koshish karein.")}`);
-    refresh();
   }
 
   async function runBulkCancel() {
+    if (bulkInFlight.current || selectedOrders.length === 0) return;
+    bulkInFlight.current = true;
     setBulkBusy(true);
     let ok = 0;
-    let fail = 0;
-    for (const o of selectedOrders) {
-      try {
-        const res = await fetch(`/api/orders/${o.id}/cancel`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ reason: bulkCancelReason }),
-        });
-        if (res.ok) ok += 1;
-        else fail += 1;
-      } catch {
-        fail += 1;
+    const failed = new Set<string>();
+    try {
+      for (const o of selectedOrders) {
+        try {
+          if (await postBulkRow(`/api/orders/${o.id}/cancel`, { reason: bulkCancelReason })) ok += 1;
+          else failed.add(o.id);
+        } catch { failed.add(o.id); }
       }
+      setSelectedIds(failed);
+      if (failed.size === 0) {
+        setBulkActionKey("");
+        setBulkCancelReason("");
+        toast.success(`${ok} ${t("order(s) cancel ho gaye.")}`);
+      } else {
+        toast.error(`${ok} ${t("order(s) cancel ho gaye")}, ${failed.size} ${t("fail ho gaye.")}`);
+      }
+      if (failed.size === 0) refresh();
+    } finally {
+      bulkInFlight.current = false;
+      setBulkBusy(false);
     }
-    setBulkBusy(false);
-    setBulkActionKey("");
-    setBulkCancelReason("");
-    setSelectedIds(new Set());
-    if (fail === 0) toast.success(`${ok} ${t("order(s) cancel ho gaye.")}`);
-    else toast.error(`${ok} ${t("order(s) cancel ho gaye")}, ${fail} ${t("fail ho gaye.")}`);
-    refresh();
   }
 
   // One sequencer for the whole board: a tab switch or a mutation-triggered refetch starts
@@ -395,7 +414,7 @@ export default function OrdersBoard() {
       )}
 
       <Tabs value={tab} onValueChange={(v) => { if (v) { setTabAndRefresh(v); } }}>
-        <TabsList className="flex-wrap">
+        <TabsList className="h-auto flex-wrap justify-start gap-1">
           {TABS.map((tb) => (
             <TabsTrigger key={tb.value} value={tb.value}>
               {t(tb.label)}
@@ -406,7 +425,7 @@ export default function OrdersBoard() {
         {TABS.map((tb) => (
           <TabsContent key={tb.value} value={tb.value} className="mt-4">
             {loading ? (
-              <TableSkeleton columns={5} label={t("Load ho raha hai")} />
+              <TableSkeleton columns={tb.status === "intake" ? 5 : 8} label={t("Load ho raha hai")} />
             ) : tb.status === "intake" ? (
               candidates.length === 0 ? (
                 <EmptyState
@@ -415,7 +434,7 @@ export default function OrdersBoard() {
                   description={t("Koi Quotation Accept hote hi wo yahan aa jaayega.")}
                 />
               ) : (
-                <div className="overflow-x-auto rounded-lg border">
+                <div className="overflow-x-auto rounded-xl border bg-card shadow-sm">
                   <Table>
                     <TableHeader>
                       <TableRow>
@@ -459,8 +478,15 @@ export default function OrdersBoard() {
             ) : (
               <div className="space-y-3">
                 {selectedOrders.length > 0 && (
-                  <div className="flex flex-wrap items-center gap-2 rounded-lg border bg-muted/40 p-2.5">
-                    <span className="text-sm font-medium">
+                  // animate-in on entry: this bar used to just pop into existence the
+                  // instant a row was ticked, unlike every other transient block in this
+                  // app (toasts, dialogs, the onboarding checklist) which arrive with a
+                  // motion cue — made it read as a bolted-on utility bar rather than a
+                  // considered part of the table.
+                  <div className="flex flex-wrap items-center gap-3 rounded-xl border border-primary/20 bg-card p-3 shadow-sm animate-in fade-in-0 slide-in-from-top-1 duration-150 sm:p-4">
+                    {/* The persistent live region above announces selection changes. */}
+                    <span aria-hidden="true" className="mr-auto flex items-center gap-2 rounded-lg bg-primary/10 px-3 py-2 text-sm font-semibold text-primary tabular-nums">
+                      <CheckSquare aria-hidden="true" className="size-3.5 text-primary" />
                       {selectedOrders.length} {t("order(s) selected")}
                     </span>
                     <Button
@@ -477,19 +503,19 @@ export default function OrdersBoard() {
                       disabled={bulkBusy}
                       onClick={exportSelectedCsv}
                     >
-                      <Download />
+                      <Download aria-hidden="true" />
                       {t("CSV Export Karein")}
                     </Button>
 
                     {bulkOptions.length > 0 && (
-                      <div className="flex flex-wrap items-center gap-2">
+                      <div className="flex w-full flex-wrap items-center gap-2 border-t pt-3">
                         <Select
                           value={effectiveBulkActionKey}
                           onValueChange={(v) => {
                             if (v) setBulkActionKey(v);
                           }}
                         >
-                          <SelectTrigger aria-label={t("Bulk status action chunein")} className="w-auto min-w-48">
+                          <SelectTrigger aria-label={t("Bulk status action chunein")} className="h-8 w-full min-w-0 sm:w-auto sm:max-w-full [&_[data-slot=select-value]]:truncate">
                             <SelectValue placeholder={t("Bulk status action chunein")} />
                           </SelectTrigger>
                           <SelectContent>
@@ -530,7 +556,7 @@ export default function OrdersBoard() {
                               placeholder={t("Reason (optional)")}
                               value={bulkCancelReason}
                               onChange={(e) => setBulkCancelReason(e.target.value)}
-                              className="h-8 min-h-8 w-48 resize-none"
+                              className="h-8 min-h-8 w-full resize-none sm:w-64"
                             />
                             <Button
                               size="sm"
@@ -547,7 +573,7 @@ export default function OrdersBoard() {
                   </div>
                 )}
 
-                <div className="overflow-x-auto rounded-lg border">
+                <div className="overflow-x-auto rounded-xl border bg-card shadow-sm">
                   <Table>
                     <TableHeader>
                       <TableRow>
@@ -572,8 +598,9 @@ export default function OrdersBoard() {
                       {orders.map((o, i) => (
                         <TableRow
                           key={o.id}
+                          data-state={selectedIds.has(o.id) ? "selected" : undefined}
                           style={{ animationDelay: `${Math.min(i, 10) * 40}ms` }}
-                          className="animate-in fade-in-0 slide-in-from-bottom-1 fill-mode-both cursor-pointer"
+                          className="animate-in fade-in-0 slide-in-from-bottom-1 fill-mode-both cursor-pointer data-[state=selected]:bg-primary/5"
                           onClick={() => setOpenOrderId(o.id)}
                         >
                           <TableCell onClick={(e) => e.stopPropagation()}>
@@ -603,7 +630,7 @@ export default function OrdersBoard() {
                               aria-label={`${o.id} ke details dekhein`}
                               onClick={() => setOpenOrderId(o.id)}
                             >
-                              <Eye />
+                              <Eye aria-hidden="true" />
                             </Button>
                           </TableCell>
                         </TableRow>

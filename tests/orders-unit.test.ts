@@ -82,6 +82,23 @@ vi.mock("@/lib/pdi/pdi", () => ({ noteStockAvailable: h.pdi }));
 vi.mock("@/lib/events/emit", () => ({ emitDomainEvent: h.event }));
 import { cancelOrder, runStockCheck, recordPayment, orderReservedBySku, recheckShortfallForSku, commitDispatch, workPaymentReview, approveCreditHold, createDirectOrder, createOrderFromQuotation, setTransportArrangedBy } from "@/lib/orders/orders";
 
+it.each(["review", "credit", "stock", "dispatch", "cancel"])("bulk %s forwards one logical action key to durable tenant receipts", async (action) => {
+  const key = "logical-action-key";
+  if (action === "review") {
+    h.state.rows.orders[0].status = "Payment_Review";
+    h.state.rows.customers.push({ id: "CUS", orgId: "ORG", creditLimit: "1000", creditDays: null });
+    await workPaymentReview("ORD", "actor", key);
+  } else if (action === "credit") {
+    h.state.rows.orders[0].status = "Credit_Hold";
+    await approveCreditHold("ORD", { userId: "actor", role: "Admin" }, key);
+  } else if (action === "stock") await runStockCheck("ORD", "actor", key);
+  else if (action === "dispatch") {
+    h.state.rows.orders[0].status = "Dispatch_Pending";
+    await commitDispatch("ORD", "2026-11-01", "actor", key);
+  } else await cancelOrder("ORD", "reason", "actor", key);
+  expect(h.mutation).toHaveBeenCalledWith("ORG", expect.objectContaining({ key, actorId: "actor", payload: expect.objectContaining({ orderId: "ORD" }) }), expect.any(Function));
+});
+
 it("payment review admits status writer before reading the order", async () => {
   h.state.rows.orders[0].status = "Payment_Review"; h.state.rows.customers.push({id:"CUS",orgId:"ORG",creditLimit:"1000",creditDays:null}); await workPaymentReview("ORD", "actor");
   expect(h.state.events[0]).toBe("lock");
@@ -313,6 +330,41 @@ it("cancellation reads and releases reservations only after tenant lock admissio
   expect(h.state.events[0]).toBe("lock");
   expect(h.state.events.at(-1)).toBe("commit");
 });
+// Security regression: invoke the server-side write entry, not the form's min/max.
+it.each(["qty", "rate", "gstPercent"] as const)("server rejects hostile direct-order %s before any writes", async (field) => {
+  for (const value of [-1, Infinity, NaN, 1e20]) {
+    h.state.rows.customers = [{ id: "CUS", orgId: "ORG" }];
+    const before = structuredClone(h.state.rows);
+    const input = { customerId: "CUS", items: [{ sku: "FG", qty: 2, rate: 10 }], transportArrangedBy: "Self" as const,
+      ...(field === "gstPercent" ? { gstPercent: value } : {}) };
+    if (field !== "gstPercent") input.items[0][field] = value;
+    await expect(createDirectOrder(input, "actor"), `${field}=${value}`).rejects.toThrow(/quantity|rate|GST|amount|finite|range/i);
+    expect(h.state.rows).toEqual(before);
+  }
+});
+it.each(["qty", "rate", "amount"])("quotation intake rejects corrupt source %s rather than persisting it into an order", async (field) => {
+  for (const value of [-1, Infinity, NaN, 1e20]) {
+    h.state.rows.customers = [{ id: "CUS", orgId: "ORG" }];
+    h.state.rows.quotations = [{ id: "QUO", orgId: "ORG", status: "Accepted", orderId: "", payableAmount: "100", gstPercent: "18", gstAmount: "18" }];
+    h.state.rows.quotationItems = [{ orgId: "ORG", quotationId: "QUO", lineNo: "1", qty: "2", rate: "10", amount: "20", [field]: String(value) }];
+    const count = h.state.rows.orders.length;
+    await expect(createOrderFromQuotation({ quotationId: "QUO", customerId: "CUS", items: [{ lineNo: "1", sku: "FG" }], transportArrangedBy: "Self" }, "actor"), `${field}=${value}`).rejects.toThrow(/quantity|rate|amount|finite|range/i);
+    expect(h.state.rows.orders).toHaveLength(count);
+  }
+});
+
+it("server rejects unrepresentable line products and document totals", async () => {
+  h.state.rows.customers = [{ id: "CUS", orgId: "ORG" }];
+  await expect(createDirectOrder({ customerId: "CUS", items: [{ sku: "FG", qty: 1e9, rate: 1e9 }], transportArrangedBy: "Self" }, "actor")).rejects.toThrow(/amount|total|range/i);
+});
+it.each(["amount", "faceAmountReceived"] as const)("payment server rejects hostile %s", async (field) => {
+  for (const value of [-1, Infinity, NaN, 1e20]) {
+    await expect(recordPayment("ORD", { amount: 10, mode: "Cash", [field]: value }, "actor"), `${field}=${value}`).rejects.toThrow(/amount|finite|range/i);
+    expect(h.state.rows.orderPayments).toEqual([]);
+    expect(h.journal).not.toHaveBeenCalled();
+  }
+});
+
 it("stock check allocates duplicate SKU lines from one authoritative locked pool excluding only itself", async () => {
   h.state.rows.orderItems.push({ ...h.state.rows.orderItems[0], lineNo: "2" });
   await runStockCheck("ORD", "actor");

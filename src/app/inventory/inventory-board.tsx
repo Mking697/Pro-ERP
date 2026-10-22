@@ -16,7 +16,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
-import { Download, PackageSearch } from "lucide-react";
+import { CheckSquare, Download, PackageSearch } from "lucide-react";
 import EmptyState from "@/components/empty-state";
 import CreateItemDialog from "./create-item-dialog";
 import BulkImportDialog from "./bulk-import-dialog";
@@ -383,15 +383,23 @@ export default function InventoryBoard({
       )}
 
       {selectedItems.length > 0 && (
-        <div className="flex flex-wrap items-center gap-2 rounded-lg border bg-muted/40 p-2.5">
-          <span className="text-sm font-medium">
+        // Same animate-in-on-entry fix as orders-board.tsx's identical toolbar — it used
+        // to snap into place with no motion cue, unlike every other transient block in
+        // this app, which made it read as bolted on rather than a designed part of the
+        // table.
+        <div className="flex flex-wrap items-center gap-2 rounded-lg border bg-muted/40 p-2.5 animate-in fade-in-0 slide-in-from-top-1 duration-150">
+          {/* Same role="status"/aria-live="polite" fix as orders-board.tsx's identical
+              toolbar — otherwise only sighted users relying on this visible span ever
+              learn the selection count changed when a row checkbox is ticked. */}
+          <span aria-hidden="true" className="flex items-center gap-1.5 text-sm font-medium">
+            <CheckSquare aria-hidden="true" className="size-3.5 text-primary" />
             {selectedItems.length} {t("item(s) selected")}
           </span>
           <Button size="sm" variant="ghost" onClick={() => setSelectedSkus(new Set())}>
             {t("Clear karein")}
           </Button>
           <Button size="sm" variant="outline" onClick={exportSelectedCsv}>
-            <Download />
+            <Download aria-hidden="true" />
             {t("CSV Export Karein")}
           </Button>
         </div>

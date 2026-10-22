@@ -3,7 +3,16 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { LayoutGrid, ChevronDown, ChevronUp } from "lucide-react";
+import {
+  LayoutGrid,
+  ChevronDown,
+  ChevronUp,
+  CheckCircle2,
+  Compass,
+  AlertTriangle,
+  Gauge,
+  LayoutDashboard,
+} from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -25,6 +34,17 @@ import {
 const LABEL_BY_KEY: Record<DashboardWidgetKey, string> = Object.fromEntries(
   DASHBOARD_WIDGET_DEFS.map((d) => [d.key, d.name])
 ) as Record<DashboardWidgetKey, string>;
+
+// Same icon-chip idiom as the dashboard's own StatCard/OnboardingChecklist (an icon in a
+// tinted circle) — without it, this list was five identical bare rows with nothing but
+// text to tell one widget from another, unlike every other list on this page.
+const ICON_BY_KEY: Record<DashboardWidgetKey, React.ReactNode> = {
+  onboarding: <CheckCircle2 />,
+  quickNav: <Compass />,
+  attention: <AlertTriangle />,
+  stats: <Gauge />,
+  tabs: <LayoutDashboard />,
+};
 
 /**
  * "Customize dashboard" entry point — show/hide + up/down reorder for the five dashboard
@@ -108,10 +128,19 @@ export default function CustomizeDashboardDialog({
           {prefs.map((pref, i) => (
             <div
               key={pref.key}
-              className="flex items-center justify-between gap-3 rounded-lg border p-2.5"
+              style={{ animationDelay: `${i * 40}ms` }}
+              className="animate-in fade-in-0 slide-in-from-bottom-1 fill-mode-both flex items-center justify-between gap-3 rounded-lg border p-2.5 transition-colors duration-150 hover:bg-muted/50"
             >
-              <span className="min-w-0 truncate text-sm font-medium">
-                {t(LABEL_BY_KEY[pref.key])}
+              <span className="flex min-w-0 items-center gap-2.5">
+                <span
+                  aria-hidden="true"
+                  className="flex size-7 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary [&_svg]:size-3.5"
+                >
+                  {ICON_BY_KEY[pref.key]}
+                </span>
+                <span className="min-w-0 truncate text-sm font-medium">
+                  {t(LABEL_BY_KEY[pref.key])}
+                </span>
               </span>
               <div className="flex shrink-0 items-center gap-1">
                 <Button

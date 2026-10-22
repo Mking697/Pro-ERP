@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Bell } from "lucide-react";
+import { Bell, BellOff } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -16,6 +16,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { useT } from "@/components/preferences-provider";
 import { cn } from "@/lib/utils";
+import EmptyState from "@/components/empty-state";
 
 interface NotificationItem {
   id: string;
@@ -45,7 +46,7 @@ function relativeTime(iso: string): string {
  * (roadmap Phase B item #2), structurally separate from `src/components/changelog-menu.tsx`
  * (that one is "what's new in the product" off localStorage; this one is per-user,
  * per-org, backed by `/api/notifications`). Visual pattern (Bell/Badge/DropdownMenu/
- * animate-ping) copied from changelog-menu.tsx so both feel consistent.
+ * status count) follows changelog-menu.tsx; unread stays visible without perpetual motion.
  *
  * Polling, not a push channel: a plain `setInterval` inside a `useEffect`, firing a
  * `fetch().then(setState)` promise chain. This project's `react-hooks/set-state-in-effect`
@@ -154,7 +155,7 @@ export default function NotificationBell() {
               <>
                 <span
                   aria-hidden="true"
-                  className="absolute -right-1 -top-1 size-4 animate-ping rounded-full bg-primary/60"
+                  className="absolute -right-1 -top-1 size-4 rounded-full bg-background ring-2 ring-background"
                 />
                 <Badge
                   variant="default"
@@ -168,7 +169,7 @@ export default function NotificationBell() {
           </Button>
         }
       />
-      <DropdownMenuContent align="end" className="w-80">
+      <DropdownMenuContent align="end" className="w-96 max-w-[calc(100vw-2rem)] rounded-xl p-1.5">
         <DropdownMenuGroup>
           <DropdownMenuLabel>{t("Notifications")}</DropdownMenuLabel>
           {unreadCount > 0 && (
@@ -180,9 +181,11 @@ export default function NotificationBell() {
         <DropdownMenuSeparator />
         <div className="flex max-h-80 flex-col gap-0.5 overflow-y-auto px-1.5 py-1">
           {items.length === 0 && (
-            <p className="px-1.5 py-3 text-center text-xs text-muted-foreground">
-              {t("Koi notification nahi hai.")}
-            </p>
+            // Same icon+text shape as empty-state.tsx's shared component, scaled down
+            // for this compact dropdown — this was the one empty list in the app that
+            // fell back to plain text instead of the icon treatment used everywhere else
+            // (orders/inventory boards, FMS runs, etc).
+            <EmptyState icon={<BellOff />} title={t("Koi notification nahi hai.")} className="border-0 py-8" />
           )}
           {items.map((item) => (
             <DropdownMenuItem
@@ -190,7 +193,7 @@ export default function NotificationBell() {
               onClick={() => void handleItemClick(item)}
               className={cn(
                 "block",
-                "w-full rounded-md px-1.5 py-1.5 text-left transition-colors hover:bg-muted",
+                "w-full rounded-lg px-3 py-3 text-left transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
                 !item.isRead && "bg-primary/5"
               )}
             >
@@ -206,7 +209,7 @@ export default function NotificationBell() {
                   {relativeTime(item.createdAt)}
                 </span>
               </div>
-              <p className="mt-0.5 text-xs text-muted-foreground">{item.body}</p>
+              <p className="mt-1 text-xs leading-relaxed text-pretty text-muted-foreground">{item.body}</p>
             </DropdownMenuItem>
           ))}
         </div>

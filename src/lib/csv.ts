@@ -13,14 +13,20 @@
  * execute on the machine of whoever opens the download. A leading apostrophe marks the
  * cell as text and stops that.
  *
- * Only strings are treated this way. A genuine number (a score, a quantity) would be
- * ruined by an apostrophe, and a real number can never be a formula.
+ * ASCII formula prefixes alone are insufficient; line feed and full-width variants
+ * also need escaping for spreadsheet locales that recognize them. This is initial-open
+ * mitigation, not a promise that re-saving/re-opening CSV in every spreadsheet is safe.
+ *
+ * Only strings are treated this way. Orders/Inventory callers pass party/item/SKU text
+ * as strings and known price/quantity cells as numbers, so a real numeric -500 remains
+ * numeric. A text "-500" is escaped like any other untrusted string; do not coerce names.
  */
 export function csvCell(value: string | number): string {
   if (typeof value === "number") return String(value);
 
   let s = String(value ?? "");
-  if (/^[=+\-@\t\r]/.test(s)) s = `'${s}`;
+  // = + - @, tab/CR/LF, then their full-width formula-leading variants.
+  if ([61, 43, 45, 64, 9, 13, 10, 0xff1d, 0xff0b, 0xff0d, 0xff20].includes(s.charCodeAt(0))) s = `'${s}`;
   return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 }
 

@@ -12,6 +12,7 @@ import { createCustomer } from "@/lib/parties/customers";
 import { computeTotals, lineAmount, round2, round3 } from "@/lib/leads/quotationMath";
 import { logLeadActivity, markOrderConfirmed, markQuotationSent } from "@/lib/leads/leads";
 import { getQuotationSetup } from "@/lib/leads/quotationSetup";
+import { assertFinancialNumber, MAX_QUANTITY } from "@/lib/financial-validation";
 
 /**
  * The document Lead FMS sends before an order exists — see src/db/schema/leads.ts's own
@@ -541,6 +542,14 @@ export async function saveQuotationItems(
     throw new QuotationError("Ek quotation me zyada se zyada 200 lines ho sakti hain.");
   }
 
+  // Validate the raw DTO before filtering/rounding: NaN must not become a blank/zero line.
+  assertFinancialNumber(money.freightAmount, "Freight amount", QuotationError);
+  assertFinancialNumber(money.gstPercent, "GST percent", QuotationError, 100);
+  for (const row of rows) {
+    assertFinancialNumber(row.qty, "Quantity", QuotationError, MAX_QUANTITY);
+    assertFinancialNumber(row.rate, "Rate", QuotationError);
+    assertFinancialNumber(row.qty * row.rate, "Line amount", QuotationError);
+  }
   const priced = rows
     .filter(
       (row) =>
@@ -566,6 +575,7 @@ export async function saveQuotationItems(
     });
 
   const totals = computeTotals(priced, money.freightAmount, money.gstPercent);
+  assertFinancialNumber(totals.payable, "Quotation total amount", QuotationError);
 
   const insertRows = priced.map((p) => ({
     quotationId,

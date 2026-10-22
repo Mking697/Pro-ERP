@@ -15,6 +15,7 @@ import { uploadAttachment } from "@/lib/storage";
 import { getQuotationSetup } from "@/lib/leads/quotationSetup";
 import { round2 } from "@/lib/leads/quotationMath";
 import { resolveDisplayCurrency } from "@/lib/currency/currency";
+import { assertFinancialNumber, MAX_QUANTITY } from "@/lib/financial-validation";
 
 export class PurchaseOrderError extends Error {}
 
@@ -329,6 +330,10 @@ async function resolvePoLines(
     if (!Number.isFinite(quantity) || !(quantity > 0)) {
       throw new PurchaseOrderError("Indent quantity invalid hai.");
     }
+    assertFinancialNumber(quantity, "Indent quantity", PurchaseOrderError, MAX_QUANTITY, true);
+    const price = line.newPrice ?? Number(link.unitPrice);
+    assertFinancialNumber(price, "Rate", PurchaseOrderError);
+    assertFinancialNumber(quantity * price, "Line amount", PurchaseOrderError);
     resolved.push({
       indentId: indent.id,
       sku: indent.sku,
@@ -389,6 +394,10 @@ async function createPurchaseOrderInTransaction(input: CreatePurchaseOrderInput)
 
   const maxLeadDays = Math.max(...resolved.map((r) => r.leadTimeDays));
   const purchaseSetup = await getPurchaseSetup();
+  const gstPercent = input.gstPercent ?? purchaseSetup.gstPercentDefault;
+  assertFinancialNumber(gstPercent, "GST percent", PurchaseOrderError, 100);
+  const subTotal = resolved.reduce((sum, line) => sum + round2(line.qty * Number(line.newPrice)), 0);
+  assertFinancialNumber(round2(subTotal * (1 + gstPercent / 100)), "PO total amount", PurchaseOrderError);
   const issuedAt = Date.now();
 
   const followUpDays = Math.max(maxLeadDays - 1, 0);
@@ -412,7 +421,7 @@ async function createPurchaseOrderInTransaction(input: CreatePurchaseOrderInput)
     issuedAt: new Date(issuedAt),
     followUpDueAt: new Date(followUpDueAtMs),
     materialReceivedDueAt: new Date(materialReceivedDueAtMs),
-    gstPercent: String(input.gstPercent ?? purchaseSetup.gstPercentDefault),
+    gstPercent: String(gstPercent),
     termsAndConditions: input.termsAndConditions ?? purchaseSetup.defaultTerms,
     note: input.note ?? purchaseSetup.defaultNote,
     ...(fxResolved

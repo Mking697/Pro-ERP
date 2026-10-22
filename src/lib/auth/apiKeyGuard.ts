@@ -1,6 +1,7 @@
+import { createHash } from "node:crypto";
 import { NextResponse } from "next/server";
 import { verifyApiKey } from "@/lib/apiAccess/apiKeys";
-import { checkRateLimit } from "@/lib/rateLimit";
+import { checkRateLimit, clientIp } from "@/lib/rateLimit";
 import { runWithTenant, tenantFromOrgId, TenantResolutionError } from "@/lib/tenant";
 
 /** Same `{ ok: true, ... } | { ok: false, response }` shape convention as
@@ -11,42 +12,45 @@ type ApiKeyGuardResult = { ok: true; orgId: string } | { ok: false; response: Ne
 const unauthorized = (message = "Unauthorized.") =>
   NextResponse.json({ error: message }, { status: 401 });
 
+const throttled = (retryAfterSeconds: number) => NextResponse.json(
+  { error: "Rate limit cross ho gayi. Thodi der baad try karein." },
+  { status: 429, headers: { "Retry-After": String(retryAfterSeconds) } }
+);
+
+async function invalidKey(request: Request, message: string): Promise<ApiKeyGuardResult> {
+  // One failure bucket per IP, not per guessed secret: rotating guesses cannot reset it.
+  // Only failures consume this budget, so integrations sharing a NAT remain usable.
+  const rate = await checkRateLimit("api-v1-invalid", clientIp(request), 10, 60);
+  return { ok: false, response: rate.allowed ? unauthorized(message) : throttled(rate.retryAfterSeconds) };
+}
+
 /**
- * For use inside `/api/v1/*` route handlers — reads `Authorization: Bearer <key>`,
- * verifies it (src/lib/apiAccess/apiKeys.ts's `verifyApiKey()`), and returns the calling
- * org's id.
- *
- * Rate-limited per key (reusing src/lib/rateLimit.ts's own fixed-window counter — same
- * utility the unauthenticated `/api/signup` etc. already use), keyed by the raw bearer
- * token itself rather than client IP, since a legitimate integration may call from many
- * IPs behind a shared gateway. Generous ceiling (300/min) — this guards against a
- * runaway/misconfigured integration hammering the API, not normal polling traffic.
+ * IP admission caps verifier work at 300/min regardless of rotating bearer guesses.
+ * Invalid credentials also receive 429 after 10/min/IP; valid keys retain a separate
+ * 300/min budget across IPs. Persist only fingerprints, never bearer secrets.
  */
 export async function requireApiKey(request: Request): Promise<ApiKeyGuardResult> {
+  // Charge admission BEFORE verification and independently of the guessed secret.
+  // Otherwise rotating guesses still reach the verifier even when failure responses
+  // are 429. This hard ceiling also bounds work for simultaneous/valid guesses.
+  const admission = await checkRateLimit("api-v1-auth", clientIp(request), 300, 60);
+  if (!admission.allowed) return { ok: false, response: throttled(admission.retryAfterSeconds) };
   const header = request.headers.get("authorization") ?? "";
   const match = header.match(/^Bearer\s+(.+)$/i);
-  if (!match) {
-    return { ok: false, response: unauthorized("Authorization: Bearer <api key> header chahiye.") };
-  }
-  const plaintextKey = match[1].trim();
+  const plaintextKey = match?.[1].trim();
   if (!plaintextKey) {
-    return { ok: false, response: unauthorized("Authorization: Bearer <api key> header chahiye.") };
-  }
-
-  const rateLimit = await checkRateLimit("api-v1", plaintextKey, 300, 60);
-  if (!rateLimit.allowed) {
-    return {
-      ok: false,
-      response: NextResponse.json(
-        { error: "Rate limit cross ho gayi. Thodi der baad try karein." },
-        { status: 429, headers: { "Retry-After": String(rateLimit.retryAfterSeconds) } }
-      ),
-    };
+    return invalidKey(request, "Authorization: Bearer <api key> header chahiye.");
   }
 
   const orgId = await verifyApiKey(plaintextKey);
   if (!orgId) {
-    return { ok: false, response: unauthorized("API key invalid ya revoked hai.") };
+    return invalidKey(request, "API key invalid ya revoked hai.");
+  }
+
+  const fingerprint = createHash("sha256").update(plaintextKey).digest("hex");
+  const rate = await checkRateLimit("api-v1", fingerprint, 300, 60);
+  if (!rate.allowed) {
+    return { ok: false, response: throttled(rate.retryAfterSeconds) };
   }
 
   return { ok: true, orgId };

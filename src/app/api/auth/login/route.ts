@@ -12,9 +12,8 @@ const loginSchema = z.object({
   password: z.string().min(1),
 });
 
-// Keyed by IP+email together, not either alone: a single IP genuinely guessing many
-// accounts and a botnet spraying one account at a stolen-password list are both real
-// attacks, and neither should get a free pass just because the other axis is shared.
+// Independent IP and normalized-email buckets: joining the two identifiers lets an
+// attacker reset the budget simply by rotating emails or source IPs.
 const LOGIN_LIMIT = 10;
 const LOGIN_WINDOW_SECONDS = 5 * 60;
 
@@ -31,16 +30,15 @@ export async function POST(request: Request) {
 
   const { email, password } = parsed.data;
 
-  const rate = await checkRateLimit(
-    "login",
-    `${clientIp(request)}:${email.toLowerCase()}`,
-    LOGIN_LIMIT,
-    LOGIN_WINDOW_SECONDS
-  );
-  if (!rate.allowed) {
+  const rates = await Promise.all([
+    checkRateLimit("login", clientIp(request), LOGIN_LIMIT, LOGIN_WINDOW_SECONDS),
+    checkRateLimit("login-email", email.toLowerCase(), LOGIN_LIMIT, LOGIN_WINDOW_SECONDS),
+  ]);
+  const blockedRates = rates.filter((rate) => !rate.allowed);
+  if (blockedRates.length > 0) {
     return NextResponse.json(
       { error: "Bahut zyada koshishein ho gayi hain. Thodi der baad try karein." },
-      { status: 429, headers: { "Retry-After": String(rate.retryAfterSeconds) } }
+      { status: 429, headers: { "Retry-After": String(Math.max(...blockedRates.map((rate) => rate.retryAfterSeconds))) } }
     );
   }
   const invalid = NextResponse.json(

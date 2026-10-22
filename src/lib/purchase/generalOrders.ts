@@ -8,6 +8,7 @@ import { getTenantOrgId } from "@/lib/tenant";
 import { generateId } from "@/lib/id";
 import { computeDefaultTatDeadline } from "@/lib/fms/calendar";
 import { round2 } from "@/lib/leads/quotationMath";
+import { assertFinancialNumber, MAX_QUANTITY } from "@/lib/financial-validation";
 
 /**
  * Independent / General Purchase Order — see src/db/schema/generalPurchase.ts's own
@@ -249,7 +250,13 @@ async function createGeneralPurchaseOrderInTransaction(
   if (!attachmentUrl) {
     throw new GeneralPurchaseOrderError("PO attachment zaroori hai.");
   }
+  assertFinancialNumber(input.gstPercent ?? 0, "GST percent", GeneralPurchaseOrderError, 100);
+  let total = 0;
   for (const line of input.lines) {
+    assertFinancialNumber(line.qty, "Quantity", GeneralPurchaseOrderError, MAX_QUANTITY, true);
+    assertFinancialNumber(line.rate, "Rate", GeneralPurchaseOrderError);
+    assertFinancialNumber(line.qty * line.rate, "Line amount", GeneralPurchaseOrderError);
+    total += round2(line.qty * line.rate);
     if (!line.particular.trim()) {
       throw new GeneralPurchaseOrderError("Har line ka particular/item naam zaroori hai.");
     }
@@ -261,6 +268,7 @@ async function createGeneralPurchaseOrderInTransaction(
     }
   }
 
+  assertFinancialNumber(round2(total * (1 + (input.gstPercent ?? 0) / 100)), "PO total amount", GeneralPurchaseOrderError);
   const orgId = await getTenantOrgId();
   const vendor = await findById(vendors, orgId, input.vendorId);
   if (!vendor) throw new GeneralPurchaseOrderError("Vendor nahi mila.");

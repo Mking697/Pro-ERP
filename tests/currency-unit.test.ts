@@ -39,6 +39,9 @@ vi.mock("@/db/client", () => ({
 import { convertToInr, CurrencyError, pickLatestRate, resolveDisplayCurrency } from "@/lib/currency/currency";
 
 describe("convertToInr", () => {
+  it.each([[-1, 83], [Infinity, 83], [NaN, 83], [1e20, 83], [100, -1], [100, Infinity], [100, NaN], [100, 1e20], [1e12, 83]])("rejects hostile amount/rate or overflow product %j", (amount, rate) => {
+    expect(() => convertToInr(amount, rate)).toThrow(CurrencyError);
+  });
   it("multiplies the face amount by the rate and rounds to 2 decimals", () => {
     expect(convertToInr(100, 83.5)).toBe(8350);
     expect(convertToInr(12.345, 2)).toBe(24.69);

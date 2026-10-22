@@ -1834,6 +1834,7 @@ export const EN: Record<string, string> = {
   "Bill save ho gayi.": "Bill saved.",
   "Bill Issue ho gayi.": "Bill issued.",
   "Payment record ho gaya.": "Payment recorded.",
+  "Payment record nahi ho paya.": "Could not record payment.",
   "Bill Amount": "Bill Amount",
   "Paid": "Paid",
   "Mode": "Mode",

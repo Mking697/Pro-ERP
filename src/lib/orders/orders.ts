@@ -28,6 +28,7 @@ import { listUsers } from "@/lib/auth/users";
 import { effectiveModuleAccess, type ModuleAccessKey } from "@/lib/moduleAccess";
 import { getOrderSetup } from "@/lib/orders/settings";
 import { emitDomainEvent } from "@/lib/events/emit";
+import { assertFinancialNumber, MAX_MONEY, MAX_QUANTITY, MAX_EXCHANGE_RATE } from "@/lib/financial-validation";
 
 /**
  * Order FMS — leg 2 of the Sales chain (Lead -> Order -> PDI -> Dispatch). Built as its own
@@ -43,7 +44,7 @@ function orderQuantity(value: string | number | null, positive = false): number 
   const rounded = round3(quantity);
   const noise = Number.EPSILON * Math.max(1, Math.abs(quantity)) * 8;
   if (!Number.isFinite(quantity) || !Number.isFinite(rounded) ||
-    (typeof value === "string" && !value.trim()) || quantity < 0 ||
+    (typeof value === "string" && !value.trim()) || quantity < 0 || quantity > MAX_QUANTITY ||
     (positive && rounded <= 0) || Math.abs(quantity - rounded) > noise) {
     throw new OrderError("Order stock quantity must be finite, nonnegative and representable at stock precision (demand must be positive).");
   }
@@ -678,14 +679,21 @@ async function createOrderFromQuotationInTransaction(
     if (!item) {
       throw new OrderError(`SKU "${sku}" Items master me nahi hai.`);
     }
+    // Revalidate stored quotation lines too: historical data predates server bounds.
+    const qty = orderQuantity(Number(line.qty), true);
+    const rate = Number(line.rate);
+    const amount = Number(line.amount);
+    assertFinancialNumber(rate, "Rate", OrderError);
+    assertFinancialNumber(amount, "Line amount", OrderError);
+    assertFinancialNumber(qty * rate, "Line amount", OrderError);
     resolvedLines.push({
       lineNo: line.lineNo,
       sku: item.SKU,
       itemName: item.Item_Name,
       uom: item.UOM,
-      qty: Number(line.qty) || 0,
-      rate: Number(line.rate) || 0,
-      amount: Number(line.amount) || 0,
+      qty,
+      rate,
+      amount,
     });
   }
 
@@ -806,6 +814,13 @@ async function createDirectOrderInTransaction(
     throw new OrderError('Transport arrangement "Self" ya "Party" hona chahiye.');
   }
 
+  // Reject hostile values before even resolving/creating a customer. UI clamps are not validation.
+  assertFinancialNumber(input.gstPercent ?? 18, "GST percent", OrderError, 100);
+  for (const line of input.items) {
+    assertFinancialNumber(line.qty, "Quantity", OrderError, MAX_QUANTITY, true);
+    assertFinancialNumber(line.rate, "Rate", OrderError);
+    assertFinancialNumber(line.qty * line.rate, "Line amount", OrderError);
+  }
   const orgId = await getTenantOrgId();
   const customer = await resolveCustomer(orgId, input, createdBy);
 
@@ -841,12 +856,12 @@ async function createDirectOrderInTransaction(
     });
   }
 
-  // GST on goods only (no freight concept on a Direct order, unlike a quotation's own
-  // computeTotals()) — same clamp-to-[0,100] convention as quotationMath.ts's computeTotals.
+  // GST on goods only. Invalid percentages must be rejected, never silently clamped.
   const subTotal = round2(lines.reduce((sum, l) => sum + l.amount, 0));
-  const gstPercent = Math.max(0, Math.min(100, input.gstPercent ?? 18));
+  const gstPercent = input.gstPercent ?? 18;
   const gstAmount = round2((subTotal * gstPercent) / 100);
   let orderValue = round2(subTotal + gstAmount);
+  assertFinancialNumber(orderValue, "Order total amount", OrderError);
   const orderId = generateId("ORD");
 
   // Multi-currency DISPLAY/REFERENCE layer (Phase C) — only runs when a caller explicitly
@@ -963,14 +978,14 @@ export async function recordPayment(
     throw new OrderError("Order payment mode invalid hai.");
   }
   const amount = round2(input.amount);
-  if (!Number.isFinite(input.amount) || !Number.isFinite(amount) || !(amount > 0)) {
-    throw new OrderError("Amount finite aur rounding ke baad 0 se zyada hona chahiye.");
+  if (!Number.isFinite(input.amount) || !Number.isFinite(amount) || amount > MAX_MONEY || !(amount > 0)) {
+    throw new OrderError(`Amount finite, rounding ke baad positive aur ${MAX_MONEY} se zyada nahi hona chahiye.`);
   }
   let faceAmountReceived: number | undefined;
   if (input.faceAmountReceived !== undefined) {
     faceAmountReceived = input.faceAmountReceived;
-    if (!Number.isFinite(faceAmountReceived) || !(faceAmountReceived > 0)) {
-      throw new OrderError("Face amount received finite aur 0 se zyada hona chahiye.");
+    if (!Number.isFinite(faceAmountReceived) || faceAmountReceived > MAX_MONEY || !(faceAmountReceived > 0)) {
+      throw new OrderError(`Face amount received finite, positive aur ${MAX_MONEY} se zyada nahi hona chahiye.`);
     }
   }
   const receivedAt = input.receivedAt ? new Date(input.receivedAt) : null;
@@ -999,8 +1014,8 @@ async function recordPaymentInTransaction(
   actorId: string
 ): Promise<OrderRecord> {
   const amount = round2(input.amount);
-  if (!Number.isFinite(input.amount) || !Number.isFinite(amount) || !(amount > 0)) {
-    throw new OrderError("Amount finite aur rounding ke baad 0 se zyada hona chahiye.");
+  if (!Number.isFinite(input.amount) || !Number.isFinite(amount) || amount > MAX_MONEY || !(amount > 0)) {
+    throw new OrderError(`Amount finite, rounding ke baad positive aur ${MAX_MONEY} se zyada nahi hona chahiye.`);
   }
   const receivedAt = input.receivedAt ? new Date(input.receivedAt) : new Date();
   if (!Number.isFinite(receivedAt.getTime())) throw new OrderError("Payment date samajh nahi aayi.");
@@ -1043,8 +1058,13 @@ async function recordPaymentInTransaction(
     if (!currentRate) {
       throw new OrderError(`"${displayCurrency}" ke liye abhi koi exchange rate set nahi hai.`);
     }
+    assertFinancialNumber(faceAmountReceived, "Face amount received", OrderError, MAX_MONEY, true);
+    assertFinancialNumber(orderRate, "Order exchange rate", OrderError, MAX_EXCHANGE_RATE, true);
+    assertFinancialNumber(currentRate.rateToInr, "Current exchange rate", OrderError, MAX_EXCHANGE_RATE, true);
     const expectedInr = round2(faceAmountReceived * orderRate);
     const actualInr = round2(faceAmountReceived * currentRate.rateToInr);
+    assertFinancialNumber(expectedInr, "Expected INR amount", OrderError, MAX_MONEY, true);
+    assertFinancialNumber(actualInr, "Actual INR amount", OrderError, MAX_MONEY, true);
     if (!(expectedInr > 0) || !(actualInr > 0)) {
       throw new OrderError("Forex conversion ke baad amount 0 se zyada hona chahiye.");
     }
@@ -1188,9 +1208,22 @@ async function computeCreditPosition(
  * requires a real advance (`> 0` already recorded) before proceeding; credit extended runs
  * the limit/overdue check and branches to Credit_Hold or straight through to Stock_Check.
  */
-export async function workPaymentReview(orderId: string, actorId: string): Promise<OrderRecord> {
+/** Keyed external actions own their receipt transaction; internal/unkeyed callers
+ * retain the existing joinable transaction behavior. Snapshot JSON DTOs for replay. */
+async function runOrderAction(
+  orgId: string, key: string | undefined, actorId: string, operation: string,
+  payload: Record<string, string>, work: () => Promise<OrderRecord>,
+): Promise<OrderRecord> {
+  if (key === undefined) return runInTenantTransaction(orgId, work);
+  return runIdempotentTenantMutation(orgId, { key, actorId, operation, payload }, async () => {
+    const result = await work();
+    return { ...result, items: result.items.map((line) => ({ ...line })) };
+  });
+}
+
+export async function workPaymentReview(orderId: string, actorId: string, key?: string): Promise<OrderRecord> {
   const orgId = await getTenantOrgId();
-  return runInTenantTransaction(orgId, () => workPaymentReviewInTransaction(orderId, actorId));
+  return runOrderAction(orgId, key, actorId, "orders.paymentReview.v1", { orderId }, () => workPaymentReviewInTransaction(orderId, actorId));
 }
 
 async function workPaymentReviewInTransaction(orderId: string, actorId: string): Promise<OrderRecord> {
@@ -1279,10 +1312,11 @@ async function workPaymentReviewInTransaction(orderId: string, actorId: string):
  */
 export async function approveCreditHold(
   orderId: string,
-  actor: { userId: string; role: string }
+  actor: { userId: string; role: string },
+  key?: string
 ): Promise<OrderRecord> {
   const orgId = await getTenantOrgId();
-  return runInTenantTransaction(orgId, () => approveCreditHoldInTransaction(orderId, actor));
+  return runOrderAction(orgId, key, actor.userId, "orders.creditApprove.v1", { orderId }, () => approveCreditHoldInTransaction(orderId, actor));
 }
 
 async function approveCreditHoldInTransaction(
@@ -1422,9 +1456,9 @@ async function notifyShortage(
  * not a movement, exactly like a production plan's own reservation never touches the ledger
  * until material is actually consumed.
  */
-export async function runStockCheck(orderId: string, actorId: string): Promise<OrderRecord> {
+export async function runStockCheck(orderId: string, actorId: string, key?: string): Promise<OrderRecord> {
   const orgId = await getTenantOrgId();
-  return runInTenantTransaction(orgId, () => runStockCheckInTransaction(orderId, actorId));
+  return runOrderAction(orgId, key, actorId, "orders.stockCheck.v1", { orderId }, () => runStockCheckInTransaction(orderId, actorId));
 }
 
 async function runStockCheckInTransaction(orderId: string, actorId: string): Promise<OrderRecord> {
@@ -1509,10 +1543,11 @@ async function runStockCheckInTransaction(orderId: string, actorId: string): Pro
 export async function commitDispatch(
   orderId: string,
   dispatchCommitDate: string,
-  actorId: string
+  actorId: string,
+  key?: string
 ): Promise<OrderRecord> {
   const orgId = await getTenantOrgId();
-  return runInTenantTransaction(orgId, () => commitDispatchInTransaction(orderId, dispatchCommitDate, actorId));
+  return runOrderAction(orgId, key, actorId, "orders.dispatchCommit.v1", { orderId, dispatchCommitDate }, () => commitDispatchInTransaction(orderId, dispatchCommitDate, actorId));
 }
 
 async function commitDispatchInTransaction(
@@ -1753,9 +1788,9 @@ async function setTransportArrangedByInTransaction(
   return updated;
 }
 
-export async function cancelOrder(orderId: string, reason: string, actorId: string): Promise<OrderRecord> {
+export async function cancelOrder(orderId: string, reason: string, actorId: string, key?: string): Promise<OrderRecord> {
   const orgId = await getTenantOrgId();
-  return runInTenantTransaction(orgId, () => cancelOrderInTransaction(orderId, reason, actorId));
+  return runOrderAction(orgId, key, actorId, "orders.cancel.v1", { orderId, reason }, () => cancelOrderInTransaction(orderId, reason, actorId));
 }
 
 async function cancelOrderInTransaction(orderId: string, reason: string, actorId: string): Promise<OrderRecord> {

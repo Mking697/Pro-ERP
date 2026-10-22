@@ -12,7 +12,10 @@ describe("/api/v1/orders", () => {
 
   it("returns 401 without an Authorization header", async () => {
     vi.doMock("@/lib/apiAccess/apiKeys", () => ({ verifyApiKey: vi.fn(async () => null) }));
-    vi.doMock("@/lib/rateLimit", () => ({ checkRateLimit: vi.fn(async () => ({ allowed: true, retryAfterSeconds: 0 })) }));
+    vi.doMock("@/lib/rateLimit", () => ({
+      checkRateLimit: vi.fn(async () => ({ allowed: true, retryAfterSeconds: 0 })),
+      clientIp: vi.fn(() => "127.0.0.1"),
+    }));
     vi.doMock("@/lib/tenant", () => ({
       tenantFromOrgId: vi.fn(async (orgId: string) => ({ orgId, org: { id: orgId, status: "Active" } })),
       runWithTenant: vi.fn(async (_ctx: unknown, work: () => Promise<unknown>) => work()),
@@ -27,7 +30,10 @@ describe("/api/v1/orders", () => {
 
   it("returns 401 for an unknown/invalid bearer key", async () => {
     vi.doMock("@/lib/apiAccess/apiKeys", () => ({ verifyApiKey: vi.fn(async () => null) }));
-    vi.doMock("@/lib/rateLimit", () => ({ checkRateLimit: vi.fn(async () => ({ allowed: true, retryAfterSeconds: 0 })) }));
+    vi.doMock("@/lib/rateLimit", () => ({
+      checkRateLimit: vi.fn(async () => ({ allowed: true, retryAfterSeconds: 0 })),
+      clientIp: vi.fn(() => "127.0.0.1"),
+    }));
     vi.doMock("@/lib/tenant", () => ({
       tenantFromOrgId: vi.fn(async (orgId: string) => ({ orgId, org: { id: orgId, status: "Active" } })),
       runWithTenant: vi.fn(async (_ctx: unknown, work: () => Promise<unknown>) => work()),
@@ -44,7 +50,10 @@ describe("/api/v1/orders", () => {
 
   it("returns this org's own data for a valid key, tenant-scoped", async () => {
     vi.doMock("@/lib/apiAccess/apiKeys", () => ({ verifyApiKey: vi.fn(async () => "ORG-1") }));
-    vi.doMock("@/lib/rateLimit", () => ({ checkRateLimit: vi.fn(async () => ({ allowed: true, retryAfterSeconds: 0 })) }));
+    vi.doMock("@/lib/rateLimit", () => ({
+      checkRateLimit: vi.fn(async () => ({ allowed: true, retryAfterSeconds: 0 })),
+      clientIp: vi.fn(() => "127.0.0.1"),
+    }));
     vi.doMock("@/lib/tenant", () => ({
       tenantFromOrgId: vi.fn(async (orgId: string) => ({ orgId, org: { id: orgId, status: "Active" } })),
       runWithTenant: vi.fn(async (_ctx: unknown, work: () => Promise<unknown>) => work()),

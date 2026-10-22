@@ -111,7 +111,7 @@ export default function SidebarShell({
       {/* Desktop sidebar */}
       <aside
         className={cn(
-          "sticky top-0 hidden h-dvh shrink-0 flex-col border-r bg-background transition-[width] duration-200 md:flex",
+          "sticky top-0 hidden h-dvh shrink-0 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground transition-[width] duration-200 md:flex",
           collapsed ? "w-16" : "w-64"
         )}
       >
@@ -139,9 +139,12 @@ export default function SidebarShell({
         </div>
 
         {!collapsed ? (
-          <div className="shrink-0 border-t p-3">
+          <div className="shrink-0 border-t bg-sidebar-accent/30 p-3">
             <div className="flex items-center justify-between gap-2">
-              <div className="min-w-0">
+              <span aria-hidden="true" className="flex size-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-semibold text-primary ring-1 ring-primary/10">
+                {fullName.charAt(0).toUpperCase()}
+              </span>
+              <div className="min-w-0 flex-1 space-y-1">
                 <p className="truncate text-sm font-medium leading-tight">{fullName}</p>
                 <p className="truncate text-xs leading-tight text-muted-foreground">{email}</p>
               </div>
@@ -260,9 +263,12 @@ export default function SidebarShell({
             <NavLinks items={items} onNavigate={() => setMobileOpen(false)} />
           </div>
 
-          <div className="shrink-0 border-t p-3">
+          <div className="shrink-0 border-t bg-sidebar-accent/30 p-3">
             <div className="flex items-center justify-between gap-2">
-              <div className="min-w-0">
+              <span aria-hidden="true" className="flex size-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-semibold text-primary ring-1 ring-primary/10">
+                {fullName.charAt(0).toUpperCase()}
+              </span>
+              <div className="min-w-0 flex-1 space-y-1">
                 <p className="truncate text-sm font-medium leading-tight">{fullName}</p>
                 <p className="truncate text-xs leading-tight text-muted-foreground">{email}</p>
               </div>

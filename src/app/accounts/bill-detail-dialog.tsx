@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { ClientMutationKeys } from "@/lib/client-idempotency";
 import { toast } from "sonner";
 import {
   Dialog,
@@ -43,6 +44,8 @@ export default function BillDetailDialog({
   const [detail, setDetail] = useState<BillDetailRow | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
+  const paymentInFlight = useRef(false);
+  const paymentKeys = useRef(new ClientMutationKeys());
 
   const [billNo, setBillNo] = useState("");
   const [billAttachmentUrl, setBillAttachmentUrl] = useState("");
@@ -113,28 +116,38 @@ export default function BillDetailDialog({
   }
 
   async function recordPayment() {
+    if (paymentInFlight.current) return;
     if (!(Number(paymentAmount) > 0)) {
       toast.error(t("Amount 0 se zyada hona chahiye."));
       return;
     }
+    paymentInFlight.current = true;
     setBusy(true);
     try {
-      const res = await fetch(`/api/accounts/bills/${billId}/payments`, {
+      const url = `/api/accounts/bills/${billId}/payments`;
+      const body = JSON.stringify({ amount: Number(paymentAmount), mode: paymentMode, reference });
+      const key = paymentKeys.current.keyFor(url, body);
+      const res = await fetch(url, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ amount: Number(paymentAmount), mode: paymentMode, reference }),
+        headers: { "Content-Type": "application/json", "Idempotency-Key": key },
+        body,
       });
       const data = await res.json().catch(() => null);
-      if (!res.ok) {
+      if (!res.ok || !data?.bill) {
         toast.error(t(data?.error ?? "Payment record nahi ho paya."));
         return;
       }
+      paymentKeys.current.complete(url, key);
       toast.success(t("Payment record ho gaya."));
       setPaymentAmount("");
       setReference("");
       load();
       onChanged();
+    } catch {
+      // Preserve the identity when the server outcome is unknown.
+      toast.error(t("Payment record nahi ho paya."));
     } finally {
+      paymentInFlight.current = false;
       setBusy(false);
     }
   }

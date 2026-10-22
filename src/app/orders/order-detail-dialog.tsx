@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { ClientMutationKeys } from "@/lib/client-idempotency";
 import { toast } from "sonner";
 import {
   Dialog,
@@ -58,6 +59,8 @@ export default function OrderDetailDialog({
   const [payments, setPayments] = useState<OrderPaymentRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
+  const actionInFlight = useRef(false);
+  const actionKeys = useRef(new ClientMutationKeys());
 
   function load() {
     fetch(`/api/orders/${orderId}`)
@@ -77,23 +80,33 @@ export default function OrderDetailDialog({
   }, [open, orderId]);
 
   async function callAction(url: string, body?: Record<string, unknown>) {
+    if (actionInFlight.current) return false;
+    actionInFlight.current = true;
     setBusy(true);
     try {
+      const requestBody = JSON.stringify(body ?? {});
+      const key = actionKeys.current.keyFor(url, requestBody);
       const res = await fetch(url, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body ?? {}),
+        headers: { "Content-Type": "application/json", "Idempotency-Key": key },
+        body: requestBody,
       });
       const data = await res.json().catch(() => null);
-      if (!res.ok) {
+      if (!res.ok || !data?.order) {
         toast.error(t(data?.error ?? "Update nahi ho paya."));
         return false;
       }
+      actionKeys.current.complete(url, key);
       setOrder(data.order);
       onChanged(data.order);
       load();
       return true;
+    } catch {
+      // A lost response is not proof of rollback. Retry uses the same action key.
+      toast.error(t("Update nahi ho paya."));
+      return false;
     } finally {
+      actionInFlight.current = false;
       setBusy(false);
     }
   }

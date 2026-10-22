@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { getMutationKey, MutationConflictError } from "@/lib/mutations";
 import { requireModule } from "@/lib/auth/guard";
 import { OrderError, workPaymentReview } from "@/lib/orders/orders";
 
@@ -6,7 +7,7 @@ import { OrderError, workPaymentReview } from "@/lib/orders/orders";
  * formula. Moves the order to Stock_Check or Credit_Hold, or refuses (no-credit customer
  * with no advance yet). */
 export async function POST(
-  _request: Request,
+  request: Request,
   { params }: { params: Promise<{ orderId: string }> }
 ) {
   const guard = await requireModule("ORDER_FMS");
@@ -15,10 +16,10 @@ export async function POST(
   const { orderId } = await params;
 
   try {
-    const order = await workPaymentReview(orderId, guard.session.userId);
+    const order = await workPaymentReview(orderId, guard.session.userId, getMutationKey(request));
     return NextResponse.json({ order });
   } catch (err) {
     const message = err instanceof OrderError || err instanceof Error ? err.message : "Payment Review nahi ho paya.";
-    return NextResponse.json({ error: message }, { status: 400 });
+    return NextResponse.json({ error: message }, { status: err instanceof MutationConflictError ? 409 : 400 });
   }
 }

@@ -231,6 +231,12 @@ it("recordPettyCashExpense admits under the tenant lock", async () => {
   expect(results.filter(result => result.status === "fulfilled")).toHaveLength(1);
   expect(rows(schema.pettyCashEntries)).toHaveLength(1);
 });
+it.each([-1, Infinity, NaN, 1e20])("invoice server already rejects hostile finalValue %s against remaining order value", async (finalValue) => {
+  seed(schema.orders, { id: "ORDER", orderValue: 100, gstAmount: 0, transportArrangedBy: "Party" });
+  seed(schema.pdiInspections, { id: "PDI", orderId: "ORDER", status: "Passed" });
+  await expect(createInvoice({ orderId: "ORDER", finalValue }, "ACTOR")).rejects.toThrow();
+  expect(rows(schema.invoices)).toEqual([]);
+});
 it("createInvoice admits under the tenant lock", async () => {
   seed(schema.orders, { id: "ORDER", orderValue: 100, gstAmount: 0, transportArrangedBy: "Party" });
   seed(schema.pdiInspections, { id: "PDI", orderId: "ORDER", status: "Passed" });

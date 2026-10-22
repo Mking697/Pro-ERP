@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireSession } from "@/lib/auth/guard";
 import { tenantFromOrgId, TenantResolutionError } from "@/lib/tenant";
-import { uploadAttachmentForOrg } from "@/lib/storage";
+import { uploadAttachmentForOrg, isAllowedAttachmentType, InvalidUploadError } from "@/lib/storage";
 
 /**
  * Accepts a direct multipart upload from the browser and writes it to this server's own
@@ -13,29 +13,8 @@ import { uploadAttachmentForOrg } from "@/lib/storage";
  */
 const MAX_FILE_BYTES = 100 * 1024 * 1024;
 
-const ALLOWED_MIME_PREFIXES = ["image/", "video/"];
-const ALLOWED_MIME_TYPES = [
-  "application/pdf",
-  "application/vnd.ms-excel",
-  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-];
-
-/**
- * An SVG is markup, not a picture: it can carry `<script>`. Uploads are served with the
- * content type they claim from a public URL under our own domain, so an accepted SVG
- * becomes a script-executing page hosted under our own storage path — a ready-made
- * phishing page. The `image/*` prefix below would otherwise let it back in.
- */
-const DENIED_MIME_TYPES = ["image/svg+xml", "image/svg", "image/svg-xml"];
-
-function isAllowedMimeType(mimeType: string): boolean {
-  const type = mimeType.trim().toLowerCase();
-  if (DENIED_MIME_TYPES.includes(type)) return false;
-  return (
-    ALLOWED_MIME_PREFIXES.some((prefix) => type.startsWith(prefix)) ||
-    ALLOWED_MIME_TYPES.includes(type)
-  );
-}
+// Use the same explicit type allowlist as the storage content validator. SVG/HTML and
+// unsupported image/video subtypes never fall through a wildcard MIME prefix.
 
 export async function POST(request: Request) {
   const guard = await requireSession();
@@ -67,7 +46,7 @@ export async function POST(request: Request) {
   }
 
   const mimeType = (file.type || "").trim().toLowerCase();
-  if (!isAllowedMimeType(mimeType)) {
+  if (!isAllowedAttachmentType(mimeType)) {
     return NextResponse.json(
       { error: "Sirf Image, Video, PDF, ya Excel files allowed hain." },
       { status: 400 }
@@ -78,10 +57,15 @@ export async function POST(request: Request) {
   }
 
   const buffer = Buffer.from(await file.arrayBuffer());
-  const { url } = await uploadAttachmentForOrg(tenant.orgId, {
-    fileName: file.name || "file",
-    buffer,
-  });
-
-  return NextResponse.json({ url });
+  try {
+    const { url } = await uploadAttachmentForOrg(tenant.orgId, {
+      fileName: file.name || "file", mimeType, buffer,
+    });
+    return NextResponse.json({ url });
+  } catch (error) {
+    if (error instanceof InvalidUploadError) {
+      return NextResponse.json({ error: error.message }, { status: 400 });
+    }
+    throw error; // A storage outage is not an invalid user file.
+  }
 }

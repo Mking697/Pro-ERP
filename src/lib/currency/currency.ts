@@ -4,6 +4,7 @@ import { db } from "@/db/client";
 import { generateId } from "@/lib/id";
 import { getTenantOrgId } from "@/lib/tenant";
 import { round2 } from "@/lib/leads/quotationMath";
+import { assertFinancialNumber, MAX_EXCHANGE_RATE } from "@/lib/financial-validation";
 
 /**
  * Multi-currency DISPLAY/REFERENCE layer (Phase C) — see src/db/schema/currency.ts's own
@@ -136,6 +137,8 @@ export async function recordExchangeRate(
   if (!Number.isFinite(rateToInr) || rateToInr <= 0) {
     throw new CurrencyError("Exchange rate 0 se zyada aur finite hona chahiye.");
   }
+  assertFinancialNumber(rateToInr, "Exchange rate", CurrencyError, MAX_EXCHANGE_RATE, true);
+  assertFinancialNumber(round2(rateToInr), "Rounded exchange rate", CurrencyError, MAX_EXCHANGE_RATE, true);
   const orgId = await getTenantOrgId();
   const [row] = await db
     .insert(exchangeRates)
@@ -228,7 +231,11 @@ export function convertToInr(amount: number, rateToInr: number): number {
   if (!Number.isFinite(rateToInr) || rateToInr <= 0) {
     throw new CurrencyError("Exchange rate 0 se zyada aur finite hona chahiye.");
   }
-  return round2(amount * rateToInr);
+  assertFinancialNumber(amount, "Face amount", CurrencyError);
+  assertFinancialNumber(rateToInr, "Exchange rate", CurrencyError, MAX_EXCHANGE_RATE, true);
+  const result = round2(amount * rateToInr);
+  assertFinancialNumber(result, "Converted INR amount", CurrencyError);
+  return result;
 }
 
 export interface ResolvedDisplayCurrency {

@@ -2,6 +2,7 @@ import { Fragment } from "react";
 import type { CSSProperties, ReactNode } from "react";
 import { redirect } from "next/navigation";
 import Link from "next/link";
+import EmptyState from "@/components/empty-state";
 import { CheckCircle2, Gauge, ListTodo } from "lucide-react";
 import { getLiveSession } from "@/lib/auth/live-session";
 import { listTasks, type TaskRecord } from "@/lib/tasks";
@@ -297,7 +298,12 @@ export default async function DashboardPage({
               </CardHeader>
               <CardContent className="space-y-2">
                 {upcoming.length === 0 && (
-                  <p className="py-6 text-center text-sm text-muted-foreground">{t("Koi pending task nahi hai.")}</p>
+                  <EmptyState
+                    icon={<CheckCircle2 />}
+                    title={t("Koi pending task nahi hai.")}
+                    action={<Button variant="outline" size="sm" render={<Link href="/tasks">{t("Saare tasks dekhein")}</Link>} />}
+                    className="border-0 bg-muted/20 py-8"
+                  />
                 )}
                 {upcoming.map((task, i) => (
                   <div

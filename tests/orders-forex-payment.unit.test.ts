@@ -139,6 +139,23 @@ function makeForeignOrder(displayExchangeRate: number) {
   h.state.rows.orders[0].displayAmount = "500";
 }
 
+it.each(["orderRate", "todayRate", "face"] as const)("forex server rejects hostile %s and writes no payment", async (field) => {
+  for (const value of [-1, Infinity, NaN, 1e20]) {
+    makeForeignOrder(field === "orderRate" ? value : 83);
+    h.rate.mockResolvedValue({ rateToInr: field === "todayRate" ? value : 85 });
+    await expect(recordPayment("ORD", { amount: 1, mode: "Cash", faceAmountReceived: field === "face" ? value : 500 }, "actor"), `${field}=${value}`).rejects.toThrow(OrderError);
+    expect(h.state.rows.orderPayments).toEqual([]);
+    expect(h.journal).not.toHaveBeenCalled();
+  }
+});
+it("forex server rejects an absurd INR product from individually bounded inputs", async () => {
+  makeForeignOrder(83);
+  h.rate.mockResolvedValue({ rateToInr: 85 });
+  await expect(recordPayment("ORD", { amount: 1, mode: "Cash", faceAmountReceived: 1e12 }, "actor")).rejects.toThrow(OrderError);
+  expect(h.state.rows.orderPayments).toEqual([]);
+  expect(h.journal).not.toHaveBeenCalled();
+});
+
 it("foreign payment with no real rate movement posts exactly 2 balanced lines (forexDelta === 0)", async () => {
   makeForeignOrder(83);
   h.rate.mockResolvedValue({ rateToInr: 83 });

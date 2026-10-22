@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { getMutationKey, MutationConflictError } from "@/lib/mutations";
 import { z } from "zod";
 import { requireModule } from "@/lib/auth/guard";
 import { cancelOrder, OrderError } from "@/lib/orders/orders";
@@ -22,10 +23,10 @@ export async function POST(
   }
 
   try {
-    const order = await cancelOrder(orderId, parsed.data.reason, guard.session.userId);
+    const order = await cancelOrder(orderId, parsed.data.reason, guard.session.userId, getMutationKey(request));
     return NextResponse.json({ order });
   } catch (err) {
     const message = err instanceof OrderError || err instanceof Error ? err.message : "Order cancel nahi ho paya.";
-    return NextResponse.json({ error: message }, { status: 400 });
+    return NextResponse.json({ error: message }, { status: err instanceof MutationConflictError ? 409 : 400 });
   }
 }
