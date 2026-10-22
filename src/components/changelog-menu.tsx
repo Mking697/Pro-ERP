@@ -1,7 +1,7 @@
 "use client";
 
 import { useSyncExternalStore } from "react";
-import { Bell } from "lucide-react";
+import { Megaphone } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -62,7 +62,7 @@ function markSeen(id: string) {
 }
 
 /**
- * A bell icon in the header, next to Settings, for the one-line "what's new since you last
+ * A megaphone icon in the header, next to Settings, for the one-line "what's new since you last
  * looked" surface — every feature this session shipped with no in-product announcement.
  *
  * "Seen" lives in localStorage, not a database column: this is a nice-to-have, and adding a
@@ -95,7 +95,7 @@ export default function ChangelogMenu() {
             aria-label={t("Naye updates")}
             className="relative"
           >
-            <Bell />
+            <Megaphone />
             {unseenCount > 0 && (
               <>
                 {/* A soft pulsing ring behind the count — catches the eye once without
