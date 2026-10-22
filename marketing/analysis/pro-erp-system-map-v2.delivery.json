@@ -1,17 +1,17 @@
 {
   "schemaVersion": 1,
-  "receiptId": "b3b662df-0340-4e02-915d-8dcc91745c57",
+  "receiptId": "a3faa633-4fbe-4740-9de9-ef56a7cad3f6",
   "status": "current",
   "command": "deliver",
   "type": "architecture",
-  "input": "G:\\Pro-ERP\\marketing\\analysis\\pro-erp-system-map-v2.candidate.json",
-  "output": "G:\\Pro-ERP\\marketing\\analysis\\pro-erp-system-map-v2.html",
+  "input": "D:\\Pro-ERP\\marketing\\analysis\\pro-erp-system-map-v2.candidate.json",
+  "output": "D:\\Pro-ERP\\marketing\\analysis\\pro-erp-system-map-v2.html",
   "specification": {
-    "sha256": "087a362340453b29e8b9dcf2015d9d53fd2a2da181909f61b5988c980d318426",
-    "bytes": 15762
+    "sha256": "d09314ccb6aaa00cf72619bf6dd21b9c35bbd567f3e9505ee228415837a64e15",
+    "bytes": 31508
   },
   "artifact": {
-    "sha256": "12a1189342790df362d035844ccd02f2bd525941e2ba314ca42ed8b17dfae3e2",
-    "bytes": 809137
+    "sha256": "9e85f799f7433fafbb41825ec35ebca7db01aea23cb5ea77f13586f7b338706f",
+    "bytes": 852242
   }
 }

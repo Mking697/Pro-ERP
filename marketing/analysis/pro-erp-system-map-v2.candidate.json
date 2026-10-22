@@ -2,7 +2,7 @@
   "schema_version": 1,
   "diagram_type": "architecture",
   "meta": {
-    "title": "Pro ERP \u2014 One Connected System",
+    "title": "Pro ERP — One Connected System",
     "output": "pro-erp-system-map-v2.html",
     "quality_profile": "showcase",
     "visual_preset": "signal-flow",
@@ -32,14 +32,15 @@
           "label": "Outbound Integrations"
         }
       }
-    }
+    },
+    "subtitle": "Current-source snapshot • 22 Oct 2026 • HEAD 963f898 + uncommitted work • Not a deployment or security certification"
   },
   "components": [
     {
       "id": "platform",
       "type": "cloud",
       "label": "Platform",
-      "sublabel": "Every org, usage metrics, error log",
+      "sublabel": "Org registry, usage and error log",
       "pos": [
         20,
         40
@@ -53,8 +54,8 @@
     {
       "id": "admin",
       "type": "security",
-      "label": "Admin",
-      "sublabel": "Per-user module-access grants",
+      "label": "Admin & Settings",
+      "sublabel": "Module grants, API keys, currency",
       "pos": [
         300,
         40
@@ -68,7 +69,7 @@
       "id": "reports",
       "type": "backend",
       "label": "Reports & Sharing",
-      "sublabel": "Cross-module exports + Cmd-K search",
+      "sublabel": "Exports, Tally XML, Cmd-K search",
       "pos": [
         500,
         40
@@ -110,7 +111,7 @@
       "id": "payroll",
       "type": "backend",
       "label": "Payroll",
-      "sublabel": "Join-date proration (v1)",
+      "sublabel": "Proration + opt-in PF/ESI/TDS",
       "pos": [
         550,
         260
@@ -138,7 +139,7 @@
       "id": "order",
       "type": "frontend",
       "label": "Order",
-      "sublabel": "Credit gate + live Free-stock reservation",
+      "sublabel": "Credit gate, reservations, INR + FX snapshot",
       "pos": [
         20,
         630
@@ -250,7 +251,7 @@
       "id": "fms",
       "type": "messagebus",
       "label": "FMS Engine",
-      "sublabel": "No-code: forms, TAT calendar, stock actions, branching",
+      "sublabel": "Forms, TAT, branching, stock actions + builder help",
       "pos": [
         380,
         750
@@ -279,7 +280,7 @@
       "id": "purchase",
       "type": "frontend",
       "label": "Purchase",
-      "sublabel": "Indent -> PO -> Follow Up -> Received",
+      "sublabel": "Indent -> PO -> Receive; FX snapshot",
       "pos": [
         660,
         1080
@@ -335,7 +336,7 @@
       "id": "receivables",
       "type": "backend",
       "label": "Receivables",
-      "sublabel": "Invoices, multi-invoice-per-order splitting",
+      "sublabel": "Split invoices + FX reference snapshots",
       "pos": [
         620,
         1350
@@ -378,7 +379,7 @@
       "id": "aging",
       "type": "backend",
       "label": "Aging",
-      "sublabel": "Receivables aging buckets",
+      "sublabel": "Order-level issued invoices minus payments",
       "pos": [
         380,
         1760
@@ -392,7 +393,7 @@
       "id": "gst_report",
       "type": "backend",
       "label": "GST Report",
-      "sublabel": "GSTR-shaped export for manual filing",
+      "sublabel": "Issued invoices/bills; manual filing",
       "pos": [
         620,
         1760
@@ -420,7 +421,7 @@
       "id": "performance",
       "type": "backend",
       "label": "Performance",
-      "sublabel": "Doer MIS score (Tasks+FMS runs), export & scheduled send-reports",
+      "sublabel": "Task/FMS MIS, exports + scheduled reports",
       "pos": [
         550,
         364
@@ -447,8 +448,8 @@
     {
       "id": "maintenance",
       "type": "frontend",
-      "label": "Maintenance",
-      "sublabel": "Breakdown pauses the Production Line step until confirmed",
+      "label": "Breakdown / Repair",
+      "sublabel": "Pauses Production Line until repair confirmed",
       "pos": [
         490,
         900
@@ -456,6 +457,230 @@
       "size": [
         220,
         90
+      ]
+    },
+    {
+      "id": "currency",
+      "type": "backend",
+      "label": "Currency Reference",
+            "sublabel": "INR / USD / EUR / GBP / AED",
+            "pos": [
+              20,
+              1940
+            ],
+            "size": [
+              210,
+              76
+            ]
+    },
+    {
+      "id": "forex",
+      "type": "backend",
+      "label": "Order Payment FX",
+      "sublabel": "Opt-in gain/loss GL; not vendor FX",
+      "pos": [
+        380,
+        1940
+      ],
+      "size": [
+        230,
+        76
+      ]
+    },
+    {
+      "id": "field_service",
+      "type": "frontend",
+      "label": "Field Service",
+      "sublabel": "Services, Complaints, Site Visits",
+      "pos": [
+        680,
+        1940
+      ],
+      "size": [
+        190,
+        76
+      ]
+    },
+    {
+      "id": "workspace",
+      "type": "frontend",
+      "label": "Personal Workspace",
+      "sublabel": "Widgets, saved views, onboarding, bulk",
+      "pos": [
+        20,
+        2120
+      ],
+      "size": [
+        260,
+        76
+      ]
+    },
+    {
+      "id": "api_v1",
+      "type": "security",
+      "label": "Read-only API v1",
+      "sublabel": "Bearer keys -> tenant-scoped GET",
+      "pos": [
+        380,
+        2120
+      ],
+      "size": [
+        230,
+        76
+      ]
+    },
+    {
+      "id": "domain_events",
+      "type": "messagebus",
+      "label": "domain_events",
+      "sublabel": "Orders / stock / task / approval",
+      "pos": [
+        680,
+        2120
+      ],
+      "size": [
+        190,
+        76
+      ]
+    },
+    {
+      "id": "portal",
+      "type": "frontend",
+      "label": "Customer Portal",
+      "sublabel": "Revocable link; own orders + invoices",
+      "pos": [
+        20,
+        2300
+      ],
+      "size": [
+        260,
+        76
+      ]
+    },
+    {
+      "id": "webhooks",
+      "type": "external",
+      "label": "HMAC Webhooks",
+      "sublabel": "Order / stock; cron poll + retries",
+      "pos": [
+        380,
+        2300
+      ],
+      "size": [
+        230,
+        76
+      ]
+    },
+    {
+      "id": "notifications",
+      "type": "frontend",
+      "label": "Notification Bell",
+      "sublabel": "Cron -> inbox rows -> 30s UI poll",
+      "pos": [
+        680,
+        2300
+      ],
+      "size": [
+        190,
+        76
+      ]
+    },
+    {
+      "id": "nginx",
+      "type": "cloud",
+      "label": "Nginx",
+      "sublabel": "TLS + /uploads",
+      "pos": [
+        20,
+        2490
+      ],
+      "size": [
+        160,
+        76
+      ]
+    },
+    {
+      "id": "next_pm2",
+      "type": "backend",
+      "label": "PM2 / Next.js",
+      "sublabel": "App + API routes",
+      "pos": [
+        260,
+        2490
+      ],
+      "size": [
+        160,
+        76
+      ]
+    },
+    {
+      "id": "local_proxy",
+      "type": "cloud",
+      "label": "neon-local-proxy",
+      "sublabel": "HTTP + WebSocket bridge",
+      "pos": [
+        500,
+        2490
+      ],
+      "size": [
+        180,
+        76
+      ]
+    },
+    {
+      "id": "postgres",
+      "type": "database",
+      "label": "Local Postgres",
+      "sublabel": "Drizzle; same VPS",
+      "pos": [
+        760,
+        2490
+      ],
+      "size": [
+        150,
+        76
+      ]
+    },
+    {
+      "id": "local_uploads",
+      "type": "database",
+      "label": "Local Uploads",
+      "sublabel": "Disk outside checkout; Nginx serves",
+      "pos": [
+        20,
+        2670
+      ],
+      "size": [
+        260,
+        76
+      ]
+    },
+    {
+      "id": "system_cron",
+      "type": "cloud",
+      "label": "System Cron",
+      "sublabel": "Recurring work + 2 dispatch pollers",
+      "pos": [
+        380,
+        2670
+      ],
+      "size": [
+        230,
+        76
+      ]
+    },
+    {
+      "id": "billing",
+      "type": "external",
+      "label": "Razorpay Billing",
+      "sublabel": "Checkout + gated Subscriptions code",
+      "pos": [
+        680,
+        2670
+      ],
+      "size": [
+        220,
+        76
       ]
     }
   ],
@@ -530,6 +755,50 @@
         "gst_report"
       ],
       "pad": 14
+    },
+    {
+      "kind": "region",
+      "label": "CURRENCY & SERVICE OPERATIONS",
+      "wraps": [
+        "currency",
+        "forex",
+        "field_service"
+      ],
+      "pad": 12
+    },
+    {
+      "kind": "region",
+      "label": "WORKSPACE & INTEGRATION SOURCE",
+      "wraps": [
+        "workspace",
+        "api_v1",
+        "domain_events"
+      ],
+      "pad": 12
+    },
+    {
+      "kind": "region",
+      "label": "PORTAL & ASYNC CONSUMERS",
+      "wraps": [
+        "portal",
+        "webhooks",
+        "notifications"
+      ],
+      "pad": 12
+    },
+    {
+      "kind": "region",
+      "label": "SELF-HOSTED VPS — DOCUMENTED TOPOLOGY",
+      "wraps": [
+        "nginx",
+        "next_pm2",
+        "local_proxy",
+        "postgres",
+        "local_uploads",
+        "system_cron",
+        "billing"
+      ],
+      "pad": 12
     }
   ],
   "connections": [
@@ -637,13 +906,14 @@
     {
       "id": "ledger-aging",
       "from": "ledger",
-      "to": "aging"
+      "to": "aging",
+      "label": "accounts reconciliation"
     },
     {
       "id": "ledger-gst",
       "from": "ledger",
       "to": "gst_report",
-      "label": "GST liability + ITC"
+      "label": "tax reconciliation"
     },
     {
       "id": "leave-tasks",
@@ -671,53 +941,181 @@
       "variant": "dashed",
       "fromSide": "bottom",
       "toSide": "top"
+    },
+    {
+      "id": "currency-forex",
+      "from": "currency",
+      "to": "forex",
+      "label": "snapshot vs current rate"
+    },
+    {
+      "id": "events-webhooks",
+      "from": "domain_events",
+      "to": "webhooks",
+      "label": "webhook dispatch",
+      "variant": "dashed",
+      "fromSide": "left",
+      "toSide": "top"
+    },
+    {
+      "id": "events-notifications",
+      "from": "domain_events",
+      "to": "notifications",
+      "label": "notification dispatch",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "variant": "dashed"
+    },
+    {
+      "id": "nginx-next",
+      "from": "nginx",
+      "to": "next_pm2",
+      "label": "HTTP"
+    },
+    {
+      "id": "next-proxy",
+      "from": "next_pm2",
+      "to": "local_proxy",
+      "label": "DB driver"
+    },
+    {
+      "id": "proxy-postgres",
+      "from": "local_proxy",
+      "to": "postgres",
+      "label": "Postgres"
+    },
+    {
+      "id": "nginx-uploads",
+      "from": "nginx",
+      "to": "local_uploads",
+      "label": "static files",
+      "fromSide": "bottom",
+      "toSide": "top"
     }
   ],
   "cards": [
     {
       "dot": "cyan",
-      "title": "The Sales Chain",
+      "title": "The Connected Sales Chain",
       "items": [
-        "Lead -> Order -> PDI -> TMS -> Dispatch is one connected path, not five separate screens",
-        "Named events hand off every leg: LEAD_ORDER_CONFIRMED -> ORDER_READY_FOR_PDI -> ORDER_PDI_PASSED -> ORDER_FULLY_SHIPPED",
-        "Dispatch is the single point that writes a real stock-ledger Out; everything upstream only reserves"
+        "Lead -> Order -> PDI -> TMS -> Dispatch remains the connected operational path; named FMS events coordinate hand-offs.",
+        "Dispatch posts outbound stock; upstream order/PPC reservations share getStockAvailability. Other legitimate inventory/production stock actions also exist.",
+        "Customer Portal uses a revocable per-customer link for that customer's own orders and Issued invoices. Barcode scanning is implemented; physical-device verification is separate."
       ]
     },
     {
       "dot": "emerald",
-      "title": "Real Double-Entry Accounting",
+      "title": "Accounts — INR Is Authoritative",
       "items": [
-        "Receivables and Payables both post real journal entries into one GL Ledger",
-        "GST is tracked as a liability, not folded into revenue; Payables carries Input Tax Credit",
-        "Aging and the GSTR-shaped report are both read off the same Ledger, not separate spreadsheets"
+        "Receivables and Payables post journal entries to the double-entry GL; Trial Balance, P&L and Balance Sheet use that ledger. Tally XML export is implemented.",
+        "Aging is NOT a GL-only projection: getReceivablesAging sums Issued invoices per ORDER, subtracts order_payments, and ages from the earliest invoice.",
+        "GST export reads Issued sales invoices and purchase bills, with output GST and input tax; it is GSTR-shaped support for manual filing, not government e-filing.",
+        "Sources: src/lib/accounts/accounts.ts:545-631,742-884; src/lib/accounts/ledger.ts; src/lib/accounts/tally-export.ts."
       ]
     },
     {
       "dot": "violet",
-      "title": "FMS \u2014 No-Code Workflow Engine",
+      "title": "FMS, Production & People",
       "items": [
-        "An Admin builds any multi-step process as data: forms, lookups, a working-hours TAT calendar, branching, stock actions",
-        "Listens for real business events from Inward (INWARD_ENTRY_CREATED), Production Line flows, and Purchase (INDENT_APPROVED)",
-        "The single most defensible, demo-able differentiator in the product"
+        "FMS remains the no-code engine: forms, lookup fields, working-hours TAT, branching and stock actions; Inward/PPC/Purchase events feed workflow hand-offs.",
+        "Template Builder help is implemented: first-visit explainer via localStorage, always reopenable. Services, Complaints and Site Visits add assigned field-work cycles; advances/expenses are not automatic Accounts postings.",
+        "Payroll includes join/exit proration and opt-in simplified PF/ESI/TDS deductions with shortfall capping. This is NOT statutory certification or return filing; embedded rate assumptions need accountant review.",
+        "Sources: src/components/fms-builder-help.tsx; src/app/fms/fms-template-form.tsx:546; src/lib/payroll/payroll.ts:393-447; src/lib/payroll/statutory.ts:1-23."
       ]
     },
     {
       "dot": "amber",
-      "title": "One Platform, Every Org Isolated",
+      "title": "Tenant Access — Source, Not a Security Guarantee",
       "items": [
-        "Multi-tenant: every table carries org_id, each signup is a fully isolated organization",
-        "Admin grants gate access module-by-module, down to individual users",
-        "Leave approvals auto-reassign a person's open Tasks to a named Buddy, with full audit trail"
+        "Tenant-owned business data is org-scoped through tenant context and module/role guards; platform reference tables such as currencies are intentionally NOT per-org.",
+        "Admin manages module access, API keys and currency settings. Task leave-buddy reassignment and its audit records remain part of People Ops.",
+        "Tenant transactions/advisory locks and durable mutation_receipts protect their participating paths; this is not a claim that every operation is race-free or every request is idempotent.",
+        "Source snapshot includes concurrent uncommitted security/UI changes. No full-security guarantee, audit-passed claim, or production acceptance is made."
       ]
     },
     {
       "dot": "rose",
-      "title": "Data-Integrity Engineering",
+      "title": "Read-only REST API — Implemented",
       "items": [
-        "runInTenantTransaction takes a per-org advisory lock before any read, so competing writes across modules (Orders, Dispatch, Payables...) cannot race each other",
-        "Idempotent mutations: a durable mutation_receipts table replays the same request key to the same result, so a retried payment or stock write is never double-applied",
-        "getStockAvailability is the single Free-stock engine every module (Order, PPC, FMS) reads; no module computes its own stale number",
-        "/api/health distinguishes schema-missing, schema-stale, and schema-divergent states without leaking connection or driver details"
+        "GET /api/v1/orders, /api/v1/invoices, /api/v1/stock, /api/v1/customers, /api/v1/vendors and /api/v1/dispatches use API-key Bearer authentication, independent of cookie login.",
+        "Key hashes/revocation are implemented; withApiKeyTenant resolves the owning organization and runs existing domain reads in explicit tenant context. These endpoints do not provide third-party writes.",
+        "limit/cursor responses paginate already-loaded arrays (default 50, max 200), NOT indexed DB pagination. Orders/Invoices/Dispatches support their documented status filters.",
+        "Rate-limit hardening in src/lib/auth/apiKeyGuard.ts is currently uncommitted work, not an accepted production security result.",
+        "Sources: src/app/api/v1/*/route.ts; src/lib/auth/apiKeyGuard.ts; src/lib/apiAccess/apiKeys.ts; src/lib/apiAccess/pagination.ts."
+      ]
+    },
+    {
+      "dot": "orange",
+      "title": "domain_events -> Two Independent Cron Consumers",
+      "items": [
+        "The append-only org-scoped domain_events log is shared infrastructure, distinct from the named FMS hand-off engine. Call sites emit order.status_changed, stock.movement_recorded, task.assigned and approval.pending.",
+        "Webhooks poll order.status_changed + stock.movement_recorded. Raw JSON POST bodies carry X-Pro-ERP-Signature = sha256=<HMAC-SHA256>; subscriptions track cursors and deliveries track attempts/retries. Do not assume exactly-once delivery.",
+        "POST/GET /api/cron/dispatch-webhooks and /api/cron/dispatch-notifications require the cron bearer secret. Their source requests separate VPS system-cron entries every 1-2 minutes; actual scheduler installation/delivery was NOT checked here.",
+        "Current webhook URL filtering rejects obvious local/private literal hosts only: DNS-resolution/rebinding and redirect-target defenses remain concrete hardening gaps in this source snapshot.",
+        "Sources: src/lib/events/emit.ts; src/lib/apiAccess/webhooks.ts:28-76,210-363; src/app/api/cron/dispatch-{webhooks,notifications}/route.ts."
+      ]
+    },
+    {
+      "dot": "cyan",
+      "title": "Notification Bell — Implemented, Polling",
+      "items": [
+        "task.assigned -> assigned doer; approval.pending -> leave approver; order.status_changed -> order creator. Stock movement is deliberately excluded from the human inbox.",
+        "Task creation/recurring occurrence and leave approval progression emit the events in current source; older CLAUDE roadmap notes saying notification center is not started are stale.",
+        "Cron converts relevant domain_events into per-user notifications, then advances an org cursor. Header bell polls /api/notifications every 30 seconds, shows unread count and supports mark-read; not WebSocket push.",
+        "Runtime duplicate/overlapping-cron behavior and real multi-user delivery still need dedicated deployment verification; source existence is not proof of scheduler operation.",
+        "Sources: src/lib/tasks.ts:136,182; src/lib/leave/leaves.ts:203-216,357; src/lib/notifications/dispatch.ts:23-174; src/components/notification-bell.tsx:31-93; src/components/sidebar-shell.tsx:157,225."
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Reference Currency + Opt-in Order-Payment Forex",
+      "items": [
+        "Supported reference currencies: INR, USD, EUR, GBP, AED. INR remains the authoritative base for credit checks, accounting and reports; foreign face amount, currency and rate are document snapshots.",
+        "Admin enables currencies and manually appends historical effective-from rates. Order, invoice and purchase-order creation snapshot their rate/face amount; existing documents do not float when rates change. No automatic market-rate feed.",
+        "Only explicit faceAmountReceived on an eligible foreign-currency ORDER PAYMENT activates realized FX posting: AR clears at order snapshot rate; Cash/Bank uses the current configured rate; delta posts Forex Gain 4100 or Forex Loss 5600.",
+        "Ordinary INR payments retain the ordinary path. This is NOT vendor-settlement FX, a foreign-currency GL, historical payment-date revaluation, or multi-company books.",
+        "Sources: src/db/schema/currency.ts; src/lib/currency/currency.ts:19-25,127-217,257-277; src/lib/orders/orders.ts:939-1110; src/lib/accounts/accounts.ts:338-355; src/lib/purchase/orders.ts:413-432; src/lib/accounts/ledger.ts:99-104."
+      ]
+    },
+    {
+      "dot": "violet",
+      "title": "Personal Workspace & Bulk Actions",
+      "items": [
+        "Dashboard per-user widget preferences support show/hide and up/down reorder, not drag-and-drop. Admin onboarding uses four EXISTS-based steps with per-org dismissal.",
+        "Orders and Inventory use reusable SavedViewsBar with per-user saved filter/search state; this is not an org-shared report view.",
+        "Orders bulk actions respect same-status/eligible next steps or cancellation, call existing per-row endpoints and surface partial failures; not one all-or-nothing batch transaction. Inventory supports selected-row CSV export.",
+        "Sources: src/app/dashboard/page.tsx:161-177,421; src/lib/userSettings.ts; src/lib/onboarding.ts; src/components/saved-views-bar.tsx; src/app/orders/orders-board.tsx:108-314; src/app/inventory/inventory-board.tsx:232-265."
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "Actual Hosting Topology — Not Vercel / Managed Neon",
+      "items": [
+        "Documented live architecture: self-hosted Hostinger VPS, Nginx TLS/reverse proxy -> PM2-managed Next.js -> neon-local-proxy sidecar -> local Postgres. Drizzle retains the Neon protocol driver, NOT a managed Neon database.",
+        "Attachments are local disk uploads outside the application checkout, served by Nginx /uploads. App storage writes via UPLOADS_DIR; this is NOT Vercel Blob.",
+        "Deploy remains manual build/restart; scheduled work uses system cron, not Vercel Cron. This map update did not SSH, deploy, migrate, inspect production configuration, or verify live health.",
+        "Health code checks database/schema readiness; a ready health response would not establish backup restore, delivery reliability or security approval.",
+        "Sources: README.md:3-5,23-33,95-97; CLAUDE.md:87-101 (infra record); src/db/local-proxy.ts:14-24; src/db/client.ts; src/lib/storage.ts."
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "Pending / Deliberately Out of Scope",
+      "items": [
+        "Deployment acceptance: verify new migrations, both cron entries, real signed webhook receiver/retry behavior and per-user notification delivery against an authorized environment. These were not exercised for this artifact.",
+        "Billing: Subscriptions backend exists behind assertSubscriptionsReady; latest project notes leave real sandbox subscribe -> payment -> renewal -> cancellation and credential rotation pending. No live enabled/disabled flag was inspected. SaaS GST receipt is documented blocked on business GST details.",
+        "Compliance/features: manual GST filing, simplified payroll assumptions, no vendor-settlement FX or multi-company books, and deferred email delivery remain distinct limitations; do not relabel implemented reference currency as full multi-currency accounting.",
+        "Capacity/verification: API pagination and global search remain memory-based; physical barcode camera proof and tenant aggregate upload quotas remain separate follow-ups. Review current release plans before treating historical checklist items as live blockers.",
+        "Security/UI hardening is concurrently in progress and uncommitted (login/API throttling, uploads, financial input bounds, mutation idempotency). This diagram does NOT certify those changes or repeat old audit-pass claims."
+      ]
+    },
+    {
+      "dot": "slate",
+      "title": "Evidence & Scope — 22 October 2026",
+      "items": [
+        "Built from current local source at D:/Pro-ERP; baseline HEAD 963f898 plus an actively changing working tree, not an immutable release snapshot. Source implementation takes precedence over stale roadmap/history.",
+        "Archify validate/deliver/check/browser-check receipts verify this diagram artifact only. They do not run ERP business/security tests or verify the VPS.",
+        "Companion pro-erp-system-map-v2.evidence.md lists concrete source references and verification boundaries. Only system-map-v2 deliverables were modified; no app code, commit, push, deployment or secret files were touched."
       ]
     }
   ]
