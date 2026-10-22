@@ -2,9 +2,43 @@
 
 # Pro ERP
 
-## PENDING — full-ERP improvement roadmap, planned 2026-10-20 — Phase 1: items 1 & 2 DONE 2026-10-21, item 3 blocked on GSTIN
+## PENDING — full-ERP improvement roadmap, planned 2026-10-20 — Phase 1: items 1 & 2 DONE 2026-10-21, item 3 blocked on GSTIN; Phase B/C/4 DONE 2026-10-21/22 (see CHECKPOINT 2026-10-22 below)
 
-### CHECKPOINT 2026-10-21 (latest) — read this first before resuming
+### CHECKPOINT 2026-10-22 (latest) — read this first before resuming
+
+**Phase B, Phase C, and Phase 4 (items 6, 7, 13, 16, 17, 18 below) are now ALL DONE and deployed**, built across this and the prior session:
+- Item 7 (read-only API + webhooks): `/api/v1/{orders,invoices,stock,customers,vendors,dispatches}` key-guarded REST endpoints, HMAC-signed webhook dispatch off `domain_events`, admin UI for keys/webhook subscriptions. Commit `c26f5aed`.
+- Item 13 (notification center): `notifications` table, dispatcher cron, desktop/mobile bell; `task.assigned`/`approval.pending`/`order.status_changed` events wired. Commit `e8503a9`.
+- Item 6 (multi-currency, scoped to currency only, no multi-company): currency catalog + manual rate history + org enablement, `displayCurrency`/`displayExchangeRate` snapshot columns on Orders/Invoices/POs, opt-in forex gain/loss GL posting on order payments. Commits `fb83754`, `e312f02`, `f1655bb`.
+- Item 16 (guided help): FMS Template Builder `? Help` dialog. Commit `a34ff83`.
+- Item 17 (bulk actions): Orders/Inventory multi-select + bulk status/export. Commit `f2695db`.
+- Item 18 (server-side search): already implemented in `/api/search` from an earlier session — this roadmap note was stale, no rewrite needed.
+
+**New this session (2026-10-22), via a security/quality audit pass the user explicitly requested (penetration-test, accessibility, UI finish-gate, DB reliability specialists) — all deployed, commit `1a7fd3f` (security+UI) and `ce0b269` (system-map), plus the a11y commit `963f898`:**
+- **5 concrete attack vectors found and fixed, each with a real test** (`tests/security-*`): CSV export formula-injection (`src/lib/csv.ts`), upload MIME/extension spoofing — now checks real magic bytes (`src/lib/storage.ts`), server-side rejection of negative/NaN/Infinity/absurd money fields (`src/lib/financial-validation.ts`), stable per-action idempotency keys stopping double-submit duplication on payments/bulk actions (`src/lib/client-idempotency.ts`), rate-limiting on login + API-key verification (`src/lib/auth/apiKeyGuard.ts`). Findings detail: `docs/security-five-vectors-2026-10-22.md`.
+- **WCAG 2.1 AA accessibility pass**: 16 issue groups fixed (unnamed controls, missing live-region announcements for bulk-selection/unread counts, focus-return on dialogs, contrast). Findings: `docs/accessibility-audit-2026-10-22.md`.
+- **UI finish-gate polish** (visual/UX only): Orders/Inventory bulk toolbar, FMS builder step headers, sidebar surface tokens, NotificationBell empty-state, currency-picker consistency across Order/Invoice/PO dialogs.
+- **`marketing/analysis/pro-erp-system-map-v2.html` refreshed** to reflect the current system (API/webhooks/notifications/currency/forex/infra) — Archify showcase gates all pass.
+- **Folder cleanup**: deleted stale `.claude/worktrees/agent-*` (dangling, un-tracked) and `.vercel/` (pre-migration leftover) — zero git/production impact.
+- **Database reliability audit (read-only, VPS SSH) — findings only, NOT fixed, needs real credentials/testing to act on:**
+  - 🔴 Backup (`/root/scripts/backup-all.sh`, daily, 30-day rotation) has **never been restore-tested**.
+  - 🔴 Backup lives on the **same disk/VPS as the live database** — no off-site copy; a disk failure or compromise loses both primary and backup together.
+  - 🟠 `neon-local-proxy`'s connection pool still intermittently exhausts (`pool is full, total_conns=20`) under load spikes — recurring, will worsen with scale.
+  - 🟠 The migration-apply workaround (inline `tsx` script through the local-proxy override) lives only in a skill file, not a committed repeatable script in this repo.
+- Verified before every deploy: `tsc --noEmit` clean, `npm run lint` 0 errors, `node scripts/i18n-check.mjs` 0 issues, all touched isolated vitest suites green (150+ tests). Windows-local `npm run build` still hits the known pre-existing Turbopack/`leaflet.css` crash (0xc0000142) — irrelevant, the real gate is the VPS's own Linux build, which succeeded.
+
+**Carried-forward pending work for a future session** (not started/blocked, listed so nothing gets lost):
+1. **Off-site backup destination** — today's backup is on-box only (see DB reliability finding above). Needs a real cloud storage account (e.g. rclone to an S3-compatible bucket) before it can be built — can't be done without the user providing/choosing a provider+credentials.
+2. **Backup restore rehearsal** — prove the existing backup script's output actually restores cleanly, on a disposable target, not production.
+3. **`neon-local-proxy` connection-pool sizing** — recurring exhaustion under load; needs a sizing decision (raise the pool, or move the proxy's own config) validated against real concurrent-user load.
+4. **Razorpay LIVE secret rotation** — a LIVE key secret was pasted into an earlier chat session; still not rotated in the Razorpay dashboard. Security debt, user explicitly deferred.
+5. **Razorpay sandbox subscribe→payment→renewal→cancel end-to-end test** — only after which `RAZORPAY_SUBSCRIPTIONS_ENABLED` should be considered.
+6. **Barcode/QR real-device camera test** — code/build-verified only so far (item 8), never scanned a real physical label on a real device.
+7. **Billing self-invoice** — blocked on the user supplying Pro ERP's own GSTIN/business address (item 3, Phase 1).
+8. **Statutory payroll (PF/ESI/TDS)** — v1 payroll is explicitly non-statutory; real tax-slab/PF-ESI-rate tables needed, scoped as its own multi-session effort (item 5, Phase 2).
+9. **Email notifications** — explicitly deferred by the user's own earlier choice (item 9, Phase 2); WhatsApp (ChatXFlow) is the only send channel today.
+
+### CHECKPOINT 2026-10-21 — superseded by the 2026-10-22 entry above, kept for history
 
 **Deployed to VPS and live-verified this session** (code pushed AND `git pull`+`npm ci`+`npm run build`+`pm2 restart pro-erp --update-env` run on the VPS, `/api/health` confirmed `ready:true`, new routes confirmed `307` login-redirect i.e. live+auth-gated): item 7's Tally GL export (`87122dd`, `94364b9`), item 8 barcode/QR scanning (`b397f85`), item 15 Recharts chart upgrade (`cce607e`). VPS is now at commit `cce607e`. No DB migration was needed for any of these three (code-only changes).
 
