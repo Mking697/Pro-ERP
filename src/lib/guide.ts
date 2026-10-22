@@ -227,6 +227,38 @@ export const GUIDE: GuideChapter[] = [
           "Ye sirf aapke is browser me yaad rehta hai — doosre device ya browser par khola to ho sakta hai wahi updates dobara 'naye' dikhein.",
         ],
       },
+      {
+        id: "notification-bell",
+        title: t("Notification bell — bell icon se updates"),
+        audience: "everyone",
+        summary:
+          "Header ke bell icon par aapke liye real notifications dikhte hain — task assign hona, aapke paas koi approval pending hona, ya kisi order ka status badalna.",
+        how: [
+          "Teen cheezein notification banati hain: koi task aapko assign ho, kisi approval (jaise leave) aapke paas pending ho, ya jis order ko aapne banaya tha uska status badal jaaye.",
+          "Ye 'Naye updates' wali ghanti (upar wala changelog — system me kya naya feature aaya) se alag hai; ye bell purani, aapke apne, aapke organization ke kaam ke notifications ke liye hai.",
+          "Desktop aur mobile dono par ye bell icon header me dikhta hai, unread count ke saath.",
+        ],
+        notes: [
+          "Ye near-real-time hai, instant push nahi — ek background job har ~1 minute me check karta hai, isliye notification aane me thoda (ek minute tak) time lag sakta hai.",
+          "Kisi notification par click karte hi wo 'read' mark ho jaata hai aur seedha us jagah le jaata hai. 'Sab read karein' se poori list ek saath read mark ho jaati hai.",
+        ],
+      },
+      {
+        id: "dashboard-customize",
+        title: t("Dashboard customize karein"),
+        audience: "everyone",
+        summary:
+          "Dashboard ke upar 'Dashboard customize karein' button se apne widgets dikha/chhupa sakte hain, aur unka order badal sakte hain.",
+        steps: [
+          "Dashboard par 'Dashboard customize karein' dabayein.",
+          "Har widget ke saamne ek switch hai — band karne se wo widget dashboard par dikhna band ho jaata hai.",
+          "Upar/neeche arrow se widget ka order badlein.",
+          "Save karein — ye preference sirf aapke liye hai, kisi doosre user ke dashboard par asar nahi padta.",
+        ],
+        notes: [
+          "Naya widget aage kabhi add ho (app update se) to wo aapki list me end me, visible, apne aap aa jaata hai — gayab nahi hota.",
+        ],
+      },
     ],
   },
 
@@ -671,6 +703,19 @@ export const GUIDE: GuideChapter[] = [
           "Reorder, Bulk Setup ya kisi plan/indent se linked hone ki koi check nahi hoti — ye seedha saara data saaf kar deta hai, isliye reset se pehle pakka kar lein.",
         ],
       },
+      {
+        id: "inventory-board-tools",
+        title: t("Inventory board — bulk CSV export aur Saved Views"),
+        audience: "INVENTORY_VIEW",
+        summary:
+          "Inventory list me bhi checkbox se kai items select karke ek saath CSV export kar sakte hain, aur apna filter/search ek naam se save kar sakte hain.",
+        how: [
+          "Har row ke aage checkbox hai; header ka checkbox sab visible (filtered) rows ko ek saath select/deselect karta hai.",
+          "Selection filters/search badalne se clear nahi hoti — sirf naya refresh (jaise Stock In/Out ke baad) hone par clear hoti hai.",
+          "'CSV Export Karein' se selected items ka CSV (Item, SKU, Category, Free, On Hand, ADC, ROP, Status) turant download ho jaata hai.",
+          "'Views' dropdown se current search/status filter ek naam se save karein aur baad me wahi naam chun kar wapas load karein — ye views sirf aapki apni hoti hain.",
+        ],
+      },
     ],
   },
 
@@ -850,6 +895,16 @@ export const GUIDE: GuideChapter[] = [
         notes: [
           "Ye sirf cost hai, profit/margin nahi — kyunki Production Plan ka koi real Sales Order se link abhi tak is system me nahi hai (Order No sirf free-text field hai).",
           "Raw material cost wahi Indents hain jinka 'Linked Plan' is Job par set tha, aur jo actually receive ho chuki hain.",
+        ],
+      },
+      {
+        id: "purchase-currency",
+        title: t("PO par foreign currency ka reference amount"),
+        audience: "PURCHASE_FMS",
+        summary:
+          "PO Issue karte waqt bhi, agar Admin ne foreign currency enable ki hai, vendor ka face amount (jaise $ ya €) reference ke liye daal sakte hain — har line ka asli Old Price/New Price hamesha INR me hi rehta hai.",
+        notes: [
+          "Ye sirf dikhne ke liye hai — vendor payment/Bill ka hisaab INR me hi hota hai, forex gain/loss ka koi posting PO/Bill side par nahi hota (ye sirf Order ke payment par hota hai).",
         ],
       },
     ],
@@ -1057,6 +1112,52 @@ export const GUIDE: GuideChapter[] = [
         ],
         notes: [
           "Doer/TAT sirf jaankari/planning ke liye hain — koi bhi ORDER_FMS access wala user kisi bhi order ka koi bhi step kaam kar sakta hai, jaise Purchase FMS me hota hai. Sirf Credit-Hold Approver hi asal me lock hai — sirf wahi user (ya Admin) Credit Hold clear kar sakta hai.",
+        ],
+      },
+      {
+        id: "orders-currency",
+        title: t("Order par foreign currency aur forex gain/loss"),
+        audience: "ORDER_FMS",
+        summary:
+          "Order banate waqt foreign currency chun sakte hain — par asli, GST/accounting ke liye maanya amount hamesha INR hi hai; foreign currency wala figure sirf reference ke liye dikhta hai.",
+        how: [
+          "'+ Naya Order' me, Admin ne jo currency enable ki hain unme se koi chunein aur us currency ka face amount (jaise $500) daalein — order ki INR value (Order Value, GST, Total) is se nahi badalti, wo hamesha items x rate x GST se hi nikalti hai.",
+          "Order banate waqt jo exchange rate active thi, wo order ke saath hamesha snapshot ho jaati hai — baad me Admin rate badal de to bhi is order ka purana rate wahi rehta hai.",
+          "Payment record karte waqt, agar payment sach me foreign currency me mila hai, to 'Foreign currency mein payment received hui' checkbox tick karein aur asli face amount (jo customer ne bheja, jaise $500) daalein — tab system khud order ke locked rate aur AAJ ke rate ka farak nikal kar ek Forex Gain ya Forex Loss journal entry apne aap post kar deta hai.",
+          "Checkbox tick na karein to payment seedhi INR me record hoti hai, bilkul normal order jaisi — forex ka koi hisaab nahi aata.",
+        ],
+        example: {
+          title: t("Forex Gain ka hisaab — $500 ka payment"),
+          lines: [
+            "  Order bante waqt ka rate   1 USD = ₹83",
+            "  Expected (order rate se)   500 x 83  = ₹41,500",
+            "  Aaj ka rate                1 USD = ₹85",
+            "  Actual (aaj ke rate se)    500 x 85  = ₹42,500",
+            "                                       ──────────",
+            "  Forex Gain = 42,500 - 41,500          ₹1,000",
+          ],
+        },
+        notes: [
+          "Agar aaj ka rate order ke rate se KAM ho (jaise ₹81), to farak negative aata hai aur system Forex Gain ki jagah Forex Loss post karta hai — logic bilkul wahi, sirf side badal jaata hai.",
+          "Ye sirf tab chalta hai jab order khud foreign-currency wala ho aur us currency ka aaj ka rate set ho — plain INR order par ye checkbox dikhta hi nahi.",
+          "Order payment me jo amount store hota hai wo hamesha 'Expected' (order-rate wala) INR figure hai, taaki outstanding/credit check hamesha order ki apni value se consistent rahe — Forex Gain/Loss sirf ek teesri, alag ledger line hai.",
+        ],
+      },
+      {
+        id: "orders-board-tools",
+        title: t("Order board — bulk actions aur Saved Views"),
+        audience: "ORDER_FMS",
+        summary:
+          "Order list me checkbox se kai orders ek saath select karein — ek chhota toolbar upar bulk actions deta hai.",
+        how: [
+          "Har row ke aage checkbox hai; header ka checkbox sab visible rows ko ek saath select/deselect karta hai.",
+          "Agar sab selected order ka CURRENT status ek jaisa hai aur uske liye koi valid 'advance' action hai (jaise sab Payment Review me hain), tabhi wahi ek action dropdown me milta hai — har order par wahi single-row action chalta hai jo akele karte to chalta, kabhi alag shortcut nahi.",
+          "Cancel mix-status selection par bhi mil sakta hai, bas koi bhi selected order already-terminal status (jaise Cancelled, ya Ready For PDI ke aage) na ho.",
+          "'CSV Export Karein' se selected rows ka CSV turant download ho jaata hai.",
+          "Neeche 'Views' dropdown se apna current filter/search/sort ek naam se save kar sakte hain, aur baad me wahi naam chun kar wapas load kar sakte hain — ye views sirf aapki apni hoti hain, kisi doosre user ko nahi dikhti.",
+        ],
+        notes: [
+          "Mixed ya invalid selection par advance-action dropdown khud disable ho jaata hai — koi row silently skip nahi hoti, bas button hi nahi milta jab tak selection match na kare.",
         ],
       },
     ],
@@ -1273,6 +1374,16 @@ export const GUIDE: GuideChapter[] = [
           "Balance Sheet me ek 'Retained Earnings (Current)' line khud-ba-khud jud jaati hai — ye asal account nahi hai, sirf abhi tak ke net profit ko dikhane ke liye hai, kyunki is system me abhi period-close (saal band karne) ka koi tareeka nahi hai.",
           "Ye posting hamesha 'best-effort' hai — Invoice Issue ya payment record khud kabhi nahi rukega chahe Ledger posting me koi dikkat aa jaaye. Aisa hone par error log me record ho jaata hai (Platform → Server Errors).",
           "Manual Journal Entry post hone ke baad edit ya delete nahi hoti — galti sudharni ho to ek nayi, ulti (reversing) entry hi tareeka hai, bilkul auto-posted entries ki tarah.",
+        ],
+      },
+      {
+        id: "accounts-currency",
+        title: t("Invoice par foreign currency ka reference amount"),
+        audience: "ACCOUNTS_FMS",
+        summary:
+          "Order ki foreign currency aur uska face amount Invoice par bhi reference ke liye dikhte hain — Invoice ki asli, GST wali value hamesha INR Final Value hi hai.",
+        notes: [
+          "Forex gain/loss ka hisaab Invoice se nahi hota — wo sirf Order par payment record karte waqt (foreign-currency payment checkbox se) hota hai; Invoice khud koi alag payment ya forex entry nahi rakhti.",
         ],
       },
     ],
@@ -1654,6 +1765,45 @@ export const GUIDE: GuideChapter[] = [
           "WhatsApp nahi ja raha — Settings me Send Test Message se check karein, phir ChatXFlow ka session dekhein.",
         ],
       },
+      {
+        id: "currency-setup",
+        title: t("Multi-Currency enable karna"),
+        audience: "admin",
+        summary:
+          "Admin → Settings → Multi-Currency me foreign currency (USD/EUR/GBP/AED) on karein aur rate set karein — tabhi Orders/Invoices/PO par wo currency dikhegi.",
+        steps: [
+          "Admin → Settings → Multi-Currency card kholein. INR hamesha on hai, band nahi ki ja sakti.",
+          "Jo currency chahiye uska Switch on karein.",
+          "'Naya Rate (1 unit = ? INR)' box me 1 unit ka INR value daal kar 'Rate Update Karein' dabayein.",
+        ],
+        notes: [
+          "Rate hamesha ek nayi history row ke roop me add hota hai — purane Orders/Invoices/PO apna hi snapshot rate dikhate rehte hain, naya rate add karne se unki value nahi badalti.",
+          "Currency band (disable) karne se purane us-currency wale records nahi badalte — sirf naye record banate waqt wo currency ab list me nahi dikhegi.",
+        ],
+      },
+      {
+        id: "api-keys-webhooks",
+        title: t("API Keys aur Webhooks — bahar ke system jodna"),
+        audience: "admin",
+        summary:
+          "Tally, e-commerce ya courier jaise bahar ke software ko apna data (read-only) dena ho, to Admin → Settings me API Key banayein aur chahe to Webhook subscribe karein.",
+        how: [
+          "Chhe read-only endpoints hain: /api/v1/orders, /api/v1/invoices, /api/v1/stock, /api/v1/customers, /api/v1/vendors, aur /api/v1/dispatches — ye koi bhi data badal nahi sakte, sirf padh sakte hain.",
+          "Har request me key ko Authorization header me bhejna hota hai (Bearer <key>) — bahar ka tool (jaise Tally sync, e-commerce, courier software) isi se login ke bina apna data khinch sakta hai.",
+          "Webhook subscribe karne par 'order.status_changed' aur 'stock.movement_recorded' events aapke diye gaye URL par POST ho jaate hain — jaise order ka status badlna ya koi stock In/Out hona.",
+        ],
+        steps: [
+          "Admin → Settings → API Keys card me Label (jaise 'Tally Sync') daal kar 'Nayi key banayein' dabayein.",
+          "Dikhayi gayi plaintext key turant copy kar lein — ye sirf ek baar dikhti hai, dobara kabhi poori nahi dikhegi (sirf shuru ka prefix dikhega).",
+          "Webhooks card me receiver URL daalein, jo-jo event chahiye wo tick karein, aur 'Webhook add karein' dabayein — yahan bhi signing secret sirf ek baar dikhta hai, turant copy karein.",
+          "'Test ping' se check kar sakte hain ki receiver URL sahi se respond kar raha hai.",
+        ],
+        notes: [
+          "Ye login jaisi cheez nahi hai — revoked key turant kaam karna band kar deti hai, wapas activate nahi ho sakti; zaroorat ho to nayi banayein.",
+          "Har webhook call HMAC se signed hota hai (signing secret se) — receiver apni taraf se signature verify karke pakka kar sakta hai ki request sach me Pro ERP se aayi hai, kisi aur ne nahi bheji.",
+          "Ye sirf ek-tarfa, read-only integration hai — koi bhi bahar ka system isse Pro ERP ka data badal nahi sakta.",
+        ],
+      },
     ],
   },
 
@@ -1970,6 +2120,16 @@ export const GUIDE: GuideChapter[] = [
           "'Pass/Fail/Scrap Qty' wale step me quantity khud aage badhti hai: 100 me se 98 Pass, 2 Fail kiye to 98 agle step pe chali jaati hai, aur 2 usi step pe usi doer ke paas ek naya pending kaam ban jaati hai — wo unhe dobara Pass/Fail kar sakta hai (jab tak resolve na ho), ya Scrap Qty likh kar unhe hamesha ke liye hata sakta hai. Final step ka stock sirf utni hi quantity se banta hai jitni sach me aakhir tak pahunchi.",
           "Kisi bhi step ki deadline TAT box me fix number likhne ke bajaye kisi pehle step ke field se bhi nikal sakti hai — 'Deadline pichle step ke field se nikaale' tick karke us step aur field ko chunein, aur ek offset (+/-) daalein. Jaise Purchase FMS me: Step 1 me 'Lead Days' bhara (jaise 10), Step 2 'Follow Up' ka offset -1 (deadline 9 din), Step 3 'Material Received' ka offset 0 (deadline 10 din) — ek hi number se dono deadlines ban jaati hain.",
           "Trigger 'INDENT_APPROVED' dene se wo FMS tab khud shuru hota hai jab koi indent Approve hota hai — isi se Purchase FMS banti hai: Vendor Details, Per Item Price, aur PO Attachment ek Form ke fields hain (Attachment type PO ke liye), Lead Days ek Number field hai.",
+        ],
+      },
+      {
+        id: "fms-template-help",
+        title: t("Template Builder ka apna '? Help' guide"),
+        audience: "FMS_ADMIN",
+        summary:
+          "FMS Template banate/badalte waqt upar hi ek '? Help' button hai jo poora guided dialog kholta hai — step types, outcome types, aur deadline-offset jaisi sabhi details wahi, usi screen par samjhata hai.",
+        notes: [
+          "Yahan har detail dobara nahi likhi gayi hai — wo in-app dialog hi sabse taaza aur sahi jagah hai, seedha wahi Template Builder screen par jahan use chahiye.",
         ],
       },
     ],

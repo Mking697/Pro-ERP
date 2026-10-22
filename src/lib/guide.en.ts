@@ -185,6 +185,38 @@ export const GUIDE_EN: GuideChapter[] = [
           "This is only remembered on this browser — opening the app on another device or browser may show the same updates as 'new' again.",
         ],
       },
+      {
+        id: "notification-bell",
+        title: t("Notification bell — bell icon se updates"),
+        audience: "everyone",
+        summary:
+          "The bell icon in the header shows your own real notifications — a task assigned to you, an approval pending on you, or an order's status changing.",
+        how: [
+          "Three things create a notification: a task being assigned to you, an approval (such as leave) pending on you, or the status of an order you created changing.",
+          "This is different from the 'What's new' bell (the changelog above — what new feature shipped in the system); this bell is your own, organization-specific, work notifications.",
+          "This bell icon shows in the header on both desktop and mobile, with an unread count.",
+        ],
+        notes: [
+          "This is near-real-time, not an instant push — a background job checks roughly every 1 minute, so a notification can take up to a minute to appear.",
+          "Clicking a notification marks it read and takes you straight to the relevant place. 'Mark all read' marks the whole list read at once.",
+        ],
+      },
+      {
+        id: "dashboard-customize",
+        title: t("Dashboard customize karein"),
+        audience: "everyone",
+        summary:
+          "The 'Customize dashboard' button above the Dashboard lets you show/hide your widgets and change their order.",
+        steps: [
+          "On the Dashboard, click 'Customize dashboard'.",
+          "Each widget has its own switch — turning it off stops that widget from showing on the dashboard.",
+          "Use the up/down arrows to change a widget's order.",
+          "Save — this preference is yours alone and has no effect on any other user's dashboard.",
+        ],
+        notes: [
+          "If a new widget is ever added (by an app update), it appears automatically at the end of your list, visible — it never disappears.",
+        ],
+      },
     ],
   },
 
@@ -629,6 +661,19 @@ export const GUIDE_EN: GuideChapter[] = [
           "There's no check against Reorder, Bulk Setup, or any plan/indent being linked — it clears everything outright, so be certain before resetting.",
         ],
       },
+      {
+        id: "inventory-board-tools",
+        title: t("Inventory board — bulk CSV export aur Saved Views"),
+        audience: "INVENTORY_VIEW",
+        summary:
+          "The Inventory list also lets you select several items at once with checkboxes to export a CSV together, and save your current search/filter under a name.",
+        how: [
+          "Every row has its own checkbox; the header checkbox selects/deselects every visible (filtered) row at once.",
+          "Changing the selection doesn't clear it when filters/search narrow the view — it only clears on an actual data refresh (e.g. after a Stock In/Out).",
+          "'CSV Export' downloads a CSV of the selected items (Item, SKU, Category, Free, On Hand, ADC, ROP, Status) right away.",
+          "Save the current search/status filter under a name in the 'Views' dropdown and reload it later by that name — these views are yours alone.",
+        ],
+      },
     ],
   },
 
@@ -808,6 +853,16 @@ export const GUIDE_EN: GuideChapter[] = [
         notes: [
           "This is cost only, not profit/margin — because a Production Plan has no real link to a Sales Order in this system yet (Order No is just a free-text field).",
           "The raw material cost is exactly the Indents whose 'Linked Plan' was set to this Job, and which have actually been received.",
+        ],
+      },
+      {
+        id: "purchase-currency",
+        title: t("PO par foreign currency ka reference amount"),
+        audience: "PURCHASE_FMS",
+        summary:
+          "When issuing a PO, if the Admin has enabled a foreign currency, you can also enter the vendor's face amount (e.g. $ or €) as a reference — each line's real Old Price/New Price always stays in INR.",
+        notes: [
+          "This is for display only — paying the vendor and the Bill itself are always worked out in INR; no forex gain/loss is ever posted on the PO/Bill side (that only happens on an order's own payment).",
         ],
       },
     ],
@@ -1015,6 +1070,52 @@ export const GUIDE_EN: GuideChapter[] = [
         ],
         notes: [
           "Doer/TAT are informational/planning fields only — any user with ORDER_FMS access can work any order's any step, same as Purchase FMS. Only the Credit-Hold Approver is actually locked down — only that user (or an Admin) may clear a Credit Hold.",
+        ],
+      },
+      {
+        id: "orders-currency",
+        title: t("Order par foreign currency aur forex gain/loss"),
+        audience: "ORDER_FMS",
+        summary:
+          "You can pick a foreign currency when creating an order — but the authoritative, GST/accounting amount is always the INR figure; the foreign-currency figure is only a reference display.",
+        how: [
+          "In '+ New Order', pick one of the currencies your Admin enabled and enter that currency's face amount (e.g. $500) — the order's INR value (Order Value, GST, Total) doesn't change because of this; it is always computed from items x rate x GST.",
+          "Whatever exchange rate was active when the order was created gets permanently snapshotted onto the order — if the Admin changes the rate later, this order's own rate stays unchanged.",
+          "When recording a payment, if the payment genuinely arrived in the foreign currency, tick 'Foreign currency mein payment received hui' and enter the actual face amount received (e.g. $500) — the system then works out the difference between the order's locked-in rate and today's rate, and automatically posts a Forex Gain or Forex Loss journal entry for that difference.",
+          "Leaving the checkbox unticked records the payment straight in INR, exactly like an ordinary order — no forex calculation happens at all.",
+        ],
+        example: {
+          title: t("Forex Gain ka hisaab — $500 ka payment"),
+          lines: [
+            "  Rate when the order was made   1 USD = ₹83",
+            "  Expected (at order's rate)     500 x 83  = ₹41,500",
+            "  Today's rate                   1 USD = ₹85",
+            "  Actual (at today's rate)       500 x 85  = ₹42,500",
+            "                                           ──────────",
+            "  Forex Gain = 42,500 - 41,500              ₹1,000",
+          ],
+        },
+        notes: [
+          "If today's rate is LOWER than the order's own rate (say ₹81), the difference comes out negative and the system posts a Forex Loss instead of a Forex Gain — same logic, just the opposite side.",
+          "This only applies when the order itself is in a foreign currency and today's rate for that currency is configured — the checkbox doesn't even appear on a plain INR order.",
+          "The amount stored against the order's payment is always the 'Expected' (order-rate) INR figure, so outstanding/credit checks always stay consistent with the order's own value — the Forex Gain/Loss is only a separate, third ledger line.",
+        ],
+      },
+      {
+        id: "orders-board-tools",
+        title: t("Order board — bulk actions aur Saved Views"),
+        audience: "ORDER_FMS",
+        summary:
+          "Select several orders at once with the checkboxes in the Orders list — a small toolbar above gives you bulk actions.",
+        how: [
+          "Every row has its own checkbox; the header checkbox selects/deselects every visible row at once.",
+          "Only when every selected order shares the same CURRENT status, and that status has a valid 'advance' action (e.g. all are in Payment Review), does that one action appear in the dropdown — each order goes through the exact same single-row action it would have gone through on its own, never a shortcut.",
+          "Cancel is available even on a mixed-status selection, as long as none of the selected orders are already in a terminal status (such as Cancelled, or past Ready For PDI).",
+          "'CSV Export' downloads a CSV of the selected rows right away.",
+          "The 'Views' dropdown below lets you save your current filter/search/sort under a name, and reload it by that name later — these views are yours alone and are never visible to another user.",
+        ],
+        notes: [
+          "On a mixed or invalid selection, the advance-action dropdown simply disables itself — no row is silently skipped; the button just isn't offered until the selection matches.",
         ],
       },
     ],
@@ -1231,6 +1332,16 @@ export const GUIDE_EN: GuideChapter[] = [
           "The Balance Sheet automatically adds one 'Retained Earnings (Current)' line — this isn't a real account, it's just there to show net profit to date, since this system has no period-close (closing the books for the year) mechanism yet.",
           "This posting is always best-effort — issuing an Invoice or recording a payment will never itself get stuck even if the Ledger posting runs into a problem. When that happens it's recorded in the error log (Platform → Server Errors).",
           "A Manual Journal Entry can't be edited or deleted once posted — fixing a mistake means posting a new, reversing entry, exactly like every auto-posted entry.",
+        ],
+      },
+      {
+        id: "accounts-currency",
+        title: t("Invoice par foreign currency ka reference amount"),
+        audience: "ACCOUNTS_FMS",
+        summary:
+          "An order's foreign currency and its face amount also show on the Invoice as a reference — the Invoice's real, GST-relevant value is always the INR Final Value.",
+        notes: [
+          "Forex gain/loss is never computed from the Invoice — it only happens when a payment is recorded against the Order (via the foreign-currency payment checkbox); the Invoice itself never records a separate payment or forex entry.",
         ],
       },
     ],
@@ -1614,6 +1725,45 @@ export const GUIDE_EN: GuideChapter[] = [
           "WhatsApp is not sending — check with Send Test Message under Settings, then check the ChatXFlow session.",
         ],
       },
+      {
+        id: "currency-setup",
+        title: t("Multi-Currency enable karna"),
+        audience: "admin",
+        summary:
+          "Enable a foreign currency (USD/EUR/GBP/AED) under Admin → Settings → Multi-Currency and set its rate — only then does it appear on Orders/Invoices/POs.",
+        steps: [
+          "Open Admin → Settings → the Multi-Currency card. INR is always on and cannot be switched off.",
+          "Turn on the Switch for whichever currency you want.",
+          "Enter the INR value of 1 unit in the 'New Rate (1 unit = ? INR)' box and click 'Update Rate'.",
+        ],
+        notes: [
+          "A rate is always added as a new history row — older Orders/Invoices/POs keep showing their own snapshotted rate; adding a new rate never changes their value.",
+          "Switching a currency off doesn't change records that already used it — it just stops appearing in the list for new records going forward.",
+        ],
+      },
+      {
+        id: "api-keys-webhooks",
+        title: t("API Keys aur Webhooks — bahar ke system jodna"),
+        audience: "admin",
+        summary:
+          "To let an outside tool like Tally, an e-commerce platform or courier software read your data, create an API Key under Admin → Settings and optionally subscribe a Webhook.",
+        how: [
+          "There are six read-only endpoints: /api/v1/orders, /api/v1/invoices, /api/v1/stock, /api/v1/customers, /api/v1/vendors and /api/v1/dispatches — none of them can change any data, only read it.",
+          "Every request must carry the key in the Authorization header (Bearer <key>) — this is how an outside tool (a Tally sync, e-commerce platform, courier software) pulls its own data without a normal sign-in.",
+          "Subscribing a webhook makes 'order.status_changed' and 'stock.movement_recorded' events get POSTed to the URL you give — for example, when an order's status changes or a stock movement is recorded.",
+        ],
+        steps: [
+          "In the API Keys card under Admin → Settings, enter a Label (e.g. 'Tally Sync') and click 'Create new key'.",
+          "Copy the plaintext key shown right away — it is shown only once; afterwards you'll only ever see its prefix.",
+          "In the Webhooks card, enter the receiver URL, tick whichever events you want, and click 'Add webhook' — here too the signing secret is shown only once, so copy it immediately.",
+          "Use 'Test ping' to check that the receiver URL is responding correctly.",
+        ],
+        notes: [
+          "This isn't like a normal sign-in — a revoked key stops working immediately and can never be reactivated; create a new one if you need one again.",
+          "Every webhook call is HMAC-signed with the signing secret — the receiver can verify that signature on its own side to confirm the request genuinely came from Pro ERP and not from anyone else.",
+          "This is a one-way, read-only integration only — no outside system can ever use it to change any data in Pro ERP.",
+        ],
+      },
     ],
   },
 
@@ -1928,6 +2078,16 @@ export const GUIDE_EN: GuideChapter[] = [
           "A \"Pass/Fail/Scrap Qty\" step carries its quantity forward automatically: split 100 into 98 Pass and 2 Fail, and 98 moves on to the next step while the 2 become a new pending task for the same doer, on the same step — they can split it again (Pass/Fail/Scrap, looping until it resolves) or write it off with Scrap Qty. The final step's stock write only ever reflects whatever quantity actually made it all the way through.",
           "Any step's deadline can be sourced from an earlier step's own field instead of a fixed TAT number — tick \"Take the deadline from an earlier step's field\", pick that step and field, and give an offset (+/-). For example in a Purchase FMS: step 1 captures \"Lead Days\" (say, 10), step 2 \"Follow Up\" uses offset -1 (a 9-day deadline), step 3 \"Material Received\" uses offset 0 (a 10-day deadline) — one number driving both deadlines.",
           "Giving a template the trigger \"INDENT_APPROVED\" starts it the moment an indent is approved — this is how a Purchase FMS gets built: Vendor Details, Per Item Price, and a PO Attachment are just Form fields (an Attachment-type field for the PO), and Lead Days is a Number field.",
+        ],
+      },
+      {
+        id: "fms-template-help",
+        title: t("Template Builder ka apna '? Help' guide"),
+        audience: "FMS_ADMIN",
+        summary:
+          "While building or editing an FMS Template, there's a '? Help' button right there that opens a full guided dialog — explaining step types, outcome types, and deadline offsets right on that same screen.",
+        notes: [
+          "That detail isn't duplicated here — the in-app dialog is the freshest, most accurate place for it, right on the Template Builder screen where you need it.",
         ],
       },
     ],
