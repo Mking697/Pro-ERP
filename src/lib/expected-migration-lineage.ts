@@ -202,5 +202,13 @@ export const expectedMigrationLineage = [
     // migration there on 2026-10-21.
     "hash": "c660bdf2b45377809bc2fbe0a413cf7e738b1d63c1ae35f4c8196a2049b92fb9",
     "folderMillis": 1792601466694
+  },
+  {
+    // Release 0043: cost_sheets, standard_cost_rates, job_cost_lineages, job_cost_sheets,
+    // job_cost_source_allocations (estimated Product Cost Sheets + Recorded Job Cost Sheets,
+    // additive only) — real production hash+timestamp confirmed via a direct query against
+    // drizzle.__drizzle_migrations on the VPS after applying this migration there on 2026-10-23.
+    "hash": "55aa9218111a63777694b78b9bc10d7b6289c502efef582a3c4ffdde4a2db704",
+    "folderMillis": 1792755881657
   }
 ];
