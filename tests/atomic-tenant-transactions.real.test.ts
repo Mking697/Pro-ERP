@@ -110,7 +110,7 @@ it.each(["review schedule", "native overlap"])("commits the successful concurren
         return "caught";
       });
       const [inserted, caught] = await Promise.all([success, failure]);
-      expect(inserted[0].rows).toEqual([{ id: 1 }]);
+      expect((inserted[0] as { rows: unknown }).rows).toEqual([{ id: 1 }]);
       expect(caught).toBe("caught");
     });
     // New HTTP connection after COMMIT, not just a successful INSERT result.
