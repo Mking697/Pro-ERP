@@ -35,7 +35,7 @@ export default async function LeadsPage() {
             <TabsTrigger value="quotations">Quotations</TabsTrigger>
           </TabsList>
           <TabsContent value="pipeline" className="mt-4">
-            <LeadsBoard initialLeads={initialLeads} />
+            <LeadsBoard initialLeads={initialLeads} isAdmin={session.role === "Admin"} />
           </TabsContent>
           <TabsContent value="quotations" className="mt-4">
             <QuotationsBoard />

@@ -36,11 +36,13 @@ function toLocalInputValue(iso: string): string {
 
 export default function LeadDetailDialog({
   leadId,
+  isAdmin,
   open,
   onOpenChange,
   onChanged,
 }: {
   leadId: string;
+  isAdmin: boolean;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onChanged: (lead: LeadRow) => void;
@@ -135,6 +137,14 @@ export default function LeadDetailDialog({
           <p className="text-sm text-muted-foreground">{t("Load ho raha hai...")}</p>
         ) : (
           <div className="space-y-4">
+            {isAdmin && (
+              <AssignSalesPersonForm
+                lead={lead}
+                busy={busy}
+                onTransition={transition}
+              />
+            )}
+
             <StageAction
               lead={lead}
               busy={busy}
@@ -261,6 +271,74 @@ function StageAction({
   }
 
   return null;
+}
+
+/** Admin-only — not gated by lead ownership the way every other action here is. Mirrors
+ * create-lead-dialog.tsx's own "Assign To (Sales Person)" picker and listSalesPersons()
+ * source, so both forms offer the same eligible-user list. `assignedTo` is stored as the
+ * person's full name (see leads.ts's own note on this), not a userId. */
+function AssignSalesPersonForm({
+  lead,
+  busy,
+  onTransition,
+}: {
+  lead: LeadRow;
+  busy: boolean;
+  onTransition: (body: Record<string, unknown>) => Promise<boolean>;
+}) {
+  const t = useT();
+  const [salesPersons, setSalesPersons] = useState<{ userId: string; fullName: string }[]>([]);
+  // null means "not touched by the user yet" — falls back to the lead's current
+  // assignedTo. Reset to null after a successful save (in the click handler, not an
+  // effect) rather than syncing local state to the `lead` prop via useEffect+setState,
+  // which this project's lint config (react-hooks/set-state-in-effect) disallows.
+  const [override, setOverride] = useState<string | null>(null);
+
+  useEffect(() => {
+    fetch("/api/leads/sales-persons-lookup")
+      .then((res) => res.json())
+      .then((data: { salesPersons?: { userId: string; fullName: string }[] }) =>
+        setSalesPersons(data.salesPersons ?? [])
+      )
+      .catch(() => setSalesPersons([]));
+  }, []);
+
+  const value = override ?? (lead.assignedTo || "__unassigned__");
+  const dirty = (value === "__unassigned__" ? "" : value) !== lead.assignedTo;
+
+  return (
+    <div className="space-y-2 rounded-lg border p-3">
+      <Label htmlFor="reassign">{t("Sales Person Assign/Transfer Karein (Admin)")}</Label>
+      <div className="flex flex-wrap items-center gap-2">
+        <Select value={value} onValueChange={(v) => v && setOverride(v)}>
+          <SelectTrigger id="reassign" className="w-full max-w-xs">
+            <SelectValue placeholder={t("Sales person chunein")} />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="__unassigned__">{t("Unassigned")}</SelectItem>
+            {salesPersons.map((sp) => (
+              <SelectItem key={sp.userId} value={sp.fullName}>
+                {sp.fullName}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Button
+          size="sm"
+          disabled={busy || !dirty}
+          onClick={async () => {
+            const ok = await onTransition({
+              action: "assign",
+              assignedTo: value === "__unassigned__" ? "" : value,
+            });
+            if (ok) setOverride(null);
+          }}
+        >
+          {t("Save karein")}
+        </Button>
+      </div>
+    </div>
+  );
 }
 
 function LostButton({

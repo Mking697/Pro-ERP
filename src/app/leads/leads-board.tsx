@@ -41,7 +41,7 @@ function statusVariant(status: LeadStatus): "default" | "secondary" | "destructi
   return "secondary";
 }
 
-export default function LeadsBoard({ initialLeads }: { initialLeads: LeadRow[] }) {
+export default function LeadsBoard({ initialLeads, isAdmin }: { initialLeads: LeadRow[]; isAdmin: boolean }) {
   const t = useT();
   const [leads, setLeads] = useState<LeadRow[]>(initialLeads);
   const [loading, setLoading] = useState(false);
@@ -171,6 +171,7 @@ export default function LeadsBoard({ initialLeads }: { initialLeads: LeadRow[] }
       {openLeadId && (
         <LeadDetailDialog
           leadId={openLeadId}
+          isAdmin={isAdmin}
           open={Boolean(openLeadId)}
           onOpenChange={(open) => {
             if (!open) setOpenLeadId(null);

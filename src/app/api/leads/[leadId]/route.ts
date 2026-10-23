@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { requireModule } from "@/lib/auth/guard";
 import {
+  assignLead,
   getLead,
   LeadError,
   logFollowUp,
@@ -71,6 +72,11 @@ const bodySchema = z.discriminatedUnion("action", [
     action: z.literal("lost"),
     reason: z.string().trim().min(1, "Lost reason dena zaroori hai."),
   }),
+  z.object({
+    action: z.literal("assign"),
+    // Empty string is a valid, explicit "unassign" — not validated non-empty.
+    assignedTo: z.string().trim().max(200),
+  }),
 ]);
 
 export async function PATCH(
@@ -94,6 +100,13 @@ export async function PATCH(
   const owned = await loadOwnedLead(leadId, guard.session);
   if (!owned) {
     return NextResponse.json({ error: "Lead nahi mila." }, { status: 404 });
+  }
+
+  // Reassigning a lead to a different salesperson is an ownership change, not a pipeline
+  // transition — only Admin may do it. A non-Admin asking for it (even on their own lead)
+  // is refused outright rather than silently no-opped.
+  if (parsed.data.action === "assign" && guard.session.role !== "Admin") {
+    return NextResponse.json({ error: "Sirf Admin lead assign/reassign kar sakta hai." }, { status: 403 });
   }
 
   try {
@@ -126,6 +139,10 @@ export async function PATCH(
       }
       case "lost": {
         const lead = await markLost(leadId, actorId, parsed.data.reason);
+        return NextResponse.json({ lead });
+      }
+      case "assign": {
+        const lead = await assignLead(leadId, actorId, parsed.data.assignedTo);
         return NextResponse.json({ lead });
       }
     }

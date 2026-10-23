@@ -550,6 +550,32 @@ export async function markLost(leadId: string, actorId: string, reason: string):
   return rowToLead(updated);
 }
 
+/**
+ * Admin-only reassignment — enforced by the route (not here), same convention as other
+ * Admin-only actions in this codebase (role checked at the API boundary, not re-derived
+ * in the service layer). Allowed from ANY status, including terminal ones: a lead marked
+ * Lost under the wrong salesperson, or an unassigned imported/bulk-uploaded lead (no
+ * `assignedTo` set at all — see leads-import.ts), still needs an owner an Admin can set
+ * or change at will. Empty string explicitly unassigns.
+ */
+export async function assignLead(leadId: string, actorId: string, assignedTo: string): Promise<LeadRecord> {
+  const orgId = await getTenantOrgId();
+  const row = await findById(leads, orgId, leadId);
+  if (!row) throw new LeadError("Lead nahi mila.");
+
+  const next = assignedTo.trim();
+  const updated = await updateById(leads, orgId, leadId, { assignedTo: next });
+  if (!updated) throw new LeadError("Lead update nahi ho paya.");
+  await logLeadActivity(
+    orgId,
+    leadId,
+    "Status_Change",
+    next ? `Assign kiya gaya: ${next}.` : "Unassign kar diya gaya.",
+    actorId
+  );
+  return rowToLead(updated);
+}
+
 /** Called by quotations.ts's sendQuotation() — kept here so both files agree on exactly
  * what the lead-side half of "a quotation went out" looks like. */
 export async function markQuotationSent(leadId: string, actorId: string, quotationNo: string): Promise<void> {

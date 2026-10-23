@@ -1701,6 +1701,8 @@ export const EN: Record<string, string> = {
   "Naya Lead Punch Karein": "Punch In a New Lead",
   "Assign To (Sales Person)": "Assign To (Sales Person)",
   "Sales person chunein": "Choose a sales person",
+  "Sales Person Assign/Transfer Karein (Admin)": "Assign/Transfer Sales Person (Admin)",
+  "Unassigned": "Unassigned",
   "Abhi assign na karein": "Don't assign yet",
   "Sirf naam zaroori hai — baaki jo pata ho wo bhar dein.":
     "Only the name is required — fill in whatever else you know.",
