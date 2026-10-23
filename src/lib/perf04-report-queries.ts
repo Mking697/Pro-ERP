@@ -216,4 +216,44 @@ export async function readPerf04Payroll(range: DateRange, userId: string) {
   return { history, latest: latestRows[0] ?? null };
 }
 
+/** Row-level detail for the Recurring report's export/table — the aggregate counts used
+ * for its charts (readPerf04Recurring above) don't carry individual rule identity. Same
+ * ownership rule (Assigned_By) as the registry's "recurring" ownerFields. */
+export interface RecurringTaskRow {
+  id: string; task: string; doerId: string; assignedBy: string; frequency: string;
+  status: string; assignDate: string; createdAt: string;
+}
+export async function listRecurringRows(scope: ReportScope, viewer: ReportViewer): Promise<RecurringTaskRow[]> {
+  const orgId = await getTenantOrgId();
+  const where = and(eq(recurringTasks.orgId, orgId), ownedSql([recurringTasks.assignedBy], scope, viewer));
+  const rows = await db.select({
+    id: recurringTasks.id, task: recurringTasks.task, doerId: recurringTasks.doerId,
+    assignedBy: recurringTasks.assignedBy, frequency: recurringTasks.frequency, status: recurringTasks.status,
+    assignDate: stamp(recurringTasks.assignDate), createdAt: stamp(recurringTasks.createdAt),
+  }).from(recurringTasks).where(where).orderBy(desc(recurringTasks.createdAt));
+  return rows;
+}
+
+/** Row-level detail for the BOM report's export/table — one row per BOM header (not per
+ * component line), mirroring readPerf04Boms' "active" aggregate's own grouping but
+ * exposing every BOM (both statuses) with its line count rather than just the latest 10
+ * active ones a chart can usefully plot. Same ownership rule (createdBy) as the registry. */
+export interface BomHeaderRow {
+  bomId: string; productName: string; productSku: string; version: string; status: string;
+  lineCount: number; createdBy: string; createdAt: string;
+}
+export async function listBomRows(scope: ReportScope, viewer: ReportViewer): Promise<BomHeaderRow[]> {
+  const orgId = await getTenantOrgId();
+  const where = and(eq(bom.orgId, orgId), ownedSql([bom.createdBy], scope, viewer));
+  const rows = await db.select({
+    bomId: bom.bomId, productName: bom.productName, productSku: bom.productSku, version: bom.version,
+    status: bom.status, lineCount: sql<number>`count(*) filter (where ${bom.componentSku} <> '')`.mapWith(Number),
+    createdBy: sql<string>`max(${bom.createdBy})`,
+    createdAt: sql<string>`max(${bom.createdAt})`.mapWith((v: string | Date | null) => v ? new Date(v).toISOString() : ""),
+  }).from(bom).where(where).groupBy(bom.bomId, bom.productName, bom.productSku, bom.version, bom.status)
+    .orderBy(desc(sql`max(${bom.createdAt})`));
+  return rows;
+}
+
+
 

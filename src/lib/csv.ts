@@ -102,3 +102,13 @@ export function csvResponseHeaders(filename: string): HeadersInit {
     "Cache-Control": "no-store",
   };
 }
+
+/** Same defusing rule as `csvCell`, for an ExcelJS text cell rather than a CSV field —
+ * a leading formula-trigger character gets a defusing leading apostrophe. Numbers pass
+ * through untouched (callers should not route numeric cells through this). */
+export function xlsxSafeText(value: string | number | null | undefined): string {
+  if (value === null || value === undefined) return "";
+  let s = String(value);
+  if ([61, 43, 45, 64, 9, 13, 10, 0xff1d, 0xff0b, 0xff0d, 0xff20].includes(s.charCodeAt(0))) s = `'${s}`;
+  return s;
+}

@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { readPerf04ReportRows, readPerf04TaskInputs, readPerf04Performance, readPerf04Recurring, readPerf04Boms, readPerf04Payroll, type Perf04PerformanceData, type ReportRows } from "@/lib/perf04-report-queries";
+import { readPerf04ReportRows, readPerf04TaskInputs, readPerf04Performance, readPerf04Recurring, readPerf04Boms, readPerf04Payroll, listRecurringRows, listBomRows, type Perf04PerformanceData, type ReportRows } from "@/lib/perf04-report-queries";
 import type { SessionPayload } from "@/lib/auth/session";
 import { cookies } from "next/headers";
 import { requireSession } from "@/lib/auth/guard";
@@ -182,6 +182,83 @@ function Section({
   );
 }
 
+const DETAIL_TABLE_ROW_LIMIT = 200;
+
+/** One detail table + Excel/CSV export, shared by every report section below. Rows come
+ * from the exact same already-fetched/scoped variables the charts above it use — no new
+ * query runs for the on-screen table. Export hits the generic `/api/reports/[report]/export`
+ * route with the same range+scope query string, so a download can never show rows the
+ * screen wouldn't (see `rangeQuery` below). Screen is capped at 200 rows for render cost;
+ * the export is not capped — its own text says so. */
+function ReportDetail({
+  reportId,
+  columns,
+  rows,
+  rangeQuery,
+  t,
+}: {
+  reportId: string;
+  columns: { key: string; label: string }[];
+  rows: readonly object[];
+  rangeQuery: string;
+  t: Translator;
+}) {
+  const asRecords = rows as readonly Record<string, unknown>[];
+  const shown = asRecords.slice(0, DETAIL_TABLE_ROW_LIMIT);
+  return (
+    <div className="space-y-2 lg:col-span-2">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-sm font-medium">{t("Detail table")}</p>
+        <div className="flex gap-3">
+          <a className="text-sm underline" href={`/api/reports/${reportId}/export?format=xlsx&${rangeQuery}`}>
+            {t("Export (XLSX)")}
+          </a>
+          <a className="text-sm underline" href={`/api/reports/${reportId}/export?format=csv&${rangeQuery}`}>
+            {t("Export (CSV)")}
+          </a>
+        </div>
+      </div>
+      <div className="max-h-80 overflow-auto rounded-lg border">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              {columns.map((c) => (
+                <TableHead key={c.key}>{c.label}</TableHead>
+              ))}
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {shown.length === 0 && (
+              <TableRow>
+                <TableCell colSpan={columns.length} className="py-6 text-center text-muted-foreground">
+                  {t("Is period me koi entry nahi.")}
+                </TableCell>
+              </TableRow>
+            )}
+            {shown.map((row, i) => (
+              <TableRow key={i}>
+                {columns.map((c) => {
+                  const value = row[c.key];
+                  return (
+                    <TableCell key={c.key} className="whitespace-nowrap">
+                      {value === null || value === undefined || value === "" ? "—" : String(value)}
+                    </TableCell>
+                  );
+                })}
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </div>
+      {asRecords.length > DETAIL_TABLE_ROW_LIMIT && (
+        <p className="text-xs text-muted-foreground">
+          {t("Sirf pehli 200 rows screen par dikh rahi hain — poori list export mein hai.")}
+        </p>
+      )}
+    </div>
+  );
+}
+
 export default async function Analytics({
   session,
   rangeKey,
@@ -274,12 +351,14 @@ export default async function Analytics({
         ? listUsers().catch(() => [])
         : Promise.resolve([]),
       needs("recurring") ? safe(() => readPerf04Recurring(scope, session)) : null,
+      needs("recurring") ? safe(() => listRecurringRows(scope, session)) : null,
       needs("inward") ? safe(() => readPerf04ReportRows("inward", range, scope, session)) : null,
       needs("iqc") ? safe(() => readPerf04ReportRows("failures", range, scope, session)) : null,
       needs("iqc") || needs("ims") ? safe(() => readPerf04ReportRows("ims", range, scope, session)) : null,
       needs("inventory") || needs("finished-goods") ? safe(() => getInventorySnapshot()) : null,
       needs("indents") ? safe(() => readPerf04ReportRows("indents", range, scope, session)) : null,
       needs("bom") ? safe(() => readPerf04Boms(scope, session)) : null,
+      needs("bom") ? safe(() => listBomRows(scope, session)) : null,
       needs("ppc") ? safe(() => readPerf04ReportRows("ppc", range, scope, session)) : null,
       needs("performance") ? safe(() => readPerf04Performance(range, performancePage)) : null,
       needs("leave") ? safe(() => readPerf04ReportRows("leave", range, scope, session)) : null,
@@ -302,12 +381,14 @@ export default async function Analytics({
     allTasks,
     users,
     allRules,
+    recurringRows,
     allInward,
     allFailures,
     allIms,
     stock,
     allIndents,
     allBoms,
+    bomRows,
     allPlans,
     performance,
     allLeaves,
@@ -362,6 +443,17 @@ export default async function Analytics({
   };
   const unavailable = Object.keys(reportInputs).filter(id => shows(id) && reportInputs[id].some(input => input == null));
 
+  // Export links must carry the same range+scope the screen used, so a download can
+  // never show rows the screen wouldn't — the API route re-derives identical filters.
+  const rangeQuery = `range=${range.key}${
+    range.key === "custom" ? `&from=${istDayKey(range.from)}&to=${istDayKey(range.to)}` : ""
+  }&scope=${scope}`;
+  const delegationTasks = tasks.filter((tk) => tk.Assigned_By === session.userId);
+  const accountsRows = [
+    ...(invoices ?? []).map((r) => ({ Type: "Invoice", ...r })),
+    ...(bills ?? []).map((r) => ({ Type: "Bill", ...r })),
+  ];
+
   return (
     <div className="space-y-8">
       {unavailable.map(id => <p key={id} role="status" className="rounded border p-4 text-sm">{t(getReport(id)?.label ?? id)} — {t("Report data unavailable. Baad me retry karein; missing data zero nahi hai.")}</p>)}
@@ -395,6 +487,18 @@ export default async function Analytics({
             emptyMessage={t("Is period me koi data nahi.")}
           />
         </ChartFrame>
+
+        <ReportDetail
+          reportId="tasks"
+          t={t}
+          rangeQuery={rangeQuery}
+          columns={[
+            { key: "Task_ID", label: t("Task ID") }, { key: "Title", label: t("Title") },
+            { key: "Status", label: t("Status") }, { key: "Priority", label: t("Priority") },
+            { key: "Due_Date", label: t("Due Date") }, { key: "Created_At", label: t("Created At") },
+          ]}
+          rows={myTasks}
+        />
       </Section>
       )}
 
@@ -424,6 +528,18 @@ export default async function Analytics({
               emptyMessage={t("Is period me aapne koi task assign nahi kiya.")}
             />
           </ChartFrame>
+
+          <ReportDetail
+            reportId="delegation"
+            t={t}
+            rangeQuery={rangeQuery}
+            columns={[
+              { key: "Task_ID", label: t("Task ID") }, { key: "Title", label: t("Title") },
+              { key: "Assigned_To", label: t("Assigned To") }, { key: "Status", label: t("Status") },
+              { key: "Priority", label: t("Priority") }, { key: "Due_Date", label: t("Due Date") },
+            ]}
+            rows={delegationTasks}
+          />
         </Section>
       )}
 
@@ -459,6 +575,18 @@ export default async function Analytics({
               emptyMessage={t("Koi recurring rule nahi hai.")}
             />
           </ChartFrame>
+
+          <ReportDetail
+            reportId="recurring"
+            t={t}
+            rangeQuery={rangeQuery}
+            columns={[
+              { key: "task", label: t("Task") }, { key: "doerId", label: t("Doer") },
+              { key: "frequency", label: t("Frequency") }, { key: "status", label: t("Status") },
+              { key: "assignDate", label: t("Assign Date") },
+            ]}
+            rows={recurringRows ?? []}
+          />
         </Section>
       )}
 
@@ -497,6 +625,17 @@ export default async function Analytics({
               )}
             />
           </ChartFrame>
+
+          <ReportDetail
+            reportId="inward"
+            t={t}
+            rangeQuery={rangeQuery}
+            columns={[
+              { key: "Timestamp", label: t("Timestamp") }, { key: "IQC_Status", label: t("IQC Status") },
+              { key: "Created_By", label: t("Created By") },
+            ]}
+            rows={inward.filter((e) => inRange(e.Timestamp, range))}
+          />
         </Section>
       )}
 
@@ -528,6 +667,18 @@ export default async function Analytics({
               emptyMessage={t("Koi rejection nahi — achhi baat hai.")}
             />
           </ChartFrame>
+
+          <ReportDetail
+            reportId="iqc"
+            t={t}
+            rangeQuery={rangeQuery}
+            columns={[
+              { key: "Timestamp", label: t("Timestamp") }, { key: "Fail_Qty", label: t("Fail Qty") },
+              { key: "UOM", label: t("UOM") }, { key: "Fail_Reason", label: t("Fail Reason") },
+              { key: "Verified_By", label: t("Verified By") },
+            ]}
+            rows={failures.filter((r) => inRange(r.Timestamp, range))}
+          />
         </Section>
       )}
 
@@ -555,6 +706,18 @@ export default async function Analytics({
               color="var(--chart-series-3)"
             />
           </ChartFrame>
+
+          <ReportDetail
+            reportId="ims"
+            t={t}
+            rangeQuery={rangeQuery}
+            columns={[
+              { key: "Timestamp", label: t("Timestamp") }, { key: "Pass_Qty", label: t("Pass Qty") },
+              { key: "UOM", label: t("UOM") }, { key: "Party_Name", label: t("Party Name") },
+              { key: "Verified_By", label: t("Verified By") },
+            ]}
+            rows={ims.filter((r) => inRange(r.Timestamp, range))}
+          />
         </Section>
       )}
 
@@ -590,6 +753,19 @@ export default async function Analytics({
               emptyMessage={t("Abhi kisi item ko order ki zaroorat nahi")}
             />
           </ChartFrame>
+
+          <ReportDetail
+            reportId="inventory"
+            t={t}
+            rangeQuery={rangeQuery}
+            columns={[
+              { key: "SKU", label: t("SKU") }, { key: "Item_Name", label: t("Item Name") },
+              { key: "UOM", label: t("UOM") }, { key: "Category", label: t("Category") },
+              { key: "status", label: t("Status") }, { key: "onHand", label: t("On Hand") },
+              { key: "rop", label: t("Reorder Point") },
+            ]}
+            rows={stock.items.map((i) => ({ ...i.item, status: i.status, onHand: i.onHand, rop: i.rop ?? "" }))}
+          />
         </Section>
       )}
 
@@ -619,6 +795,17 @@ export default async function Analytics({
               )}
             />
           </ChartFrame>
+
+          <ReportDetail
+            reportId="indents"
+            t={t}
+            rangeQuery={rangeQuery}
+            columns={[
+              { key: "Timestamp", label: t("Timestamp") }, { key: "Status", label: t("Status") },
+              { key: "Requested_By", label: t("Requested By") }, { key: "Approved_By", label: t("Approved By") },
+            ]}
+            rows={indents.filter((i) => inRange(i.Timestamp, range))}
+          />
         </Section>
       )}
 
@@ -661,6 +848,18 @@ export default async function Analytics({
               emptyMessage={t("Abhi koi BOM nahi hai")}
             />
           </ChartFrame>
+
+          <ReportDetail
+            reportId="bom"
+            t={t}
+            rangeQuery={rangeQuery}
+            columns={[
+              { key: "productName", label: t("Product") }, { key: "productSku", label: t("SKU") },
+              { key: "version", label: t("Version") }, { key: "status", label: t("Status") },
+              { key: "lineCount", label: t("Component Lines") }, { key: "createdBy", label: t("Created By") },
+            ]}
+            rows={bomRows ?? []}
+          />
         </Section>
       )}
 
@@ -704,6 +903,23 @@ export default async function Analytics({
               )}
             />
           </ChartFrame>
+
+          <ReportDetail
+            reportId="ppc"
+            t={t}
+            rangeQuery={rangeQuery}
+            columns={[
+              { key: "timestamp", label: t("Created At") }, { key: "productSku", label: t("Product SKU") },
+              { key: "status", label: t("Status") }, { key: "plannedQty", label: t("Planned Qty") },
+              { key: "recordedOutputQty", label: t("Recorded Output") }, { key: "UOM", label: t("UOM") },
+              { key: "productionDate", label: t("Production Date") },
+            ]}
+            rows={plans.filter((p) => inRange(p.timestamp, range)).map((p) => ({
+              timestamp: p.timestamp, productSku: p.productSku, status: p.status,
+              plannedQty: p.plannedQty, recordedOutputQty: p.recordedOutputQty ?? "",
+              UOM: p.UOM, productionDate: p.productionDate,
+            }))}
+          />
         </Section>
       )}
 
@@ -733,6 +949,18 @@ export default async function Analytics({
               emptyMessage={t("Is period me koi leave file nahi hui.")}
             />
           </ChartFrame>
+
+          <ReportDetail
+            reportId="leave"
+            t={t}
+            rangeQuery={rangeQuery}
+            columns={[
+              { key: "createdAt", label: t("Created At") }, { key: "status", label: t("Status") },
+              { key: "leaveType", label: t("Leave Type") }, { key: "doerId", label: t("Doer") },
+              { key: "filedBy", label: t("Filed By") },
+            ]}
+            rows={leaveRecords.filter((l) => inRange(l.createdAt, range))}
+          />
         </Section>
       )}
 
@@ -760,6 +988,18 @@ export default async function Analytics({
               emptyMessage={t("Abhi kisi item ko order ki zaroorat nahi")}
             />
           </ChartFrame>
+
+          <ReportDetail
+            reportId="finished-goods"
+            t={t}
+            rangeQuery={rangeQuery}
+            columns={[
+              { key: "SKU", label: t("SKU") }, { key: "Item_Name", label: t("Item Name") },
+              { key: "UOM", label: t("UOM") }, { key: "status", label: t("Status") },
+              { key: "onHand", label: t("On Hand") }, { key: "rop", label: t("Reorder Point") },
+            ]}
+            rows={fgItems.map((i) => ({ ...i.item, status: i.status, onHand: i.onHand, rop: i.rop ?? "" }))}
+          />
         </Section>
       )}
 
@@ -786,6 +1026,17 @@ export default async function Analytics({
               )}
             />
           </ChartFrame>
+
+          <ReportDetail
+            reportId="leads"
+            t={t}
+            rangeQuery={rangeQuery}
+            columns={[
+              { key: "createdAt", label: t("Created At") }, { key: "status", label: t("Status") },
+              { key: "assignedTo", label: t("Assigned To") }, { key: "createdBy", label: t("Created By") },
+            ]}
+            rows={leads.filter((l) => inRange(l.createdAt, range))}
+          />
         </Section>
       )}
 
@@ -819,6 +1070,17 @@ export default async function Analytics({
             <TimelineChart points={moneyByDay(orders.filter(o => o.status !== "Cancelled").map(o => ({ date: o.createdAt, amount: o.orderValue })))}
               valueSuffix=" INR" seriesLabel={t("Booked value")} kind="column" emptyMessage={t("Is period me koi order nahi bana.")} />
           </ChartFrame>
+
+          <ReportDetail
+            reportId="orders"
+            t={t}
+            rangeQuery={rangeQuery}
+            columns={[
+              { key: "createdAt", label: t("Created At") }, { key: "status", label: t("Status") },
+              { key: "orderValue", label: t("Order Value (INR)") }, { key: "createdBy", label: t("Created By") },
+            ]}
+            rows={orders.filter((o) => inRange(o.createdAt, range))}
+          />
         </Section>
       )}
 
@@ -856,6 +1118,17 @@ export default async function Analytics({
               )}
             />
           </ChartFrame>
+
+          <ReportDetail
+            reportId="pdi"
+            t={t}
+            rangeQuery={rangeQuery}
+            columns={[
+              { key: "createdAt", label: t("Created At") }, { key: "status", label: t("Status") },
+              { key: "passedBy", label: t("Passed By") },
+            ]}
+            rows={pdi.filter((p) => inRange(p.createdAt, range))}
+          />
         </Section>
       )}
 
@@ -893,6 +1166,17 @@ export default async function Analytics({
               )}
             />
           </ChartFrame>
+
+          <ReportDetail
+            reportId="tms"
+            t={t}
+            rangeQuery={rangeQuery}
+            columns={[
+              { key: "createdAt", label: t("Created At") }, { key: "status", label: t("Status") },
+              { key: "createdBy", label: t("Created By") },
+            ]}
+            rows={tms.filter((s) => inRange(s.createdAt, range))}
+          />
         </Section>
       )}
 
@@ -916,6 +1200,17 @@ export default async function Analytics({
               emptyMessage={t("Is period me koi bill nahi bana.")}
             />
           </ChartFrame>
+
+          <ReportDetail
+            reportId="accounts"
+            t={t}
+            rangeQuery={rangeQuery}
+            columns={[
+              { key: "Type", label: t("Type") }, { key: "createdAt", label: t("Created At") },
+              { key: "status", label: t("Status") }, { key: "amount", label: t("Amount (INR)") },
+            ]}
+            rows={accountsRows}
+          />
         </Section>
       )}
 
@@ -970,6 +1265,17 @@ export default async function Analytics({
               )}
             />
           </ChartFrame>
+
+          <ReportDetail
+            reportId="dispatch"
+            t={t}
+            rangeQuery={rangeQuery}
+            columns={[
+              { key: "createdAt", label: t("Created At") }, { key: "status", label: t("Status") },
+              { key: "assignedTo", label: t("Assigned To") }, { key: "createdBy", label: t("Created By") },
+            ]}
+            rows={dispatches.filter((d) => inRange(d.createdAt, range))}
+          />
         </Section>
       )}
 
@@ -1005,6 +1311,17 @@ export default async function Analytics({
               emptyMessage={t("Is period me koi payslip nahi bani.")}
             />
           </ChartFrame>
+
+          <ReportDetail
+            reportId="payroll"
+            t={t}
+            rangeQuery={rangeQuery}
+            columns={[
+              { key: "month", label: t("Month") }, { key: "createdAt", label: t("Finalized At") },
+              { key: "grossPay", label: t("Gross Pay (INR)") }, { key: "netPay", label: t("Net Pay (INR)") },
+            ]}
+            rows={payslips.history}
+          />
         </Section>
       )}
 
@@ -1015,6 +1332,18 @@ export default async function Analytics({
           </ChartFrame>
           <ChartFrame title={t("Request status")}><BarChart data={countBy(maintenance, r => r.status, 20).map((r, i) => ({ ...r, label: t(r.label.replaceAll("_", " ")), color: seriesColor(i) }))} valueSuffix={t(" requests")} emptyMessage={t("No maintenance requests in this period.")} /></ChartFrame>
           <ChartFrame title={t("Requests by reported date")}><TimelineChart points={bucketByDate(maintenance.map(r => r.createdAt), range)} kind="line" seriesLabel={t("Requests")} valueSuffix={t(" requests")} emptyMessage={t("No maintenance requests in this period.")} /></ChartFrame>
+
+          <ReportDetail
+            reportId="maintenance"
+            t={t}
+            rangeQuery={rangeQuery}
+            columns={[
+              { key: "createdAt", label: t("Created At") }, { key: "status", label: t("Status") },
+              { key: "line", label: t("Line") }, { key: "reportedBy", label: t("Reported By") },
+              { key: "assignedTo", label: t("Assigned To") }, { key: "workingMinutesLost", label: t("Working Minutes Lost") },
+            ]}
+            rows={maintenance.map((r) => ({ ...r, workingMinutesLost: r.workingMinutesLost ?? "" }))}
+          />
         </Section>
       )}
 
