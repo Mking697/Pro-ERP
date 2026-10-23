@@ -34,6 +34,10 @@ const CSP = [
 ].join("; ");
 
 const nextConfig: NextConfig = {
+  // Keep the installed Node driver native. Bundling its wire-protocol parser into
+  // proxy.js triggers NFT's computed-key evaluator during output-file tracing.
+  // This preserves tracing and the existing authenticated usage counter.
+  serverExternalPackages: ["@neondatabase/serverless"],
   async headers() {
     return [
       {

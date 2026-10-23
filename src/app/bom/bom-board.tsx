@@ -21,6 +21,7 @@ import { ClipboardList } from "lucide-react";
 import EmptyState from "@/components/empty-state";
 import { useT } from "@/components/preferences-provider";
 import CreateItemDialog from "@/app/inventory/create-item-dialog";
+import CostSheetLink from "@/components/cost-sheet-link";
 import BulkImportDialog from "@/app/inventory/bulk-import-dialog";
 
 interface BomLine {
@@ -44,7 +45,9 @@ interface Bom {
 
 export default function BomBoard({
   canCreateFgItem,
+  canViewCostSheets = false,
 }: {
+  canViewCostSheets?: boolean;
   /** Whether this viewer holds INVENTORY_SETUP — the "+ FG Banayein" button only
    * appears for them, since the API it calls needs that same grant. Everyone else still
    * sees the "FG nahi bani" note, just without a button that would only 403 for them. */
@@ -151,6 +154,7 @@ export default function BomBoard({
                         {bom.lines.length} item · {formatDueDisplay(bom.createdAt)} ·{" "}
                         {bom.createdBy}
                       </p>
+                      <div className="mt-2"><CostSheetLink sku={bom.productSku} canView={canViewCostSheets} label={t("Cost Sheets")} /></div>
                       {bom.status === "Active" &&
                         existingSkus !== null &&
                         !existingSkus.has(bom.productSku) && (

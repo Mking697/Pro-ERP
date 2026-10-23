@@ -78,6 +78,12 @@ export default async function AppShell({
   if (session.access.includes("BOM_MANAGE")) {
     pmsItems.push({ icon: "bom", href: "/bom", label: "BOM" });
   }
+  if (session.access.includes("COST_SHEETS")) {
+    pmsItems.push({ icon: "bom", href: "/cost-sheets", label: t("Cost Sheets") });
+  }
+  if (session.access.includes("JOB_COST_SHEETS")) {
+    pmsItems.push({ icon: "bom", href: "/job-cost-sheets", label: t("Job Cost Sheets") });
+  }
   if (session.access.includes("PPC_PLAN") || session.access.includes("INVENTORY_TXN")) {
     pmsItems.push({ icon: "ppc", href: "/ppc", label: "PPC" });
   }

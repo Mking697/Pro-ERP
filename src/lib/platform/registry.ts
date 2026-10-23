@@ -1,6 +1,11 @@
 import { eq, inArray, type InferSelectModel } from "drizzle-orm";
 import { db } from "@/db/client";
 import {
+  costSheets,
+  standardCostRates,
+  jobCostSheets,
+  jobCostLineages,
+  jobCostSourceAllocations,
   apiKeys,
   billingPayments,
   billingSubscriptionAttempts,
@@ -211,6 +216,15 @@ export async function deleteOrganization(orgId: string): Promise<void> {
   }
 
   await db.batch([
+    db.delete(costSheets).where(eq(costSheets.orgId, orgId)),
+    db.delete(standardCostRates).where(eq(standardCostRates.orgId, orgId)),
+    // J3: additive Recorded Job Cost Sheet tables (docs/job-cost-sheet-implementation.md
+    // section 5). No FK dependencies exist yet between these three, but allocations/
+    // lineage are deleted before sheets per that doc's stated ordering intent, in case a
+    // later stage adds one.
+    db.delete(jobCostSourceAllocations).where(eq(jobCostSourceAllocations.orgId, orgId)),
+    db.delete(jobCostLineages).where(eq(jobCostLineages.orgId, orgId)),
+    db.delete(jobCostSheets).where(eq(jobCostSheets.orgId, orgId)),
     db.delete(mutationReceipts).where(eq(mutationReceipts.orgId, orgId)),
     db.delete(usersIndex).where(eq(usersIndex.orgId, orgId)),
     db.delete(reportShares).where(eq(reportShares.orgId, orgId)),

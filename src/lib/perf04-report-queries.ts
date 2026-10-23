@@ -1,46 +1,77 @@
-import { and, asc, desc, eq, gte, inArray, lte, or, sql, type SQL } from "drizzle-orm";
+import { and, asc, desc, eq, getTableName, gte, inArray, lte, or, sql, type SQL } from "drizzle-orm";
 import type { AnyPgColumn, AnyPgTable } from "drizzle-orm/pg-core";
 import { db } from "@/db/client";
 import { leads, orders, pdiInspections, tmsShipments, dispatches, leaves, invoices, bills,
-  inwardIqcFms, failureLog, imsInward, indents, productionPlans, tasks, fmsRuns, users, bom, recurringTasks, payslips, payrollRuns } from "@/db/schema";
+  inwardIqcFms, failureLog, imsInward, indents, productionPlans, tasks, fmsRuns, users, bom, recurringTasks, payslips, payrollRuns, maintenanceRequests, items, stockLedger } from "@/db/schema";
 import { getTenantOrgId } from "@/lib/tenant";
 import type { DateRange } from "@/lib/analytics";
 import type { ReportScope, ReportViewer } from "@/lib/reports";
 
 interface TimedStatus { createdAt: string; status: string }
-interface ReportRows {
+export interface ReportRows {
+  maintenance: TimedStatus & { id: string; reportedBy: string; assignedTo: string; line: string; workingMinutesLost: string | null };
   leads: TimedStatus & { assignedTo: string; createdBy: string };
-  orders: TimedStatus & { createdBy: string };
+  orders: TimedStatus & { createdBy: string; orderValue: string };
   pdi: TimedStatus & { passedBy: string };
   tms: TimedStatus & { createdBy: string };
   dispatch: TimedStatus & { assignedTo: string; createdBy: string };
   leave: TimedStatus & { doerId: string; filedBy: string; leaveType: string };
-  invoices: TimedStatus;
-  bills: TimedStatus;
+  invoices: TimedStatus & { amount: string };
+  bills: TimedStatus & { amount: string };
   inward: { Timestamp: string; IQC_Status: string; Created_By: string };
-  failures: { Timestamp: string; Fail_Qty: string; Fail_Reason: string; Verified_By: string };
-  ims: { Timestamp: string; Pass_Qty: string; Party_Name: string; Verified_By: string };
+  failures: { Timestamp: string; Fail_Qty: string; Fail_Reason: string; UOM: string; Verified_By: string };
+  ims: { Timestamp: string; Pass_Qty: string; Party_Name: string; UOM: string; Verified_By: string };
   indents: { Timestamp: string; Status: string; Requested_By: string; Approved_By: string };
-  ppc: { timestamp: string; status: string; productionDate: string; createdBy: string; startedBy: string };
+  ppc: { timestamp: string; status: string; productionDate: string; productSku: string; plannedQty: string; recordedOutputQty: string | null; UOM: string; createdBy: string; startedBy: string };
 }
 const OWNER_TRIM_CHARACTERS = "\t\n\v\f\r \u00a0\u1680\u2000\u2001\u2002\u2003\u2004\u2005\u2006\u2007\u2008\u2009\u200a\u2028\u2029\u202f\u205f\u3000\ufeff";
 const stamp = (c: AnyPgColumn) => sql<string>`${c}`.mapWith((value: string | Date | null) => value ? new Date(value).toISOString() : "");
 type Projection = Record<string, AnyPgColumn | SQL>;
 interface QueryDefinition { table: AnyPgTable; orgId: AnyPgColumn; date: AnyPgColumn; owners: AnyPgColumn[]; fields: Projection }
+// Drizzle unqualifies Column chunks inside a single-table selection, including
+// nested scalar SQL. Identifier chunks preserve these cross-table tenant correlations.
+const q = (column: AnyPgColumn) => sql`${sql.identifier(getTableName(column.table))}.${sql.identifier(column.name)}`;
+// Current master UOM is a reference, not a historical receipt-unit snapshot. Missing
+// links remain blank: callers must not combine their quantities into a fictitious unit.
+const inwardUom = (table: typeof imsInward | typeof failureLog) => sql<string>`coalesce((
+  select ${q(items.uom)} from ${inwardIqcFms} inner join ${items}
+    on ${q(items.orgId)} = ${q(inwardIqcFms.orgId)} and ${q(items.sku)} = ${q(inwardIqcFms.sku)}
+  where ${q(inwardIqcFms.orgId)} = ${q(table.orgId)} and ${q(inwardIqcFms.id)} = ${q(table.linkedEntryId)}
+), '')`;
+const planUom = sql<string>`coalesce((select ${q(items.uom)} from ${items}
+  where ${q(items.orgId)} = ${q(productionPlans.orgId)} and ${q(items.sku)} = ${q(productionPlans.productSku)}), '')`;
+// completePlan records Production_Output against the plan id. Generic FMS writes use
+// a run id instead and can represent intermediates, not necessarily final good output.
+// Never replace that missing reconciliation with productionPlans.actualQty (start qty).
+const outputWhere = sql`${q(stockLedger.orgId)} = ${q(productionPlans.orgId)}
+  and ${q(stockLedger.referenceId)} = ${q(productionPlans.id)}
+  and ${q(stockLedger.sku)} = ${q(productionPlans.productSku)}
+  and ${q(stockLedger.source)} = ${"Production_Output"} and ${q(stockLedger.direction)} = ${"In"}`;
+const recordedPlanOutput = sql<string | null>`case when ${planUom} = ''
+  or exists (select 1 from ${fmsRuns} where ${q(fmsRuns.orgId)} = ${q(productionPlans.orgId)}
+    and ${q(fmsRuns.contextRef)} = ('PRODUCTION_PLANS:' || ${q(productionPlans.id)}))
+  or exists (select 1 from ${stockLedger} where ${outputWhere} and ${q(stockLedger.uom)} <> ${planUom})
+  then null else (select coalesce(sum(${q(stockLedger.quantity)}), 0)::text from ${stockLedger} where ${outputWhere}) end`;
 const definitions: Record<keyof ReportRows, QueryDefinition> = {
+  maintenance: { table: maintenanceRequests, orgId: maintenanceRequests.orgId, date: maintenanceRequests.reportedAt,
+    owners: [maintenanceRequests.reportedBy, maintenanceRequests.assignedTo], fields: {
+      id: maintenanceRequests.id, createdAt: stamp(maintenanceRequests.reportedAt), status: maintenanceRequests.status,
+      reportedBy: maintenanceRequests.reportedBy, assignedTo: maintenanceRequests.assignedTo,
+      line: maintenanceRequests.productionLineTemplateName, workingMinutesLost: maintenanceRequests.workingMinutesLost,
+    } },
   leads: { table: leads, orgId: leads.orgId, date: leads.createdAt, owners: [leads.assignedTo, leads.createdBy], fields: { createdAt: stamp(leads.createdAt), status: leads.status, assignedTo: leads.assignedTo, createdBy: leads.createdBy } },
-  orders: { table: orders, orgId: orders.orgId, date: orders.createdAt, owners: [orders.createdBy], fields: { createdAt: stamp(orders.createdAt), status: orders.status, createdBy: orders.createdBy } },
+  orders: { table: orders, orgId: orders.orgId, date: orders.createdAt, owners: [orders.createdBy], fields: { createdAt: stamp(orders.createdAt), status: orders.status, createdBy: orders.createdBy, orderValue: orders.orderValue } },
   pdi: { table: pdiInspections, orgId: pdiInspections.orgId, date: pdiInspections.createdAt, owners: [pdiInspections.passedBy], fields: { createdAt: stamp(pdiInspections.createdAt), status: pdiInspections.status, passedBy: pdiInspections.passedBy } },
   tms: { table: tmsShipments, orgId: tmsShipments.orgId, date: tmsShipments.createdAt, owners: [tmsShipments.createdBy], fields: { createdAt: stamp(tmsShipments.createdAt), status: tmsShipments.status, createdBy: tmsShipments.createdBy } },
   dispatch: { table: dispatches, orgId: dispatches.orgId, date: dispatches.createdAt, owners: [dispatches.assignedTo, dispatches.createdBy], fields: { createdAt: stamp(dispatches.createdAt), status: dispatches.status, assignedTo: dispatches.assignedTo, createdBy: dispatches.createdBy } },
   leave: { table: leaves, orgId: leaves.orgId, date: leaves.createdAt, owners: [leaves.doerId, leaves.filedBy], fields: { createdAt: stamp(leaves.createdAt), status: leaves.status, doerId: leaves.doerId, filedBy: leaves.filedBy, leaveType: leaves.leaveType } },
-  invoices: { table: invoices, orgId: invoices.orgId, date: invoices.createdAt, owners: [], fields: { createdAt: stamp(invoices.createdAt), status: invoices.status } },
-  bills: { table: bills, orgId: bills.orgId, date: bills.createdAt, owners: [], fields: { createdAt: stamp(bills.createdAt), status: bills.status } },
+  invoices: { table: invoices, orgId: invoices.orgId, date: invoices.createdAt, owners: [], fields: { createdAt: stamp(invoices.createdAt), status: invoices.status, amount: invoices.finalValue } },
+  bills: { table: bills, orgId: bills.orgId, date: bills.createdAt, owners: [], fields: { createdAt: stamp(bills.createdAt), status: bills.status, amount: bills.amount } },
   inward: { table: inwardIqcFms, orgId: inwardIqcFms.orgId, date: inwardIqcFms.timestamp, owners: [inwardIqcFms.createdBy], fields: { Timestamp: stamp(inwardIqcFms.timestamp), IQC_Status: inwardIqcFms.iqcStatus, Created_By: inwardIqcFms.createdBy } },
-  failures: { table: failureLog, orgId: failureLog.orgId, date: failureLog.timestamp, owners: [failureLog.verifiedBy], fields: { Timestamp: stamp(failureLog.timestamp), Fail_Qty: failureLog.failQty, Fail_Reason: failureLog.failReason, Verified_By: failureLog.verifiedBy } },
-  ims: { table: imsInward, orgId: imsInward.orgId, date: imsInward.timestamp, owners: [imsInward.verifiedBy], fields: { Timestamp: stamp(imsInward.timestamp), Pass_Qty: imsInward.passQty, Party_Name: imsInward.partyName, Verified_By: imsInward.verifiedBy } },
+  failures: { table: failureLog, orgId: failureLog.orgId, date: failureLog.timestamp, owners: [failureLog.verifiedBy], fields: { Timestamp: stamp(failureLog.timestamp), Fail_Qty: failureLog.failQty, Fail_Reason: failureLog.failReason, UOM: inwardUom(failureLog), Verified_By: failureLog.verifiedBy } },
+  ims: { table: imsInward, orgId: imsInward.orgId, date: imsInward.timestamp, owners: [imsInward.verifiedBy], fields: { Timestamp: stamp(imsInward.timestamp), Pass_Qty: imsInward.passQty, Party_Name: imsInward.partyName, UOM: inwardUom(imsInward), Verified_By: imsInward.verifiedBy } },
   indents: { table: indents, orgId: indents.orgId, date: indents.timestamp, owners: [indents.requestedBy, indents.approvedBy], fields: { Timestamp: stamp(indents.timestamp), Status: indents.status, Requested_By: indents.requestedBy, Approved_By: indents.approvedBy } },
-  ppc: { table: productionPlans, orgId: productionPlans.orgId, date: productionPlans.timestamp, owners: [productionPlans.createdBy, productionPlans.startedBy], fields: { timestamp: stamp(productionPlans.timestamp), status: productionPlans.status, productionDate: stamp(productionPlans.productionDate), createdBy: productionPlans.createdBy, startedBy: productionPlans.startedBy } },
+  ppc: { table: productionPlans, orgId: productionPlans.orgId, date: productionPlans.timestamp, owners: [productionPlans.createdBy, productionPlans.startedBy], fields: { timestamp: stamp(productionPlans.timestamp), status: productionPlans.status, productionDate: stamp(productionPlans.productionDate), productSku: productionPlans.productSku, plannedQty: productionPlans.plannedQty, recordedOutputQty: recordedPlanOutput, UOM: planUom, createdBy: productionPlans.createdBy, startedBy: productionPlans.startedBy } },
 };
 
 /** Internal report-only projection. Caller gates report grants and resolves authorized scope.

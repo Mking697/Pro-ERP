@@ -72,6 +72,18 @@ export const MODULE_ACCESS = [
     href: "/bom",
   },
   {
+    key: "COST_SHEETS",
+    label: t("Cost Sheets"),
+    description: t("Product cost sheets, approved costing rates aur saved revisions manage kar sakta hai"),
+    href: "/cost-sheets",
+  },
+  {
+    key: "JOB_COST_SHEETS",
+    label: t("Job Cost Sheets"),
+    description: t("Recorded job cost sheets (provisional valuation) bana, finalize aur export kar sakta hai"),
+    href: "/job-cost-sheets",
+  },
+  {
     key: "PPC_PLAN",
     label: "Production Planning",
     description: "Production plan bana sakta hai aur material reserve kar sakta hai",

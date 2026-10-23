@@ -2,6 +2,14 @@
 
 # Pro ERP
 
+### CHECKPOINT 2026-10-23 — reports and costing (local, uncommitted; NOT deployed)
+
+Read `docs/reports-cost-sheets-contract.md` for the approved scope and latest evidence; older checkpoints below predate this work. Preserve all current tracked/untracked files. Reports: 21 chart views implemented and prior code gates/review passed; browser/integrated acceptance still pending. Estimated Product Cost Sheets: protected SKU/BOM/rate-linked snapshot lifecycle, revisions, print/XLSX and bilingual Guide implemented. Parent latest tests: backend+guide 34, UI 51, disposable real PostgreSQL 5 passed; tsc/lint passed (6 old warnings), translation checks rerun after guide. Two review defects (historical partial-receipt dates and concurrent readback recovery) fixed, parent rerun, and independent focused re-review `deleg_a0bf3280` PASSED. Uninstrumented full webpack build `proc_ceaaf5a000a9` PASSED after native externalization of the Neon driver. Parent verified build manifests, middleware dependency trace and direct NFT trace; production-server anonymous/login smoke passed on task port 4037, now verified stopped. Default Turbopack build and authenticated browser/mobile/print acceptance are not claimed.
+
+Next: finish real authenticated browser/mobile/print acceptance; continue the approved remaining slices without treating anonymous smoke as full workflow proof. Migration pre-check is BLOCKED by DB password authentication; no release migration generated, do not bypass lineage check or change credentials. QA uses `PRO_ERP_COSTING_REAL=1 node tests/costing-real-runner.cjs`, schema export into fresh labelled disposable DB only; it does not establish release migration/login acceptance. Task QA containers/networks cleaned and read back absent.
+
+Then retain remaining approved scope: Recorded Job Cost Sheets; every module's entry-detail + step-output report tables with Excel AND CSV; Admin module/lead corrections with atomic field-level old/new values, actor and timestamp audit. Additional requirement is recorded, not implemented. No commit/push/production migration/deployment authorized.
+
 ## PENDING — full-ERP improvement roadmap, planned 2026-10-20 — Phase 1: items 1 & 2 DONE 2026-10-21, item 3 blocked on GSTIN; Phase B/C/4 DONE 2026-10-21/22 (see CHECKPOINT 2026-10-22 below)
 
 ### CHECKPOINT 2026-10-22 (latest) — read this first before resuming

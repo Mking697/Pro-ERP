@@ -18,6 +18,7 @@ import { TimelineChart, ChartFrame } from "@/components/charts";
 import { formatDueDisplay } from "@/lib/formatDate";
 import { qty, statusVariant } from "../types";
 import { getT } from "@/lib/i18n/server";
+import CostSheetLink from "@/components/cost-sheet-link";
 import { parseStamp } from "@/lib/timestamp";
 
 /**
@@ -112,9 +113,10 @@ export default async function ItemDetailPage({
               {item.Location && ` · ${item.Location}`}
             </p>
           </div>
-          <Badge variant={statusVariant(stock.status)} className="mt-1">
-            {stock.status}
-          </Badge>
+          <div className="flex flex-wrap items-center gap-2">
+            <CostSheetLink sku={item.SKU} canView={session.access.includes("COST_SHEETS") && ["FG", "Semi-FG"].includes(item.Category)} label={t("Cost Sheets")} />
+            <Badge variant={statusVariant(stock.status)}>{stock.status}</Badge>
+          </div>
         </div>
 
         {stock.missingFields.length > 0 && (

@@ -56,6 +56,51 @@ const t = translatorFor("hi");
 
 export const GUIDE: GuideChapter[] = [
   {
+    id: "cost-sheets",
+    title: t("Cost Sheets"),
+    description: t("Estimated product cost; actual job cost nahi. Saved snapshots ko hi print aur export kiya jaata hai."),
+    sections: [{
+      id: "product-cost-sheets",
+      title: t("Cost Sheets"),
+      audience: "COST_SHEETS",
+      summary: "Product/SKU ke active BOM se estimated cost banayein. Yeh actual job cost, stock valuation ya accounting posting nahi hai.",
+      how: ["Material quantity = BOM qty per unit × batch quantity. Rate compatible-UOM received purchase event se, warna explicit approved standard rate se aata hai. Item Master ka generic Rate purchasing rate nahi maana jaata.", "Manufacturing = material + labour + direct expenses + factory overhead. Full cost = manufacturing + commercial allocations. Per-unit cost = full cost ÷ batch quantity. Missing rate zero nahi: total unavailable aur finalization blocked hoti hai."],
+      steps: [
+        "Pehle Item Master me product/components aur BOM me active component quantities/UOM verify karein. Sirf practice ke liye real purchase/stock receipt mat banayein.",
+        "PMS → Cost Sheets kholein; ya BOM/product Inventory detail par Cost Sheets chunein. Admin ke paas grant hota hai; doosre users ko COST_SHEETS access alag se dena padta hai.",
+        "Product / SKU, Batch quantity aur As of date (IST) bharein. Add charge se cost head, description, basis aur rate dein. Batch basis ek baar; Per unit batch quantity; LabourHours/MachineHours explicit entered hours use karte hain.",
+        "Preview / recalculate dabayein. Materials and rate provenance table me quantity, rate, source ID/date aur missing-rate warnings dekhein. Preview save nahi hota.",
+        "Missing rate ke liye Approve standard costing rate me preview material chunein, rate/effective date/reason dein aur Approve rate karein. Yeh real audited rate record banata hai; zero explicit free-issue rate hai. Phir preview aur draft update dobara karein.",
+        "Save draft se snapshot save karein. Saved revision history se purana sheet kholein. Changes ke liye Update draft / recalculate; complete unchanged saved snapshot ke liye Finalize saved snapshot karein. Finalized sheet badalne ke liye Create new revision use karein.",
+        "Export saved snapshot (XLSX) aur Print saved snapshot wahi saved ID dikhate hain, unsaved form nahi. Unknown request par Retry same request karein; concurrent newer version mile to Load current snapshot / replace inputs se current record explicitly kholein. Reload se pehle history verify karein: unresolved request identity sirf is tab/session me rehti hai.",
+      ],
+      example: { title: t("Cost Sheets"), lines: ["BOM: 2 Kg × INR 20/Kg × batch 3 = material INR 120", "Labour Batch: INR 30 → manufacturing INR 150", "Commercial Per unit: INR 2 × 3 = INR 6", "Full cost INR 156; per unit INR 52", "Yeh illustrative estimate hai, actual purchase/expense posting nahi."] },
+      notes: ["Finalization saved BOM/rates freeze karti hai; live rate badalne se purani finalized revision nahi badalti. Draft recalculation current sources padhti hai; missing/ambiguous historical receipts warnings me disclose hote hain.", "Actual Job Cost Sheet aur customer-order profit is estimated screen ka part nahi. Cost Sheets generic public report sharing se expose nahi hote.", "Save/approval real database writes hain. Browser/print-layout acceptance aur release migration deployment se alag verification gates hain."],
+    }],
+  },
+  {
+    id: "job-cost-sheets",
+    title: t("Job Cost Sheets"),
+    description: t("Recorded job cost sheet — provisional management valuation from recorded issues/output/general expenses. Actual proven historical cost ya GL posting nahi hai."),
+    sections: [{
+      id: "recorded-job-cost-sheets",
+      title: t("Job Cost Sheets"),
+      audience: "JOB_COST_SHEETS",
+      summary: "Ek Production Plan ke recorded material issue, completion-ledger output, approved manual charges aur classified received General PO expenses se provisional job cost banayein. Yeh proven actual cost, GL posting ya stock revaluation nahi hai.",
+      how: ["Material amount = recorded Out/Production issue quantity × issue-date provisional rate (pehle received purchase agreed rate, warna approved standard rate). Output = sirf non-FMS Completion ledger event se; FMS Production-Line plans visible hote hain lekin finalize is slice me blocked hai.", "General PO line sirf Completed/received/within-cap hone par cost-eligible hai; har eligible line ko explicit DirectExpense/FactoryOverhead/Commercial/ExcludedCapital/ExcludedOther classify karna hota hai, warna finalization block hoti hai. Manufacturing = material + labour + direct expenses + factory overhead; full cost = manufacturing + commercial."],
+      steps: [
+        "Eligible production plans list me plan ki eligibility reason dekhein: Completed non-FMS plan finalize ke liye eligible hai, in-progress plan sirf Draft preview/save karta hai, aur FMS Production-Line plan sirf diagnostics ke saath visible hai.",
+        "Plan ID aur As of date (IST) bharein. Har cost head (Labour/DirectExpense/FactoryOverhead/Commercial) ke liye Entered ya Not applicable decide karein, reason ke saath. Approved manual charges me explicit evidence reference ke saath charge add karein.",
+        "Preview / recalculate karke materials, output basis, aur General PO sources dekhein. Eligible General PO line ko classify karein (ya explicit Excluded reason dein); Committed/Unavailable lines sirf disclosure ke liye hoti hain, charge nahi ho sakti.",
+        "Save draft se Draft snapshot save hota hai. Update draft / recalculate se changes save karein. Finalized sheet ke baad naya correction ke liye Create new revision (supersede) use karein, purani sheet edit nahi hoti.",
+        "Finalize saved snapshot sirf complete (sourceComplete/valuationComplete/canFinalize true) Draft par chalta hai aur irreversible hai — confirm dialog explicit confirmation maangta hai. Finalize ke baad sheet permanent immutable record ban jaata hai.",
+        "Export saved snapshot (XLSX/CSV) aur Print saved snapshot wahi saved ID dikhate hain. Formula-injection se bachne ke liye har text cell escape hota hai. Unknown request par Retry same request karein; concurrent newer version mile to Load current snapshot / replace inputs se current record explicitly kholein.",
+      ],
+      example: { title: t("Job Cost Sheets"), lines: ["Material issue 10 units × INR 15 (purchase agreed, issue-date) = INR 150", "General PO line (Completed, received) DirectExpense allocate INR 500", "Manufacturing = material + direct expense = INR 650", "Full cost per good unit sirf admitted output quantity se calculate hota hai", "Yeh provisional management valuation hai, proven historical cost nahi."] },
+      notes: ["Completion-ledger output start/fallback quantity repeat karta hai; independently measured ya QC-accepted good output nahi hai. Yeh caveat hamesha dikhta hai.", "FMS Production-Line plans is slice me finalize nahi ho sakte — sirf diagnostics ke saath visible hain. General PO line ka ek-baar receipt completion event hi available evidence hai, append-only line acceptance nahi.", "Estimated Cost Sheets (COST_SHEETS grant) se alag module aur alag grant (JOB_COST_SHEETS) hai. Save/finalize real database writes hain; migration apply aur full browser/mobile acceptance separate release gates hain."],
+    }],
+  },
+  {
     id: "field-service",
     title: t("Services, Complaints aur Site Visits"),
     description: t("Customer ke site par installation, repair aur inspection ka kaam."),

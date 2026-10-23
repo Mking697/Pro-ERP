@@ -4,6 +4,8 @@ import { cn } from "@/lib/utils";
 import {
   Area,
   AreaChart,
+  Line,
+  LineChart,
   Bar,
   BarChart as RBarChart,
   CartesianGrid,
@@ -16,35 +18,10 @@ import {
   YAxis,
 } from "recharts";
 
-/**
- * Recharts-based dashboard charts.
- *
- * These were hand-rolled SVG for a long time (server-rendered, zero client JS) because
- * three simple chart forms didn't seem worth a library. The team decided the premium,
- * polished look a real charting library gives (smooth tooltips, consistent animation,
- * proper hit-testing) is worth it even though it means this module — and every page
- * that renders it — now ships client JS instead of staying server-rendered. That is a
- * deliberate, approved tradeoff, not an oversight: these components were always leaves
- * in the tree (no children composition that needs to stay server-side), so making them
- * client components costs bundle size but nothing else in the app's architecture.
- *
- * The exported API (prop names and shapes) is unchanged from the SVG version on purpose,
- * so callers (dashboard/analytics.tsx, inventory/[sku]/page.tsx) needed zero edits: they
- * still render these as ordinary JSX from server components, which Next.js allows as
- * long as the props crossing the boundary are serializable — which Slice[]/TimelinePoint[]
- * always were.
- *
- * Every chart here carries direct labels and, for more than one series, a legend. That
- * is not decoration: the status palette's warning step sits below 3:1 on a light
- * surface by design, so colour is never allowed to be the only thing distinguishing a
- * value. Recharts' tooltips replace the old SVG <title> hover text; each chart also
- * keeps an sr-only text summary so the same information that used to be announced via
- * <title> is still available to screen readers even though Recharts' own internal SVG
- * nodes aren't natively announced the way <title> was. This is the closest achievable
- * parity: Recharts has no per-shape accessible-name equivalent to SVG <title>, so a
- * sr-only text block carries that job instead; the visual chart is marked aria-hidden
- * so the two descriptions are not read twice.
- */
+/** Client-only visualization leaves; data reads, grants and tenant scope stay on the
+ * server. All props are serializable. Existing Inventory detail calls remain valid.
+ * Direct labels / bounded exact-value tables carry the same data without hover or
+ * color, and remain usable before ResponsiveContainer measures the client layout. */
 
 export interface Slice {
   label: string;
@@ -64,7 +41,7 @@ function SrSummary({ text }: { text: string }) {
   return <span className="sr-only">{text}</span>;
 }
 
-function Legend({ items }: { items: Slice[] }) {
+function Legend({ items, valueSuffix = "" }: { items: Slice[]; valueSuffix?: string }) {
   return (
     <ul className="mt-3 flex flex-wrap gap-x-4 gap-y-1.5">
       {items.map((item) => (
@@ -76,7 +53,7 @@ function Legend({ items }: { items: Slice[] }) {
           />
           {/* Text stays in ink, never the series colour. */}
           <span className="text-muted-foreground">{item.label}</span>
-          <span className="font-medium tabular-nums">{item.value}</span>
+          <span className="font-medium tabular-nums">{item.value}{valueSuffix}</span>
         </li>
       ))}
     </ul>
@@ -113,14 +90,17 @@ export function BarChart({
   data,
   emptyMessage,
   valueSuffix = "",
+  emptyWhenZero = false,
 }: {
   data: Slice[];
   /** Required: the caller holds the translator, this file does not. */
   emptyMessage: string;
   valueSuffix?: string;
+  /** Use for count distributions only; zero scores/stocks are legitimate values. */
+  emptyWhenZero?: boolean;
 }) {
   const rows = data.filter((d) => Number.isFinite(d.value));
-  if (rows.length === 0) return <EmptyChart message={emptyMessage} />;
+  if (rows.length === 0 || (emptyWhenZero && rows.every(r => r.value === 0))) return <EmptyChart message={emptyMessage} />;
 
   const rowHeight = 32;
   const height = Math.max(rows.length * rowHeight, 64);
@@ -130,6 +110,7 @@ export function BarChart({
       <SrSummary
         text={rows.map((r) => `${r.label}: ${r.value}${valueSuffix}`).join(", ")}
       />
+      <div className="overflow-y-auto" style={{ maxHeight: 320 }}>
       <div style={{ height }} aria-hidden="true">
         <ResponsiveContainer width="100%" height="100%">
           <RBarChart
@@ -139,7 +120,7 @@ export function BarChart({
             barCategoryGap={8}
             accessibilityLayer={false}
           >
-            <XAxis type="number" hide domain={[0, "auto"]} />
+            <XAxis type="number" domain={[rows.reduce((min, row) => Math.min(min, row.value), 0), rows.reduce((max, row) => Math.max(max, row.value), 0)]} tick={{ fontSize: 10 }} />
             <YAxis
               type="category"
               dataKey="label"
@@ -163,6 +144,8 @@ export function BarChart({
           </RBarChart>
         </ResponsiveContainer>
       </div>
+      </div>
+      <div className="max-h-40 overflow-y-auto"><Legend items={rows} valueSuffix={valueSuffix} /></div>
     </div>
   );
 }
@@ -262,87 +245,63 @@ export interface TimelinePoint {
   value: number;
 }
 
-function TimelineTooltip({
-  active,
-  payload,
-}: {
-  active?: boolean;
-  payload?: Array<{ payload: TimelinePoint }>;
+/** Serializable multi-series chart, with an always-visible exact-value table.
+ * The SVG is an enhancement; labels/data remain usable before client measurement. */
+export function SeriesChart({ rows, series, unit, emptyMessage, stacked = false, kind = "column" }: {
+  rows: Array<{ label: string; [key: string]: string | number | null }>;
+  series: Array<{ key: string; label: string; color: string }>;
+  unit: string;
+  emptyMessage: string;
+  stacked?: boolean;
+  kind?: "column" | "line" | "area";
 }) {
-  if (!active || !payload?.length) return null;
-  const point = payload[0].payload;
-  return (
-    <div className="rounded-md border bg-card px-2.5 py-1.5 text-xs shadow-md">
-      <p className="font-medium">{point.label}</p>
-      <p className="tabular-nums text-muted-foreground">{point.value}</p>
+  const clean = rows.filter(row => series.every(s => row[s.key] === null || Number.isFinite(row[s.key])));
+  if (!clean.length) return <EmptyChart message={emptyMessage} />;
+  const axes = <>
+    <CartesianGrid vertical={false} stroke="var(--chart-grid)" />
+    <XAxis dataKey="label" tickLine={false} axisLine={false} interval="preserveStartEnd" tick={{ fontSize: 10 }} />
+    <YAxis width={52} tick={{ fontSize: 10 }} />
+    <Tooltip />
+  </>;
+  return <div className="min-w-0 space-y-3">
+    {unit && <p className="text-xs text-muted-foreground">{unit}</p>}
+    <div className="h-52 w-full min-w-0" aria-hidden="true">
+      <ResponsiveContainer width="100%" height="100%">
+        {kind === "column" ? <RBarChart data={clean} accessibilityLayer={false}>
+          {axes}{series.map(s => <Bar key={s.key} dataKey={s.key} name={s.label} fill={s.color} stackId={stacked ? "total" : undefined} maxBarSize={32} isAnimationActive={false} />)}
+        </RBarChart> : kind === "line" ? <LineChart data={clean} accessibilityLayer={false}>
+          {axes}{series.map(s => <Line key={s.key} dataKey={s.key} name={s.label} stroke={s.color} strokeWidth={2} connectNulls={false} isAnimationActive={false} />)}
+        </LineChart> : <AreaChart data={clean} accessibilityLayer={false}>
+          {axes}{series.map(s => <Area key={s.key} dataKey={s.key} name={s.label} stroke={s.color} fill={s.color} fillOpacity={0.15} isAnimationActive={false} />)}
+        </AreaChart>}
+      </ResponsiveContainer>
     </div>
-  );
+    <ul className="flex flex-wrap gap-3 text-xs">{series.filter(s => s.label).map(s => <li key={s.key} className="flex items-center gap-1.5"><span aria-hidden="true" className="size-2.5 rounded-sm" style={{ background: s.color }} />{s.label}</li>)}</ul>
+    <div className="max-h-40 overflow-auto rounded border">
+      <table className="w-full text-xs tabular-nums">
+        <caption className="sr-only">{unit}</caption>
+        <thead><tr><th scope="col" className="p-2 text-left">{unit}</th>{series.map(s => <th scope="col" className="p-2 text-right" key={s.key}>{s.label}</th>)}</tr></thead>
+        <tbody>{clean.map((row, i) => <tr key={`${row.label}-${i}`}><th scope="row" className="p-2 text-left font-normal">{row.label}</th>{series.map(s => <td key={s.key} className="p-2 text-right">{row[s.key] ?? "—"}</td>)}</tr>)}</tbody>
+      </table>
+    </div>
+  </div>;
 }
 
-/** Change over time. One series, so it needs no legend — the card title names it. */
-export function TimelineChart({
-  points,
-  color = "var(--chart-series-1)",
-  emptyMessage,
-}: {
+/** Existing callers remain valid; report callers supply a visible translated series/unit. */
+export function TimelineChart({ points, color = "var(--chart-series-1)", emptyMessage, valueSuffix = "", seriesLabel = "", kind = "area" }: {
   points: TimelinePoint[];
   color?: string;
-  /** Required: the caller holds the translator, this file does not. */
   emptyMessage: string;
+  valueSuffix?: string;
+  seriesLabel?: string;
+  kind?: "column" | "line" | "area";
 }) {
-  if (points.length === 0) return <EmptyChart message={emptyMessage} />;
-
-  // Gradient ids must be unique per page when more than one timeline chart renders at
-  // once; derived from the data itself so two charts with different data/colors on the
-  // same page never collide.
-  const gradientId = `timeline-fill-${color.replace(/[^a-zA-Z0-9]/g, "")}-${points[0].label.replace(/[^a-zA-Z0-9]/g, "")}-${points.length}`;
-
-  // At most six labels, so ticks never collide on a narrow card.
-  const labelEvery = Math.max(1, Math.ceil(points.length / 6));
-
-  return (
-    <div>
-      <SrSummary
-        text={`Timeline: ${points.map((p) => `${p.label} ${p.value}`).join(", ")}`}
-      />
-      <div className="h-40 w-full" aria-hidden="true">
-        <ResponsiveContainer width="100%" height="100%">
-          <AreaChart
-            data={points}
-            margin={{ top: 12, right: 8, bottom: 0, left: 0 }}
-            accessibilityLayer={false}
-          >
-            <defs>
-              <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor={color} stopOpacity={0.35} />
-                <stop offset="100%" stopColor={color} stopOpacity={0} />
-              </linearGradient>
-            </defs>
-            <CartesianGrid vertical={false} stroke="var(--chart-grid)" />
-            <XAxis
-              dataKey="label"
-              tickLine={false}
-              axisLine={false}
-              interval={labelEvery - 1}
-              tick={{ fontSize: 9, fill: "var(--muted-foreground)" }}
-            />
-            <YAxis hide domain={[0, "auto"]} />
-            <Tooltip content={<TimelineTooltip />} cursor={{ stroke: "var(--chart-grid)" }} />
-            <Area
-              type="monotone"
-              dataKey="value"
-              stroke={color}
-              strokeWidth={2.5}
-              fill={`url(#${gradientId})`}
-              dot={{ r: 4, fill: "var(--card)", stroke: color, strokeWidth: 2.5 }}
-              activeDot={{ r: 5 }}
-              animationDuration={500}
-            />
-          </AreaChart>
-        </ResponsiveContainer>
-      </div>
-    </div>
-  );
+  const clean = points.filter(p => Number.isFinite(p.value));
+  if (!clean.length) return <EmptyChart message={emptyMessage} />;
+  return <div>
+    <SrSummary text={clean.map(p => `${p.label}: ${p.value}${valueSuffix}`).join(", ")} />
+    <SeriesChart rows={clean.map(p => ({ ...p }))} series={[{ key: "value", label: seriesLabel || valueSuffix, color }]} unit={valueSuffix.trim()} emptyMessage={emptyMessage} kind={kind} />
+  </div>;
 }
 
 /** Wraps a chart with its title, so every card on the page has the same anatomy. */
@@ -358,7 +317,7 @@ export function ChartFrame({
   className?: string;
 }) {
   return (
-    <div className={cn("rounded-xl border bg-card p-4 shadow-sm transition-shadow duration-200 hover:shadow-md", className)}>
+    <div className={cn("min-w-0 rounded-xl border bg-card p-4 shadow-sm transition-shadow duration-200 hover:shadow-md", className)}>
       <p className="text-sm font-medium">{title}</p>
       {hint && <p className="mt-0.5 text-xs text-muted-foreground">{hint}</p>}
       <div className="mt-4">{children}</div>
