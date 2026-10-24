@@ -76,7 +76,12 @@ function TableRow({ className, ...props }: React.ComponentProps<"tr">) {
     <tr
       data-slot="table-row"
       className={cn(
-        "border-b transition-colors duration-150 hover:bg-muted/50 has-aria-expanded:bg-muted/50 data-[state=selected]:bg-muted",
+        // active:bg-muted gives a clickable row (orders/leads/dispatch/etc. boards use
+        // onClick+cursor-pointer directly on TableRow, not <Button>) the same tap
+        // feedback a touch user gets from every other interactive control in this app —
+        // without it, tapping a row on a phone had zero visual response until the row's
+        // own click handler finished navigating.
+        "border-b transition-colors duration-150 hover:bg-muted/50 active:bg-muted has-aria-expanded:bg-muted/50 data-[state=selected]:bg-muted",
         className
       )}
       {...props}

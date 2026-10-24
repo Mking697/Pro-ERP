@@ -43,11 +43,20 @@ export const metadata: Metadata = {
 
 // theme-color/background matched to globals.css's default (neutral, light) tokens —
 // --background: oklch(1 0 0) and --primary: oklch(0.205 0 0) resolve to #ffffff/#171717.
-// Kept in sync with public/manifest.json's own background_color/theme_color.
+// A dark-mode user (OS-level prefers-color-scheme, which is what a fresh "system" org
+// sees before any explicit toggle — see SYSTEM_THEME_SCRIPT below) otherwise gets a
+// white PWA status bar/browser-chrome against a dark page. .dark's own --background is
+// oklch(0.145 0 0) ≈ #171717. Kept in sync with public/manifest.json's own
+// background_color/theme_color (manifest has no per-scheme concept, so it keeps the
+// light value — only matters pre-launch, before the page's own class/script applies).
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
-  themeColor: "#ffffff",
+  viewportFit: "cover",
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#ffffff" },
+    { media: "(prefers-color-scheme: dark)", color: "#171717" },
+  ],
 };
 
 /**

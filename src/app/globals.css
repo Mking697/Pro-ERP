@@ -130,6 +130,18 @@
   }
   html {
     @apply font-sans;
+    /* Kills the OS's own translucent tap-highlight flash on iOS Safari/Android Chrome —
+       every interactive element here already has its own :active/focus-visible feedback
+       (Button's active:scale-[0.98], Input's focus-visible ring, etc.), so the browser's
+       generic flash only fights that, it never adds anything. */
+    -webkit-tap-highlight-color: transparent;
+    /* Stops a scroll-to-the-top gesture from triggering Android Chrome's pull-to-refresh
+       or iOS's whole-page rubber-band — this is an app shell with its own scroll
+       containers (sidebar, dialogs, drawers), not a plain scrolling document. Those
+       containers opt back into their own contained bounce via overscroll-behavior:
+       contain wherever that matters, so page-level scroll chaining is the only thing
+       suppressed here. */
+    overscroll-behavior: none;
   }
 }
 

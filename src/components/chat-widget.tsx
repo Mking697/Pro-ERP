@@ -45,7 +45,7 @@ export default function ChatWidget() {
         aria-controls={open ? panelId : undefined}
         aria-label={open ? t("Pro ERP Chatbot band karein") : t("Pro ERP Chatbot kholein")}
         aria-expanded={open}
-        className="fixed right-5 bottom-5 z-50 flex size-14 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-lg shadow-primary/30 transition-transform duration-150 hover:scale-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+        className="fixed right-[calc(1.25rem+env(safe-area-inset-right))] bottom-[calc(1.25rem+env(safe-area-inset-bottom))] z-50 flex size-14 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-lg shadow-primary/30 transition-transform duration-150 hover:scale-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
       >
         {open ? <X className="size-6" aria-hidden="true" /> : <Bot className="size-6" aria-hidden="true" />}
       </button>
@@ -57,7 +57,7 @@ export default function ChatWidget() {
           role="dialog"
           aria-modal="false"
           aria-label={t("Pro ERP Chatbot")}
-          className="fixed right-5 bottom-24 z-50 flex h-[min(600px,calc(100vh-8rem))] w-[380px] max-w-[calc(100vw-2.5rem)] animate-in flex-col overflow-hidden rounded-2xl border bg-background shadow-2xl fade-in-0 slide-in-from-bottom-2 duration-200"
+          className="fixed right-[calc(1.25rem+env(safe-area-inset-right))] bottom-[calc(6rem+env(safe-area-inset-bottom))] z-50 flex h-[min(600px,calc(100dvh-8rem))] w-[380px] max-w-[calc(100vw-2.5rem)] animate-in flex-col overflow-hidden rounded-2xl border bg-background shadow-2xl fade-in-0 slide-in-from-bottom-2 duration-200"
         >
           <div className="flex shrink-0 items-center justify-between border-b px-4 py-3">
             <div className="flex items-center gap-2">

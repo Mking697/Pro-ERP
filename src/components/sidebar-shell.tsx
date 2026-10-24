@@ -204,7 +204,7 @@ export default function SidebarShell({
       {/* Content column */}
       <div className="flex min-w-0 flex-1 flex-col">
         {/* Mobile-only top bar — the sidebar itself carries org branding on desktop. */}
-        <header className="sticky top-0 z-40 flex h-14 shrink-0 items-center gap-3 border-b bg-background/95 px-4 backdrop-blur supports-[backdrop-filter]:bg-background/80 md:hidden">
+        <header className="sticky top-0 z-40 flex min-h-14 shrink-0 items-center gap-3 border-b bg-background/95 px-4 pt-[env(safe-area-inset-top)] backdrop-blur supports-[backdrop-filter]:bg-background/80 md:hidden">
           <button
             type="button"
             ref={menuTriggerRef}
@@ -240,7 +240,7 @@ export default function SidebarShell({
           className="inset-y-0 top-0 left-0 grid h-dvh max-h-dvh w-72 max-w-[85vw] translate-x-0 translate-y-0 grid-rows-[auto_1fr_auto] gap-0 rounded-none p-0 shadow-lg border-r bg-background data-open:zoom-in-100 data-closed:zoom-out-100 data-open:slide-in-from-left data-closed:slide-out-to-left"
         >
           <DialogTitle className="sr-only">Main navigation</DialogTitle>
-          <div className="flex h-14 shrink-0 items-center justify-between gap-2.5 border-b px-4">
+          <div className="flex min-h-14 shrink-0 items-center justify-between gap-2.5 border-b px-4 pt-[env(safe-area-inset-top)]">
             <Link
               href="/dashboard"
               onClick={() => setMobileOpen(false)}
@@ -263,7 +263,7 @@ export default function SidebarShell({
             <NavLinks items={items} onNavigate={() => setMobileOpen(false)} />
           </div>
 
-          <div className="shrink-0 border-t bg-sidebar-accent/30 p-3">
+          <div className="shrink-0 border-t bg-sidebar-accent/30 p-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))]">
             <div className="flex items-center justify-between gap-2">
               <span aria-hidden="true" className="flex size-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-semibold text-primary ring-1 ring-primary/10">
                 {fullName.charAt(0).toUpperCase()}
